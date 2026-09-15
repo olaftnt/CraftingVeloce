@@ -34,10 +34,18 @@ public class VeloceExtractorMenu extends AbstractContainerMenu {
 
         // 1. Left 3x3: Filter Slots (Fake/Ghost slots 0..8)
         // Position: x=26, y=18
+        //
+        // JEDEN wspolny kontener-zastepnik, nie dziewiec osobnych.
+        // Wczesniej `new SimpleContainer(9)` bylo tworzone W PETLI, czyli
+        // powstawalo 9 kontenerow po 9 slotow (81 alokacji) dla dziewieciu
+        // slotow-widm. Same sloty sa nieinteraktywne (mayPlace/mayPickup
+        // zwracaja false), a ikony filtrow rysuje ekran z clientFilters -
+        // wiec kontener sluzy wylacznie jako "miejsce" dla Slot.
+        Container filterPlaceholders = new SimpleContainer(9);
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 3; col++) {
                 int index = col + row * 3;
-                this.addSlot(new Slot(new SimpleContainer(9), index, 26 + col * 18, 18 + row * 18) {
+                this.addSlot(new Slot(filterPlaceholders, index, 26 + col * 18, 18 + row * 18) {
                     @Override
                     public boolean mayPlace(ItemStack stack) {
                         return false;
@@ -111,6 +119,12 @@ public class VeloceExtractorMenu extends AbstractContainerMenu {
                 }
             } else if (index >= PLAYER_INV_START) {
                 // Clicking in player inventory: do nothing for quickMove (we don't deposit into extractor)
+                return ItemStack.EMPTY;
+            } else {
+                // Sloty filtrów (0..8). Nie przenosimy ich nigdzie - i MUSIMY
+                // zwrocic EMPTY, bo kontrakt quickMoveStack mowi "zwroc to, co
+                // faktycznie przeniosles". Zwrocenie kopii bez przeniesienia
+                // kazaloby klientowi uwazac, ze item sie przesunął.
                 return ItemStack.EMPTY;
             }
 
