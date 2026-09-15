@@ -36,7 +36,56 @@ public class VelocePipeNetworkManager extends SavedData {
     private final Map<BlockPos, UUID> pipeToNetwork = new HashMap<>();
     private final Map<BlockPos, UUID> terminalToNetwork = new HashMap<>();
 
+    /**
+     * Rury czekajace na przebudowe sieci.
+     *
+     * <p><b>Po co kolejka.</b> {@code Block.neighborChanged} odpala sie przy
+     * KAZDYM update sasiada - a w bazie z Create, hopperami czy czerwonym
+     * kamieniem to potrafi byc kilka razy na tick. Wczesniej kazde takie
+     * zdarzenie robilo od razu pelny BFS sieci plus uniewaznienie cache
+     * wszystkich dotknietych sieci. Maszyna stojaca obok rury zamulala
+     * serwer sama swoja praca.
+     *
+     * <p>Teraz zbieramy tylko pozycje i przebudowujemy najwyzej raz na
+     * {@link #REBUILD_COOLDOWN_TICKS} tickow, z ticku serwera.
+     */
+    private final Set<BlockPos> pendingRebuilds = new java.util.LinkedHashSet<>();
+
+    /** Tick ostatniej przebudowy - do odstepu miedzy nimi. */
+    private long lastRebuildTick = Long.MIN_VALUE;
+
+    /** Minimalny odstep miedzy przebudowami sieci, w tickach (5 na sekunde). */
+    private static final int REBUILD_COOLDOWN_TICKS = 4;
+
     public VelocePipeNetworkManager() {
+    }
+
+    /**
+     * Obsluga odroczonych przebudow. Wolane z ticku serwera.
+     *
+     * <p>Jedno przebudowanie na tick i nie czesciej niz co
+     * {@link #REBUILD_COOLDOWN_TICKS} - dzieki temu nawet lawina update'ow
+     * sasiadow konczy sie najwyzej piecioma przebudowami na sekunde.
+     */
+    public void tick(ServerLevel level) {
+        if (pendingRebuilds.isEmpty()) {
+            return;
+        }
+        long now = level.getGameTime();
+        if (lastRebuildTick != Long.MIN_VALUE && now - lastRebuildTick < REBUILD_COOLDOWN_TICKS) {
+            return;
+        }
+        lastRebuildTick = now;
+
+        java.util.Iterator<BlockPos> it = pendingRebuilds.iterator();
+        BlockPos pos = it.next();
+        it.remove();
+        rebuildAt(level, pos);
+    }
+
+    /** Zwalnia kolejke przy zamykaniu/rozladowaniu swiata. */
+    public void clearPendingRebuilds() {
+        pendingRebuilds.clear();
     }
 
     public static SavedData.Factory<VelocePipeNetworkManager> factory() {
@@ -248,7 +297,10 @@ public class VelocePipeNetworkManager extends SavedData {
      */
     public void onNeighborChanged(ServerLevel level, BlockPos pipePos, BlockPos neighborPos) {
         if (!level.isLoaded(pipePos)) return;
-        rebuildAt(level, pipePos);
+        // Przebudowe ODKLADAMY do ticku (patrz pendingRebuilds). Robienie
+        // pelnego BFS w kazdym neighborChanged oznaczalo przebudowe sieci
+        // kilka razy na tick, gdy obok pracowala jakas maszyna.
+        pendingRebuilds.add(pipePos.immutable());
 
         // Uniewaznij cache sieci dotknietych ta zmiana. Szukamy po pozycji rury
         // oraz po pozycji sasiada - zmiana mogla dodac albo usunac endpoint.

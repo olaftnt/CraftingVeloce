@@ -131,9 +131,21 @@ public class CraftingVeloceMod {
         // craftowalnosci musi o tym wiedziec - inaczej GUI pokazuje stare liczby.
         // Dodatkowe zabezpieczenie: zwolnij force-loady przy rozladowaniu
         // wymiaru (zmiana swiata, powrot do menu glownego).
+        // Odroczone przebudowy sieci rur. Bez tego kazdy neighborChanged
+        // (a jest ich duzo, gdy obok pracuje maszyna) robil pelny BFS sieci
+        // natychmiast - kilka razy na tick.
+        NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.event.tick.LevelTickEvent.Post.class, event -> {
+                    if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
+                        com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl).tick(sl);
+                    }
+                });
+
         NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.event.level.LevelEvent.Unload.class, event -> {
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
+                        com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
+                                .clearPendingRebuilds();
                         com.craftingveloce.crafting.VeloceCraftingCache.releaseAll(sl);
                     }
                 });
