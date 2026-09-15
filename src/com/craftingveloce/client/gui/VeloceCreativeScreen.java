@@ -357,9 +357,25 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
     /** Znajduje zakladke, ktorej ikonka jest pod kursorem. */
     @Nullable
+    /**
+     * Zakladka pod kursorem - TYLKO taka, ktora jest u nas faktycznie widoczna.
+     *
+     * <p><b>Bylo tu zrodlo duchow.</b> Metoda sprawdzala wylacznie geometrie
+     * ({@code super.checkTabClicked}) po calej liscie zakladek vanilla, wiec
+     * trafiala takze w zakladki, ktorych NIE rysujemy (operator utilities,
+     * saved hotbars, survival inventory). Ikonek tam nie ma, ale obszar nadal
+     * istnieje - dlatego tooltip o prawym kliku pojawial sie w pustym miejscu.
+     *
+     * <p>Filtr {@link #acceptTab} musi byc sprawdzony TUTAJ, a nie tylko przy
+     * rysowaniu i w tooltipie, bo inaczej kazdy konsument tej metody dostaje
+     * zakladki-widma.
+     */
     private net.minecraft.world.item.CreativeModeTab tabUnderMouse(double mouseX, double mouseY) {
         for (net.minecraft.world.item.CreativeModeTab tab
                 : net.minecraft.world.item.CreativeModeTabs.tabs()) {
+            if (!acceptTab(tab)) {
+                continue;   // tej zakladki u nas nie ma - nie ma tez tooltipa
+            }
             try {
                 if (super.checkTabClicked(tab, mouseX, mouseY)) {
                     return tab;
