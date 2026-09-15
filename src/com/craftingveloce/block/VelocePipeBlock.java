@@ -262,6 +262,21 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
         Direction side = getClickedSide(state, pos, hit.getLocation());
 
+        // NA KLIENCIE NIE ZMIENIAMY SWIATA.
+        //
+        // Wczesniej cala ta metoda leciala po obu stronach, wiec takze klient
+        // wykonywal world.setBlockAndUpdate() na rurze i na jej sasiedzie oraz
+        // markNodeInvalid() w sieci kabli Toma. To modyfikacja swiata po stronie
+        // klienta: powoduje miganie, zbedne przebudowy block entity i rozjazd
+        // stanu, ktory serwer musi potem cofac. Serwer robi dokladnie to samo
+        // i przysyla update - klient ma tylko zamachnac reka.
+        if (world.isClientSide) {
+            if (player != null) {
+                player.swing(hand, true);
+            }
+            return ItemInteractionResult.SUCCESS;
+        }
+
         if (side != null) {
             BlockPos neighborPos = pos.relative(side);
             BlockState neighborState = world.getBlockState(neighborPos);
