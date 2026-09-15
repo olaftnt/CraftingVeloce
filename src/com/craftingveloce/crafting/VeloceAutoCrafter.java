@@ -547,26 +547,24 @@ public final class VeloceAutoCrafter {
         long deadline = budgetNanos > 0 ? System.nanoTime() + budgetNanos : 0L;
         boolean complete = true;
 
-        // KOLEJNOSC: startujemy tam, gdzie skonczyla sie poprzednia partia.
+        // KOLEJNOSC: taka, jaka przyszla z klienta.
         //
-        // BUG, ktory to naprawia: lista itemow przychodzi w tej samej
-        // kolejnosci (widoczne sloty), a budzet konczy sie po kilku pozycjach -
-        // wiec za kazdym razem liczone byly TE SAME pierwsze itemy, a ogon
-        // listy NIGDY. Trzymal wiec stare liczby z poczatku sesji. Kursor
-        // przesuwa sie o tyle, ile udalo sie przeliczyc, wiec kazde zadanie
-        // bierze inny fragment listy i po kilku zadaniach wszystko jest swieze.
-        List<Item> ordered = new ArrayList<>(items);
-        int size = ordered.size();
-        int start = size == 0 ? 0 : Math.floorMod(batchCursor.get(), size);
-        int processed = 0;
+        // Bylo tu przesuniecie startu ("rotacja"), zeby ogon listy tez kiedys
+        // doczekal sie liczenia. Okazalo sie jednak gorsze od problemu: partia
+        // startowala w losowym miejscu, konczyl sie budzet i POCZATEK listy
+        // (np. glass w wyszukiwarce) nie mial liczb, a dol je mial - dokladnie
+        // to zglosil gracz. Klient sam ustawia teraz itemy bez wartosci na
+        // poczatku zadania (patrz VeloceCraftableCounts), wiec serwer ma po
+        // prostu liczyc w podanej kolejnosci.
+        List<Item> queue = items instanceof List<Item> list ? list : new ArrayList<>(items);
+        int size = queue.size();
 
         for (int i = 0; i < size; i++) {
-            Item item = ordered.get(start + i >= size ? start + i - size : start + i);
+            Item item = queue.get(i);
             if (!enabledItems.contains(item)) {
                 // Wpis "nie da sie zrobic" jest POPRAWNY i musi trafic do
                 // wyniku - inaczej GUI zachowaloby stara, zawyzona liczbe.
                 out.put(item, 0L);
-                processed++;
                 continue;
             }
             // Przerwij, gdy minie budzet - reszta przy nastepnym zadaniu.
@@ -582,7 +580,8 @@ public final class VeloceAutoCrafter {
             // i reszta itemow nie dostawala liczb - w logu gracza widac bylo
             // "45 item(s) -> 0 result(s) (complete=false)". Rowny udzial
             // gwarantuje, ze kazdy item ma swoja szanse, a te, ktore nie
-            // zdaza, trafia do kolejnej partii (patrz rotacja wyzej).
+            // zdaza, wracaja w kolejnym zadaniu - na przodzie listy, bo klient
+            // ustawia itemy bez wartosci pierwsze (VeloceCraftableCounts).
             long slice = 0L;
             if (deadline != 0L) {
                 long left = Math.max(0L, deadline - System.nanoTime());
@@ -590,6 +589,7 @@ public final class VeloceAutoCrafter {
             }
             startEstimate(slice);
             long total = craftableFromRaw(level, network, item, stock, enabledItems, preferred, heatOps);
+            // (indeks `i` sluzy tylko do rownego podzialu budzetu wyzej)
             if (total == UNKNOWN_COUNT) {
                 // TEN item nie zmiescil sie w budzecie - pomijamy GO, ale NIE
                 // przerywamy calej partii.
@@ -612,9 +612,7 @@ public final class VeloceAutoCrafter {
             // od "nie policzono tego itemu" i klient zachowywal stara, zawyzona
             // liczbe. Zero to konkretna, poprawna odpowiedz.
             out.put(item, Math.max(0L, total));
-            processed++;
         }
-        batchCursor.set(start + processed);
         return new BatchResult(out, complete);
     }
 
@@ -1129,17 +1127,6 @@ public final class VeloceAutoCrafter {
     private static final long MIN_ITEM_BUDGET_NS = 200_000L;
 
     private static final long ESTIMATE_HEAT_OPS = 1_000_000L;
-
-    /**
-     * Od ktorej pozycji zaczac nastepna partie liczenia.
-     *
-     * <p>Statyczny, bo to tylko "ziarno" rotacji - nie niesie zadnego stanu
-     * gracza ani sieci. Chodzi o to, zeby przy kazdym zadaniu inny fragment
-     * listy zdazyl sie policzyc w budzecie (patrz petla w
-     * {@link #countCraftableBatchResult}).
-     */
-    private static final java.util.concurrent.atomic.AtomicInteger batchCursor =
-            new java.util.concurrent.atomic.AtomicInteger();
 
     /** Budzet ciepla dla szacowania: "jest czym palic" albo "nie ma". */
     private static long estimateHeatOps(long realHeatOps) {
