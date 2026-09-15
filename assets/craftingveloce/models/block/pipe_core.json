@@ -1,5 +1,6 @@
 {
 	"parent": "block/block",
+	"render_type": "minecraft:translucent",
 	"elements": [
 		{
 			"from": [5, 5, 5],

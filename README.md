@@ -49,7 +49,6 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
   - Na extractorze/crafting table: `Connected → Disconnected → Connected`
 - Waterloggable
 - Łączy się z Tom's Storage, Refined Storage, zwykłymi inventory, NeoForge ItemHandler
-
 ### 5. Veloce Wrench (`wrench`)
 - Narzędzie do konfiguracji połączeń rury
 - Prawy klik na `VelocePipeBlock` wywołuje `onWrenchClicked`
@@ -173,6 +172,19 @@ git add -A && git commit -m "..." && git push origin main
 
 5. **Creative Screen bez hotbara** — wszystkie 3 GUI (terminal, filter picker, crafting table) muszą: zastępować sloty player inventory dummy slotami, wypełniać hotbar area szarym `0xFFC6C6C6`, restorować `GameType` po zamknięciu.
 
+6. **Układ pakietów w JAR** — output `javac -d <dir>` tworzy `<dir>/com/craftingveloce/...`.
+   Kopiując to do stagingu, trzeba skopiować **zawartość** `<dir>/com` do `<root>/com`, a nie
+   cały folder `com` — inaczej w JARze powstaje `com/com/craftingveloce/...` i mod **w ogóle się
+   nie ładuje**. Zawsze weryfikuj: `unzip -l craftingveloce-1.0.0.jar | grep CraftingVeloceMod.class`
+   musi pokazać `com/craftingveloce/CraftingVeloceMod.class`.
+
+7. **Nie kasuj `META-INF/` przy rebuildzie** — przy czyszczeniu stagingu usuwaj tylko
+   `com/`, `assets/`, `data/`. `META-INF/neoforge.mods.toml` musi zostać.
+
+8. **Pliki tylko w stagingu** — `data/minecraft/tags/block/mineable/axe.json` istniał kiedyś
+   wyłącznie w `craftingveloce_jar_root/` i został skasowany przez czysty rebuild. Trzymaj
+   wszystkie zasoby w źródłowym `data/`, żeby build był odtwarzalny.
+
 ---
 
 ## 🔌 Integracje
@@ -254,10 +266,51 @@ Wszystkie ekrany rozszerzają `CreativeModeInventoryScreen` i:
 
 ---
 
+## 🔍 Transparency / render_type (WAŻNE dla animowanych itemów)
+
+**Wszystkie bloki Veloce muszą obsługiwać przezroczystość** — w przyszłości będziemy renderować
+animowane itemy *wewnątrz* bloków, więc każdy block model ma ustawiony `render_type`.
+
+### Dwa mechanizmy (używamy obu)
+
+1. **Model JSON `render_type`** (główny, kanoniczny dla 1.21.1) — dziedziczony przez item modele:
+   - `assets/craftingveloce/models/block/pipe_core.json` → `"render_type": "minecraft:translucent"`
+   - `assets/craftingveloce/models/block/pipe_part.json` → `translucent`
+   - `assets/craftingveloce/models/block/pipe_extract.json` → `translucent`
+   - `assets/craftingveloce/models/block/veloce_extractor.json` → `translucent`
+   - `assets/craftingveloce/models/block/veloce_crafting_table.json` → `translucent`
+   - `assets/craftingveloce/models/block/veloce_tom_terminal.json` → `translucent`
+
+2. **Java** — `CraftingVeloceMod` w `FMLClientSetupEvent` rejestruje render layer dla
+   `VELOCE_PIPE`, `VELOCE_EXTRACTOR`, `VELOCE_CRAFTING_TABLE`, `VELOCE_TOM_TERMINAL`.
+
+### Dlaczego `translucent`, a nie `cutout`?
+
+`cutout` daje twardą, 1-bitową alfę (piksel albo w pełni widoczny, albo wcale) — źle wygląda
+przy animowanych itemach renderowanych wewnątrz bloku, bo krawędzie się „szarpią".
+`translucent` obsługuje stopniowaną alfę i poprawne mieszanie kolorów.
+
+### ⚠️ Pułapki
+
+- `ItemBlockRenderTypes.setRenderLayer()` ma guard `checkClientLoading()` w
+  `ClientModLoader.isLoading()`. Wywołanie **poza** client setup rzuca
+  `IllegalStateException: Render layers can only be set during client loading!`
+- `RenderShape` musi zostać `MODEL` (tak jest w `VelocePipeBlock`, `VeloceExtractorBlock`,
+  `VeloceCraftingTableBlock`) — przezroczystość kontroluje render type, nie render shape.
+- Modele używające vanilla parenta `block/cube_all` **nie mogą** polegać na dziedziczeniu,
+  bo ten parent jest nieprzezroczysty — `render_type` trzeba wpisać w naszym modelu-dziecku.
+
+---
+
 ## 🚧 Co jeszcze do zrobienia / Known Issues
 
 - **Crafting Table** — na razie tylko UI i toggle stanu. Auto-crafting (faktyczne craftowanie itemów z sieci na podstawie włączonych receptur) nie jest jeszcze zaimplementowany
 - **Loot tables** — bloki po zniszczeniu nie dropują się (brak `data/craftingveloce/loot_table/blocks/`)
 - **Crafting recipes** — brak receptur craftu dla bloków (można tylko creative)
 - **Textures** — `veloce_crafting_table.png` to przebarwiona wersja extractora (placeholder)
+- **`veloce_pipe.png` jest CZARNA** — 100 nieprzezroczystych pikseli ma kolor `(0,0,0)`,
+  czyli brak danych kolorystycznych. Alpha (przezroczystość) jest poprawna. Oryginalna,
+  kolorowa wersja leży w `veloce_pipe-kopia.png` (fiolet `201,45,234` + szarości) i można ją
+  przywrócić jednym `cp`. Render fix (`translucent`) NIE zmienia koloru tekstury — naprawia
+  tylko przezroczystość.
 - **src/moze_intel/** — patchowane klasy InventoryExchange moda, logika wyłączenia EMC tooltipów — trzeba zdecydować jak czysto to rozwiązać (osobny JAR patch?)

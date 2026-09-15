@@ -7,6 +7,7 @@
         "particle": "craftingveloce:block/veloce_tom_terminal_back"
     },
     "parent": "block/block",
+    "render_type": "minecraft:translucent",
     "display": {
         "gui": {
             "rotation": [ 30, 45, 0 ],

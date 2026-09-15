@@ -50,6 +50,32 @@ public class CraftingVeloceMod {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
         });
 
+        modEventBus.addListener(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent.class, event -> {
+            event.enqueueWork(() -> {
+                // All Veloce blocks must support transparency. The primary mechanism is the
+                // "render_type" field in each block model JSON; registering here as well keeps the
+                // chunk render type set correct even for models that inherit an opaque parent.
+                // TRANSLUCENT (not CUTOUT) is required so that animated items rendered inside the
+                // blocks blend smoothly instead of being reduced to 1-bit alpha.
+                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
+                        VeloceRegistry.VELOCE_PIPE.get(),
+                        net.minecraft.client.renderer.RenderType.translucent()
+                );
+                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
+                        VeloceRegistry.VELOCE_EXTRACTOR.get(),
+                        net.minecraft.client.renderer.RenderType.translucent()
+                );
+                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
+                        VeloceRegistry.VELOCE_CRAFTING_TABLE.get(),
+                        net.minecraft.client.renderer.RenderType.translucent()
+                );
+                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
+                        VeloceRegistry.VELOCE_TOM_TERMINAL.get(),
+                        net.minecraft.client.renderer.RenderType.translucent()
+                );
+            });
+        });
+
         modEventBus.addListener(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent.class, event -> {
             event.registerBlockEntity(
                     net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
