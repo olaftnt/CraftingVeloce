@@ -32,7 +32,7 @@ public class VeloceElectricFurnaceMenu extends AbstractContainerMenu {
      * <p>Musi sie zgadzac z wglebieniem w teksturze (gen_furnace_gui.py) i ze
      * stala w ekranie; pilnuje tego build.py.
      */
-    public static final int BATTERY_SLOT_X = 92;
+    public static final int BATTERY_SLOT_X = 130;
     public static final int BATTERY_SLOT_Y = 32;
 
     private final VeloceElectricFurnaceBlockEntity furnace;

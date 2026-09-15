@@ -54,13 +54,13 @@ FLAME_Y = 27
 # Uwaga: samego plomienia NIE rysujemy w teksturze. Ekran sklada go
 # z dwoch sprite'ow wanilii (wygaszony obrys + zapalona czesc), dokladnie
 # tak, jak robi to waniliowy piec - patrz VeloceVelocityFurnaceScreen.
-BATTERY_X = 26          # bateria POZIOMA: poziom rosnie od lewej do prawej
+BATTERY_X = 66          # bateria POZIOMA, wycentrowana (grupa 80 px z slotem)
 BATTERY_Y = 32
 BATTERY_W = 56
 BATTERY_H = 14
 NUB_W = 2               # biegun baterii (po prawej stronie korpusu)
 NUB_H = 6
-BATTERY_SLOT_X = 92     # slot na itemek z energia - po prawej od baterii
+BATTERY_SLOT_X = 130    # slot na itemek z energia - po prawej od baterii
 BATTERY_SLOT_Y = 32
 
 

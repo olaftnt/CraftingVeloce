@@ -35,10 +35,12 @@ public class VeloceElectricFurnaceScreen
     /**
      * Bateria: korpus + biegun po prawej stronie.
      *
-     * <p>Pozycje musza sie zgadzac z wglebieniem w teksturze
-     * (gen_furnace_gui.py) - pilnuje tego build.py.
+     * <p>Pozycje sa wyCENTROWANE w panelu: cala grupa (korpus 56 + biegun 2 +
+     * odstep 6 + slot 16 = 80 px) ma po 66 px marginesu z kazdej strony.
+     * Musza sie zgadzac z wglebieniami w teksturze (gen_furnace_gui.py) -
+     * pilnuje tego build.py.
      */
-    private static final int BATTERY_X = 26;
+    private static final int BATTERY_X = 66;
     private static final int BATTERY_Y = 32;
     private static final int BATTERY_W = 56;
     private static final int BATTERY_H = 14;
@@ -47,9 +49,14 @@ public class VeloceElectricFurnaceScreen
     private static final int NUB_W = 2;
     private static final int NUB_H = 6;
 
-    /** Napis z liczba przepalen - nad bateria, nie pod nia. */
-    private static final int TEXT_X = 26;
-    private static final int TEXT_Y = 19;
+    /** Tlo akumulatora - ciemna zielen, zeby pusto i pelno gralo jednym kolorem. */
+    private static final int COLOR_BATTERY_EMPTY = 0xFF14361A;
+
+    /** Naladowanie - zielen "energii". */
+    private static final int COLOR_BATTERY_FILL = 0xFF39D353;
+
+    /** Jasniejsza krawedz na gorze wypelnienia (czytelny poziom). */
+    private static final int COLOR_BATTERY_HIGHLIGHT = 0xFF8CF0A5;
 
     private int energy;
     private int maxEnergy;
@@ -71,36 +78,34 @@ public class VeloceElectricFurnaceScreen
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         graphics.blit(GUI_TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight);
 
-        // Wypelnienie OD LEWEJ DO PRAWEJ - tak naladowana bateria wyglada
-        // w kazdym innym modzie (i tak czyta sie to najszybciej).
+        int x = this.leftPos + BATTERY_X;
+        int y = this.topPos + BATTERY_Y;
+
+        // Tlo akumulatora: ciemna zielen na CALYM korpusie. Bez tego "pusto"
+        // wygladalo jak zwykly rowek, a nie jak rozladowana bateria.
+        graphics.fill(x, y, x + BATTERY_W, y + BATTERY_H, COLOR_BATTERY_EMPTY);
+
+        // Naladowanie OD LEWEJ DO PRAWEJ - tak bateria wyglada w kazdym innym
+        // modzie (i tak czyta sie to najszybciej).
         int filled = maxEnergy > 0
                 ? (int) Math.min(BATTERY_W, ((long) BATTERY_W * energy) / maxEnergy)
                 : 0;
-        int x = this.leftPos + BATTERY_X;
-        int y = this.topPos + BATTERY_Y;
         if (filled > 0) {
-            graphics.fill(x, y, x + filled, y + BATTERY_H, 0xFF3C46FF);
-            // Jasniejsza krawedz na gorze - ta sama czytelnosc co wczesniej.
-            graphics.fill(x, y, x + filled, y + 1, 0xFF8C96FF);
+            graphics.fill(x, y, x + filled, y + BATTERY_H, COLOR_BATTERY_FILL);
+            graphics.fill(x, y, x + filled, y + 1, COLOR_BATTERY_HIGHLIGHT);
         }
         // Biegun swieci sie tylko wtedy, gdy w akumulatorze cos jest - dzieki
         // temu "0 FE" i "pelna bateria" roznia sie na pierwszy rzut oka.
         if (energy > 0) {
             int nubX = x + BATTERY_W;
             int nubY = y + (BATTERY_H - NUB_H) / 2;
-            graphics.fill(nubX, nubY, nubX + NUB_W, nubY + NUB_H, 0xFF3C46FF);
+            graphics.fill(nubX, nubY, nubX + NUB_W, nubY + NUB_H, COLOR_BATTERY_FILL);
         }
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
-
-        // Liczba przepalen nad bateria.
-        long smelts = energy / VeloceElectricFurnaceBlockEntity.FE_PER_SMELT;
-        String text = smelts + "x";
-        graphics.drawString(this.font, text, this.leftPos + TEXT_X, this.topPos + TEXT_Y,
-                0x404040, false);
 
         renderBatteryTooltip(graphics, mouseX, mouseY);
         renderBatterySlotHint(graphics, mouseX, mouseY);
@@ -114,12 +119,15 @@ public class VeloceElectricFurnaceScreen
         }
         long smelts = energy / VeloceElectricFurnaceBlockEntity.FE_PER_SMELT;
         List<Component> lines = new ArrayList<>();
+        // Energia i koszt przepalenia w kFE / MFE - gracz nie liczy zer w locie.
         lines.add(Component.translatable("gui.craftingveloce.electric.energy",
-                formatFe(energy), formatFe(maxEnergy)));
+                com.craftingveloce.util.VeloceFormat.feCompact(energy),
+                com.craftingveloce.util.VeloceFormat.feCompact(maxEnergy)));
         lines.add(Component.translatable("gui.craftingveloce.electric.smelts", smelts)
                 .withStyle(net.minecraft.ChatFormatting.GOLD));
         lines.add(Component.translatable("gui.craftingveloce.electric.perSmelt",
-                        formatFe(VeloceElectricFurnaceBlockEntity.FE_PER_SMELT))
+                        com.craftingveloce.util.VeloceFormat.feCompact(
+                                VeloceElectricFurnaceBlockEntity.FE_PER_SMELT))
                 .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
         graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
     }
@@ -141,11 +149,6 @@ public class VeloceElectricFurnaceScreen
         graphics.renderTooltip(this.font,
                 Component.translatable("gui.craftingveloce.electric.batterySlot"),
                 mouseX, mouseY);
-    }
-
-    /** "1 234 567" - czytelnie, bez naukowego zapisu. */
-    private static String formatFe(long fe) {
-        return String.format(java.util.Locale.ROOT, "%,d", fe).replace(',', ' ');
     }
 
     /** Odswieza pasek z block entity klienta (bez osobnego pakietu). */
