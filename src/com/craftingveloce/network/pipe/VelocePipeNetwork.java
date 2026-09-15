@@ -42,6 +42,16 @@ public class VelocePipeNetwork {
     /** Powyzej tego czasu pojedynczy skan jest raportowany jako wolny. */
     private static final long SLOW_ENDPOINT_NS = 20_000_000L;
 
+    /**
+     * Budzet na przeskanowanie WSZYSTKICH endpointow w jednym przebiegu.
+     *
+     * <p>Po jego wyczerpaniu pozostale endpointy uzywaja zapamietanych liczb
+     * (starych, ale nie znikaja z GUI). Skanowanie jest i tak throttlowane do
+     * raz na 10 tickow na inwentarz - to jest bezpiecznik na pojedynczy wolny
+     * magazyn, ktory inaczej zablokowalby tick.
+     */
+    private static final long SCAN_BUDGET_NS = 20_000_000L;
+
     public VelocePipeNetwork(UUID id) {
         this.id = id != null ? id : UUID.randomUUID();
     }
@@ -129,19 +139,32 @@ public class VelocePipeNetwork {
 
         long scanStart = System.nanoTime();
         Map<Item, Long> total = new HashMap<>();
+        int skipped = 0;
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {
-            long epStart = System.nanoTime();
-            if (force) {
-                endpoint.forceRefresh(level, now);
+            // BUDZET SKANU. To byla ostatnia niezbudzetowana ciezka operacja
+            // na watku serwera: przeskanowanie JEDNEGO wolnego inwentarza
+            // (np. ogromnej sieci Refined Storage) blokowalo tick bez limitu.
+            //
+            // Po wyczerpaniu budzetu NIE skanujemy kolejnych endpointow - ale
+            // nadal sumujemy ich ZAPAMIETANE liczby, wiec nic nie znika z GUI.
+            // Wyjatkiem jest force=true (przed realnym pobraniem itemu), gdzie
+            // liczy sie poprawnosc, a nie czas - i to jest sciezka gracza.
+            if (!force && System.nanoTime() - scanStart > SCAN_BUDGET_NS) {
+                skipped++;
             } else {
-                endpoint.refreshIfLoadedThrottled(level, now);
-            }
-            long epNanos = System.nanoTime() - epStart;
-            if (epNanos > SLOW_ENDPOINT_NS) {
-                // Nazwany winowajca zamiast "siec jest wolna".
-                VeloceLog.Network.failure(VeloceLog.Side.SERVER,
-                        "slow endpoint scan: %d ms for %s (type=%s)",
-                        epNanos / 1_000_000L, endpoint.getPos(), endpoint.getType());
+                long epStart = System.nanoTime();
+                if (force) {
+                    endpoint.forceRefresh(level, now);
+                } else {
+                    endpoint.refreshIfLoadedThrottled(level, now);
+                }
+                long epNanos = System.nanoTime() - epStart;
+                if (epNanos > SLOW_ENDPOINT_NS) {
+                    // Nazwany winowajca zamiast "siec jest wolna".
+                    VeloceLog.Network.failure(VeloceLog.Side.SERVER,
+                            "slow endpoint scan: %d ms for %s (type=%s)",
+                            epNanos / 1_000_000L, endpoint.getPos(), endpoint.getType());
+                }
             }
             for (Map.Entry<Item, Long> entry : endpoint.getCachedCounts().entrySet()) {
                 if (entry.getValue() > 0) {
@@ -153,10 +176,14 @@ public class VelocePipeNetwork {
         aggregateCacheTick = now;
 
         long scanNanos = System.nanoTime() - scanStart;
-        if (scanNanos > SLOW_ENDPOINT_NS) {
+        if (scanNanos > SLOW_ENDPOINT_NS || skipped > 0) {
             VeloceLog.Network.failure(VeloceLog.Side.SERVER,
-                    "slow network stock scan: %d ms for %d endpoint(s), %d item type(s)",
-                    scanNanos / 1_000_000L, endpoints.size(), total.size());
+                    "slow network stock scan: %d ms for %d endpoint(s), %d item type(s)"
+                            + "%s",
+                    scanNanos / 1_000_000L, endpoints.size(), total.size(),
+                    skipped > 0
+                            ? " - budget exhausted, " + skipped + " endpoint(s) used cached counts"
+                            : "");
         }
         return new HashMap<>(total);
     }
