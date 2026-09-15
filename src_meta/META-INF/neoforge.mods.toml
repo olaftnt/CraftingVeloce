@@ -8,7 +8,9 @@ version="1.0.0"
 displayName="CraftingVeloce"
 authors="olafalencynowicz"
 description='''
-CraftingVeloce mod integrating with Tom's Simple Storage.
+CraftingVeloce - pipe network, auto-crafter and terminal for Tom's Simple Storage.
+Requires Tom's Simple Storage: our pipes ARE its cable blocks and the terminal
+is built on its terminal block. Refined Storage support is optional.
 '''
 
 [[dependencies.craftingveloce]]
@@ -25,9 +27,33 @@ CraftingVeloce mod integrating with Tom's Simple Storage.
     ordering="NONE"
     side="BOTH"
 
+# TOM'S SIMPLE STORAGE - WYMAGANY i to nie jest przypadkowe.
+#
+# Trzydziesci piec odwolan w siedmiu plikach, wszystkie strukturalne:
+#   - VelocePipeBlock / VelocePipeBlockEntity  implementuja IInventoryCable
+#     i dziedzicza po PlatformBlockEntity; nasze rury SA kablami Toma
+#   - VeloceTomTerminalBlock dziedziczy po AbstractStorageTerminalBlock
+#   - VeloceTomTerminalBlockEntity dziedziczy po StorageTerminalBlockEntity
+#     i uzywa NetworkInventory / StoredItemStack / IInventoryAccess
+#   - Controller, CraftingTable, Extractor implementuja IInventoryCable
+#
+# NIE zmieniaj tego na "optional" bez przepisania tych klas. Samo przelaczenie
+# flagi nie sprawi, ze mod ruszy bez Toma - klasy nie zaladuja sie bez jego
+# typow (NoClassDefFoundError przy rejestracji blokow). Zamiast czytelnego
+# "brakuje zaleznosci" gracz dostalby niezrozumialy crash.
 [[dependencies.craftingveloce]]
     modId="toms_storage"
     type="required"
     versionRange="[2.4.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# REFINED STORAGE - opcjonalny. Integracja (RefinedStorageHelper) jest w calosci
+# opakowana w try/catch(Throwable), a jej sygnatury nie uzywaja typow RS, wiec
+# brak tego moda niczego nie psuje - endpointy RS po prostu nie istnieja.
+[[dependencies.craftingveloce]]
+    modId="refinedstorage"
+    type="optional"
+    versionRange="[2.0.0,)"
     ordering="AFTER"
     side="BOTH"
