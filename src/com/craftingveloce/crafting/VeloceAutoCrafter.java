@@ -1050,10 +1050,18 @@ public final class VeloceAutoCrafter {
             }
         }
         // 2. Zwykle endpointy sieci.
+        //
+        // KAZDY endpoint oddaje RESZTE i to wlasnie reszte przekazujemy dalej.
+        // Poprzednia wersja przekazywala ten sam, pelny stos do kolejnych
+        // endpointow: jesli pierwszy przyjal CZESC i zwrocil false, drugi
+        // dostawal calosc i mogl ja przyjac - czyli przyjeta czesc byla
+        // w sieci DWA razy.
+        ItemStack remaining = stack;
         for (var endpoint : ctx.network.getEndpoints().values()) {
-            if (endpoint.insertItem(level, stack)) {
+            if (remaining.isEmpty()) {
                 return;
             }
+            remaining = endpoint.insertItemLeftover(level, remaining);
         }
     }
 

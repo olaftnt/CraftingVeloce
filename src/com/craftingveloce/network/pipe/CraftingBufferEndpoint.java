@@ -87,13 +87,13 @@ public class CraftingBufferEndpoint extends ConnectedEndpointInfo {
     }
 
     @Override
-    public boolean insertItem(ServerLevel level, ItemStack stack) {
+    public ItemStack insertItemLeftover(ServerLevel level, ItemStack stack) {
         VeloceCraftingBuffer buf = buffer(level);
         if (buf == null) {
-            return false;
+            return stack;   // brak bufora - nic nie przyjeto
         }
         ItemStack leftover = buf.insert(stack);
         refreshIfLoaded(level);
-        return leftover.isEmpty();
+        return leftover;
     }
 }
