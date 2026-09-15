@@ -35,11 +35,15 @@ import java.util.List;
 import net.minecraft.core.Direction;
 import net.minecraft.world.WorldlyContainer;
 
-public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvider, WorldlyContainer {
+public class VeloceExtractorBlockEntity extends BlockEntity
+        implements MenuProvider, WorldlyContainer, VeloceFilterHost {
+
+    /** Ile filtrów ma ekstraktor (zgadza sie z ukladem w GUI i w menu). */
+    public static final int FILTER_SLOTS = 9;
 
     private static final int[] OUTPUT_SLOTS = new int[]{0, 1, 2, 3, 4, 5, 6, 7, 8};
 
-    private final NonNullList<ItemStack> filterSlots = NonNullList.withSize(9, ItemStack.EMPTY);
+    private final NonNullList<ItemStack> filterSlots = NonNullList.withSize(FILTER_SLOTS, ItemStack.EMPTY);
     private final SimpleContainer outputInventory = new SimpleContainer(9);
 
     private int tickCounter = 0;
@@ -51,14 +55,18 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
      * crafter w sieci ma go wlaczonego). Prawy klik na zajetym slocie to
      * przelacza: wylaczony slot dostaje TYLKO to, co juz jest w sieci.
      */
-    private final boolean[] allowCrafting = new boolean[]{true, true, true, true, true, true, true, true, true};
+    private final boolean[] allowCrafting = new boolean[FILTER_SLOTS];
+
+    {
+        java.util.Arrays.fill(allowCrafting, true);
+    }
 
     public boolean isCraftingAllowed(int index) {
-        return index >= 0 && index < 9 && allowCrafting[index];
+        return index >= 0 && index < FILTER_SLOTS && allowCrafting[index];
     }
 
     public void setCraftingAllowed(int index, boolean allowed) {
-        if (index >= 0 && index < 9) {
+        if (index >= 0 && index < FILTER_SLOTS) {
             allowCrafting[index] = allowed;
             setChanged();
             syncFiltersToWatchers();
@@ -85,15 +93,30 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
         return filterSlots;
     }
 
+    @Override
+    public int filterCount() {
+        return FILTER_SLOTS;
+    }
+
+    @Override
+    public ItemStack getFilterAt(int index) {
+        return getFilter(index);
+    }
+
+    @Override
+    public void setFilterAt(int index, ItemStack stack) {
+        setFilter(index, stack);
+    }
+
     public ItemStack getFilter(int index) {
-        if (index >= 0 && index < 9) {
+        if (index >= 0 && index < FILTER_SLOTS) {
             return filterSlots.get(index);
         }
         return ItemStack.EMPTY;
     }
 
     public void setFilter(int index, ItemStack filterItem) {
-        if (index >= 0 && index < 9) {
+        if (index >= 0 && index < FILTER_SLOTS) {
             if (filterItem.isEmpty()) {
                 filterSlots.set(index, ItemStack.EMPTY);
             } else {

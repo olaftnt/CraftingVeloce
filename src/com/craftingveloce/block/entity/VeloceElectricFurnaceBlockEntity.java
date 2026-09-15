@@ -147,6 +147,34 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
     // Diagnostyka
     // ------------------------------------------------------------------
 
+    /**
+     * Dosyla stan akumulatora do klienta, gdy sie zmienil.
+     *
+     * <p>Piec nie ma wlasnej logiki per tick - tyka WYLACZNIE po to, zeby pasek
+     * energii w GUI byl zywy. Dlatego wysylamy tylko przy realnej zmianie
+     * (i najwyzej raz na pol sekundy): kabel z innego moda potrafi ladowac
+     * co tick, a pakiet co tick bylby marnotrawstwem.
+     */
+    public void serverTick() {
+        if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) {
+            return;
+        }
+        if (--clientSyncCooldown > 0) {
+            return;
+        }
+        clientSyncCooldown = CLIENT_SYNC_INTERVAL_TICKS;
+        if (energy != lastSyncedEnergy) {
+            lastSyncedEnergy = energy;
+            sl.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+    }
+
+    /** Co ile tickow najwyzej dosylamy stan energii do klienta. */
+    private static final int CLIENT_SYNC_INTERVAL_TICKS = 10;
+
+    private int clientSyncCooldown = CLIENT_SYNC_INTERVAL_TICKS;
+    private int lastSyncedEnergy = -1;
+
     /** Ile FE jest w akumulatorze. */
     public int getEnergy() {
         return energy;
@@ -192,7 +220,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
 
     @Override
     public AbstractContainerMenu createMenu(int id, Inventory inv, Player player) {
-        // GUI jest w budowie - patrz blok. Menu celowo nie jest otwierane.
-        return null;
+        return new com.craftingveloce.inventory.VeloceElectricFurnaceMenu(
+                id, inv, getBlockPos(), this);
     }
 }

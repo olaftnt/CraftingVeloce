@@ -63,7 +63,19 @@ public class ClientTerminalHelper {
      * <p>Trace droge robimy przez zwykle menu gracza, a nie przez {@code onClose()},
      * zeby nie odpalac logiki zamykania pickera (przywracania trybu gry itd.).
      */
-    public static void reopenExtractorScreen(BlockPos pos) {
+    /**
+     * Wraca z wyboru filtra do GUI tego bloku, z ktorego picker zostal otwarty.
+     *
+     * <p><b>Skad wiemy, do ktorego.</b> Nie trzeba tym nigdzie podrozowac:
+     * pytamy ZYWE menu gracza, ktore serwer naprawde ma otwarte. Picker jest
+     * otwierany przez {@code setScreen}, wiec menu kontenera caly czas zyje -
+     * a jego typ mowi wprost, czy wracamy do ekstraktora, czy do pieca.
+     *
+     * <p>Dzieki temu jeden pakiet filtrow i jedna sciezka powrotu obsluguja
+     * wszystkie bloki z filtrami. Wersja z osobnym "rodzajem bloku" w pakiecie
+     * wymagalaby trzech zgodnych zmian przy kazdym nowym bloku.
+     */
+    public static void reopenFilterHostScreen(BlockPos pos) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
             return;
@@ -85,25 +97,39 @@ public class ClientTerminalHelper {
         // Jesli serwerowe menu ekstraktora dla tego bloku nadal zyje, uzywamy
         // go (z jego ID). W przeciwnym razie zostaje dotychczasowa sciezka.
         net.minecraft.world.inventory.AbstractContainerMenu open = mc.player.containerMenu;
-        if (open instanceof com.craftingveloce.inventory.VeloceExtractorMenu existing
-                && existing.getPos().equals(pos)) {
+
+        if (open instanceof com.craftingveloce.inventory.VeloceExtractorMenu extractor
+                && extractor.getPos().equals(pos)) {
             mc.setScreen(new com.craftingveloce.client.gui.VeloceExtractorScreen(
-                    existing,
-                    mc.player.getInventory(),
-                    net.minecraft.network.chat.Component.translatable("block.craftingveloce.veloce_extractor")));
+                    extractor, mc.player.getInventory(), title("veloce_extractor")));
+            return;
+        }
+        if (open instanceof com.craftingveloce.inventory.VeloceVelocityFurnaceMenu furnace
+                && furnace.getPos().equals(pos)) {
+            mc.setScreen(new com.craftingveloce.client.gui.VeloceVelocityFurnaceScreen(
+                    furnace, mc.player.getInventory(), title("velocity_furnace")));
+            return;
+        }
+        if (open instanceof com.craftingveloce.inventory.VeloceElectricFurnaceMenu electric
+                && electric.getPos().equals(pos)) {
+            mc.setScreen(new com.craftingveloce.client.gui.VeloceElectricFurnaceScreen(
+                    electric, mc.player.getInventory(), title("electric_furnace")));
             return;
         }
 
+        // Menu nie zyje (np. gracz zdazyl je zamknac) - odbudowujemy je
+        // z ID menu gracza, zeby klient i serwer zgadzali sie co do kontenera.
         com.craftingveloce.inventory.VeloceExtractorMenu rebuilt =
                 new com.craftingveloce.inventory.VeloceExtractorMenu(
                         mc.player.inventoryMenu.containerId, mc.player.getInventory(), pos);
-        // Przypisujemy je graczowi - bez tego klient i serwer nie zgadzaja sie
-        // co do otwartego kontenera.
         mc.player.containerMenu = rebuilt;
         mc.setScreen(new com.craftingveloce.client.gui.VeloceExtractorScreen(
-                rebuilt,
-                mc.player.getInventory(),
-                net.minecraft.network.chat.Component.translatable("block.craftingveloce.veloce_extractor")));
+                rebuilt, mc.player.getInventory(), title("veloce_extractor")));
+    }
+
+    private static net.minecraft.network.chat.Component title(String blockName) {
+        return net.minecraft.network.chat.Component.translatable(
+                "block.craftingveloce." + blockName);
     }
 
     public static void handleSyncExtractorFilters(BlockPos pos,

@@ -40,18 +40,35 @@ public class VeloceElectricFurnaceBlock extends BaseEntityBlock implements Entit
         return RenderShape.MODEL;
     }
 
+    /**
+     * Piec elektryczny tyka TYLKO po to, zeby odswiezac pasek energii w GUI.
+     *
+     * <p>Nie ma wlasnej logiki per tick: przetapianie jest natychmiastowe i
+     * rozliczane przez craftera, ktory zabiera cieplo z tego akumulatora.
+     * Bez tickera pasek w GUI zamarzlby na wartosci z chwili otwarcia okna.
+     */
+    @Override
+    public <T extends BlockEntity> net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(
+            Level world, BlockState state,
+            net.minecraft.world.level.block.entity.BlockEntityType<T> type) {
+        if (world.isClientSide) {
+            return null;
+        }
+        return (lvl, pos, st, be) -> {
+            if (be instanceof VeloceElectricFurnaceBlockEntity furnace) {
+                furnace.serverTick();
+            }
+        };
+    }
+
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
                                                Player player, BlockHitResult hit) {
-        // GUI jest w budowie - nie otwieramy menu bez ekranu klienta (crash).
-        // Na razie pokazujemy stan, zeby dalo sie sprawdzic, ze piec dziala.
-        if (!world.isClientSide && world.getBlockEntity(pos)
-                instanceof VeloceElectricFurnaceBlockEntity furnace) {
-            player.displayClientMessage(Component.literal(
-                    "Velocity Electric Furnace: FE = " + furnace.getEnergy()
-                            + " / " + VeloceElectricFurnaceBlockEntity.ENERGY_CAPACITY
-                            + ", operacje = " + furnace.availableOperations()
-                            + ", zasilony = " + furnace.isPowered()), false);
+        // Menu z paskiem energii. Piec nie ma slotow na przedmioty - to bufor
+        // pradu dla craftera, wiec ekran pokazuje tylko akumulator.
+        if (!world.isClientSide && player instanceof net.minecraft.server.level.ServerPlayer sp
+                && world.getBlockEntity(pos) instanceof net.minecraft.world.MenuProvider provider) {
+            sp.openMenu(provider, pos);
         }
         return InteractionResult.sidedSuccess(world.isClientSide);
     }

@@ -1,6 +1,6 @@
 package com.craftingveloce.client.gui;
 
-import com.craftingveloce.network.ExtractorSetFilterPKT;
+import com.craftingveloce.network.SetFilterPKT;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -147,13 +147,13 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
             // Selected this item as filter!
             ItemStack filterItem = item.copy();
             filterItem.setCount(1);
-            PacketDistributor.sendToServer(new ExtractorSetFilterPKT(extractorPos, filterIndex, filterItem));
+            PacketDistributor.sendToServer(new SetFilterPKT(extractorPos, filterIndex, filterItem));
 
             // WROC DO EKSTRAKTORA, a nie do gry.
             //
             // Bylo tu this.onClose(), ktore zamyka ekran calkowicie - gracz
             // wybieral item i ladowal w swiecie zamiast wrocic do klocka.
-            com.craftingveloce.client.ClientTerminalHelper.reopenExtractorScreen(extractorPos);
+            com.craftingveloce.client.ClientTerminalHelper.reopenFilterHostScreen(extractorPos);
         }
     }
 

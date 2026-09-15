@@ -127,6 +127,13 @@ public class VeloceRegistry {
                     (pos, state) -> new com.craftingveloce.block.entity.VeloceElectricFurnaceBlockEntity(pos, state),
                     ELECTRIC_FURNACE.get()));
 
+    public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>,
+            net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceElectricFurnaceMenu>> ELECTRIC_FURNACE_MENU =
+            MENU_TYPES.register("electric_furnace_menu",
+                    () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(
+                            (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceElectricFurnaceMenu(
+                                    windowId, inv, data.readBlockPos())));
+
     // 4. Veloce Wrench
     public static final DeferredItem<VeloceWrenchItem> VELOCE_WRENCH = ITEMS.register(
             "wrench",

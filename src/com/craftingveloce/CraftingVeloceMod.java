@@ -68,6 +68,10 @@ public class CraftingVeloceMod {
 
         modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent.class, event -> {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
+            event.register(VeloceRegistry.VELOCITY_FURNACE_MENU.get(),
+                    com.craftingveloce.client.gui.VeloceVelocityFurnaceScreen::new);
+            event.register(VeloceRegistry.ELECTRIC_FURNACE_MENU.get(),
+                    com.craftingveloce.client.gui.VeloceElectricFurnaceScreen::new);
         });
 
         // Wyjscie ze swiata czysci zapamietane widoki terminali.

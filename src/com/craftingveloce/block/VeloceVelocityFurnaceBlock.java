@@ -55,24 +55,15 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock implements Entit
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
                                                Player player, BlockHitResult hit) {
-        // UWAGA: GUI jest w budowie.
-        //
-        // Menu jest zarejestrowane, ale ekran klienta jeszcze nie - otwarcie
-        // menu bez fabryki ekranu skonczyloby sie crashem klienta. Dlatego
-        // na razie NIE otwieramy go wcale. Piec dziala bez GUI: z pustymi
-        // filtrami przyjmuje KAZDE paliwo, wiec mechanika jest testowalna.
-        //
-        // Gdy ekran powstanie, wystarczy przywrocic openMenu ponizej.
-        if (!world.isClientSide) {
-            BlockEntity be = world.getBlockEntity(pos);
-            if (be instanceof VeloceVelocityFurnaceBlockEntity furnace) {
-                player.displayClientMessage(
-                        net.minecraft.network.chat.Component.literal(
-                                "Velocity Furnace: pali sie = "
-                                        + furnace.isLit()
-                                        + ", cieplo = " + furnace.getBurnTicksRemaining()
-                                        + " t, operacje = " + furnace.availableOperations()),
-                        false);
+        if (!world.isClientSide && player instanceof ServerPlayer serverPlayer) {
+            // Otwieramy normalne menu. Ekran (plomyk + 6 filtrow) jest
+            // zarejestrowany w RegisterMenuScreensEvent - bez tego wpisu
+            // otwarcie menu wysypaloby klienta.
+            //
+            // Block entity moze byc chwilowo niedostepne (chunk w trakcie
+            // ladowania) - wtedy po prostu nic nie otwieramy.
+            if (world.getBlockEntity(pos) instanceof MenuProvider provider) {
+                serverPlayer.openMenu(provider, pos);
             }
         }
         return InteractionResult.sidedSuccess(world.isClientSide);

@@ -2,8 +2,8 @@ package com.craftingveloce.client.gui;
 
 import com.craftingveloce.CraftingVeloceMod;
 import com.craftingveloce.inventory.VeloceExtractorMenu;
-import com.craftingveloce.network.ExtractorOpenFilterPKT;
-import com.craftingveloce.network.ExtractorSetFilterPKT;
+import com.craftingveloce.network.OpenFilterPKT;
+import com.craftingveloce.network.SetFilterPKT;
 import com.craftingveloce.network.ExtractorToggleCraftingPKT;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
@@ -147,7 +147,7 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
                 single.setCount(1);
                 clientFilters.set(filterIndex, single);
                 PacketDistributor.sendToServer(
-                        new ExtractorSetFilterPKT(this.menu.getPos(), filterIndex, single));
+                        new SetFilterPKT(this.menu.getPos(), filterIndex, single));
                 return;
             }
 
@@ -161,7 +161,7 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
                     // Lewy klik na zajetym = skasuj filtr.
                     clientFilters.set(filterIndex, ItemStack.EMPTY);
                     PacketDistributor.sendToServer(
-                            new ExtractorSetFilterPKT(this.menu.getPos(), filterIndex, ItemStack.EMPTY));
+                            new SetFilterPKT(this.menu.getPos(), filterIndex, ItemStack.EMPTY));
                 }
                 return;
             }
@@ -169,7 +169,7 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
             // Pusty slot + lewy klik = wybor itemu.
             if (mouseButton == 0) {
                 PacketDistributor.sendToServer(
-                        new ExtractorOpenFilterPKT(this.menu.getPos(), filterIndex));
+                        new OpenFilterPKT(this.menu.getPos(), filterIndex));
             }
             return;
         }

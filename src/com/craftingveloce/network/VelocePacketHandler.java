@@ -21,9 +21,9 @@ public class VelocePacketHandler {
             registrar.playToServer(TerminalPullItemPKT.TYPE, TerminalPullItemPKT.STREAM_CODEC, TerminalPullItemPKT::handle);
             registrar.playToServer(TerminalWatcherPKT.TYPE, TerminalWatcherPKT.STREAM_CODEC, TerminalWatcherPKT::handle);
             registrar.playToServer(TerminalStoreItemPKT.TYPE, TerminalStoreItemPKT.STREAM_CODEC, TerminalStoreItemPKT::handle);
-            registrar.playToServer(ExtractorSetFilterPKT.TYPE, ExtractorSetFilterPKT.STREAM_CODEC, ExtractorSetFilterPKT::handle);
+            registrar.playToServer(SetFilterPKT.TYPE, SetFilterPKT.STREAM_CODEC, SetFilterPKT::handle);
             registrar.playToServer(ExtractorToggleCraftingPKT.TYPE, ExtractorToggleCraftingPKT.STREAM_CODEC, ExtractorToggleCraftingPKT::handle);
-            registrar.playToServer(ExtractorOpenFilterPKT.TYPE, ExtractorOpenFilterPKT.STREAM_CODEC, ExtractorOpenFilterPKT::handle);
+            registrar.playToServer(OpenFilterPKT.TYPE, OpenFilterPKT.STREAM_CODEC, OpenFilterPKT::handle);
             registrar.playToServer(CraftingTableToggleItemPKT.TYPE, CraftingTableToggleItemPKT.STREAM_CODEC, CraftingTableToggleItemPKT::handle);
             registrar.playToServer(CraftingTableCycleRecipePKT.TYPE, CraftingTableCycleRecipePKT.STREAM_CODEC, CraftingTableCycleRecipePKT::handle);
             registrar.playToServer(BufferPullItemPKT.TYPE, BufferPullItemPKT.STREAM_CODEC, BufferPullItemPKT::handle);

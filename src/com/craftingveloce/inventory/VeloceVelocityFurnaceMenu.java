@@ -35,19 +35,29 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
 
     private final VeloceVelocityFurnaceBlockEntity furnace;
 
+    /**
+     * Pozycja bloku. Trzymamy ja OSOBNO, bo po stronie klienta block entity
+     * moze byc chwilowo niedostepne - a ekran i tak musi wiedziec, ktorego
+     * pieca dotyczy (np. zeby wrocic tu z wyboru filtra).
+     */
+    private final net.minecraft.core.BlockPos pos;
+
     /** Konstruktor uzywany przez typ menu - pozycja przychodzi z pakietu. */
     public VeloceVelocityFurnaceMenu(int id, Inventory playerInv, net.minecraft.core.BlockPos pos) {
-        this(id, playerInv, playerInv.player.level().getBlockEntity(pos));
+        this(id, playerInv, pos, playerInv.player.level().getBlockEntity(pos));
     }
 
-    public VeloceVelocityFurnaceMenu(int id, Inventory playerInv, BlockEntity be) {
-        this(id, playerInv, be instanceof VeloceVelocityFurnaceBlockEntity f ? f : null);
+    public VeloceVelocityFurnaceMenu(int id, Inventory playerInv, net.minecraft.core.BlockPos pos,
+                                     BlockEntity be) {
+        this(id, playerInv, pos, be instanceof VeloceVelocityFurnaceBlockEntity f ? f : null);
     }
 
     public VeloceVelocityFurnaceMenu(int id, Inventory playerInv,
+                                     net.minecraft.core.BlockPos pos,
                                      VeloceVelocityFurnaceBlockEntity furnace) {
         super(com.craftingveloce.init.VeloceRegistry.VELOCITY_FURNACE_MENU.get(), id);
         this.furnace = furnace;
+        this.pos = pos;
 
         // 1. Filtry paliwa - widma, 3 kolumny x 2 rzedy.
         Container placeholders = new SimpleContainer(FILTER_SLOTS);
@@ -86,6 +96,16 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
 
     public VeloceVelocityFurnaceBlockEntity getFurnace() {
         return furnace;
+    }
+
+    /** Pozycja pieca - potrzebna ekranowi i powrotowi z wyboru filtra. */
+    public net.minecraft.core.BlockPos getPos() {
+        return furnace != null ? furnace.getBlockPos() : pos;
+    }
+
+    /** Aktualna pozycja filtra (do rysowania ikon i obslugi klikniec). */
+    public ItemStack getFilter(int index) {
+        return furnace == null ? ItemStack.EMPTY : furnace.getFuelFilter(index);
     }
 
     @Override

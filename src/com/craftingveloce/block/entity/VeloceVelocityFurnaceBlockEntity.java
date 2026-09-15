@@ -46,7 +46,7 @@ import net.minecraft.world.level.block.state.BlockState;
  * bo wartosci opalowe bierzemy z vanilla.
  */
 public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
-        implements MenuProvider, VeloceHeatSource {
+        implements MenuProvider, VeloceHeatSource, VeloceFilterHost {
 
     /** Ile filtrow paliwa (priorytet od 0 w gore). */
     public static final int FUEL_FILTERS = 6;
@@ -90,6 +90,11 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
      * cieplo do zera. Jednorazowe - po pobraniu flaga gasnie.
      */
     private boolean wantImmediatePull = false;
+
+    /** Co ile tickow dosylamy stan ciepla do klienta (plomyk w GUI). */
+    private static final int CLIENT_SYNC_INTERVAL_TICKS = 10;
+
+    private int clientSyncCooldown = CLIENT_SYNC_INTERVAL_TICKS;
 
     public VeloceVelocityFurnaceBlockEntity(BlockPos pos, BlockState state) {
         super(com.craftingveloce.init.VeloceRegistry.VELOCITY_FURNACE_BE.get(), pos, state);
@@ -148,6 +153,21 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
     }
 
     /** Filtr paliwa o danym indeksie (0..5). */
+    @Override
+    public int filterCount() {
+        return FUEL_FILTERS;
+    }
+
+    @Override
+    public ItemStack getFilterAt(int index) {
+        return getFuelFilter(index);
+    }
+
+    @Override
+    public void setFilterAt(int index, ItemStack stack) {
+        setFuelFilter(index, stack);
+    }
+
     public ItemStack getFuelFilter(int index) {
         return index >= 0 && index < FUEL_FILTERS ? fuelFilters.get(index) : ItemStack.EMPTY;
     }
@@ -221,6 +241,14 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         if (wasLit != isLit()) {
             // Zmiana stanu plomienia - klient musi to zobaczyc.
             setChanged();
+            syncToClients();
+        }
+
+        // Plomyk w GUI ma pokazywac ZUZYCIE bufora, wiec sam stan "pali sie"
+        // nie wystarcza - trzeba dosylac wartosc. Raz na 10 tickow to 2 razy
+        // na sekunde: dla oka plynne, a dla sieci pomijalne (kilka bajtow).
+        if (--clientSyncCooldown <= 0) {
+            clientSyncCooldown = CLIENT_SYNC_INTERVAL_TICKS;
             syncToClients();
         }
     }
@@ -472,6 +500,7 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
 
     @Override
     public AbstractContainerMenu createMenu(int id, Inventory inv, Player player) {
-        return new com.craftingveloce.inventory.VeloceVelocityFurnaceMenu(id, inv, this);
+        return new com.craftingveloce.inventory.VeloceVelocityFurnaceMenu(
+                id, inv, getBlockPos(), this);
     }
 }
