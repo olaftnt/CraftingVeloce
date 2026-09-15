@@ -315,21 +315,43 @@ Centralny dispatcher dla client-side packet handlerów:
 
 ## 🕹️ GUI Patterns
 
-Wszystkie ekrany rozszerzają `CreativeModeInventoryScreen` i:
-1. Przy `init()` ustawiają `GameType.CREATIVE` jeśli gracz nie jest w creative
-2. Wywołują `suppressHotbarSlots()` — zastępuje player inventory sloty dummy inactive slotami (offset -10000)
-3. Override `renderSlot()` — pomija sloty gracza
-4. Override `render()` — wypełnia szarym pasek hotbara
-5. Override `containerTick()` — puste (wyłącza automatyczny update)
-6. W `removed()` restoruje `GameType` gracza
+**Dwie rodziny ekranów.**
+* "Creative-like": `VeloceTerminalScreen`, `VeloceControllerScreen`,
+  `VeloceCraftingTableScreen`, `VeloceFilterPickerScreen` — rozszerzają
+  `VeloceCreativeScreen`, a ten `CreativeModeInventoryScreen`. Potrzebują
+  siatki itemów.
+* Maszyny: `VeloceExtractorScreen`, oba piece, sensor — zwykły
+  `AbstractContainerScreen`. Siatka itemów nie jest im do niczego potrzebna.
 
-**Overlay liczb (VeloceTerminalScreen i VeloceFilterPickerScreen):**
-- Scale 0.6f, kolor `0x55FF55` (jasny zielony), z cieniem
-- Używają `VeloceTerminalScreen.formatCount(long)` → "1K", "2.5M" etc.
+**Wspólna baza `VeloceCreativeScreen`:**
+1. `init()` ustawia `GameType.CREATIVE`, jeśli gracz nie jest w creative
+2. `suppressPlayerSlots()` zastępuje sloty gracza nieaktywnymi slotami poza
+   ekranem. Hook `keepPlayerHotbar()` decyduje, czy hotbar zostaje — terminal
+   nadpisuje go na `true`, bo gracz odkłada tam wyciągnięte itemy
+3. `renderSlot()` nadpisany w każdej z czterech podklas — pomija sloty gracza
+4. `render()` zamalowuje pasek hotbara (`drawHotbarCover(..., 0xFFC6C6C6)`)
+5. `containerTick()` **nie jest puste**: baza utrzymuje tam filtr listy i
+   ukrywanie zakładek administracyjnych, a terminal, kontroler i picker
+   zamawiają na żywo liczby "ile da się dorobić". Pusta wersja w podklasie
+   oznaczała kiedyś, że po zmianie zakładki lista przestawała być filtrowana
+6. `removed()` zapisuje widok, oddaje creative jego zakładkę, przywraca
+   `GameType` **i oddaje stos trzymany na kursorze** (do ekwipunku, a gdy się
+   nie zmieści — na ziemię)
 
-**Kolorowe overlaye (VeloceCraftingTableScreen):**
-- `0x77AA0000` red (OFF), `0x7700AA00` green (ON), `0x77800080` purple (no recipe)
-- Cache `craftableItems` z `RecipeManager.getAllRecipesFor(RecipeType.CRAFTING)`
+**Overlay liczb — wspólny `VeloceSlotOverlay`** (terminal, kontroler, picker,
+crafter używają tego samego kodu):
+- scale `0.6f`, z cieniem
+- stock: biały `0xFFFFFF`, prawy dolny róg slotu (`drawStock`)
+- "do dorobienia": pomarańczowy `0xFFA500`, lewy górny róg (`drawCraftable`)
+- `formatCount(long)` skraca liczby do "1K", "2.5M" itd.
+  (`VeloceTerminalScreen.formatCount` to już tylko zgodnościowy delegat)
+
+**Overlay stanu auto-craftingu (`VeloceCraftingTableScreen`):**
+- `0x7700AA00` zielony — receptura jest i auto-crafting WŁĄCZONY
+- `0x77AA0000` czerwony — receptura jest, ale WYŁĄCZONY
+- `0xAA000000` ciemny — crafter tego itemu nie zrobi
+- Cache `craftableItems` kluczowany `RecipeManager`-em: nowe wejście do świata
+  tworzy nowy manager, więc cache unieważnia się sam
 
 ---
 
