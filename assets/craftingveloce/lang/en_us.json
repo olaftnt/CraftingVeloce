@@ -3,5 +3,7 @@
     "item.craftingveloce.veloce_tom_terminal": "Veloce Storage Terminal",
     "block.craftingveloce.veloce_pipe": "Veloce Pipe",
     "item.craftingveloce.veloce_pipe": "Veloce Pipe",
+    "block.craftingveloce.veloce_extractor": "Veloce Extractor",
+    "item.craftingveloce.veloce_extractor": "Veloce Extractor",
     "item.craftingveloce.wrench": "Veloce Wrench"
 }

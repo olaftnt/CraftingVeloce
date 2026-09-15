@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.BlockHitResult;
@@ -51,6 +52,20 @@ public class CVDebugCommand {
 
         if (be instanceof VeloceTomTerminalBlockEntity terminalBE) {
             terminalBE.printDebugInfo(player);
+            return 1;
+        } else if (be instanceof com.craftingveloce.block.entity.VeloceExtractorBlockEntity extractorBE) {
+            player.sendSystemMessage(Component.literal("§6=== [CraftingVeloce Extractor Debug] ==="));
+            player.sendSystemMessage(Component.literal("§7Pos: §f[" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]"));
+            VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
+            VelocePipeNetwork net = manager.getNetworkForTerminal(sl, pos);
+            player.sendSystemMessage(Component.literal("§7Connected Network: §f" + (net != null ? net.getId() : "§cNONE")));
+            player.sendSystemMessage(Component.literal("§b--- Configured Filters (3x3) ---"));
+            for (int i = 0; i < 9; i++) {
+                ItemStack filter = extractorBE.getFilter(i);
+                ItemStack output = extractorBE.getOutputInventory().getItem(i);
+                player.sendSystemMessage(Component.literal("  §7Slot " + (i + 1) + ": Filter=§e" + (!filter.isEmpty() ? filter.getHoverName().getString() : "EMPTY") + " §7| Stored=§a" + (!output.isEmpty() ? output.getCount() + "x " + output.getHoverName().getString() : "EMPTY")));
+            }
+            player.sendSystemMessage(Component.literal("§6======================================="));
             return 1;
         } else if (be instanceof VelocePipeBlockEntity) {
             VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);

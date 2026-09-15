@@ -62,7 +62,32 @@ public class VeloceRegistry {
                     VELOCE_PIPE.get()
             ));
 
-    // 3. Veloce Wrench
+    public static final DeferredRegister<net.minecraft.world.inventory.MenuType<?>> MENU_TYPES =
+            DeferredRegister.create(BuiltInRegistries.MENU, MODID);
+
+    // 3. Veloce Extractor (Cube terminal node with 3x3 filter and 3x3 output)
+    public static final DeferredBlock<com.craftingveloce.block.VeloceExtractorBlock> VELOCE_EXTRACTOR = BLOCKS.register(
+            "veloce_extractor",
+            com.craftingveloce.block.VeloceExtractorBlock::new
+    );
+
+    public static final DeferredItem<BlockItem> VELOCE_EXTRACTOR_ITEM = ITEMS.registerSimpleBlockItem(
+            "veloce_extractor",
+            VELOCE_EXTRACTOR
+    );
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.craftingveloce.block.entity.VeloceExtractorBlockEntity>> VELOCE_EXTRACTOR_BE =
+            BLOCK_ENTITY_TYPES.register("veloce_extractor", () -> createBEType(
+                    (pos, state) -> new com.craftingveloce.block.entity.VeloceExtractorBlockEntity(pos, state),
+                    VELOCE_EXTRACTOR.get()
+            ));
+
+    public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>, net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceExtractorMenu>> VELOCE_EXTRACTOR_MENU =
+            MENU_TYPES.register("veloce_extractor_menu", () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(
+                    (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceExtractorMenu(windowId, inv, data.readBlockPos())
+            ));
+
+    // 4. Veloce Wrench
     public static final DeferredItem<VeloceWrenchItem> VELOCE_WRENCH = ITEMS.register(
             "wrench",
             () -> new VeloceWrenchItem(new Item.Properties())
@@ -106,5 +131,6 @@ public class VeloceRegistry {
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         BLOCK_ENTITY_TYPES.register(modEventBus);
+        MENU_TYPES.register(modEventBus);
     }
 }

@@ -228,9 +228,15 @@ public class VelocePipeNetworkManager extends SavedData {
                     continue;
                 }
 
-                // 2. Neighbor is VeloceTomTerminalBlock
+                // 2. Neighbor is VeloceTomTerminalBlock or VeloceExtractorBlock
                 if (neighborState.getBlock() instanceof VeloceTomTerminalBlock terminalBlock) {
                     if (terminalBlock.canConnectFrom(neighborState, dir.getOpposite())) {
+                        discoveredTerminals.add(neighborPos);
+                    }
+                    continue;
+                }
+                if (neighborState.getBlock() instanceof com.craftingveloce.block.VeloceExtractorBlock extractorBlock) {
+                    if (extractorBlock.canConnectFrom(neighborState, dir.getOpposite())) {
                         discoveredTerminals.add(neighborPos);
                     }
                     continue;

@@ -23,6 +23,21 @@ public class ClientTerminalHelper {
         }
     }
 
+    public static void openFilterPickerScreen(BlockPos pos, int filterIndex) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            mc.setScreen(new com.craftingveloce.client.gui.VeloceFilterPickerScreen(
+                    mc.player, mc.player.connection.enabledFeatures(), true, pos, filterIndex));
+        }
+    }
+
+    public static void handleSyncExtractorFilters(BlockPos pos, java.util.List<net.minecraft.world.item.ItemStack> filters) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof com.craftingveloce.client.gui.VeloceExtractorScreen screen) {
+            screen.updateFilters(filters);
+        }
+    }
+
     public static net.minecraft.world.phys.HitResult getClientHitResult() {
         return Minecraft.getInstance().hitResult;
     }

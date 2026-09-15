@@ -32,6 +32,7 @@ public class CraftingVeloceMod {
                     .icon(() -> new ItemStack(VeloceRegistry.VELOCE_TOM_TERMINAL_ITEM.get()))
                     .displayItems((params, output) -> {
                         output.accept(VeloceRegistry.VELOCE_TOM_TERMINAL_ITEM.get());
+                        output.accept(VeloceRegistry.VELOCE_EXTRACTOR_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_PIPE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_WRENCH.get());
                     })
@@ -43,6 +44,10 @@ public class CraftingVeloceMod {
         VeloceRegistry.register(modEventBus);
         CREATIVE_TABS.register(modEventBus);
         VelocePacketHandler.register(modEventBus);
+
+        modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent.class, event -> {
+            event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
+        });
 
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             CVDebugCommand.register(event.getDispatcher());

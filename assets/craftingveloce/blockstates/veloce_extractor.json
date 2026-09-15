@@ -1,0 +1,5 @@
+{
+    "variants": {
+        "": { "model": "craftingveloce:block/veloce_extractor" }
+    }
+}
