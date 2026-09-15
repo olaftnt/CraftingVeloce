@@ -1,5 +1,6 @@
 package com.craftingveloce.client.gui;
 
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;

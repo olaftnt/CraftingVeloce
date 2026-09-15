@@ -86,8 +86,13 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
     /** Ostatnio zmierzona liczba sztuk w sieci (-1 = jeszcze nie mierzono). */
     private long lastCount = -1L;
 
-    /** Czy teraz wystawiamy prad (to samo co stan bloku). */
-    private boolean powered;
+    /**
+     * Ile sztuk bylo w sieci przy ostatnim doslaniu stanu klientowi.
+     *
+     * <p>Potrzebne, zeby nie wysylac blokowego pakietu co sekunde, gdy nic sie
+     * nie zmienia - przy kilku sensorach to juz ruch bez powodu.
+     */
+    private long lastSyncedCount = Long.MIN_VALUE;
 
     private int checkCooldown = CHECK_INTERVAL_TICKS;
     private int clientSyncCooldown = 0;
@@ -160,8 +165,18 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         return lastCount;
     }
 
+    /**
+     * Czy sensor wystawia teraz prad.
+     *
+     * <p>Czytamy to ze STANU BLOKU, a nie z wlasnego pola. Stan bloku jest
+     * jedynym zrodlem prawdy dla wyjscia (bo tylko jego zmiana jest rozglaszana
+     * sasiadom), wiec trzymanie drugiej kopii w block entity znaczyloby dwa
+     * miejsca, ktore moga sie rozjesc - np. po wczytaniu swiata z NBT.
+     */
     public boolean isPowered() {
-        return powered;
+        BlockState state = getBlockState();
+        return state.hasProperty(com.craftingveloce.block.VeloceThresholdSensorBlock.POWERED)
+                && state.getValue(com.craftingveloce.block.VeloceThresholdSensorBlock.POWERED);
     }
 
     /**
@@ -194,16 +209,19 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         long count = measure(sl);
         lastCount = count;
 
-        boolean shouldPower = filter.isEmpty() ? false : conditionMet(count);
-        if (shouldPower != powered) {
-            powered = shouldPower;
+        boolean shouldPower = !filter.isEmpty() && conditionMet(count);
+        if (shouldPower != isPowered()) {
             applyPowerState(sl, shouldPower);
         }
-        // Stan licznika tez jest pokazywany w GUI, wiec dosylamy go raz na
-        // sekunde - inaczej pole "w sieci: N" zamarzloby na wartosci z otwarcia.
+        // Licznik jest pokazywany w GUI, wiec dosylamy go - ale TYLKO gdy
+        // naprawde sie zmienil. Wysylanie co sekunde "na wszelki wypadek"
+        // to ruch bez powodu przy stabilnym zapasie.
         if (--clientSyncCooldown <= 0) {
             clientSyncCooldown = 20;
-            syncToClients();
+            if (count != lastSyncedCount) {
+                lastSyncedCount = count;
+                syncToClients();
+            }
         }
     }
 
@@ -261,7 +279,9 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         }
         tag.putLong("Threshold", threshold);
         tag.putString("Mode", mode.name());
-        tag.putBoolean("Powered", powered);
+        // UWAGA: wyjscia (POWERED) NIE zapisujemy tutaj. Zyje w stanie bloku,
+        // ktory i tak jest zapisywany razem z chunkiem - druga kopia w NBT
+        // mogla sie z nim rozjesc po wczytaniu swiata.
     }
 
     @Override
@@ -274,7 +294,6 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
                 ? Math.max(0L, Math.min(MAX_THRESHOLD, tag.getLong("Threshold")))
                 : DEFAULT_THRESHOLD;
         mode = tag.contains("Mode") && "HIGH".equals(tag.getString("Mode")) ? Mode.HIGH : Mode.LOW;
-        powered = tag.getBoolean("Powered");
     }
 
     @Override

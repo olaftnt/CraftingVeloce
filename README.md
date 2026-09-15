@@ -364,6 +364,14 @@ slotow. **Nie** robic tego przez podmiane slotow ani przez drugi ekran.
   to oryginalne UV. Ma ono tę wadę, że rdzeń i ramię używają różnych regionów,
   więc wzór może się rozjeżdżać na zakrętach. Próby naprawy (commity `f3feac1`–`8553ae5`)
   zostały wycofane razem z przezroczystością.
+- **`crafting/VeloceRecipeGraph.java` — MARTWY KOD (212 linii, zero uzyc)** —
+  odwrotny indeks receptur (item skladnik -> co mozna z niego zrobic), pisany
+  jako fundament przyrostowego przeliczania craftowalnosci. Nigdy nie zostal
+  podpiety: `VeloceCraftingCache` poszedl inna droga (okresowy pelny przelicznik
+  w tle). Klasa kompiluje sie do JARa i nic nie robi. Do decyzji: albo ja
+  podpiac (przyrostowe odswiezanie zamiast pelnego skanu), albo usunac.
+  Sprawdzone: zaden inny plik moda sie do niej nie odwoluje.
+
 - **src/moze_intel/** — patchowane klasy InventoryExchange moda, logika wyłączenia EMC tooltipów — trzeba zdecydować jak czysto to rozwiązać (osobny JAR patch?)
 - **Crafter: przełączanie CAŁEJ kategorii (prawy klik na ikonce zakładki)** —
   **USUNIĘTE Z KODU na życzenie** (2026-09-15). Działało jako „round robin":

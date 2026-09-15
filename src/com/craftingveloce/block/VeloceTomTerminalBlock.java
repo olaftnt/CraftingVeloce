@@ -1,5 +1,6 @@
 package com.craftingveloce.block;
 
+
 import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
 import com.craftingveloce.network.OpenTerminalScreenPKT;
 import com.mojang.serialization.MapCodec;

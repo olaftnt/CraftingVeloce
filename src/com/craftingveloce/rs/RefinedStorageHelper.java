@@ -1,5 +1,7 @@
 package com.craftingveloce.rs;
 
+import com.craftingveloce.util.VeloceLog;
+
 import com.refinedmods.refinedstorage.api.core.Action;
 import com.refinedmods.refinedstorage.api.network.Network;
 import com.refinedmods.refinedstorage.api.network.storage.StorageNetworkComponent;
@@ -78,7 +80,8 @@ public class RefinedStorageHelper {
                 }
             }
         } catch (Throwable t) {
-            t.printStackTrace();
+            VeloceLog.Network.error(VeloceLog.Side.SERVER, t,
+                    "reading RS item counts at %s failed", targetPos);
         }
         return map;
     }
@@ -123,7 +126,8 @@ public class RefinedStorageHelper {
                 }
             }
         } catch (Throwable t) {
-            t.printStackTrace();
+            VeloceLog.Network.error(VeloceLog.Side.SERVER, t,
+                    "querying RS network at %s failed", targetPos);
         }
         return map;
     }
@@ -157,7 +161,8 @@ public class RefinedStorageHelper {
                 }
             }
         } catch (Throwable t) {
-            t.printStackTrace();
+            VeloceLog.Network.error(VeloceLog.Side.SERVER, t,
+                    "extracting from RS at %s failed", targetPos);
         }
         return ItemStack.EMPTY;
     }
@@ -224,7 +229,8 @@ public class RefinedStorageHelper {
                 }
             }
         } catch (Throwable t) {
-            t.printStackTrace();
+            VeloceLog.Network.error(VeloceLog.Side.SERVER, t,
+                    "inserting into RS at %s failed", targetPos);
         }
         return stack;
     }

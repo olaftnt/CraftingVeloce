@@ -1,5 +1,7 @@
 package com.craftingveloce.block.entity;
 
+import com.craftingveloce.util.VeloceLog;
+
 import com.craftingveloce.init.VeloceRegistry;
 import com.craftingveloce.network.SyncTerminalCountsPKT;
 import com.craftingveloce.rs.RefinedStorageHelper;
@@ -50,7 +52,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
             itemCacheField = StorageTerminalBlockEntity.class.getDeclaredField("itemCache");
             itemCacheField.setAccessible(true);
         } catch (Throwable t) {
-            t.printStackTrace();
+            VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
+                    "could not resolve StorageTerminalBlockEntity.itemCache - "
+                            + "Tom's Storage cache will not be used");
         }
     }
 
@@ -291,7 +295,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                         }
                     });
                 } catch (Throwable t) {
-                    t.printStackTrace();
+                    VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
+                            "streaming wrapped stacks from Tom's Storage failed at %s",
+                            worldPosition);
                 }
             }
         }
@@ -504,7 +510,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                 return pulled.getActualStack();
             }
         } catch (Throwable t) {
-            t.printStackTrace();
+            VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
+                    "pulling %s from Tom's Storage at %s failed", requested, worldPosition);
         }
 
         return ItemStack.EMPTY;

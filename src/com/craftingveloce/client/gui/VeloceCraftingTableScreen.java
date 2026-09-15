@@ -1,5 +1,6 @@
 package com.craftingveloce.client.gui;
 
+
 import com.craftingveloce.network.CraftingTableToggleItemPKT;
 import com.craftingveloce.network.CraftingTableCycleRecipePKT;
 import com.mojang.blaze3d.systems.RenderSystem;

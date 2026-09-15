@@ -753,7 +753,11 @@ public class ConnectedEndpointInfo {
 
             refreshIfLoaded(level);
         } catch (Throwable t) {
-            t.printStackTrace();
+            // Wyjatek trafia do loga moda RAZEM ze stosem - wczesniej lecial
+            // na stderr, obok systemu logow (bez kategorii i bez mozliwosci
+            // wylaczenia go configiem).
+            VeloceLog.Network.error(VeloceLog.Side.SERVER, t,
+                    "insert at %s failed", pos);
         }
         // ZADNEGO release() - patrz komentarz wyzej. Chunk nie ma biletu
         // wymuszenia, wiec wypada normalnie, kiedy gra uzna to za stosowne.

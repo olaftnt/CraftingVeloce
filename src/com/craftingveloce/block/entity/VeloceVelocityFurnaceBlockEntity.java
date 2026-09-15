@@ -2,7 +2,6 @@ package com.craftingveloce.block.entity;
 
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
 import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
-import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;

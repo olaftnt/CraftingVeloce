@@ -1,5 +1,6 @@
 package com.craftingveloce.client.gui;
 
+
 import com.craftingveloce.network.TerminalPullItemPKT;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.Font;
@@ -61,7 +62,11 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                 }
             }
         } catch (Throwable t) {
-            t.printStackTrace();
+            // Refleksja nad vanilla - jesli pola/metody zmienia nazwy po
+            // aktualizacji, chcemy o tym wiedziec z LOGA, a nie z konsoli.
+            com.craftingveloce.util.VeloceLog.Gui.error(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT, t,
+                    "could not resolve CreativeModeInventoryScreen fields (tab/page memory disabled)");
         }
     }
 

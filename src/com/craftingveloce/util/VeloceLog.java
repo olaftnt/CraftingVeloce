@@ -41,6 +41,22 @@ public final class VeloceLog {
 
     private static void log(Logger log, Side side, LogLevel level, String tag,
                             String action, String message, Object... args) {
+        logThrown(log, side, level, tag, action, null, message, args);
+    }
+
+    /**
+     * Rdzen logowania, z opcjonalnym wyjatkiem.
+     *
+     * <p><b>Po co osobny wariant.</b> Wczesniej wyjatki w module lecialy przez
+     * {@code t.printStackTrace()} - czyli na stderr, obok systemu logow, bez
+     * poziomu i bez kategorii. Efekt: nie dalo sie ich wylaczyc configiem,
+     * nie mialy prefiksu [Veloce] i nie bylo ich w pliku loga w tym samym
+     * formacie co reszta. Podanie wyjatku do log4j wypisuje komunikat RAZEM
+     * ze stosem, we wlasciwym miejscu.
+     */
+    private static void logThrown(Logger log, Side side, LogLevel level, String tag,
+                                  String action, Throwable thrown,
+                                  String message, Object... args) {
         if (!enabled(side)) {
             return;
         }
@@ -49,11 +65,28 @@ public final class VeloceLog {
         }
         String body = args.length == 0 ? message : String.format(message, args);
         String line = "[Veloce][" + tag + "][" + action + "] " + body;
-        if (level == LogLevel.ERRORS) {
+        if (thrown != null) {
+            if (level == LogLevel.ERRORS) {
+                log.warn(line, thrown);
+            } else {
+                log.info(line, thrown);
+            }
+        } else if (level == LogLevel.ERRORS) {
             log.warn(line);
         } else {
             log.info(line);
         }
+    }
+
+    /**
+     * Blad z wyjatkiem: komunikat plus STOS, w kategorii {@code tag}.
+     *
+     * <p>Uzywane tam, gdzie wczesniej bylo {@code printStackTrace()} - zeby
+     * wyjatek trafil do loga moda, a nie obok niego.
+     */
+    public static void error(Side side, String tag, Throwable thrown,
+                             String what, Object... args) {
+        logThrown(logger(), side, LogLevel.ERRORS, tag, "ERR", thrown, what, args);
     }
 
     private static boolean enabled(Side side) {
@@ -139,6 +172,11 @@ public final class VeloceLog {
             if (checkNetwork()) VeloceLog.failure(s, TAG, what, a);
         }
 
+        /** Blad z wyjatkiem - stos trafia do loga. */
+        public static void error(Side s, Throwable t, String what, Object... a) {
+            if (checkNetwork()) VeloceLog.error(s, TAG, t, what, a);
+        }
+
         public static void why(Side s, String what, Object... a) {
             if (checkNetwork()) VeloceLog.why(s, TAG, what, a);
         }
@@ -170,6 +208,11 @@ public final class VeloceLog {
 
         public static void failure(Side s, String what, Object... a) {
             if (checkCraft()) VeloceLog.failure(s, TAG, what, a);
+        }
+
+        /** Blad z wyjatkiem - stos trafia do loga. */
+        public static void error(Side s, Throwable t, String what, Object... a) {
+            if (checkCraft()) VeloceLog.error(s, TAG, t, what, a);
         }
 
         public static void why(Side s, String what, Object... a) {
@@ -210,6 +253,11 @@ public final class VeloceLog {
             if (checkBlocks()) VeloceLog.failure(s, TAG, what, a);
         }
 
+        /** Blad z wyjatkiem - stos trafia do loga. */
+        public static void error(Side s, Throwable t, String what, Object... a) {
+            if (checkBlocks()) VeloceLog.error(s, TAG, t, what, a);
+        }
+
         public static void why(Side s, String what, Object... a) {
             if (checkBlocks()) VeloceLog.why(s, TAG, what, a);
         }
@@ -241,6 +289,11 @@ public final class VeloceLog {
 
         public static void failure(Side s, String what, Object... a) {
             if (checkGui()) VeloceLog.failure(s, TAG, what, a);
+        }
+
+        /** Blad z wyjatkiem - stos trafia do loga. */
+        public static void error(Side s, Throwable t, String what, Object... a) {
+            if (checkGui()) VeloceLog.error(s, TAG, t, what, a);
         }
 
         public static void why(Side s, String what, Object... a) {
