@@ -1,7 +1,7 @@
-package com.craftingveloce.compat.mekanism.block;
+package com.craftingveloce.block;
 
-import com.craftingveloce.compat.mekanism.FeModule;
-import com.craftingveloce.compat.mekanism.block.entity.VeloceFeModuleBlockEntity;
+import com.craftingveloce.block.entity.VeloceFeModuleBlockEntity;
+import com.craftingveloce.crafting.FeModule;
 import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 import com.mojang.serialization.MapCodec;
@@ -44,9 +44,14 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
 
     private final FeModule module;
 
-    public VeloceFeModuleBlock(FeModule module, BlockBehaviour.Properties properties) {
+    private final VeloceFeModuleBlockEntity.Factory blockEntityFactory;
+
+    public VeloceFeModuleBlock(FeModule module,
+                               VeloceFeModuleBlockEntity.Factory blockEntityFactory,
+                               BlockBehaviour.Properties properties) {
         super(properties);
         this.module = module;
+        this.blockEntityFactory = blockEntityFactory;
     }
 
     /** Opis maszyny (typ receptury, koszt FE, etykieta). */
@@ -56,13 +61,13 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
 
     @Override
     protected MapCodec<? extends BaseEntityBlock> codec() {
-        return simpleCodec(properties -> new VeloceFeModuleBlock(module, properties));
+        return simpleCodec(properties ->
+                new VeloceFeModuleBlock(module, blockEntityFactory, properties));
     }
 
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return com.craftingveloce.compat.mekanism.MekanismBlockEntities
-                .create(module, pos, state);
+        return blockEntityFactory.create(pos, state);
     }
 
     @Override

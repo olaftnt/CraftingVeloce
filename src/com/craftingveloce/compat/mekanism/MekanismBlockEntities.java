@@ -1,6 +1,7 @@
 package com.craftingveloce.compat.mekanism;
 
-import com.craftingveloce.compat.mekanism.block.entity.VeloceFeModuleBlockEntity;
+import com.craftingveloce.block.entity.VeloceFeModuleBlockEntity;
+import com.craftingveloce.crafting.FeModule;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -29,25 +30,25 @@ public final class MekanismBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>,
             BlockEntityType<VeloceFeModuleBlockEntity>> CRUSHER_MODULE =
             TYPES.register("veloce_crusher_module", () -> BlockEntityType.Builder.of(
-                    (pos, state) -> create(FeModule.CRUSHER, pos, state),
+                    (pos, state) -> factory(MekanismFeModules.CRUSHER).create(pos, state),
                     MekanismBlocks.VELOCE_CRUSHER_MODULE.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>,
             BlockEntityType<VeloceFeModuleBlockEntity>> ENRICHMENT_MODULE =
             TYPES.register("veloce_enrichment_module", () -> BlockEntityType.Builder.of(
-                    (pos, state) -> create(FeModule.ENRICHMENT, pos, state),
+                    (pos, state) -> factory(MekanismFeModules.ENRICHMENT).create(pos, state),
                     MekanismBlocks.VELOCE_ENRICHMENT_MODULE.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>,
             BlockEntityType<VeloceFeModuleBlockEntity>> COMBINER_MODULE =
             TYPES.register("veloce_combiner_module", () -> BlockEntityType.Builder.of(
-                    (pos, state) -> create(FeModule.COMBINER, pos, state),
+                    (pos, state) -> factory(MekanismFeModules.COMBINER).create(pos, state),
                     MekanismBlocks.VELOCE_COMBINER_MODULE.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>,
             BlockEntityType<VeloceFeModuleBlockEntity>> SAWMILL_MODULE =
             TYPES.register("veloce_sawmill_module", () -> BlockEntityType.Builder.of(
-                    (pos, state) -> create(FeModule.SAWMILL, pos, state),
+                    (pos, state) -> factory(MekanismFeModules.SAWMILL).create(pos, state),
                     MekanismBlocks.VELOCE_SAWMILL_MODULE.get()).build(null));
 
     public static void register(IEventBus modEventBus) {
@@ -55,29 +56,29 @@ public final class MekanismBlockEntities {
     }
 
     /**
-     * Tworzy block entity wlasciwego typu dla danej maszyny.
+     * Fabryka block entity dla danej maszyny.
      *
-     * <p>Mapowanie maszyna -> typ jest w JEDNYM miejscu (tutaj), wiec blok nie
-     * musi znac czterech holderow ani siegac do nich po nazwie.
+     * <p>Blok dostaje ja w konstruktorze, wiec nie musi znac czterech holderow
+     * ani siegac do nich po nazwie - a mapowanie maszyna -> typ zyje w JEDNYM
+     * miejscu ({@link #holderFor}).
      */
-    public static VeloceFeModuleBlockEntity create(FeModule module, BlockPos pos,
-                                                  BlockState state) {
-        return new VeloceFeModuleBlockEntity(module, holderFor(module), pos, state);
+    public static VeloceFeModuleBlockEntity.Factory factory(FeModule module) {
+        return (pos, state) -> new VeloceFeModuleBlockEntity(module, holderFor(module), pos, state);
     }
 
     /** Typ block entity dla maszyny - do capability, testow i diagnostyki. */
     public static DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceFeModuleBlockEntity>>
             holderFor(FeModule module) {
-        if (module == FeModule.CRUSHER) {
+        if (module == MekanismFeModules.CRUSHER) {
             return CRUSHER_MODULE;
         }
-        if (module == FeModule.ENRICHMENT) {
+        if (module == MekanismFeModules.ENRICHMENT) {
             return ENRICHMENT_MODULE;
         }
-        if (module == FeModule.COMBINER) {
+        if (module == MekanismFeModules.COMBINER) {
             return COMBINER_MODULE;
         }
-        if (module == FeModule.SAWMILL) {
+        if (module == MekanismFeModules.SAWMILL) {
             return SAWMILL_MODULE;
         }
         throw new IllegalArgumentException("brak typu block entity dla maszyny " + module.id());

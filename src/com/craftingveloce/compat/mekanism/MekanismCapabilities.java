@@ -1,5 +1,6 @@
 package com.craftingveloce.compat.mekanism;
 
+import com.craftingveloce.crafting.FeModule;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
@@ -23,9 +24,10 @@ public final class MekanismCapabilities {
 
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(RegisterCapabilitiesEvent.class, event -> {
-            // Jedna petla po wszystkich maszynach: nowa maszyna w FeModule.ALL
+            // Jedna petla po wszystkich maszynach: nowa maszyna w
+            // MekanismFeModules.ALL
             // dostaje capability sama, bez dopisywania sie tutaj.
-            for (FeModule module : FeModule.ALL) {
+            for (FeModule module : MekanismFeModules.ALL) {
                 event.registerBlockEntity(
                         Capabilities.EnergyStorage.BLOCK,
                         MekanismBlockEntities.holderFor(module).get(),

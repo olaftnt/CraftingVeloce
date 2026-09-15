@@ -1,7 +1,6 @@
-package com.craftingveloce.compat.mekanism.block.entity;
+package com.craftingveloce.block.entity;
 
-import com.craftingveloce.block.entity.VeloceProcessingSource;
-import com.craftingveloce.compat.mekanism.FeModule;
+import com.craftingveloce.crafting.FeModule;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -32,6 +31,18 @@ import java.util.Set;
  */
 public class VeloceFeModuleBlockEntity extends BlockEntity
         implements VeloceProcessingSource, IEnergyStorage {
+
+    /**
+     * Fabryka block entity - dostarczana przez modul.
+     *
+     * <p>Kazdy mod ma wlasne typy block entity, a rdzen nie moze znac ich
+     * rejestrow - dlatego blok dostaje fabryke w konstruktorze. Dzieki temu
+     * jeden blok rdzenia obsluguje maszyny z roznych modow.
+     */
+    @FunctionalInterface
+    public interface Factory {
+        VeloceFeModuleBlockEntity create(BlockPos pos, BlockState state);
+    }
 
     private final FeModule module;
     private final DeferredHolder<BlockEntityType<?>,
