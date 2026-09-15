@@ -111,48 +111,90 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
         if (net == null) return;
 
+        // FAZA 1: samo pobranie z sieci - tanie, dla wszystkich 9 slotow.
+        //
+        // Kolejnosc ma znaczenie. Wczesniej kazdy slot szedl od razu pelna
+        // sciezka "pobierz albo wycraftuj", a to znaczylo do 9 planowan drzewa
+        // receptur na jeden cykl (co 10 tickow, na kazdy extractor) plus 9
+        // wymuszonych skanow sieci. Serwer nie mial szans.
+        boolean[] needsCraft = new boolean[9];
         for (int i = 0; i < 9; i++) {
             ItemStack filter = filterSlots.get(i);
             if (filter.isEmpty()) continue;
 
             ItemStack currentOutput = outputInventory.getItem(i);
             int maxStack = filter.getMaxStackSize();
+            int needed;
 
             if (currentOutput.isEmpty()) {
-                // Pull up to full stack
-                ItemStack pulled = extractOrCraft(sl, net, filter.getItem(), maxStack);
-                if (!pulled.isEmpty()) {
-                    outputInventory.setItem(i, pulled);
-                    setChanged();
-                }
+                needed = maxStack;
             } else if (ItemStack.isSameItemSameComponents(currentOutput, filter)) {
-                int needed = maxStack - currentOutput.getCount();
-                if (needed > 0) {
-                    ItemStack pulled = extractOrCraft(sl, net, filter.getItem(), needed);
-                    if (!pulled.isEmpty()) {
-                        currentOutput.grow(pulled.getCount());
-                        outputInventory.setItem(i, currentOutput);
-                        setChanged();
-                    }
-                }
+                needed = maxStack - currentOutput.getCount();
+            } else {
+                continue;   // slot zajety czyms innym
+            }
+            if (needed <= 0) continue;
+
+            ItemStack direct = net.extractItem(sl, filter.getItem(), needed);
+            if (!direct.isEmpty()) {
+                depositIntoSlot(i, currentOutput, direct);
+            } else {
+                needsCraft[i] = true;
+            }
+        }
+
+        // FAZA 2: craftowanie tylko dla slotow, ktorym naprawde czegos braklo,
+        // i tylko w ramach JEDNEGO wspolnego budzetu na caly cykl. Jeden wolny
+        // craft nie moze zjesc czasu przeznaczonego na pozostale sloty.
+        long deadline = System.nanoTime() + PULL_CRAFT_BUDGET_NS;
+        for (int i = 0; i < 9; i++) {
+            if (!needsCraft[i]) continue;
+            if (System.nanoTime() > deadline) {
+                break;   // reszta w nastepnym cyklu
+            }
+            ItemStack filter = filterSlots.get(i);
+            ItemStack currentOutput = outputInventory.getItem(i);
+            int maxStack = filter.getMaxStackSize();
+            int needed = currentOutput.isEmpty()
+                    ? maxStack
+                    : maxStack - currentOutput.getCount();
+            if (needed <= 0) continue;
+
+            ItemStack crafted = craftFromNetwork(sl, net, filter.getItem(), needed);
+            if (!crafted.isEmpty()) {
+                depositIntoSlot(i, currentOutput, crafted);
             }
         }
     }
 
-    /**
-     * Wyciaga item z sieci, a jesli go tam nie ma - probuje go auto-wycraftowac
-     * (o ile w sieci jest crafter z wlaczona receptura dla tego itemu).
-     *
-     * <p>Dzieki temu extractor dziala identycznie jak terminal: filtrujesz deski,
-     * wlaczasz auto-crafting desek i extractor sam je dostarcza, nawet jesli
-     * nikt ich wczesniej nie wyprodukowal.
-     */
-    private ItemStack extractOrCraft(ServerLevel sl, VelocePipeNetwork net, Item item, int count) {
-        com.craftingveloce.crafting.VeloceCraftingCache.get(net).markBusy(sl);
-        ItemStack direct = net.extractItem(sl, item, count);
-        if (!direct.isEmpty()) {
-            return direct;
+    /** Wklada pobrany stos do slotu wyjsciowego (nowy albo doglebia istniejacy). */
+    private void depositIntoSlot(int slot, ItemStack currentOutput, ItemStack pulled) {
+        if (currentOutput.isEmpty()) {
+            outputInventory.setItem(slot, pulled);
+        } else {
+            currentOutput.grow(pulled.getCount());
+            outputInventory.setItem(slot, currentOutput);
         }
+        setChanged();
+    }
+
+    /**
+     * Ile laczenie moze trwac auto-craftowanie w jednym cyklu extractora.
+     *
+     * <p>Cykl leci co 10 tickow na kazdy extractor, wiec 10 ms to juz 20%
+     * budzetu ticku przy jednym urzadzeniu. Reszta czeka na kolejny cykl.
+     */
+    private static final long PULL_CRAFT_BUDGET_NS = 10_000_000L;
+
+    /**
+     * Auto-wycraftowuje brakujacy item i wyjmuje go z bufora/sieci.
+     *
+     * <p>Wolane TYLKO gdy bezposrednie pobranie sie nie powiodlo (patrz faza 2
+     * w {@link #pullFilteredItemsFromNetwork}) i tylko w ramach wspolnego
+     * budzetu cyklu. Wczesniej kazdy slot szedl ta sciezka bezwarunkowo.
+     */
+    private ItemStack craftFromNetwork(ServerLevel sl, VelocePipeNetwork net, Item item, int count) {
+        com.craftingveloce.crafting.VeloceCraftingCache.get(net).markBusy(sl);
 
         // Auto-crafting: tylko jesli jakis crafter ma wlaczona recepture dla itemu.
         var crafter = com.craftingveloce.crafting.VeloceCraftingRegistry
@@ -169,8 +211,10 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
                 .getBuffers(sl, net);
         var ctx = new com.craftingveloce.crafting.VeloceAutoCrafter.Context(
                 sl, net, enabled, preferred, null, buffers);
+        // Maly budzet planowania: to tlo, nie zadanie gracza. Reszta poczeka
+        // na kolejny cykl, zamiast blokowac watek serwera.
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
-                .ensureAvailable(sl, net, item, count, ctx);
+                .ensureAvailable(sl, net, item, count, ctx, CRAFT_PLAN_BUDGET_NS);
         if (!result.success()) {
             return ItemStack.EMPTY;
         }
@@ -183,6 +227,9 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
         }
         return net.extractItem(sl, item, count);
     }
+
+    /** Budzet planowania dla jednego brakujacego itemu w cyklu extractora. */
+    private static final long CRAFT_PLAN_BUDGET_NS = 3_000_000L;
 
     /** Wyciaga item z buforow auto-crafterow. */
     private static ItemStack extractFromBuffers(

@@ -165,6 +165,18 @@ public final class VeloceAutoCrafter {
      */
     public static CraftResult ensureAvailable(ServerLevel level, VelocePipeNetwork network,
                                               Item item, int count, Context ctx) {
+        return ensureAvailable(level, network, item, count, ctx, CRAFT_PLAN_BUDGET_NS);
+    }
+
+    /**
+     * Jak wyzej, ale z jawnym budzetem planowania.
+     *
+     * <p>Wolane z tla (extractor), gdzie nie mozemy pozwolic sobie na pelny
+     * budzet zadania gracza - inaczej jedno urzadzenie zjada tick.
+     */
+    public static CraftResult ensureAvailable(ServerLevel level, VelocePipeNetwork network,
+                                              Item item, int count, Context ctx,
+                                              long planBudgetNanos) {
         if (count <= 0) {
             return CraftResult.fail("craftingveloce.craft.error.amount");
         }
@@ -178,9 +190,11 @@ public final class VeloceAutoCrafter {
             return CraftResult.ok(count);
         }
 
-        // 2. Siec. Wymuszamy swiezy skan - za chwile podejmujemy decyzje
-        //    o pobraniu itemow, wiec nie mozemy pracowac na nieaktualnym stanie.
-        long inNetwork = network.getAllItemCounts(level, true).getOrDefault(item, 0L);
+        // 2. Siec. JEDEN wymuszony skan - za chwile podejmujemy decyzje
+        //    o pobraniu itemow, wiec nie mozemy pracowac na nieaktualnym
+        //    stanie. Te sama migawke przekazujemy potem do planowania.
+        Map<Item, Long> netStock = network.getAllItemCounts(level, true);
+        long inNetwork = netStock.getOrDefault(item, 0L);
         long available = inInventory + inNetwork;
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
                 "%s: inventory=%d, network=%d, requested=%d",
@@ -202,14 +216,14 @@ public final class VeloceAutoCrafter {
         // zamrozic watku serwera, nawet gdy gracz poprosi o cos absurdalnie
         // zlozonego. Przy przekroczeniu mowimy "za zlozone", a nie "brak
         // skladnikow" - to dwie rozne sytuacje.
-        startEstimate(CRAFT_PLAN_BUDGET_NS);
-        Map<Item, Long> stock = snapshotStock(ctx);
+        startEstimate(planBudgetNanos);
+        Map<Item, Long> stock = snapshotStock(ctx, netStock);
         Plan plan = new Plan();
         if (!plan(level, ctx.enabledItems, ctx.preferred, item, missing, stock, plan, new HashSet<>(), 0)) {
             if (estimateAborted()) {
                 VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                         "planning for %s x%d exceeded the %d ms budget - recipe tree too complex",
-                        item, missing, CRAFT_PLAN_BUDGET_NS / 1_000_000L);
+                        item, missing, planBudgetNanos / 1_000_000L);
                 return CraftResult.fail("craftingveloce.craft.error.tooComplex");
             }
             logPlanFailure(level, ctx, item, missing, stock);
@@ -888,7 +902,19 @@ public final class VeloceAutoCrafter {
      * <p>Kolejnosc zrodel: siec + ekwipunek + bufory crafterow.
      */
     private static Map<Item, Long> snapshotStock(Context ctx) {
-        Map<Item, Long> stock = new HashMap<>(ctx.network.getAllItemCounts(ctx.level, true));
+        return snapshotStock(ctx, ctx.network.getAllItemCounts(ctx.level, true));
+    }
+
+    /**
+     * Jak wyzej, ale ze stanem sieci podanym z zewnatrz.
+     *
+     * <p>Po to, zeby {@link #ensureAvailable} nie skanowal sieci DWA razy:
+     * raz na sprawdzenie dostepnosci, a chwile pozniej drugi raz na migawke
+     * do planowania. Przy wymuszonym skanie (force=true) to jest pelne
+     * przejscie po wszystkich inwentarzach sieci.
+     */
+    private static Map<Item, Long> snapshotStock(Context ctx, Map<Item, Long> networkCounts) {
+        Map<Item, Long> stock = new HashMap<>(networkCounts);
         if (ctx.inventory != null) {
             for (Item it : ctx.inventory.allItems()) {
                 stock.merge(it, (long) ctx.inventory.count(it), Long::sum);
