@@ -91,4 +91,37 @@ public final class VeloceNodeBlocks {
         }
         return false;
     }
+    /**
+     * Wspolny hook: wezel wlasnie stanal w swiecie.
+     *
+     * <p><b>Po co wydzielone.</b> Ta sama sekwencja (uniewaznij wezel w sieci
+     * Toma, potem zglos go naszemu menedzerowi) byla skopiowana w SIEDMIU
+     * klasach blokow-wezlow. To nie jest kosmetyka: gdy dodawalismy piece,
+     * jeden z nich nie dostal tego hooka i nie byl rozpoznawany przez siec,
+     * dopoki czegos innego nie ruszylo. Nowy wezel ma teraz JEDNO miejsce do
+     * wywolania, a nie piec linii do przepisania z pamieci.
+     */
+    public static void onNodePlaced(net.minecraft.world.level.Level world, net.minecraft.core.BlockPos pos) {
+        if (world.isClientSide) {
+            return;
+        }
+        com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
+        if (world instanceof net.minecraft.server.level.ServerLevel sl) {
+            VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
+        }
+    }
+
+    /**
+     * Wspolny hook: wezel zniknal ze swiata.
+     *
+     * <p>Bez tego siec trzymalaby wpis o wezle, ktorego juz nie ma (widmo
+     * w terminalu) - a przy ponownym postawieniu bloku powstalby drugi wpis.
+     */
+    public static void onNodeRemoved(net.minecraft.world.level.LevelAccessor world,
+                                     net.minecraft.core.BlockPos pos) {
+        if (world instanceof net.minecraft.server.level.ServerLevel sl) {
+            com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(sl).markNodeInvalid(pos);
+            VelocePipeNetworkManager.get(sl).onTerminalRemoved(sl, pos);
+        }
+    }
 }

@@ -3,7 +3,6 @@ package com.craftingveloce.block;
 
 import com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity;
 import com.craftingveloce.init.VeloceRegistry;
-import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import com.mojang.serialization.MapCodec;
 import com.tom.storagemod.block.IInventoryCable;
 import com.tom.storagemod.inventory.InventoryCableNetwork;
@@ -33,6 +32,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityBlock, IInventoryCable {
 
@@ -79,11 +79,7 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityB
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
                     "auto-crafter placed at %s by %s (all recipes enabled by default)",
                     pos, placer == null ? "unknown" : placer.getName().getString());
-            InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
-            n.markNodeInvalid(pos);
-            if (world instanceof ServerLevel sl) {
-                VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
-            }
+            VeloceNodeBlocks.onNodePlaced(world, pos);
         }
     }
 
@@ -124,10 +120,7 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityB
     @Override
     public void destroy(LevelAccessor world, BlockPos pos, BlockState state) {
         super.destroy(world, pos, state);
-        if (world instanceof ServerLevel l) {
-            InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
-            VelocePipeNetworkManager.get(l).onTerminalRemoved(l, pos);
-        }
+        VeloceNodeBlocks.onNodeRemoved(world, pos);
     }
 
     @Override

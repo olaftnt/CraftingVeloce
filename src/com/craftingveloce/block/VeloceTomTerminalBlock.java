@@ -31,10 +31,10 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import javax.annotation.Nullable;
-import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock implements EntityBlock, IInventoryCable {
     public static final MapCodec<VeloceTomTerminalBlock> CODEC = ChestBlock.simpleCodec(properties -> new VeloceTomTerminalBlock());
@@ -74,21 +74,14 @@ public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock impleme
     public void setPlacedBy(Level world, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
         super.setPlacedBy(world, pos, state, placer, stack);
         if (!world.isClientSide) {
-            InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
-            n.markNodeInvalid(pos);
-            if (world instanceof ServerLevel sl) {
-                VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
-            }
+            VeloceNodeBlocks.onNodePlaced(world, pos);
         }
     }
 
     @Override
     public void destroy(LevelAccessor world, BlockPos pos, BlockState state) {
         super.destroy(world, pos, state);
-        if (world instanceof ServerLevel l) {
-            InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
-            VelocePipeNetworkManager.get(l).onTerminalRemoved(l, pos);
-        }
+        VeloceNodeBlocks.onNodeRemoved(world, pos);
     }
 
     @Override

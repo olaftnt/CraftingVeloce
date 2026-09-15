@@ -15,10 +15,10 @@ import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
-import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.LevelAccessor;
 import javax.annotation.Nullable;
+import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
  * Velocity Furnace - blok zrodla ciepla dla auto-craftera.
@@ -92,12 +92,7 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock implements Entit
                             ItemStack stack) {
         super.setPlacedBy(world, pos, state, placer, stack);
         if (!world.isClientSide) {
-            com.tom.storagemod.inventory.InventoryCableNetwork n =
-                    com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(world);
-            n.markNodeInvalid(pos);
-            if (world instanceof net.minecraft.server.level.ServerLevel sl) {
-                VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
-            }
+            VeloceNodeBlocks.onNodePlaced(world, pos);
         }
     }
 
@@ -121,10 +116,7 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock implements Entit
             }
         }
         super.destroy(world, pos, state);
-        if (world instanceof net.minecraft.server.level.ServerLevel l) {
-            com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
-            VelocePipeNetworkManager.get(l).onTerminalRemoved(l, pos);
-        }
+        VeloceNodeBlocks.onNodeRemoved(world, pos);
     }
 
     @Override

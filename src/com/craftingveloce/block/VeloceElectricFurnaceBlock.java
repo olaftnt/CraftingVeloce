@@ -12,10 +12,10 @@ import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
-import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.LevelAccessor;
 import javax.annotation.Nullable;
+import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
  * Velocity Electric Furnace - zrodlo ciepla zasilane Forge Energy.
@@ -96,12 +96,7 @@ public class VeloceElectricFurnaceBlock extends BaseEntityBlock implements Entit
                             ItemStack stack) {
         super.setPlacedBy(world, pos, state, placer, stack);
         if (!world.isClientSide) {
-            com.tom.storagemod.inventory.InventoryCableNetwork n =
-                    com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(world);
-            n.markNodeInvalid(pos);
-            if (world instanceof net.minecraft.server.level.ServerLevel sl) {
-                VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
-            }
+            VeloceNodeBlocks.onNodePlaced(world, pos);
         }
     }
 
@@ -109,10 +104,7 @@ public class VeloceElectricFurnaceBlock extends BaseEntityBlock implements Entit
     public void destroy(net.minecraft.world.level.LevelAccessor world, BlockPos pos,
                         BlockState state) {
         super.destroy(world, pos, state);
-        if (world instanceof net.minecraft.server.level.ServerLevel l) {
-            com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
-            VelocePipeNetworkManager.get(l).onTerminalRemoved(l, pos);
-        }
+        VeloceNodeBlocks.onNodeRemoved(world, pos);
     }
 
     @Override

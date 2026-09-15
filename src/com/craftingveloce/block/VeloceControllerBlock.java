@@ -2,7 +2,6 @@ package com.craftingveloce.block;
 
 
 import com.craftingveloce.block.entity.VeloceControllerBlockEntity;
-import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import com.mojang.serialization.MapCodec;
 import com.tom.storagemod.block.IInventoryCable;
 import com.tom.storagemod.inventory.InventoryCableNetwork;
@@ -34,6 +33,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
  * Veloce Controller - blok monitorujacy siec logistyczna.
@@ -114,21 +114,14 @@ public class VeloceControllerBlock extends BaseEntityBlock implements EntityBloc
                             @Nullable LivingEntity placer, ItemStack stack) {
         super.setPlacedBy(world, pos, state, placer, stack);
         if (!world.isClientSide) {
-            InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
-            n.markNodeInvalid(pos);
-            if (world instanceof ServerLevel sl) {
-                VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
-            }
+            VeloceNodeBlocks.onNodePlaced(world, pos);
         }
     }
 
     @Override
     public void destroy(LevelAccessor world, BlockPos pos, BlockState state) {
         super.destroy(world, pos, state);
-        if (world instanceof ServerLevel l) {
-            InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
-            VelocePipeNetworkManager.get(l).onTerminalRemoved(l, pos);
-        }
+        VeloceNodeBlocks.onNodeRemoved(world, pos);
     }
 
     @Override
