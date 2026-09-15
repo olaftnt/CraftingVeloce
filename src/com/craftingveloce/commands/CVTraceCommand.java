@@ -103,7 +103,7 @@ public final class CVTraceCommand {
     /** Zrzut wszystkich sieci w danym wymiarze. */
     private static void dumpAll(ServerLevel level, String label) {
         var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level);
-        var networks = manager.getAllNetworks();
+        var networks = manager.getAllNetworks(level);
 
         ChunkTrace.event("DUMP", "%s: sieci=%d wymiar=%s", label,
                 networks.size(), level.dimension().location());

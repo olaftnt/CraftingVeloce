@@ -260,6 +260,17 @@ public final class VelocePipeWorld {
         return componentCache.size();
     }
 
+    /**
+     * Reprezentant kazdego komponentu - do przejscia po wszystkich sieciach.
+     *
+     * <p>Zwraca po jednej rurze z kazdej spojnej grupy, zeby dalo sie zbudowac
+     * opis kazdej sieci bez powtarzania tych samych rur.
+     */
+    public java.util.Collection<BlockPos> componentRoots() {
+        rebuildIfDirty();
+        return java.util.Collections.unmodifiableSet(componentMembers.keySet());
+    }
+
     /** Liczba komponentow - do diagnostyki. */
     public int componentCount() {
         rebuildIfDirty();

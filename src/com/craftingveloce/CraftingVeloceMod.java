@@ -234,7 +234,7 @@ public class CraftingVeloceMod {
             if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                 net.minecraft.core.BlockPos pos = event.getPos();
                 com.craftingveloce.network.pipe.VelocePipeNetworkManager manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
-                if (manager.getNetworkForPipe(pos) != null) {
+                if (manager.isPipe(sl, pos)) {
                     manager.onPipeBroken(sl, pos);
                 }
             }
@@ -244,7 +244,7 @@ public class CraftingVeloceMod {
             if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                 com.craftingveloce.network.pipe.VelocePipeNetworkManager manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
                 for (net.minecraft.core.BlockPos pos : event.getAffectedBlocks()) {
-                    if (manager.getNetworkForPipe(pos) != null) {
+                    if (manager.isPipe(sl, pos)) {
                         manager.onPipeBroken(sl, pos);
                     }
                 }

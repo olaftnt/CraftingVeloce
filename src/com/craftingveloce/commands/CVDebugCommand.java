@@ -84,11 +84,11 @@ public class CVDebugCommand {
                 false);
         source.sendSuccess(() -> Component.literal(
                 "§7Pending network rebuilds: §f" + manager.pendingRebuildCount()
-                        + " §7| networks: §f" + manager.getAllNetworks().size()),
+                        + " §7| networks: §f" + manager.getAllNetworks(sl).size()),
                 false);
         source.sendSuccess(() -> Component.literal(
                 "§7Ticking server: §fyes §7| gameTime: §f" + sl.getGameTime()), false);
-        for (VelocePipeNetwork net : manager.getAllNetworks()) {
+        for (VelocePipeNetwork net : manager.getAllNetworks(sl)) {
             source.sendSuccess(() -> Component.literal(
                     "  §8net §7" + net.getId().toString().substring(0, 8)
                             + " §7pipes=§f" + net.getPipes().size()
@@ -237,7 +237,7 @@ public class CVDebugCommand {
 
         source.sendSuccess(() -> Component.literal("§b--- WEZLY (trzymaja chunk na stale) ---"), false);
         java.util.List<BlockPos> allNodes = new java.util.ArrayList<>();
-        for (var net : manager.getAllNetworks()) {
+        for (var net : manager.getAllNetworks(sl)) {
             allNodes.addAll(net.getTerminals());
         }
         if (allNodes.isEmpty()) {
@@ -258,7 +258,7 @@ public class CVDebugCommand {
 
         source.sendSuccess(() -> Component.literal("§b--- MAGAZYNY (maja sie rozladowywac) ---"), false);
         java.util.Map<BlockPos, ConnectedEndpointInfo> allStorages = new java.util.LinkedHashMap<>();
-        for (var net : manager.getAllNetworks()) {
+        for (var net : manager.getAllNetworks(sl)) {
             allStorages.putAll(net.getEndpoints());
         }
         if (allStorages.isEmpty()) {
@@ -614,7 +614,7 @@ public class CVDebugCommand {
             return 1;
         } else if (be instanceof VelocePipeBlockEntity) {
             VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
-            VelocePipeNetwork net = manager.getNetworkForPipe(pos);
+            VelocePipeNetwork net = manager.getNetworkForPipe(sl, pos);
             player.sendSystemMessage(Component.literal("§6=== [CraftingVeloce Pipe Debug] ==="));
             player.sendSystemMessage(Component.literal("§7Pipe Pos: §f[" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]"));
             if (net == null) {

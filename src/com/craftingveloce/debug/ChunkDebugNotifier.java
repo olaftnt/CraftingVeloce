@@ -135,7 +135,7 @@ public final class ChunkDebugNotifier {
     private static List<String> describeContents(ServerLevel level, ChunkPos pos,
                                                  VelocePipeNetworkManager manager) {
         List<String> out = new java.util.ArrayList<>();
-        for (VelocePipeNetwork net : manager.getAllNetworks()) {
+        for (VelocePipeNetwork net : manager.getAllNetworks(level)) {
             for (BlockPos p : net.getTerminals()) {
                 if ((p.getX() >> 4) == pos.x && (p.getZ() >> 4) == pos.z) {
                     out.add("wezel [" + p.getX() + ", " + p.getY() + ", " + p.getZ()

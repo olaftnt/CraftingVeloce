@@ -596,9 +596,54 @@ public class VelocePipeNetworkManager extends SavedData {
         return networks.get(id);
     }
 
-    public VelocePipeNetwork getNetworkForPipe(BlockPos pos) {
-        UUID id = pipeToNetwork.get(pos);
-        return id != null ? networks.get(id) : null;
+    /**
+     * Czy na tej pozycji jest rura Veloce - TANIE sprawdzenie.
+     *
+     * <p><b>Po co osobne od {@link #getNetworkForPipe}.</b> To jest wolane
+     * w petli po wszystkich blokach wybuchu, wiec musi byc O(1). Budowanie
+     * sieci dla kazdego bloku wysadziloby tick.
+     *
+     * <p><b>Dlaczego nie mapa {@code pipeToNetwork}.</b> BUG, ktory tu byl:
+     * handlery zniszczenia i wybuchu pytaly o siec przez mape wypelniana
+     * przez {@code scanAndBuildNetwork} - a ten przy 1100 rurach CZESTO
+     * przekracza budzet 20 ms i zwraca null (w logu: "exceeded 20 ms budget
+     * after 302/482/664/746/844 pipe(s)"). Mapa byla wiec nieaktualna i
+     * zniszczenie rury moglo zostac PRZEOCZONE - flat world trzymal rure,
+     * ktorej juz nie ma, a siec wygladala na polaczona mimo rozciecia.
+     *
+     * <p>Teraz pytamy strukture plaska, ktora jest zrodlem prawdy i jest
+     * aktualizowana przy kazdym postawieniu/zmianie sasiada.
+     */
+    public boolean isPipe(ServerLevel level, BlockPos pos) {
+        if (world.hasPipe(pos)) {
+            return true;
+        }
+        // Struktura moze jeszcze nie znac tej rury (np. postawiona w chwili,
+        // gdy nie byla synchronizowana) - sprawdzamy swiat, jesli zaladowany.
+        if (level.isLoaded(pos)
+                && level.getBlockState(pos).getBlock() instanceof VelocePipeBlock) {
+            syncPipe(level, pos);
+            return world.hasPipe(pos);
+        }
+        return false;
+    }
+
+    /**
+     * Siec zawierajaca te rure - wyliczona z plaskiej struktury.
+     *
+     * <p>Uzywane przez diagnostyke ({@code /cv debug} na rurze), zeby raport
+     * pokazywal DOKLADNIE to samo, co widzi terminal. Wczesniej ta metoda
+     * czytala stara mape i potrafila pokazac inny stan niz terminal - co
+     * mylilo przy diagnozie.
+     */
+    @Nullable
+    public VelocePipeNetwork getNetworkForPipe(ServerLevel level, BlockPos pos) {
+        if (!world.hasPipe(pos)) {
+            if (!isPipe(level, pos)) {
+                return null;
+            }
+        }
+        return buildFromComponent(level, pos);
     }
 
     /**
@@ -642,9 +687,38 @@ public class VelocePipeNetworkManager extends SavedData {
         return null;
     }
 
-    public Collection<VelocePipeNetwork> getAllNetworks() {
-        return Collections.unmodifiableCollection(networks.values());
+    /**
+     * Wszystkie sieci - WYLICZONE z plaskiej struktury.
+     *
+     * <p><b>Dlaczego nie z mapy {@code networks}.</b> Ta mapa jest wypelniana
+     * przez {@code scanAndBuildNetwork}, ktory przy 1100 rurach czesto
+     * przekracza budzet i zwraca null. Raporty pokazywaly wiec inny stan niz
+     * terminal (ktory liczy z plaskiej struktury) - co mylilo przy diagnozie
+     * i ukrywalo prawdziwe bledy.
+     *
+     * <p>Wynik jest cache'owany na jeden tick gry, zeby kilka odczytow w tej
+     * samej komendzie nie budowalo sieci od nowa.
+     */
+    public Collection<VelocePipeNetwork> getAllNetworks(ServerLevel level) {
+        long now = level.getGameTime();
+        if (derivedNetworks != null && derivedNetworksTick == now) {
+            return derivedNetworks;
+        }
+        java.util.List<VelocePipeNetwork> out = new java.util.ArrayList<>();
+        for (BlockPos root : world.componentRoots()) {
+            VelocePipeNetwork net = buildFromComponent(level, root);
+            if (net != null) {
+                out.add(net);
+            }
+        }
+        derivedNetworks = java.util.Collections.unmodifiableList(out);
+        derivedNetworksTick = now;
+        return derivedNetworks;
     }
+
+    /** Cache listy sieci wyliczonej z plaskiej struktury. */
+    private java.util.List<VelocePipeNetwork> derivedNetworks;
+    private long derivedNetworksTick = Long.MIN_VALUE;
 
     public void rebuildAt(ServerLevel level, BlockPos startPos) {
         if (!level.isLoaded(startPos)) return;
