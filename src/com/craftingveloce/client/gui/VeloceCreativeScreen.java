@@ -67,6 +67,18 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     @Nullable
     private GameType modeBeforeOpen;
 
+    /**
+     * Refleksja rozwiazana RAZ, a nie przy kazdym odswiezeniu.
+     *
+     * <p>{@code getMethod}/{@code getDeclaredField}/{@code setAccessible} to
+     * wzglednie drogie operacje (przegladanie hierarchii klas). Wczesniej
+     * lecialy 20 razy na sekunde przez cala sesje z otwartym GUI.
+     */
+    private static java.lang.reflect.Method scrollToMethod;
+    private static java.lang.reflect.Field scrollOffsFieldRef;
+    private static boolean reflectionResolved;
+
+
     protected VeloceCreativeScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                    boolean displayOperatorCreativeTab) {
         super(player, enabledFeatures, displayOperatorCreativeTab);
@@ -131,7 +143,10 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
     @Override
     public void containerTick() {
-        // Nie odswiezamy zawartosci automatycznie - lista ma byc stabilna.
+        // Wolamy co tick, bo vanilla przebudowuje liste itemow przy zmianie
+        // zakladki BEZ wolania init() - gdybysmy polegali na wlasnej fladze,
+        // filtr przestalby sie kiedys stosowac. Sam applyItemFilter() wychodzi
+        // natychmiast, gdy wynik jest taki sam jak ostatnio.
         applyItemFilter();
     }
 
@@ -159,8 +174,30 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
                     kept.add(st);
                 }
             }
+
             @SuppressWarnings("unchecked")
             NonNullList<ItemStack> items = (NonNullList<ItemStack>) list;
+
+            // Szybkie wyjscie. Porownujemy to, co REALNIE lezy w liscie menu,
+            // z tym czego chcemy - a nie z wlasnym poprzednim wynikiem.
+            //
+            // Roznica jest istotna: vanilla przebudowuje liste przy zmianie
+            // zakladki, czesto wstawiajac TE SAME instancje ItemStack. Porownanie
+            // z wlasnym wynikiem uznaloby wiec "nic sie nie zmienilo" i filtr
+            // przestalby sie stosowac. Porownanie ze stanem listy dziala zawsze:
+            // jesli vanilla ja przebudowala, lista sie rozni i filtrujemy znowu.
+            boolean alreadyFiltered = true;
+            for (int i = 0; i < total; i++) {
+                ItemStack want = i < kept.size() ? kept.get(i) : ItemStack.EMPTY;
+                if (items.get(i) != want) {
+                    alreadyFiltered = false;
+                    break;
+                }
+            }
+            if (alreadyFiltered) {
+                return;   // lista juz jest taka, jaka ma byc
+            }
+
             for (int i = 0; i < total; i++) {
                 items.set(i, i < kept.size() ? kept.get(i) : ItemStack.EMPTY);
             }
@@ -182,20 +219,46 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      */
     private void refreshSlotsFromItems() {
         try {
-            java.lang.reflect.Method scrollTo = this.menu.getClass()
-                    .getMethod("scrollTo", float.class);
-            scrollTo.setAccessible(true);
-            scrollTo.invoke(this.menu, currentScrollOffset());
+            if (!reflectionResolved) {
+                resolveReflection();
+            }
+            if (scrollToMethod == null) {
+                return;
+            }
+            scrollToMethod.invoke(this.menu, currentScrollOffset());
         } catch (Throwable ignored) {
+        }
+    }
+
+    /** Rozwiazuje refleksje raz na proces, nie raz na tick. */
+    private void resolveReflection() {
+        reflectionResolved = true;
+        try {
+            scrollToMethod = CreativeModeInventoryScreen.class
+                    .getMethod("scrollTo", float.class);
+            scrollToMethod.setAccessible(true);
+        } catch (Throwable t) {
+            scrollToMethod = null;
+        }
+        try {
+            scrollOffsFieldRef = CreativeModeInventoryScreen.class
+                    .getDeclaredField("scrollOffs");
+            scrollOffsFieldRef.setAccessible(true);
+        } catch (Throwable t) {
+            scrollOffsFieldRef = null;
         }
     }
 
     /** Biezaca pozycja przewijania listy (pole 'scrollOffs' w vanilla). */
     private float currentScrollOffset() {
         try {
-            Field f = CreativeModeInventoryScreen.class.getDeclaredField("scrollOffs");
-            f.setAccessible(true);
-            Object v = f.get(this);
+            if (!reflectionResolved) {
+                resolveReflection();
+            }
+            if (scrollOffsFieldRef == null) {
+                return 0.0f;
+            }
+            Object v = scrollOffsFieldRef.get(this);
             if (v instanceof Float fl) {
                 return fl;
             }
