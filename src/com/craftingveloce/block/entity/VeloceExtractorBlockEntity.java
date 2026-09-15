@@ -148,6 +148,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
      * nikt ich wczesniej nie wyprodukowal.
      */
     private ItemStack extractOrCraft(ServerLevel sl, VelocePipeNetwork net, Item item, int count) {
+        com.craftingveloce.crafting.VeloceCraftingCache.get(net).markBusy(sl);
         ItemStack direct = net.extractItem(sl, item, count);
         if (!direct.isEmpty()) {
             return direct;

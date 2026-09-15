@@ -74,7 +74,19 @@ public final class VeloceCraftingCache {
      * Co ile tickow wolno zrobic pelny skan stocku (weryfikacja).
      * Miedzy skanami polegamy na taniej detekcji zmian.
      */
-    private static final int FULL_STOCK_SCAN_INTERVAL = 200;   // 10 s
+    private static final int FULL_STOCK_SCAN_INTERVAL = 20;   // 1 s
+
+    /**
+     * Krotki interwal po operacji gracza.
+     *
+     * <p>Gdy gracz wyciaga lub wklada itemy, chce zobaczyc zaktualizowane
+     * liczby NATYCHMIAST, a nie po sekundzie. Przez kilka tickow po takiej
+     * operacji skanujemy czesciej.
+     */
+    private static final int BUSY_SCAN_INTERVAL = 2;
+
+    /** Do kiedy (gameTime) skanujemy w trybie "po operacji gracza". */
+    private long busyUntil = 0;
 
     // --- Rejestry -----------------------------------------------------
 
@@ -102,6 +114,14 @@ public final class VeloceCraftingCache {
      * zadnych liczb "+N".
      */
     private boolean initialScanQueued = false;
+
+    /**
+     * Czy trzeba przeliczyc wszystko od nowa, bo zmienil sie sklad sieci.
+     *
+     * <p>Ustawiane przy dolaczeniu/odlaczeniu skrzyni, zaladowaniu chunka czy
+     * zmianie wezlow. Wykonywane porcjami w ticku, zeby nie zamulic serwera.
+     */
+    private boolean needsFullRescan = false;
 
     /** Migawka stocku do wykrywania zmian. */
     private final Map<Item, Long> lastStock = new HashMap<>();
@@ -229,7 +249,8 @@ public final class VeloceCraftingCache {
         //    Potem juz rzadko, bo to jedyne miejsce czytajace cala siec.
         long now = level.getGameTime();
         boolean firstScan = lastFullStockScan == Long.MIN_VALUE;
-        if (firstScan || now - lastFullStockScan >= FULL_STOCK_SCAN_INTERVAL) {
+        int interval = now < busyUntil ? BUSY_SCAN_INTERVAL : FULL_STOCK_SCAN_INTERVAL;
+        if (firstScan || now - lastFullStockScan >= interval) {
             lastFullStockScan = now;
             detectStockChanges(level);
             if (System.nanoTime() - start > TICK_BUDGET_NS) {
@@ -243,12 +264,21 @@ public final class VeloceCraftingCache {
             maintainForcedChunks(level);
         }
 
-        // 2. Pierwszy skan. Kolejkujemy itemy obecne w sieci (to widzi GUI)
-        //    oraz - w ramach limitu - reszte wlaczonych, zeby liczby byly
-        //    dostepne takze dla itemow, ktorych chwilowo nie ma.
-        if (!initialScanQueued && pending.isEmpty()) {
+        // 2. Pierwszy skan ALBO ponowny skan po zmianie skladu sieci.
+        //    Kolejkujemy itemy obecne w sieci (to widzi GUI) oraz - w ramach
+        //    limitu - reszte wlaczonych.
+        if ((!initialScanQueued || needsFullRescan) && pending.isEmpty()) {
             initialScanQueued = true;
+            boolean rescan = needsFullRescan;
+            needsFullRescan = false;
+            // Przy ponownym skanie czyscimy stare liczby, zeby nie pokazywac
+            // nieaktualnych wartosci podczas przeliczania.
+            if (rescan) {
+                craftable.clear();
+            }
             queueInitialScan(enabledItems);
+            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                    "crafting cache: {} scan starting", rescan ? "full rescan" : "initial");
         }
 
         // 3. Przeliczaj porcje, dopoki starcza budzetu.
@@ -464,13 +494,19 @@ public final class VeloceCraftingCache {
 
     /** Inventory podlaczone/odlaczone albo chunk zaladowany/rozladowany. */
     public void onEndpointChanged(ServerLevel level) {
-        // Nie wiemy co sie zmienilo - trzeba na nowo odczytac stock.
-        // Robimy to leniwie: najblizszy pelny skan to zalapie, a dodatkowo
-        // przeliczamy wszystko, bo sklad mogl sie zmienic globalnie.
-        lastFullStockScan = Long.MIN_VALUE;
-        queueAll(enabledFallback());
+        // Zmienil sie sklad sieci (dolaczona/odlaczona skrzynia, chunk, wezel).
+        // Nie wiemy CO dokladnie, wiec trzeba przeliczyc na nowo.
+        //
+        // Wazne: NIE czyscimy kolejki i NIE kolejkujemy wszystkiego od razu.
+        // Poprzednia wersja przy kazdym wywolaniu startowala od zera, a ze
+        // zdarzen bylo duzo, cache nigdy nie konczyl liczenia - liczby w GUI
+        // zostawaly stare az do ponownego otwarcia terminala.
+        //
+        // Zamiast tego: oznaczamy pelny skan jako potrzebny i pozwalamy
+        // normalnemu tickowi go wykonac, porcjami.
+        needsFullRescan = true;
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "crafting cache: endpoint set changed - scheduling refresh");
+                "crafting cache: network composition changed - full rescan scheduled");
     }
 
     /**
@@ -482,6 +518,17 @@ public final class VeloceCraftingCache {
      */
     public void forceRefreshOnNextTick() {
         lastFullStockScan = Long.MIN_VALUE;
+    }
+
+    /**
+     * Gracz wlasnie wyciagnal albo wlozyl itemy - przyspiesz odswiezanie.
+     *
+     * <p>Wywolywane po operacji na terminalu, hopperze czy rurze. Przez
+     * kilkanascie tickow cache skanuje stock czesciej, zeby liczby "+N"
+     * zaktualizowaly sie od razu, a nie po sekundzie.
+     */
+    public void markBusy(ServerLevel level) {
+        busyUntil = level.getGameTime() + 40;   // 2 s przyspieszonego skanowania
     }
 
     /** Item zmienil sie lokalnie (np. po craftowaniu). */
@@ -496,16 +543,5 @@ public final class VeloceCraftingCache {
         }
     }
 
-    /** Kolejkuje wszystko, co znamy. */
-    private void queueAll(Set<Item> items) {
-        for (Item it : items) {
-            if (queued.add(it)) {
-                pending.add(it);
-            }
-        }
-    }
 
-    private Set<Item> enabledFallback() {
-        return new HashSet<>(craftable.keySet());
-    }
 }

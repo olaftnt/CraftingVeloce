@@ -358,6 +358,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
                     "network found: %d endpoint(s) for terminal at %s",
                     net.getEndpoints().size(), worldPosition);
+            // Gracz wlasnie cos wyciagnal - przyspiesz odswiezanie liczb.
+            com.craftingveloce.crafting.VeloceCraftingCache.get(net).markBusy(sl);
+
             ItemStack extracted = net.extractItem(sl, requested.getItem(), count);
             if (!extracted.isEmpty()) {
                 com.craftingveloce.util.VeloceLog.Craft.success(
