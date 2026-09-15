@@ -8,3 +8,7 @@ backup_archive/
 backup_extracted/
 compiled_classes/
 .DS_Store
+
+# Artefakty Pythona (generowane przy uruchomieniu skryptow).
+__pycache__/
+*.pyc
