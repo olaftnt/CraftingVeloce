@@ -207,6 +207,7 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         super.render(graphics, mouseX, mouseY, partialTick);
         drawHotbarCover(graphics, 0xFFC6C6C6);
         renderRecipeTooltip(graphics, mouseX, mouseY);
+        renderTabTooltip(graphics, mouseX, mouseY);
     }
 
     // ------------------------------------------------------------------

@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.NonNullList;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -232,6 +233,50 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             }
         }
         return null;
+    }
+
+    /**
+     * Tooltip na ikonce zakladki - podpowiada, ze prawy klik przelacza
+     * cala kategorie. Pokazywany tylko gdy podkursorem jest zakladka i gdy
+     * w tej zakladce jest w ogole cos do przelaczenia.
+     *
+     * <p>Wywoływane z {@link #render} podklas. Vanilla nie rysuje zadnego
+     * tooltipa dla zakladek, wiec dodajemy go sami.
+     */
+    protected void renderTabTooltip(net.minecraft.client.gui.GuiGraphics graphics,
+                                    int mouseX, int mouseY) {
+        if (this.minecraft == null) {
+            return;
+        }
+        net.minecraft.world.item.CreativeModeTab tab = tabUnderMouse(mouseX, mouseY);
+        if (tab == null || !acceptTab(tab)) {
+            return;
+        }
+        // Sprawdzamy, czy w zakladce jest cokolwiek, co da sie przelaczyc.
+        int toggleable = 0;
+        boolean anyOn = false;
+        for (ItemStack st : tab.getDisplayItems()) {
+            if (st.isEmpty() || !isToggleable(st)) {
+                continue;
+            }
+            toggleable++;
+            if (isToggledOn(st.getItem())) {
+                anyOn = true;
+            }
+        }
+        if (toggleable == 0) {
+            return;
+        }
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(tab.getDisplayName());
+        lines.add(Component.literal("§8Right click to change all"));
+        lines.add(Component.literal(anyOn
+                ? "§7→ wyłączy §f" + toggleable + "§7 itemów"
+                : "§7→ włączy §f" + toggleable + "§7 itemów"));
+
+        graphics.renderTooltip(this.font, lines,
+                java.util.Optional.empty(), mouseX, mouseY);
     }
 
     /**
