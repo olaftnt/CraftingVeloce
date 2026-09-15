@@ -386,10 +386,17 @@ public class CVDebugCommand {
             if (!linked && sl.isLoaded(np)) {
                 var st = sl.getBlockState(np);
                 var b = st.getBlock();
-                if (b instanceof VeloceTomTerminalBlock
-                        || b instanceof com.craftingveloce.block.VeloceExtractorBlock
-                        || b instanceof com.craftingveloce.block.VeloceCraftingTableBlock
-                        || b instanceof com.craftingveloce.block.VeloceControllerBlock) {
+                // Czy to wezel - pytamy WSPOLNE zrodlo prawdy, a nie liste
+                // typow przepisana recznie.
+                //
+                // BUG, ktory tu byl: ta lista miala terminal, ekstraktor,
+                // crafter i kontroler, a NIE miala dwoch piecow ani czujnika
+                // progu. Diagnostyka meldowala wiec, ze piec stojacy obok rury
+                // NIE jest wezlem ("link=nie"), czyli klamala dokladnie o tym,
+                // co gracz debugowal. Kazdy nowy blok wymagal pamietania o tym
+                // miejscu - a to jest ten sam wzorzec, ktory juz trzy razy
+                // rozjechal sie w tym projekcie.
+                if (com.craftingveloce.network.pipe.VeloceNodeBlocks.isNode(b)) {
                     isNode = true;
                     linked = VelocePipeNetworkManager.nodeConnectsToPipe(
                             sl, np, d.getOpposite());
@@ -496,8 +503,25 @@ public class CVDebugCommand {
         if (b instanceof com.craftingveloce.block.VeloceControllerBlock) {
             return "§aKONTROLER " + loadedTag(sl, p);
         }
-        if (VelocePipeBlock.canConnectToInventory(sl, p, Direction.UP)) {
-            return "§eMAGAZYN (" + b.getName().getString() + ") " + loadedTag(sl, p);
+        if (b instanceof com.craftingveloce.block.VeloceVelocityFurnaceBlock) {
+            return "§aPIEC PALIWOWY " + loadedTag(sl, p);
+        }
+        if (b instanceof com.craftingveloce.block.VeloceElectricFurnaceBlock) {
+            return "§aPIEC ELEKTRYCZNY " + loadedTag(sl, p);
+        }
+        if (b instanceof com.craftingveloce.block.VeloceThresholdSensorBlock) {
+            return "§aCZUJNIK PROGU " + loadedTag(sl, p);
+        }
+        // Magazyn: sprawdzamy WSZYSTKIE strony, nie tylko gore.
+        //
+        // Bylo tu `canConnectToInventory(sl, p, Direction.UP)` - wiec pojemnik,
+        // ktory przyjmuje tylko z boku (np. maszyna z przodu), opisywal sie jako
+        // zwykly blok. W diagnostyce "czemu siec tego nie widzi" to jest wlasnie
+        // ta informacja, ktorej sie szuka.
+        for (Direction d : Direction.values()) {
+            if (VelocePipeBlock.canConnectToInventory(sl, p, d)) {
+                return "§eMAGAZYN (" + b.getName().getString() + ") " + loadedTag(sl, p);
+            }
         }
         return "§8" + b.getName().getString();
     }

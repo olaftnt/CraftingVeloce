@@ -1,5 +1,6 @@
 package com.craftingveloce.crafting;
 
+import com.craftingveloce.util.VeloceLog;
 import com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity;
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
 import net.minecraft.core.BlockPos;
@@ -40,11 +41,30 @@ public final class VeloceCraftingRegistry {
                 .thenComparingInt(p -> p.getY())
                 .thenComparingInt(p -> p.getZ()));
         java.util.List<VeloceCraftingTableBlockEntity> out = new java.util.ArrayList<>();
+        int unreadable = 0;
         for (BlockPos pos : sorted) {
             BlockEntity be = level.getBlockEntity(pos);
             if (be instanceof VeloceCraftingTableBlockEntity crafter) {
                 out.add(crafter);
+            } else if (be == null) {
+                // Wezel, ktorego NIE DA SIE ODCZYTAC (chunk nie jest zaladowany).
+                //
+                // Liczymy to i raportujemy, bo inaczej awaria jest CICHA:
+                // crafter wypada z listy, `getAllEnabledItems` zwraca pusty
+                // zbior i cale auto-craftowanie wylacza sie bez jednego sladu
+                // w logu - a objaw ("auto-crafting OFF na wszystkim") jest
+                // identyczny z bledem, ktory juz raz tu byl. Gdyby ktokolwiek
+                // to widzial w logu, szukalby przyczyny w force-loadach,
+                // a nie w recepturach.
+                unreadable++;
             }
+        }
+        if (unreadable > 0) {
+            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                    "%d node(s) of the network could not be read (chunk not loaded) - "
+                            + "auto-crafting may look disabled for everything; "
+                            + "check /cv chunk status",
+                    unreadable);
         }
         return out;
     }
