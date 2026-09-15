@@ -168,16 +168,28 @@ public class CraftingVeloceMod {
         NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.event.tick.LevelTickEvent.Post.class, event -> {
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
-                        com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl).tick(sl);
+                        // Kazda z tych trzech operacji siega do kodu obcego moda
+                        // (block entity Toma, Refined Storage, kontenery), a leci
+                        // z ticku POZIOMU. Bez osłony jeden wyjatek z obcej
+                        // biblioteki konczy sie crashem "Exception ticking world",
+                        // bez wskazania, ze to nasza robota. Osłona loguje pelny
+                        // stack trace (zawsze, niezaleznie od configu) i tlumi
+                        // tylko powtarzanie tego samego bledu.
+                        long now = sl.getGameTime();
+                        com.craftingveloce.util.VeloceGuard.run("krok sieci rur", now,
+                                () -> com.craftingveloce.network.pipe.VelocePipeNetworkManager
+                                        .get(sl).tick(sl));
                         // Stany crafterow rozglaszamy raz na tick, a nie raz
                         // na kazde przelaczenie itemu.
-                        com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity
-                                .flushPendingSyncs(sl);
+                        com.craftingveloce.util.VeloceGuard.run("rozglaszanie stanow crafterow", now,
+                                () -> com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity
+                                        .flushPendingSyncs(sl));
                         // Utrzymanie force-loadow sieci. Sterownikiem jest TICK
                         // POZIOMU, a nie terminal - inaczej siec bez terminala nie
                         // trzymalaby swoich chunkow i automatyka padalaby, gdy
                         // gracz odejdzie (patrz VeloceCraftingCache.tickAll).
-                        com.craftingveloce.crafting.VeloceCraftingCache.tickAll(sl);
+                        com.craftingveloce.util.VeloceGuard.run("utrzymanie force-loadow", now,
+                                () -> com.craftingveloce.crafting.VeloceCraftingCache.tickAll(sl));
                     }
                 });
 
