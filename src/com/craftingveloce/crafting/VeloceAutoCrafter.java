@@ -1143,10 +1143,24 @@ public final class VeloceAutoCrafter {
     // ------------------------------------------------------------------
 
     private static boolean execute(ServerLevel level, Context ctx, Plan plan) {
+        // Zrodla ciepla pobieramy RAZ na cale wykonanie planu.
+        //
+        // Kazde przepalenie wolalo wczesniej VeloceHeatSources.consume(), a to
+        // robilo dwa pelne przejscia po terminalach sieci z sortowaniem. Plan
+        // moze miec kilkaset przepalen (jeden naladowany piec elektryczny to
+        // 125 operacji), wiec bylo to setki skanow w jednym ticku.
+        //
+        // Bezpieczenstwo: w obrebie jednego wykonania zbior zrodel sie nie
+        // zmienia, a nawet gdyby chunk z piecem wypadl z symulacji, trzymana
+        // referencja do block entity jest nadal waznym obiektem Java - czytamy
+        // z niej tylko wlasne pola licznika.
+        java.util.List<com.craftingveloce.block.entity.VeloceHeatSource> heat =
+                VeloceHeatSources.allIn(level, ctx.network);
+
         // Plan jest w kolejnosci post-order: skladniki produkowane przed uzyciem.
         for (PlannedRun run : plan.runs) {
             for (long i = 0; i < run.times(); i++) {
-                if (!runOnce(level, ctx, run.recipe())) {
+                if (!runOnce(level, ctx, run.recipe(), heat)) {
                     return false;
                 }
             }
@@ -1156,7 +1170,8 @@ public final class VeloceAutoCrafter {
 
     /** Jedno wykonanie receptury: pobierz skladniki, wstaw wynik. */
     private static boolean runOnce(ServerLevel level, Context ctx,
-                                   VeloceRecipeRegistry.CraftingEntry recipe) {
+                                   VeloceRecipeRegistry.CraftingEntry recipe,
+                                   java.util.List<com.craftingveloce.block.entity.VeloceHeatSource> heat) {
         // 1. NAJPIERW POBRANIE SKLADNIKOW, POTEM ZAPLATA CIEPLEM.
         //
         // Odwrotna kolejnosc (cieplo najpierw) przepalala energie na darmo:
@@ -1187,7 +1202,7 @@ public final class VeloceAutoCrafter {
         // (priorytet 0), a dopiero gdy w nim zabraknie, dobiera reszte
         // z paliwowego (1) - dokladnie jak w specyfikacji. Przy niepowodzeniu
         // nie zabiera NICZEGO.
-        if (recipe.isFurnace() && !VeloceHeatSources.consume(level, ctx.network, 1)) {
+        if (recipe.isFurnace() && !VeloceHeatSources.consumeFrom(heat, 1)) {
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                     "recipe %s needs heat, but no powered furnace could pay for it", recipe.id());
             for (ItemStack s : consumed) {

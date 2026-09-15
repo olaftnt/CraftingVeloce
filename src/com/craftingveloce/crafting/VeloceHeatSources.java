@@ -110,21 +110,6 @@ public final class VeloceHeatSources {
     }
 
     /**
-     * Zrodlo, z ktorego bierzemy cieplo: zasilone, o najmniejszym priorytecie.
-     *
-     * <p>Kolejnosc jest wymaganiem, nie preferencja: piec elektryczny (0) ma
-     * byc uzywany PIERWSZY, a paliwowy (1) jest fallbackiem na wypadek, gdy
-     * zabraknie pradu. {@link #poweredIn} juz sortuje po priorytecie, wiec
-     * wystarczy wziac pierwsze.
-     *
-     * @return zasilone zrodlo albo {@code null}, gdy sieci na nic nie stac
-     */
-    public static VeloceHeatSource preferred(ServerLevel level, VelocePipeNetwork network) {
-        List<VeloceHeatSource> powered = poweredIn(level, network);
-        return powered.isEmpty() ? null : powered.get(0);
-    }
-
-    /**
      * Zabiera cieplo na {@code operations} przepalen, z najlepszego zrodla.
      *
      * <p><b>Fallback w trakcie.</b> Bierzemy z jednego zrodla tyle, ile ono ma
@@ -133,20 +118,52 @@ public final class VeloceHeatSources {
      * niepowodzeniem - 3 ida z pradu, 2 z paliwa, dokladnie tak, jak opisuje
      * specyfikacja ("dopiero gdy zabraknie pradu, fallback na paliwowy").
      *
+     * <p><b>Wydajnosc:</b> to wygodny wariant dla wolajacego, ktory nie ma
+     * jeszcze listy zrodel - pobiera ja sam. Sciezka wykonania planu (gorąca,
+     * wolana raz na kazda przepalona sztuke) uzywa {@link #consumeFrom} z lista
+     * pobrana RAZ, zeby nie skanowac sieci setki razy w jednym ticku.
+     *
      * @return {@code true} gdy udalo sie zabrac CALOSC; przy {@code false}
      *         nie zabieramy niczego (wolajacy ma wtedy przerwac operacje)
      */
     public static boolean consume(ServerLevel level, VelocePipeNetwork network, long operations) {
+        return consumeFrom(allIn(level, network), operations);
+    }
+
+    /**
+     * Zabiera cieplo z JUZ POBIERANEJ listy zrodel.
+     *
+     * <p><b>Po co osobna metoda.</b> {@link #consume} jest wolane raz na KAZDA
+     * przepalona sztuke w petli wykonania planu, a kazde wywolanie robilo DWA
+     * pelne przejscia po terminalach sieci z sortowaniem (raz przez
+     * {@code totalOperations}, raz przez {@code poweredIn}). Przy planie na
+     * kilkaset przepalen (jeden w pelni naladowany piec elektryczny to 125
+     * operacji) dawalo to setki skanow i sortowan w JEDNYM ticku.
+     *
+     * <p>Lista zrodel nie zmienia sie w trakcie jednego wykonania planu, wiec
+     * wolajacy pobiera ja RAZ i podaje tutaj. Semantyka jest identyczna jak
+     * w {@link #consume}: suma liczona po wszystkich zrodlach, ale zabieramy
+     * wylacznie z zasilonych, w kolejnosci priorytetu (elektryczny przed
+     * paliwowym - patrz {@link #allIn}).
+     */
+    public static boolean consumeFrom(List<VeloceHeatSource> sources, long operations) {
         if (operations <= 0) {
             return true;
         }
-        if (totalOperations(level, network) < operations) {
+        long total = 0;
+        for (VeloceHeatSource heat : sources) {
+            total += Math.max(0L, heat.availableOperations());
+        }
+        if (total < operations) {
             return false;
         }
         long left = operations;
-        for (VeloceHeatSource heat : poweredIn(level, network)) {
+        for (VeloceHeatSource heat : sources) {
             if (left <= 0) {
                 break;
+            }
+            if (!heat.isPowered()) {
+                continue;   // dokladnie to samo, co filtrowalo poweredIn()
             }
             long take = Math.min(left, Math.max(0L, heat.availableOperations()));
             if (take <= 0) {
