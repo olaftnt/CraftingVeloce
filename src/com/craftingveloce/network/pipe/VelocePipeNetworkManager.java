@@ -1116,6 +1116,25 @@ public class VelocePipeNetworkManager extends SavedData {
         newNet.getEndpoints().putAll(discoveredEndpoints);
         newNet.updateTrackedChunks();
 
+        // KLUCZOWE: synchronizuj knownEndpoints z nowo odkrytymi.
+        //
+        // BUG, ktory tu byl: scanAndBuildNetwork budowal nowe endpointy
+        // (z refreshIfLoaded gdy chunk jest zaladowany), ale NIE aktualizowal
+        // knownEndpoints. Efekt: po teleporcie obok beczki (chunk zaladowany ->
+        // przebudowa z poprawnym odczytem) i z powrotem na start (chunk
+        // rozladowany) - terminal pytal buildFromComponent, ktory bral z
+        // knownEndpoints, ale tam byl stary pusty endpoint z NBT-load.
+        // Terminal widzial 0 typow mimo ze beczka miala itemy.
+        for (Map.Entry<BlockPos, ConnectedEndpointInfo> e : discoveredEndpoints.entrySet()) {
+            if (level.isLoaded(e.getKey())) {
+                // Swiezy odczyt z zaladowanego chunku - zastepuje stary.
+                knownEndpoints.put(e.getKey(), e.getValue());
+            } else {
+                // Niezaladowany - zachowaj tylko jesli nie mamy lepszego.
+                knownEndpoints.putIfAbsent(e.getKey(), e.getValue());
+            }
+        }
+
         networks.put(finalId, newNet);
         for (BlockPos p : visitedPipes) {
             pipeToNetwork.put(p, finalId);
