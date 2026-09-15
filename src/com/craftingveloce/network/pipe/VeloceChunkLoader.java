@@ -164,8 +164,29 @@ public final class VeloceChunkLoader {
         if (entry.tickets.size() > 1) {
             return false;   // ktos inny juz trzyma - nic nie robimy
         }
+        // CZY MY JUZ TO WYMUSILISMY?
+        //
+        // BUG, ktory tu byl: ten sam wlasciciel zglaszal sie co kilkadziesiat
+        // tickow (cache craftowalnosci odswieza sie w kolko) i ZA KAZDYM RAZEM
+        // lecielismy do setChunkForced(true). Dla wanilii powtorka na juz
+        // wymuszonym chunku jest no-opem, wiec chunk sie NIE przeladowywal -
+        // ale nasz wlasny licznik petli (watchForce) liczyl te wolania jako
+        // "wymuszenia" i po piatej powtorce w oknie 200 tickow wypisywal
+        // [FAIL] "... this is the load/unload loop signature".
+        //
+        // Efekt: 78 straszących bledow w jednej sesji, wszystkie NIEPRAWDZIWE
+        // (trzy chunki po 26 razy), a prawdziwa petla utonelaby w tym szumie.
+        //
+        // Pytamy wiec WANILIE o faktyczny stan (getForcedChunks to zwykla
+        // referencja do zbioru, O(1)), a nie wlasna ksiegowosc: jesli ktokolwiek
+        // (takze inny mod) zdjal to wymuszenie, wymuszamy ponownie i wtedy
+        // licznik naprawde ma cos do zaraportowania.
+        boolean weApplied = APPLIED.computeIfAbsent(level, k -> new HashSet<>()).contains(chunkKey);
+        if (weApplied && level.getForcedChunks().contains(chunkKey)) {
+            return false;   // juz wymuszony - powtorka nic nie wnosi
+        }
         level.setChunkForced(ChunkPos.getX(chunkKey), ChunkPos.getZ(chunkKey), true);
-        APPLIED.computeIfAbsent(level, k -> new HashSet<>()).add(chunkKey);
+        APPLIED.get(level).add(chunkKey);
         watchForce(level, chunkKey, owner, reason, ownerPos);
         return true;
     }
@@ -262,9 +283,15 @@ public final class VeloceChunkLoader {
 
     /** Fizycznie zdejmuje wymuszenie i sprzata ksiegowosc. */
     private static void unforce(ServerLevel level, long chunkKey) {
-        level.setChunkForced(ChunkPos.getX(chunkKey), ChunkPos.getZ(chunkKey), false);
+        // Zdejmujemy wymuszenie TYLKO wtedy, gdy to my je nalozylismy.
+        //
+        // setChunkForced(false) nie zna pojecia wlasciciela - zdjeloby wymuszenie
+        // nalozone przez kogos innego (np. gracza przez /forceload albo inny mod).
+        // Bez tego warunku nasza ksiegowosc mowila "to nasze", a wanilia tracila
+        // cudze wymuszenie.
         Set<Long> applied = APPLIED.get(level);
-        if (applied != null) {
+        if (applied != null && applied.contains(chunkKey)) {
+            level.setChunkForced(ChunkPos.getX(chunkKey), ChunkPos.getZ(chunkKey), false);
             applied.remove(chunkKey);
             if (applied.isEmpty()) {
                 APPLIED.remove(level);
@@ -533,7 +560,7 @@ public final class VeloceChunkLoader {
     /**
      * Zwalnia "sieroty": chunki wymuszone, ktorych nikt juz nie pilnuje.
      *
-     * <p><b>Skad sie biara.</b> {@code ServerLevel.setChunkForced()} jest
+     * <p><b>Skad sie biora.</b> {@code ServerLevel.setChunkForced()} jest
      * zapisywany przez Minecraft TRWALE, w danych swiata. Nasza ksiegowosc
      * ({@code APPLIED}, {@code REFS}) zyje tylko w pamieci i resetuje sie przy
      * restarcie. Jesli wiec kiedykolwiek wymusilismy chunk i swiat zostal
