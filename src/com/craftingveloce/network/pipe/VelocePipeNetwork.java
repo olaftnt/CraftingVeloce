@@ -274,6 +274,29 @@ public class VelocePipeNetwork {
         return new HashMap<>(total);
     }
 
+    /**
+     * Ile wolnych slotow ma cala siec; {@code -1} gdy nie wiadomo.
+     *
+     * <p>Uzywane przez klienta do NATYCHMIASTOWEGO zablokowania odkladania,
+     * gdy siec jest pelna - zamiast wysylac pakiet i cofac stan po odpowiedzi.
+     *
+     * <p>Jesli CHOC JEDEN magazyn ma nieznana pojemnosc (np. Refined Storage),
+     * zwracamy {@code -1} ("nie wiem"). Wtedy klient nie blokuje: lepiej
+     * przepuscic operacje i pozwolic serwerowi zdecydowac, niz zablokowac
+     * cos, co mogloby sie udac.
+     */
+    public int getFreeSlots() {
+        int total = 0;
+        for (ConnectedEndpointInfo ep : endpoints.values()) {
+            int free = ep.getCachedFreeSlots();
+            if (free < 0) {
+                return -1;   // nieznana pojemnosc - nie zgadujemy
+            }
+            total += free;
+        }
+        return total;
+    }
+
     public ItemStack extractItem(ServerLevel level, Item item, int maxCount) {
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {
             if (endpoint.getCachedCounts().getOrDefault(item, 0L) > 0) {

@@ -69,6 +69,12 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     }
 
     public void updateNetworkCounts(Map<Item, Long> counts, Map<Item, Long> craftable) {
+        updateNetworkCounts(counts, craftable, -1);
+    }
+
+    public void updateNetworkCounts(Map<Item, Long> counts, Map<Item, Long> craftable,
+                                    int freeSlots) {
+        this.networkFreeSlots = freeSlots;
         Map<Item, Long> previous = this.networkCounts;
         this.networkCounts = new HashMap<>(counts);
 
@@ -472,17 +478,98 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             mode = com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR;
         }
 
+        // WALIDACJA PO STRONIE KLIENTA - zanim cokolwiek wyslemy.
+        //
+        // Gdy siec jest pelna, akcja jest blokowana NATYCHMIAST: nie wysylamy
+        // pakietu i nie ruszamy kursora. Gracz widzi komunikat zamiast
+        // migajacego itemu.
+        String blocked = storeBlockedReason(mode);
+        if (blocked != null) {
+            storeFeedback(blocked);
+            return;
+        }
+
         PacketDistributor.sendToServer(
                 new com.craftingveloce.network.TerminalStoreItemPKT(terminalPos, mode));
 
-        // Kursor czyscimy tez u siebie, zeby GUI zareagowalo od razu.
-        // Serwer robi to samo u siebie (i to on jest zrodlem prawdy), wiec
-        // nie ma juz sytuacji, w ktorej item zostaje i tu, i tam.
-        if (mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR
-                && this.menu != null) {
-            this.menu.setCarried(ItemStack.EMPTY);
-        }
+        // NIE ruszamy kursora lokalnie.
+        //
+        // BUG, ktory tu byl (zrodlo "ghost itemow"): po wyslaniu pakietu
+        // czyscilismy kursor u siebie, "zeby GUI zareagowalo od razu":
+        //
+        //     this.menu.setCarried(ItemStack.EMPTY);
+        //
+        // Gdy siec byla PELNA, serwer nie zabieral niczego (bo nie mial gdzie
+        // wlozyc), wiec item znikal TYLKO wizualnie u klienta - a po ponownym
+        // otwarciu ekwipunku wracal, bo na serwerze caly czas byl.
+        //
+        // Teraz klient nie zmienia NICZEGO, dopoki serwer nie potwierdzi.
+        // Potwierdzeniem jest resync ekwipunku (TerminalPullItemPKT.
+        // resyncInventories), ktory serwer wysyla tylko gdy NAPRAWDE cos
+        // przeniosl. Dzieki temu item nigdy nie opuszcza swojego miejsca,
+        // jesli nie ma go gdzie wlozyc - i nie ma czego cofac.
     }
+
+    /**
+     * Czy odkladanie jest z gory niemozliwe? Zwraca powod albo {@code null}.
+     *
+     * <p>Sprawdzamy tylko przypadek PEWNY: siec nie ma ani jednego wolnego
+     * slotu i nie trzyma tego itemu. Wtedy nie ma szans, ze cokolwiek sie
+     * zmiesci. Jesli item juz jest w sieci, przepuszczamy - moze dopelnic
+     * czesciowo zapelniony stos, a tego nie da sie rozstrzygnac po stronie
+     * klienta bez dokladnej znajomosci slotow.
+     */
+    private String storeBlockedReason(int mode) {
+        if (networkFreeSlots > 0) {
+            return null;   // jest wolne miejsce - na pewno sie zmiesci
+        }
+        if (mode != com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR) {
+            // Dla calego ekwipunku sprawdzamy, czy CHOC JEDEN item jest juz
+            // w sieci - tylko wtedy ma szanse wejsc na czesciowy stos.
+            if (this.minecraft == null || this.minecraft.player == null) {
+                return null;
+            }
+            var inv = this.minecraft.player.getInventory();
+            for (int i = 0; i < inv.getContainerSize(); i++) {
+                ItemStack st = inv.getItem(i);
+                if (!st.isEmpty() && networkCounts.getOrDefault(st.getItem(), 0L) > 0) {
+                    return null;
+                }
+            }
+            return "gui.craftingveloce.terminal.storeFull";
+        }
+        if (this.menu == null) {
+            return null;
+        }
+        ItemStack carried = this.menu.getCarried();
+        if (carried.isEmpty()) {
+            return null;
+        }
+        if (networkCounts.getOrDefault(carried.getItem(), 0L) > 0) {
+            return null;   // moze dopelnic czesciowy stos
+        }
+        return "gui.craftingveloce.terminal.storeFull";
+    }
+
+    /** Krotki komunikat nad hotbarem - bez otwierania czatu. */
+    private void storeFeedback(String translatableKey) {
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return;
+        }
+        this.minecraft.player.displayClientMessage(
+                net.minecraft.network.chat.Component.translatable(translatableKey)
+                        .withStyle(net.minecraft.ChatFormatting.RED),
+                true);   // true = action bar
+    }
+
+    /**
+     * Ile wolnych slotow ma siec (z ostatniej synchronizacji).
+     *
+     * <p>Wartosc {@code -1} oznacza "nie wiem" - wtedy NIE blokujemy akcji,
+     * bo wolimy przepuscic operacje i pozwolic serwerowi zdecydowac, niz
+     * zablokowac cos, co mogloby sie udac.
+     */
+    private int networkFreeSlots = -1;
 
     private void clickViaInventoryMenu(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         if (this.minecraft == null || this.minecraft.player == null || this.minecraft.gameMode == null) {

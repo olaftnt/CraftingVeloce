@@ -16,6 +16,7 @@ import com.craftingveloce.network.pipe.VelocePipeNetwork;
 import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.Direction;
@@ -230,7 +231,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
             if (sp == null || sp.hasDisconnected() || sp.distanceToSqr(worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5) > 64.0) {
                 it.remove();
             } else {
-                PacketDistributor.sendToPlayer(sp, new SyncTerminalCountsPKT(counts, craftable));
+                PacketDistributor.sendToPlayer(sp,
+                        new SyncTerminalCountsPKT(counts, craftable, currentFreeSlots()));
             }
         }
     }
@@ -238,7 +240,23 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
     public void syncCountsToPlayer(ServerPlayer player) {
         if (level == null || level.isClientSide) return;
         Map<Item, Long> counts = getAllStoredItemCounts();
-        PacketDistributor.sendToPlayer(player, new SyncTerminalCountsPKT(counts));
+        PacketDistributor.sendToPlayer(player,
+                new SyncTerminalCountsPKT(counts, Map.of(), currentFreeSlots()));
+    }
+
+    /**
+     * Ile wolnych slotow ma siec tego terminala; {@code -1} gdy nieznane.
+     *
+     * <p>Klient uzywa tego, zeby NATYCHMIAST zablokowac odkladanie do pelnej
+     * sieci - bez wysylania pakietu i cofania stanu po odpowiedzi serwera.
+     */
+    private int currentFreeSlots() {
+        if (!(level instanceof ServerLevel sl)) {
+            return -1;
+        }
+        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                .getNetworkForTerminal(sl, worldPosition);
+        return net == null ? -1 : net.getFreeSlots();
     }
 
     /**
@@ -564,6 +582,22 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         }
 
         if (moved <= 0) {
+            // Nic nie weszlo - mowimy o tym graczowi.
+            //
+            // Klient zwykle blokuje te akcje ZANIM ja wysle (patrz
+            // storeBlockedReason), ale gdy pojemnosc sieci jest nieznana
+            // (np. Refined Storage), przepuszcza ja i decyduje serwer.
+            // Wtedy gracz MUSI dostac powod, inaczej wyglada to jak
+            // zepsuty przycisk.
+            // UWAGA: uzywamy ZAIMPORTOWANYCH nazw (Component, ChatFormatting),
+            // a nie `net.minecraft...` - w tej metodzie jest lokalna zmienna
+            // `net` (siec rur), ktora PRZESLANIA nazwe pakietu `net`.
+            // Zapis `net.minecraft.network.chat.Component` kompilowal sie jako
+            // odwolanie do pola `minecraft` zmiennej `net` i nie dzialal.
+            player.displayClientMessage(
+                    Component.translatable("gui.craftingveloce.terminal.storeFull")
+                            .withStyle(ChatFormatting.RED),
+                    true);
             return;
         }
         // Odsylamy zmiany, zeby kursor i ekwipunek zgadzaly sie u klienta.

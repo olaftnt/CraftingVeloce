@@ -44,6 +44,21 @@ public class ConnectedEndpointInfo {
     private final Map<Item, Long> cachedCounts = new HashMap<>();
 
     /**
+     * Ile WOLNYCH slotow ma ten magazyn (z ostatniego skanu).
+     *
+     * <p>{@code -1} = nie wiemy (np. Refined Storage, gdzie pojemnosc nie jest
+     * liczba slotow). Wartosc "nie wiem" jest wazna: klient NIE blokuje wtedy
+     * akcji, bo wolimy przepuscic operacje i pozwolic serwerowi zdecydowac,
+     * niz zablokowac cos, co mogloby sie udac.
+     *
+     * <p>Liczymy tylko sloty CALKOWICIE puste. Slot czesciowo zapelniony moze
+     * przyjac tylko ten sam item, wiec nie jest "wolnym slotem" dla dowolnego
+     * przedmiotu - klient sprawdza to osobno, patrzac, czy item juz jest
+     * w sieci.
+     */
+    private int cachedFreeSlots = -1;
+
+    /**
      * Tick, w ktorym ostatnio przeskanowalismy ten inwentarz.
      *
      * <p>Skanowanie polega na przejsciu WSZYSTKICH slotow i wywolaniu
@@ -81,6 +96,11 @@ public class ConnectedEndpointInfo {
 
     public Type getType() {
         return type;
+    }
+
+    /** Wolne sloty z ostatniego skanu; -1 gdy nieznane. */
+    public int getCachedFreeSlots() {
+        return cachedFreeSlots;
     }
 
     public Map<Item, Long> getCachedCounts() {
@@ -183,6 +203,8 @@ public class ConnectedEndpointInfo {
             Map<Item, Long> rsCounts = RefinedStorageHelper.getRSItemCounts(level, pos, accessSide);
             cachedCounts.clear();
             cachedCounts.putAll(rsCounts);
+            // RS nie ma pojemnosci wyrazonej w slotach - nie udajemy, ze wiemy.
+            cachedFreeSlots = -1;
             return;
         }
 
@@ -207,11 +229,14 @@ public class ConnectedEndpointInfo {
             // nie ma jak tego poprawic. Objaw: "terminal zgubil siec", bo
             // magazyn raportuje 0 typow.
             boolean sawContainer = false;
+            int freeSlots = 0;
             if (handler != null) {
                 sawContainer = true;
                 for (int i = 0; i < handler.getSlots(); i++) {
                     ItemStack stack = handler.getStackInSlot(i);
-                    if (!stack.isEmpty()) {
+                    if (stack.isEmpty()) {
+                        freeSlots++;
+                    } else {
                         newCounts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
                     }
                 }
@@ -219,7 +244,9 @@ public class ConnectedEndpointInfo {
                 sawContainer = true;
                 for (int i = 0; i < container.getContainerSize(); i++) {
                     ItemStack stack = container.getItem(i);
-                    if (!stack.isEmpty()) {
+                    if (stack.isEmpty()) {
+                        freeSlots++;
+                    } else {
                         newCounts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
                     }
                 }
@@ -235,6 +262,7 @@ public class ConnectedEndpointInfo {
 
             cachedCounts.clear();
             cachedCounts.putAll(newCounts);
+            cachedFreeSlots = freeSlots;
             scanFailureLogged = false;
             notReadableLogged = false;
         } catch (Throwable t) {

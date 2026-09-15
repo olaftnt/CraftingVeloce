@@ -46,5 +46,6 @@
     "gui.craftingveloce.extractor.emptySlot": "Empty filter (left-click to choose an item)",
     "gui.craftingveloce.terminal.storeSlot": "Store item",
     "gui.craftingveloce.terminal.storeHint": "Click to store held item",
+    "gui.craftingveloce.terminal.storeFull": "Network is full - nothing was stored",
     "gui.craftingveloce.terminal.storeHintShift": "Shift: store whole inventory"
 }

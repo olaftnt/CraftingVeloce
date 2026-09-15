@@ -25,7 +25,8 @@ import java.util.Map;
  * </ul>
  */
 public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts,
-                                    Map<Item, Long> craftableCounts)
+                                    Map<Item, Long> craftableCounts,
+                                    int freeSlots)
         implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<SyncTerminalCountsPKT> TYPE =
@@ -36,13 +37,15 @@ public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts,
         public SyncTerminalCountsPKT decode(RegistryFriendlyByteBuf buf) {
             Map<Item, Long> counts = readMap(buf);
             Map<Item, Long> craftable = readMap(buf);
-            return new SyncTerminalCountsPKT(counts, craftable);
+            int freeSlots = buf.readVarInt();
+            return new SyncTerminalCountsPKT(counts, craftable, freeSlots);
         }
 
         @Override
         public void encode(RegistryFriendlyByteBuf buf, SyncTerminalCountsPKT pkt) {
             writeMap(buf, pkt.itemCounts());
             writeMap(buf, pkt.craftableCounts());
+            buf.writeVarInt(pkt.freeSlots());
         }
 
         private Map<Item, Long> readMap(RegistryFriendlyByteBuf buf) {
@@ -68,9 +71,9 @@ public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts,
         }
     };
 
-    /** Wsteczna zgodnosc: sam stock, bez craftable. */
+    /** Wsteczna zgodnosc: sam stock, bez craftable i bez pojemnosci. */
     public SyncTerminalCountsPKT(Map<Item, Long> itemCounts) {
-        this(itemCounts, Map.of());
+        this(itemCounts, Map.of(), -1);
     }
 
     @Override
@@ -80,6 +83,6 @@ public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts,
 
     public static void handle(SyncTerminalCountsPKT pkt, IPayloadContext context) {
         context.enqueueWork(() -> ClientTerminalHelper.handleSyncCounts(
-                pkt.itemCounts(), pkt.craftableCounts()));
+                pkt.itemCounts(), pkt.craftableCounts(), pkt.freeSlots()));
     }
 }
