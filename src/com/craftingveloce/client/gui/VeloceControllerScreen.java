@@ -126,6 +126,15 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      */
     private Map<Item, VeloceFlowTracker.Movement> flowPerMinute = new HashMap<>();
     private Map<Item, VeloceFlowTracker.Movement> flowPerHour = new HashMap<>();
+    /**
+     * Szerokosc guzika filtra.
+     *
+     * <p>Stala, bo pilnuje jej build (validate_filter_labels): etykieta musi
+     * sie zmiescic. Poprzednie napisy ("Show all", "Not available") wychodzily
+     * za przycisk i nachodzily na sasiada.
+     */
+    private static final int FILTER_BUTTON_W = 52;
+
     /** Co ile tickow dopytujemy serwer o swieze tempo. */
     private static final int FLOW_REQUEST_INTERVAL_TICKS = 20;
     /**
@@ -309,7 +318,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     private void buildFilterButtons() {
         filterButtons.clear();
         int y = this.topPos + 112;
-        int w = 52;
+        int w = FILTER_BUTTON_W;
         int gap = 2;
         int totalW = Filter.values().length * w + (Filter.values().length - 1) * gap;
         int startX = this.leftPos + (176 - totalW) / 2;

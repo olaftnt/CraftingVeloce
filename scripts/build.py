@@ -281,6 +281,43 @@ def validate_helper_docs():
           f"sygnatury zgodne)")
 
 
+def validate_filter_labels():
+    """
+    Etykiety guzikow filtra kontrolera musza sie zmiescic w guziku.
+
+    Ten przycisk ma 52 px, a poprzednie napisy ("Show all" = 8 znakow,
+    "Not available" = 13) wychodzily za niego i nachodzily na sasiedni guzik.
+    Szerokosci czcionki nie da sie tu zmierzyc dokladnie (to zalezy od
+    zasobow gry), wiec liczymy szacunek: ~6 px na znak + 8 px na wewnetrzny
+    odstep guzika. Kalibracja: ten wzor flaguje OBA napisy, ktore kiedys
+    naprawde sie nie miescily, a przepuszcza obecne ("All", "Active", "None").
+    """
+    lang_path = os.path.join("assets/craftingveloce/lang/en_us.json")
+    screen = "src/com/craftingveloce/client/gui/VeloceControllerScreen.java"
+    if not os.path.exists(lang_path) or not os.path.exists(screen):
+        return
+    text = open(screen, encoding="utf-8").read()
+    m = re.search(r"FILTER_BUTTON_W\s*=\s*(\d+)", text)
+    if not m:
+        fail("brak stalej FILTER_BUTTON_W w VeloceControllerScreen")
+    width = int(m.group(1))
+    lang = json.load(open(lang_path, encoding="utf-8"))
+
+    keys = [k for k in lang if k.startswith("gui.craftingveloce.controller.filter.")
+            and not k.endswith(".tip")]
+    too_long = []
+    for key in sorted(keys):
+        label = lang[key]
+        # ~6 px na znak + 8 px odstepu wewnatrz guzika
+        estimated = len(label) * 6 + 8
+        if estimated > width:
+            too_long.append(f"{key} = '{label}' (~{estimated} px > {width} px)")
+    if too_long:
+        fail("etykiety filtra nie mieszcza sie w guziku:\n  " + "\n  ".join(too_long))
+    print(f"    OK (etykiety filtra mieszcza sie w {width} px: "
+          + ", ".join(f"'{lang[k]}'" for k in sorted(keys)) + ")")
+
+
 def validate_gui_layout():
     """
     Wspolrzedne GUI zyja w kilku plikach i musza sie zgadzac.
@@ -582,6 +619,7 @@ def main():
     validate_block_data(names)
     validate_packet_docs()
     validate_lang_keys()
+    validate_filter_labels()
     validate_gui_layout()
     validate_helper_docs()
     validate_sensor_row()
