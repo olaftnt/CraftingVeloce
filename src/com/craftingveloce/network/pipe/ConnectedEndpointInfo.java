@@ -108,6 +108,23 @@ public class ConnectedEndpointInfo {
         refreshIfLoaded(level);
     }
 
+    /**
+     * Uniewaznia zapamietane liczniki I pozwala na natychmiastowy ponowny skan.
+     *
+     * <p><b>To jest wazne.</b> Samo wyczyszczenie mapy nie wystarczy: throttle
+     * w {@link #refreshIfLoadedThrottled} blokowal skan przez kolejne 10 tickow,
+     * wiec przez pol sekundy endpoint raportowal ZERO itemow zamiast po prostu
+     * nieaktualnych. A {@link VelocePipeNetwork#invalidateEndpointCache()} leci
+     * przy kazdej zmianie sasiedztwa sieci.
+     *
+     * <p>Zerowanie {@code lastScanTick} mowi "ten wpis jest niewazny, zeskanuj
+     * go przy nastepnym pytaniu".
+     */
+    public void invalidateCache() {
+        cachedCounts.clear();
+        lastScanTick = Long.MIN_VALUE;
+    }
+
     public void refreshIfLoaded(ServerLevel level) {
         if (!level.isLoaded(pos)) {
             return;

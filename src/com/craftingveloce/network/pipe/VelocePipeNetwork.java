@@ -88,7 +88,10 @@ public class VelocePipeNetwork {
      */
     public void invalidateEndpointCache() {
         for (ConnectedEndpointInfo ep : endpoints.values()) {
-            ep.getCachedCounts().clear();
+            // invalidateCache(), a nie samo getCachedCounts().clear():
+            // czyszczenie bez zwolnienia throttlingu oznaczalo, ze przez
+            // kolejne 10 tickow endpoint raportowal ZERO itemow.
+            ep.invalidateCache();
         }
         aggregateCache = null;
         aggregateCacheTick = Long.MIN_VALUE;
