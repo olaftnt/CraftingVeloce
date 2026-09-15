@@ -74,7 +74,7 @@ public final class VeloceAutoCrafter {
      * w polowie przeliczania i zwracal 0. Dlatego plotek z 2 klod pokazywal
      * sie jako niewykonalny - szacowanie nie dobiegalo konca.
      */
-    private static final int MAX_ESTIMATE_OPS = 2_000_000;
+    private static final int MAX_ESTIMATE_OPS = 200_000;
 
     /**
      * Wynik "nie udalo sie policzyc" (budzet czasowy sie skonczyl).
@@ -92,7 +92,13 @@ public final class VeloceAutoCrafter {
      * przeliczeniu widocznej strony (ok. 45 itemow obliczanych razem).
      * W tle cache uzywa mniejszego budzetu, zeby nie przekroczyc ticku.
      */
-    public static final long DEFAULT_ESTIMATE_BUDGET_NS = 25_000_000L;
+    /**
+     * Budzet na przeliczenie widocznej strony terminala.
+     *
+     * <p>To leci na watku serwera, wiec musi zostawiac zapas na resztę
+     * ticku. 8 ms to gorna granica, ktora jeszcze nie psuje 20 TPS.
+     */
+    public static final long DEFAULT_ESTIMATE_BUDGET_NS = 8_000_000L;
 
     private VeloceAutoCrafter() {
     }
@@ -269,21 +275,31 @@ public final class VeloceAutoCrafter {
     /**
      * Czy szacowanie powinno sie przerwac.
      *
-     * <p>Sprawdzamy budzet czasowy (co 64 operacje, zeby nie wolac
-     * System.nanoTime przy kazdym wejsciu) oraz awaryjny limit operacji.
+     * <p><b>Historia tego buga.</b> Sprawdzanie czasu bylo probkowane co 64
+     * wywolania ({@code (ops & 63) == 0}). Brzmi jak sensowna optymalizacja,
+     * ale jest bledne: jesli cale planowanie jednego itemu robi MNIEJ niz 64
+     * wywolania {@code plan}, kontrola wypada tylko raz - przy pierwszym
+     * wywolaniu, kiedy czas jeszcze nie minal - i juz nigdy wiecej. Budzet
+     * czasu byl wtedy calkowicie martwy, a jedynym ograniczeniem zostawal
+     * awaryjny licznik operacji. Dokladnie to widac bylo w logu:
+     *
+     * <pre>
+     *   TICK OVERRUN: 4520 ms total = scan 0 ms + chunks 0 ms + items 4520 ms
+     * </pre>
+     *
+     * <p>Dlatego czas sprawdzamy teraz przy KAZDYM wejsciu. {@code nanoTime}
+     * kosztuje kilkadziesiat nanosekund, a chroni przed zamrozeniem serwera.
      */
     private static boolean estimateBudgetExceeded() {
         int ops = ESTIMATE_OPS.get()[0]++;
-        if (ops > MAX_ESTIMATE_OPS) {
+        long deadline = ESTIMATE_DEADLINE.get()[0];
+        if (deadline != 0L && System.nanoTime() > deadline) {
             ESTIMATE_ABORTED.get()[0] = true;
             return true;
         }
-        long deadline = ESTIMATE_DEADLINE.get()[0];
-        if (deadline != 0L && (ops & 63) == 0) {
-            if (System.nanoTime() > deadline) {
-                ESTIMATE_ABORTED.get()[0] = true;
-                return true;
-            }
+        if (ops > MAX_ESTIMATE_OPS) {
+            ESTIMATE_ABORTED.get()[0] = true;
+            return true;
         }
         return false;
     }

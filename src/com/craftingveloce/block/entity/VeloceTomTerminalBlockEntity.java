@@ -145,6 +145,11 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         Map<Item, ResourceLocation> preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getPreferredRecipes(sl, net);
 
+        // Ktos patrzy na terminal - obudz cache w tle (patrz punkt 0c w
+        // VeloceCraftingCache). Bez tego cache spalby, bo domyslnie liczy
+        // wylacznie wtedy, gdy gracz ma otwarte GUI.
+        com.craftingveloce.crafting.VeloceCraftingCache.get(net).markBusy(sl);
+
         long start = System.nanoTime();
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
                 .countCraftableBatchResult(sl, net, items, enabled, preferred,

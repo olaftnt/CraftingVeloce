@@ -65,13 +65,20 @@ public final class VeloceCraftingCache {
      * jeden katastrofalnie drogi item nie zjadl calego ticku zanim petla
      * zdazy sprawdzic zegar.
      */
-    private static final int MAX_ITEMS_PER_TICK = 2000;
+    /**
+     * Twardy sufit itemow na tick - druga linia obrony obok budzetu czasu.
+     *
+     * <p>Budzet czasu jest ograniczeniem glownym, ale gdyby kiedys znow
+     * przestal dzialac (a juz raz przestal - patrz estimateBudgetExceeded),
+     * ten licznik sam z siebie nie pozwoli zamulic ticku.
+     */
+    private static final int MAX_ITEMS_PER_TICK = 16;
 
     /** Bezpiecznik na dlugosc lancucha "w gore". */
     private static final int MAX_CHAIN = 512;
 
     /** Bezpiecznik na pelny skan. */
-    private static final int MAX_FULL_SCAN = 500;
+    private static final int MAX_FULL_SCAN = 64;
 
     /**
      * Ile tickow po starcie swiata czekamy z pierwszym skanem.
@@ -281,12 +288,35 @@ public final class VeloceCraftingCache {
                     level.getGameTime() - firstSeenTick);
         }
 
-        // 1. Pelny skan stocku. Na poczatku MUSI sie wykonac natychmiast -
-        //    inaczej initial scan nie ma z czego wziac itemow (lastStock pusty).
-        //    Potem juz rzadko, bo to jedyne miejsce czytajace cala siec.
         long now = level.getGameTime();
+
+        // 0b. Utrzymuj chunki z blokami sieci - to MUSI dzialac nawet gdy nikt
+        //     nie patrzy, bo bez tego ekstraktory przestaja pracowac, gdy gracz
+        //     odejdzie. Rzadko (co sekunde) i tanie po zmianie na VeloceChunkLoader.
+        if (!shuttingDown && now % 20 == 0) {
+            phaseStart = System.nanoTime();
+            maintainForcedChunks(level);
+            phaseChunksNanos = System.nanoTime() - phaseStart;
+        }
+
+        // 0c. NIKT NIE PATRZY = NIE MA DLA KOGO LICZYC.
+        //
+        // Gracz widzi jedna strone terminala (ok. 45 itemow) i dostaje dla niej
+        // dokladne liczby na zadanie. Liczenie setek itemow "na zapas" tylko
+        // po to, zeby lezaly w mapie, bylo czysta strata - i to ona blokowala
+        // watek serwera. Gdy nikt nie patrzy, cache nie robi NIC (poza
+        // utrzymaniem chunkow wyzej).
+        if (now >= busyUntil) {
+            lastTickNanos = System.nanoTime() - start;
+            return;
+        }
+
+        // 1. Skan stocku. Na poczatku MUSI sie wykonac natychmiast -
+        //    inaczej initial scan nie ma z czego wziac itemow (lastStock pusty).
+        //    Potem rzadko - VelocePipeNetwork trzyma wlasny agregat z TTL,
+        //    wiec nawet kilka wywolan w jednym ticku nie skanuje sieci w kolko.
         boolean firstScan = lastFullStockScan == Long.MIN_VALUE;
-        int interval = now < busyUntil ? BUSY_SCAN_INTERVAL : FULL_STOCK_SCAN_INTERVAL;
+        int interval = BUSY_SCAN_INTERVAL;
         if (firstScan || forceStockScan || now - lastFullStockScan >= interval) {
             forceStockScan = false;
             lastFullStockScan = now;
@@ -298,14 +328,6 @@ public final class VeloceCraftingCache {
                 warnIfOverrun();
                 return;
             }
-        }
-
-        // 1b. Utrzymuj chunki z blokami sieci (rzadko - co sekunde).
-        //     NIE robimy tego przy zamykaniu serwera - inaczej blokujemy zapis.
-        if (!shuttingDown && now % 20 == 0) {
-            phaseStart = System.nanoTime();
-            maintainForcedChunks(level);
-            phaseChunksNanos = System.nanoTime() - phaseStart;
         }
 
         // 2. Pierwszy skan: kolejkujemy itemy obecne w sieci (to widzi GUI)
@@ -321,6 +343,7 @@ public final class VeloceCraftingCache {
         }
 
         // 3. Przeliczaj porcje, dopoki starcza budzetu.
+        //    (Doszlibysmy tu tylko gdy ktos patrzy - patrz punkt 0c.)
         phaseStart = System.nanoTime();
         while (!pending.isEmpty() && lastBatchSize < MAX_ITEMS_PER_TICK) {
             if (System.nanoTime() - start > TICK_BUDGET_NS) {
@@ -450,16 +473,21 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Kolejkuje wstepny skan: TYLKO itemy obecne w sieci.
+     * Kolejkuje wstepny skan: TYLKO itemy faktycznie obecne w sieci.
      *
-     * <p>Reszta nie jest potrzebna od razu - gracz widzi w GUI to, co ma.
-     * Dobijanie kolejki do limitu (poprzednia wersja wpychala 2000 itemow)
-     * znaczylo 2000 rekurencyjnych symulacji bez powodu, i to podczas startu.
-     * Pozostale itemy dolacza sie pozniej, leniwie, gdy siec sie rozrosnie.
+     * <p><b>Dlaczego nie ma tu juz "reszty wlaczonych".</b> Poprzednia wersja
+     * dorzucala do kolejki wszystkie wlaczone itemy (ok. 500), bo "moze sie
+     * przydadza". Gracz nigdy nie zobaczy wiekszosci z nich - w terminalu
+     * widzi jedna strone, okolo 45 itemow - a kazdy policzony na zapas item
+     * to pelne planowanie drzewa receptur. To bylo marnowanie calego budzetu
+     * ticku na przedmioty, ktorych nikt nie oglada.
+     *
+     * <p>Liczby dla widocznej strony i tak sa liczone na zadanie klienta
+     * ({@code RequestCraftableCountsPKT}), wiec nie ma tu czego pre-liczyc.
+     * Zostaje tylko stock: to on trafia do GUI jako zielone liczby.
      */
     private void queueInitialScan(Set<Item> enabled) {
         int fromStock = 0;
-        // Priorytet 1: itemy obecne w sieci - to one sa widoczne w GUI.
         for (var e : lastStock.entrySet()) {
             if (e.getValue() <= 0 || fromStock >= MAX_FULL_SCAN) {
                 continue;
@@ -469,20 +497,9 @@ public final class VeloceCraftingCache {
                 fromStock++;
             }
         }
-        // Priorytet 2: reszta wlaczonych, w ramach limitu i limitu kolejki.
-        int fromEnabled = 0;
-        for (Item it : enabled) {
-            if (fromStock + fromEnabled >= MAX_FULL_SCAN || pending.size() >= MAX_QUEUE) {
-                break;
-            }
-            if (queued.add(it)) {
-                pending.add(it);
-                fromEnabled++;
-            }
-        }
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "crafting cache: initial scan queued %d item(s) (%d from stock, %d from enabled)",
-                pending.size(), fromStock, fromEnabled);
+                "crafting cache: initial scan queued %d item(s) (stock only, network has %d type(s))",
+                fromStock, lastStock.size());
     }
 
     // ------------------------------------------------------------------
