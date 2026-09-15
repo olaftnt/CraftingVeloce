@@ -3,118 +3,62 @@ package com.craftingveloce.crafting;
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
 import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.item.Item;
+import net.minecraft.world.level.ChunkPos;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 /**
- * Cache craftowalnosci per siec, utrzymywany przyrostowo i z budzetem czasu.
+ * Trzyma chunki z blokami sieci w stanie zaladowanym.
  *
- * <p><b>Dlaczego tak.</b> Liczenie "ile da sie dorobic" jest rekurencyjne i drogie.
- * Przy paczce z 3k itemow i 15k receptur zadne podejscie "przeliczmy to
- * regularnie" sie nie obroni - ani na zadanie, ani co sekunde, ani nawet
- * rozlozone na ticki, jesli budzet nie jest ograniczony czasowo.
+ * <p><b>Historia.</b> Ta klasa byla kiedys cache'em craftowalnosci: liczyla w
+ * tle "ile da sie dorobic" dla kazdego itemu i podawala te liczby GUI. Okazalo
+ * sie to zrodlem najgorszych problemow w modzie - liczenie jest rekurencyjne i
+ * drogie, a przy kilku tysiacach receptur zadne "przeliczmy regularnie" nie
+ * dalo sie utrzymac w budzecie ticku. Zostalo to usuniete: liczby liczy teraz
+ * {@link VeloceAutoCrafter} na zadanie (widoczna strona terminala), z wlasnym
+ * budzetem czasu.
+ *
+ * <p><b>Co zostalo.</b> Dokladnie jedna rzecz: force-load chunkow. Bez tego
+ * ekstraktory i craftery przestalyby pracowac, gdy gracz odejdzie od bazy, a
+ * terminale nie widzialyby zawartosci sieci.
  *
  * <p><b>Zasady, ktorych przestrzega ta klasa:</b>
  * <ol>
- *   <li><b>Budzet czasowy, nie liczba itemow.</b> Na tick przeznaczamy okreslony
- *       czas (np. 2 ms). Wolny serwer przeliczy wiecej, obciazony mniej - ale
- *       tick nigdy nie przekroczy budzetu. Liczenie "N itemow na tick" jest
- *       zawodne, bo jeden item moze byc wielokrotnie drozszy od innego.</li>
- *   <li><b>Zmiany wykrywamy tanio.</b> Nie skanujemy calej sieci co tick.
- *       Endpointy same zglaszaja zmiany, a pelny skan jest rzadki i porcjowany.</li>
- *   <li><b>Reakcja na swiat.</b> Podlaczenie/odlaczenie inventory, zaladowanie
- *       i rozladowanie chunka - wszystko uniewaznia wlasciwe itemy.</li>
+ *   <li><b>Raz na tick.</b> Kazdy terminal w sieci wola {@link #tickIdle}, ale
+ *       praca idzie tylko raz na tick gry ({@code claimTick}).</li>
+ *   <li><b>Karencja startowa.</b> Po wczytaniu swiata nie ruszamy chunkow od
+ *       razu - ladowanie save'a to najbardziej obciazony moment w cyklu
+ *       zycia serwera.</li>
+ *   <li><b>Zamkniecie serwera.</b> Gdy serwer sie zamyka, przestajemy wymuszac
+ *       i zwalniamy wszystko. Inaczej zapis swiata sie zawiesza (chunk wraca,
+ *       jest rozladowywany i tak w kolko).</li>
  * </ol>
  */
 public final class VeloceCraftingCache {
-
-    // --- Budzet pracy -------------------------------------------------
-
-    /**
-     * Maksymalny czas pracy cache na jeden tick, w nanosekundach.
-     *
-     * <p>10 ms przy ticku 50 ms (20 TPS) zostawia 80% budzetu na resztę gry,
-     * a jednoczesnie pozwala przeliczyc kilkaset itemow na sekunde. Poprzednie
-     * 2 ms bylo zbyt zachowawcze - cache nie nadazal i liczby w GUI zostawaly
-     * stare, dopoki gracz nie wszedl i nie wyszedl z terminala.
-     *
-     * <p>Wazne: to jest GORNY limit, nie cel. Na spokojnym serwerze petla
-     * skonczy sie wczesniej, bo po prostu nie ma juz pracy.
-     */
-    private static final long TICK_BUDGET_NS = 10_000_000L;
-
-    /** Powyzej tego czasu tick raportuje przekroczenie budzetu do loga. */
-    private static final long OVERRUN_WARN_NS = 25_000_000L;
-
-    /**
-     * Awaryjny limit itemow na tick.
-     *
-     * <p>Glownym ograniczeniem jest czas. Ten limit istnieje tylko po to, zeby
-     * jeden katastrofalnie drogi item nie zjadl calego ticku zanim petla
-     * zdazy sprawdzic zegar.
-     */
-    /**
-     * Twardy sufit itemow na tick - druga linia obrony obok budzetu czasu.
-     *
-     * <p>Budzet czasu jest ograniczeniem glownym, ale gdyby kiedys znow
-     * przestal dzialac (a juz raz przestal - patrz estimateBudgetExceeded),
-     * ten licznik sam z siebie nie pozwoli zamulic ticku.
-     */
-    private static final int MAX_ITEMS_PER_TICK = 16;
-
-    /** Bezpiecznik na dlugosc lancucha "w gore". */
-    private static final int MAX_CHAIN = 512;
-
-    /** Bezpiecznik na pelny skan. */
-    private static final int MAX_FULL_SCAN = 64;
 
     /**
      * Ile tickow po starcie swiata czekamy z pierwszym skanem.
      *
      * <p>Kluczowe: ladowanie save'a to najbardziej obciazony moment w cyklu
      * zycia serwera (generowanie chunkow, wczytywanie encji, swiatlo). Jesli
-     * zaczniemy wtedy liczyc craftowalnosc, dojdziemy do zawieszenia - co juz
-     * sie raz stalo przy 2118 zakolejkowanych itemach.
+     * zaczniemy wtedy liczyc, dojdziemy do zawieszenia - co juz sie raz stalo
+     * przy 2118 zakolejkowanych itemach.
      */
     private static final int STARTUP_GRACE_TICKS = 200;   // 10 s
 
     /**
-     * Maksymalny rozmiar kolejki. Jesli rosnie ponad to, przestajemy dodawac -
-     * lepiej miec niepelny cache niz zawieszony serwer.
-     */
-    private static final int MAX_QUEUE = 2000;
-
-    /**
-     * Co ile tickow wolno zrobic pelny skan stocku (weryfikacja).
-     * Miedzy skanami polegamy na taniej detekcji zmian.
-     */
-    private static final int FULL_STOCK_SCAN_INTERVAL = 20;   // 1 s
-
-    /**
-     * Krotki interwal po operacji gracza.
+     * Maksymalna liczba chunkow, ktore force-loadujemy dla jednej sieci.
      *
-     * <p>Gdy gracz wyciaga lub wklada itemy, chce zobaczyc zaktualizowane
-     * liczby NATYCHMIAST, a nie po sekundzie. Przez kilka tickow po takiej
-     * operacji skanujemy czesciej.
+     * <p>Bezpiecznik: rozlegla siec (setki rur) nie moze wymusic zaladowania
+     * calej mapy. Powyzej limitu ladujemy tylko chunki z wezlami
+     * (terminale, craftery, extractory) - to one musza dzialac.
      */
-    private static final int BUSY_SCAN_INTERVAL = 2;
-
-    /** Do kiedy (gameTime) skanujemy w trybie "po operacji gracza". */
-    private long busyUntil = 0;
-
-    // --- Rejestry -----------------------------------------------------
+    private static final int MAX_FORCED_CHUNKS = 256;
 
     private static final Map<UUID, VeloceCraftingCache> CACHES = new HashMap<>();
 
@@ -130,51 +74,10 @@ public final class VeloceCraftingCache {
      */
     private volatile VelocePipeNetwork network;
 
-    /** Gotowe liczby: ile da sie dorobic danego itemu. */
-    private final Map<Item, Long> craftable = new HashMap<>();
+    /** Chunki, ktore ta siec trzyma zaladowane. */
+    private final Set<Long> forcedChunks = new HashSet<>();
 
-    /** Kolejka itemow do przeliczenia. */
-    private final Deque<Item> pending = new ArrayDeque<>();
-
-    private final Set<Item> queued = new HashSet<>();
-
-    private boolean fullScanDone = false;
-
-    /**
-     * Czy wstepny skan zostal juz zakolejkowany.
-     *
-     * <p>Osobne od {@link #fullScanDone}, bo tamto oznacza "skonczone", a to
-     * "rozpoczęte". Bez rozroznienia kolejka byla zakolejkowana wielokrotnie
-     * albo - jak w poprzedniej wersji - oznaczana jako skonczona, gdy byla
-     * pusta, przez co cache nigdy sie nie wypelnial i GUI nie pokazywalo
-     * zadnych liczb "+N".
-     */
-    private boolean initialScanQueued = false;
-
-    /**
-     * Wymusza diff stocku na najblizszym ticku, bez czyszczenia cache.
-     *
-     * <p>Ustawiane, gdy zmienil sie sklad sieci (dolaczona/odlaczona skrzynia,
-     * chunk, wezel). Diff sam znajdzie zmienione itemy i zakolejkuje tylko
-     * ich lancuch - to o rzedy wielkosci tansze od pelnego reskanu.
-     */
-
-    /** Ile razy dany item wracal do kolejki, bo nie zmiescil sie w budzecie. */
-    private final Map<Item, Integer> retries = new HashMap<>();
-
-    /** Ile razy tick przekroczyl budzet - liczone dla /cv perf. */
-    private long overruns;
-
-    /** Rozbicie ostatniego ticku na fazy, do logu watchdoga. */
-    private long phaseScanNanos;
-    private long phaseChunksNanos;
-    private long phaseItemsNanos;
-
-    /** Po tylu nieudanych probach odpuszczamy item (zostaje stara liczba). */
-    private static final int MAX_RETRIES = 3;
-
-    /** Migawka stocku do wykrywania zmian. */
-    private final Map<Item, Long> lastStock = new HashMap<>();
+    private boolean forceLoadInitialized = false;
 
     /** Czy minol okres karencji po starcie swiata. */
     private boolean startupGracePassed = false;
@@ -190,17 +93,20 @@ public final class VeloceCraftingCache {
      */
     private long firstSeenTick = -1;
 
-    /** Ostatni pelny skan stocku (gameTime). */
-    private long lastFullStockScan = Long.MIN_VALUE;
+    /** Ostatni tick gry, w ktorym zrobilismy krok. */
+    private long lastTickedGameTime = Long.MIN_VALUE;
 
-    /** Czy trzeba przerwac biezaca prace - np. gdy siec zniknela. */
-
-    // --- Statystyki ---------------------------------------------------
-
-    private int totalComputed = 0;
-    private int lastBatchSize = 0;
-    private long lastTickNanos = 0;
-    private int scanCount = 0;
+    /**
+     * Czy serwer sie zamyka.
+     *
+     * <p>KLUCZOWE dla zapisu swiata. Gdy serwer sie zamyka, Minecraft probuje
+     * rozladowac chunki. Jesli nasze force-loady dalej dzialaja, chunk wraca,
+     * jest znowu rozladowywany i tak w kolko - zapis swiata sie zawiesza.
+     *
+     * <p>Dlatego przy zamknieciu: przestajemy wymuszac I zwalniamy wszystko,
+     * co trzymalismy.
+     */
+    private static volatile boolean shuttingDown = false;
 
     private VeloceCraftingCache(VelocePipeNetwork network) {
         this.network = network;
@@ -232,55 +138,10 @@ public final class VeloceCraftingCache {
         }
     }
 
-    public static void clearAll() {
-        CACHES.clear();
-    }
-
     /** Liczba zywych cache'ow - do wykrywania wyciekow. */
     public static int liveCount() {
         return CACHES.size();
     }
-
-
-
-
-    // ------------------------------------------------------------------
-    // Odczyt (GUI) - zawsze natychmiastowy, nic nie liczy
-    // ------------------------------------------------------------------
-
-
-
-
-
-
-
-
-    // ------------------------------------------------------------------
-    // Praca w tle - z budzetem czasowym
-    // ------------------------------------------------------------------
-
-    /**
-     * Tick gry, w ktorym ostatnio zrobilismy krok pracy.
-     *
-     * <p><b>Po co.</b> {@code tickCraftingCache} wola ten cache KAZDY terminal
-     * w sieci, co 5 tickow. Przy dwoch terminalach cache wykonywal dwa kroki
-     * w tym samym ticku - czyli budzet 10 ms zamienial sie w 20 ms, a przy
-     * wiekszej liczbie terminali rosl dalej. Blokada "raz na tick" trzyma
-     * budzet tam, gdzie ma byc, niezaleznie od liczby terminali.
-     *
-     * @return true gdy w tym ticku juz pracowalismy (wolajacy ma wyjsc)
-     */
-    private boolean claimTick(ServerLevel level) {
-        long now = level.getGameTime();
-        if (now == lastTickedGameTime) {
-            return true;
-        }
-        lastTickedGameTime = now;
-        return false;
-    }
-
-    /** Ostatni tick gry, w ktorym zrobilismy krok. */
-    private long lastTickedGameTime = Long.MIN_VALUE;
 
     /**
      * Krok pracy, gdy nikt nie patrzy.
@@ -310,58 +171,30 @@ public final class VeloceCraftingCache {
             startupGracePassed = true;
         }
 
-        // Jedyne, co ten cache teraz robi: trzyma wymuszone chunki z blokami
-        // sieci. Bez tego ekstraktory i craftery przestalyby pracowac, gdy
-        // gracz odejdzie od bazy. Rzadko (co sekunde), bo to i tak tanie.
+        // Rzadko (co sekunde), bo to i tak tanie.
         if (!shuttingDown && level.getGameTime() % 20 == 0) {
             maintainForcedChunks(level);
         }
     }
 
-
     /**
-     * Krzyczy w logu, gdy tick przekroczy zalozony budzet.
+     * Tick gry, w ktorym ostatnio zrobilismy krok pracy.
      *
-     * <p>Staly bezpiecznik po zamrozeniu serwera: kazda operacja, ktora
-     * wymknie sie throttlingowi, jest tu natychmiast widoczna z dokladnym
-     * czasem i liczba zadan, zamiast objawiac sie tylko zamulonym serwerem.
+     * <p><b>Po co.</b> {@code tickCraftingCache} wola ten cache KAZDY terminal
+     * w sieci, co 5 tickow. Przy dwoch terminalach cache wykonywal dwa kroki
+     * w tym samym ticku. Blokada "raz na tick" trzyma go tam, gdzie ma byc,
+     * niezaleznie od liczby terminali.
+     *
+     * @return true gdy w tym ticku juz pracowalismy (wolajacy ma wyjsc)
      */
-    private void warnIfOverrun() {
-        if (lastTickNanos <= OVERRUN_WARN_NS) {
-            return;
+    private boolean claimTick(ServerLevel level) {
+        long now = level.getGameTime();
+        if (now == lastTickedGameTime) {
+            return true;
         }
-        overruns++;
-        VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
-                "crafting cache TICK OVERRUN: %d ms total = scan %d ms + chunks %d ms + items %d ms "
-                        + "(budget %d ms) - %d item(s) pending, %d done this tick",
-                lastTickNanos / 1_000_000L,
-                phaseScanNanos / 1_000_000L,
-                phaseChunksNanos / 1_000_000L,
-                phaseItemsNanos / 1_000_000L,
-                TICK_BUDGET_NS / 1_000_000L,
-                pending.size(), lastBatchSize);
+        lastTickedGameTime = now;
+        return false;
     }
-
-
-
-
-    // ------------------------------------------------------------------
-    // Force-load chunkow z blokami sieci
-    // ------------------------------------------------------------------
-
-    /**
-     * Maksymalna liczba chunkow, ktore force-loadujemy dla jednej sieci.
-     *
-     * <p>Bezpiecznik: rozlegla siec (setki rur) nie moze wymusic zaladowania
-     * calej mapy. Powyzej limitu ladujemy tylko chunki z wezlami
-     * (terminale, craftery, extractory) - to one musza dzialac.
-     */
-    private static final int MAX_FORCED_CHUNKS = 256;
-
-    /** Chunki, ktore ta siec trzyma zaladowane. */
-    private final Set<Long> forcedChunks = new HashSet<>();
-
-    private boolean forceLoadInitialized = false;
 
     /**
      * Utrzymuje chunki z blokami sieci w stanie zaladowanym.
@@ -384,33 +217,46 @@ public final class VeloceCraftingCache {
         if (com.craftingveloce.network.pipe.VeloceChunkLoader.isFrozen()) {
             return;
         }
-        Set<BlockPos> toLoad = new HashSet<>();
 
-        // Priorytet: wezly sieci (terminal, crafter, extractor).
-        int nodes = 0;
-        for (BlockPos p : network.getTerminals()) {
-            toLoad.add(p);
-            nodes++;
-        }
-        // Potem rury - o ile mieścimy sie w limicie.
-        for (BlockPos p : network.getPipes()) {
-            if (toLoad.size() >= MAX_FORCED_CHUNKS) {
-                break;
-            }
-            toLoad.add(p);
-        }
+        Set<BlockPos> toLoad = collectChunksToKeep();
 
         Set<Long> wanted = new HashSet<>();
         for (BlockPos p : toLoad) {
             wanted.add(ChunkPos.asLong(p.getX() >> 4, p.getZ() >> 4));
         }
 
-        // Zwalniamy to, czego juz nie chcemy ALBO czego loader juz nie trzyma.
-        //
-        // Drugi warunek jest istotny: po rozladowaniu swiata loader zwalnia
-        // swoje chunki, a cache nadal ma je w ksiegowosci. Bez tego sprawdzenia
-        // uznalby, ze juz je trzyma, i NIGDY nie wymusilby ich ponownie.
-        // release() na nieistniejaca referencje jest bezpiecznym no-opem.
+        releaseUnwantedChunks(level, wanted);
+        int added = retainWantedChunks(level, wanted);
+        logForceLoad(added);
+    }
+
+    /**
+     * Co powinno zostac zaladowane: najpierw wezly sieci, potem rury w limicie.
+     *
+     * <p>Kolejnosc jest istotna - wezly (terminal, crafter, extractor) musza
+     * dzialac, a rur moze byc dowolnie duzo.
+     */
+    private Set<BlockPos> collectChunksToKeep() {
+        Set<BlockPos> toLoad = new HashSet<>();
+        toLoad.addAll(network.getTerminals());
+        for (BlockPos p : network.getPipes()) {
+            if (toLoad.size() >= MAX_FORCED_CHUNKS) {
+                break;
+            }
+            toLoad.add(p);
+        }
+        return toLoad;
+    }
+
+    /**
+     * Zwalnia to, czego juz nie chcemy ALBO czego loader juz nie trzyma.
+     *
+     * <p>Drugi warunek jest istotny: po rozladowaniu swiata loader zwalnia
+     * swoje chunki, a cache nadal ma je w ksiegowosci. Bez tego sprawdzenia
+     * uznalby, ze juz je trzyma, i NIGDY nie wymusilby ich ponownie.
+     * release() na nieistniejaca referencje jest bezpiecznym no-opem.
+     */
+    private void releaseUnwantedChunks(ServerLevel level, Set<Long> wanted) {
         for (long key : new HashSet<>(forcedChunks)) {
             if (!wanted.contains(key)
                     || !com.craftingveloce.network.pipe.VeloceChunkLoader.isHeld(level, key)) {
@@ -418,7 +264,10 @@ public final class VeloceCraftingCache {
                 forcedChunks.remove(key);
             }
         }
-        // Ladujemy to, czego brakuje.
+    }
+
+    /** Laduje to, czego brakuje. Zwraca liczbe nowo wymuszonych chunkow. */
+    private int retainWantedChunks(ServerLevel level, Set<Long> wanted) {
         int added = 0;
         for (long key : wanted) {
             if (!forcedChunks.contains(key)) {
@@ -427,28 +276,20 @@ public final class VeloceCraftingCache {
                 added++;
             }
         }
+        return added;
+    }
+
+    private void logForceLoad(int added) {
         if (!forceLoadInitialized) {
             forceLoadInitialized = true;
             VeloceLog.Network.success(VeloceLog.Side.SERVER,
-                    "force-loaded %d chunk(s) for network (%d node(s), %d pipe(s))",
-                    forcedChunks.size(), nodes, network.getPipes().size());
+                    "force-loaded %d chunk(s) for network (%d pipe(s))",
+                    forcedChunks.size(), network.getPipes().size());
         } else if (added > 0) {
             VeloceLog.Network.detail(VeloceLog.Side.SERVER,
                     "force-loaded %d more chunk(s), total %d", added, forcedChunks.size());
         }
     }
-
-    /**
-     * Czy serwer sie zamyka.
-     *
-     * <p>KLUCZOWE dla zapisu swiata. Gdy serwer sie zamyka, Minecraft probuje
-     * rozladowac chunki. Jesli nasze force-loady dalej dzialaja, chunk wraca,
-     * jest znowu rozladowywany i tak w kolko - zapis swiata sie zawiesza.
-     *
-     * <p>Dlatego przy zamknieciu: przestajemy wymuszac I zwalniamy wszystko,
-     * co trzymalismy.
-     */
-    private static volatile boolean shuttingDown = false;
 
     /**
      * Wchodzimy do swiata - znowu wolno wymuszac chunki.
@@ -473,23 +314,14 @@ public final class VeloceCraftingCache {
      * jednego wymiaru wylaczalo force-loading wszystkim pozostalym - i nic tego
      * nie cofalo, bo {@code LevelEvent.Load} dla Nadswiata juz nie poleci.
      *
-     * <p>Czyscimy tez ksiegowosc {@code forcedChunks}: loader wlasnie zwolnil
-     * te chunki, wiec gdybysmy zostawili je w zbiorach, po ponownym wczytaniu
-     * swiata {@code maintainForcedChunks} uznalby, ze juz je trzyma, i nigdy
-     * by ich nie wymusil z powrotem.
+     * <p>Ksiegowosci {@code forcedChunks} NIE czyscimy: CACHES sa wspolne dla
+     * wszystkich wymiarow, a {@code releaseAll} zwalnia chunki TYLKO tego
+     * jednego swiata. Wyczyszczenie oznaczaloby, ze cache'e z innych wymiarow
+     * traca informacje o chunkach, ktore loader nadal trzyma - i przy nastepnym
+     * {@code maintainForcedChunks} doliczaly druga referencje. Uzgodnienie robi
+     * teraz sam {@code maintainForcedChunks} przez {@code isHeld()}.
      */
     public static void onLevelUnloaded(ServerLevel level) {
-        // NIE czyscimy tu forcedChunks zadnego cache'u.
-        //
-        // VeloceChunkLoader.releaseAll() zwalnia chunki TYLKO tego jednego
-        // swiata, a CACHES sa wspolne dla wszystkich wymiarow. Wyczyszczenie
-        // ksiegowosci wszystkim cache'om oznaczalo, ze cache'e z INNYCH
-        // wymiarow tracily informacje o trzymanych chunkach, ktore loader
-        // nadal trzymal - a przy nastepnym maintainForcedChunks doliczaly
-        // druga referencje. Licznik rosl bez konca, a raz zwolniony chunk
-        // zostawal wymuszony na zawsze.
-        //
-        // Uzgodnienie robi teraz sam maintainForcedChunks przez isHeld().
         int released = com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(level);
         com.craftingveloce.network.pipe.VeloceChunkLoader.releaseAll(level);
         VeloceLog.Network.detail(VeloceLog.Side.SERVER,
@@ -526,17 +358,4 @@ public final class VeloceCraftingCache {
                 "released %d forced chunk(s) for network", forcedChunks.size());
         forcedChunks.clear();
     }
-
-    // ------------------------------------------------------------------
-    // Reakcja na zdarzenia swiata
-    // ------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
 }
