@@ -74,6 +74,40 @@ public final class VelocePipeWorld {
     /** Czy cache komponentow jest aktualny. */
     private boolean componentsDirty = true;
 
+    /**
+     * Opis komponentu: co stoi wokol jego rur.
+     *
+     * <p><b>Po co drugi poziom cache.</b> Sam zbior rur to za malo - maszyny
+     * potrzebuja jeszcze wiedziec, jakie wezly (terminal, crafter, extractor)
+     * i magazyny (skrzynie, beczki) sa do nich podlaczone. Odczytanie tego
+     * wymaga siegniecia do swiata ({@code getBlockState}, {@code getBlockEntity})
+     * dla kazdego sasiada kazdej rury.
+     *
+     * <p>Bez tego cache'u ekstraktor robil to od zera co 10 tickow: przy 999
+     * rurach i trzech maszynach dawalo to ok. 36 000 odwolan do swiata na
+     * sekunde. Teraz opis liczymy RAZ na zmiane ukladu, a odczyt to jedno
+     * lookup w mapie.
+     *
+     * <p>Wpisy dla magazynow w niezaladowanych chunkach ZOSTAJA - razem
+     * z ostatnia znana zawartoscia. Skoro chunk nie jest symulowany, nikt tych
+     * itemow nie ruszyl, wiec zapamietana liczba jest nadal prawdziwa.
+     */
+    public static final class Component {
+        /** Rury nalezace do komponentu. */
+        public final Set<BlockPos> pipes = new LinkedHashSet<>();
+        /** Wezly: terminale, craftery, extractory. Trzymaja chunk na stale. */
+        public final Set<BlockPos> nodes = new LinkedHashSet<>();
+        /** Magazyny: skrzynie, beczki, RS. Doladowywane na czas operacji. */
+        public final Set<BlockPos> storages = new LinkedHashSet<>();
+        /** Craftery - dodatkowo jako bufory produkcji. */
+        public final Set<BlockPos> crafters = new LinkedHashSet<>();
+        /** Kiedy opis powstal (gameTime) - do diagnostyki. */
+        public long builtAtTick;
+    }
+
+    /** Cache opisow: reprezentant komponentu -> opis. */
+    private final Map<BlockPos, Component> componentCache = new HashMap<>();
+
     // ------------------------------------------------------------------
     // Budowa struktury
     // ------------------------------------------------------------------
@@ -173,6 +207,43 @@ public final class VelocePipeWorld {
         return members == null ? Set.of() : members;
     }
 
+    /**
+     * Opis komponentu zawierajacego te rure - z cache.
+     *
+     * <p>Zwraca gotowy opis albo {@code null}, gdy trzeba go policzyc.
+     * Wywolujacy ({@code VelocePipeNetworkManager}) decyduje, jak go zbudowac -
+     * ta klasa nie dotyka swiata, bo jest od niego niezalezna.
+     */
+    public Component cachedComponent(BlockPos pipe) {
+        rebuildIfDirty();
+        BlockPos root = componentOf(pipe);
+        return root == null ? null : componentCache.get(root);
+    }
+
+    /** Zapisuje policzony opis komponentu. */
+    public void storeComponent(BlockPos pipe, Component component) {
+        rebuildIfDirty();
+        BlockPos root = componentOf(pipe);
+        if (root != null && component != null) {
+            componentCache.put(root, component);
+        }
+    }
+
+    /** Usuwa opis komponentu (gdy zmienil sie uklad). */
+    public void invalidateComponent(BlockPos pipe) {
+        rebuildIfDirty();
+        BlockPos root = componentOf(pipe);
+        if (root != null) {
+            componentCache.remove(root);
+        }
+    }
+
+    /** Liczba zcache'owanych opisow - do diagnostyki. */
+    public int cachedComponentCount() {
+        rebuildIfDirty();
+        return componentCache.size();
+    }
+
     /** Liczba komponentow - do diagnostyki. */
     public int componentCount() {
         rebuildIfDirty();
@@ -193,6 +264,7 @@ public final class VelocePipeWorld {
         componentsDirty = false;
         componentOf.clear();
         componentMembers.clear();
+        componentCache.clear();
 
         Set<BlockPos> visited = new HashSet<>();
         for (BlockPos start : allPipes) {
@@ -256,6 +328,7 @@ public final class VelocePipeWorld {
         allPipes.clear();
         componentOf.clear();
         componentMembers.clear();
+        componentCache.clear();
         componentsDirty = true;
     }
 

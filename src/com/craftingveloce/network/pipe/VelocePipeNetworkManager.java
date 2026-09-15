@@ -71,6 +71,20 @@ public class VelocePipeNetworkManager extends SavedData {
      */
     private final VelocePipeWorld world = new VelocePipeWorld();
 
+    /**
+     * Trwaly rejestr magazynow: pozycja -> informacja o magazynie.
+     *
+     * <p><b>Po co osobno.</b> Magazyn moze stac w niezaladowanym chunku, wiec
+     * nie da sie go odczytac ze swiata - a mimo to trzeba pamietac, ze istnieje
+     * i co w nim bylo. Ten rejestr przetrzymuje takie wpisy miedzy
+     * przebudowami sieci.
+     *
+     * <p>Wpis aktualizujemy, gdy chunk jest zaladowany (swiezy odczyt), a gdy
+     * nie jest - zostawiamy ostatnia znana zawartosc. Skoro chunk nie jest
+     * symulowany, nikt tych itemow nie ruszyl, wiec liczba jest nadal prawdziwa.
+     */
+    private final Map<BlockPos, ConnectedEndpointInfo> knownEndpoints = new HashMap<>();
+
     /** Tick ostatniej przebudowy - do odstepu miedzy nimi. */
     private long lastRebuildTick = Long.MIN_VALUE;
 
@@ -243,7 +257,15 @@ public class VelocePipeNetworkManager extends SavedData {
             world.addPipe(np);
             neighbours.add(np);
         }
+        boolean changed = !neighbours.equals(world.neighbours(pos));
         world.setNeighbours(pos, neighbours);
+        if (changed) {
+            // Uklad sie zmienil - opis komponentu jest nieaktualny.
+            // To jest JEDYNE miejsce, w ktorym uniewazniamy cache: wszystko
+            // inne (postawienie rury, zburzenie, wybuch, wrench) przechodzi
+            // przez te metode.
+            world.invalidateComponent(pos);
+        }
     }
 
     /**
@@ -287,6 +309,19 @@ public class VelocePipeNetworkManager extends SavedData {
                 return null;
             }
         }
+        // CACHE OPISU KOMPONENTU.
+        //
+        // To jest miejsce, ktore oszczedza najwiecej. Bez tego kazde zapytanie
+        // (ekstraktor co 10 tickow, otwarcie terminala, odczyt GUI) chodzilo po
+        // swiecie sprawdzajac szesc kierunkow od KAZDEJ rury. Przy 999 rurach
+        // i trzech maszynach to ok. 36 000 odwolan do swiata na sekunde.
+        //
+        // Teraz opis liczymy raz, a kolejne pytania dostaja gotowy wynik.
+        VelocePipeWorld.Component cached = world.cachedComponent(seed);
+        if (cached != null) {
+            return toNetwork(seed, cached);
+        }
+
         Set<BlockPos> members = world.componentMembers(seed);
         if (members.isEmpty()) {
             return null;
@@ -314,6 +349,37 @@ public class VelocePipeNetworkManager extends SavedData {
                 continue;
             }
             collectNeighbours(level, net, pipePos);
+        }
+        net.updateTrackedChunks();
+
+        // Zapisujemy opis, zeby kolejne zapytania byly darmowe.
+        VelocePipeWorld.Component component = new VelocePipeWorld.Component();
+        component.pipes.addAll(net.getPipes());
+        component.nodes.addAll(net.getTerminals());
+        component.storages.addAll(net.getEndpoints().keySet());
+        component.builtAtTick = level.getGameTime();
+        world.storeComponent(seed, component);
+
+        return net;
+    }
+
+    /** Buduje obiekt sieci z zapisanego opisu komponentu (bez dotykania swiata). */
+    private VelocePipeNetwork toNetwork(BlockPos seed, VelocePipeWorld.Component component) {
+        BlockPos root = world.componentOf(seed);
+        UUID id = root != null
+                ? UUID.nameUUIDFromBytes(root.toShortString().getBytes())
+                : UUID.randomUUID();
+        VelocePipeNetwork net = new VelocePipeNetwork(id);
+        net.getPipes().addAll(component.pipes);
+        net.getTerminals().addAll(component.nodes);
+
+        // Magazyny: bierzemy zapamietane wpisy razem z ich zawartoscia.
+        // Dla chunkow zaladowanych odswiezamy je przy okazji, dla
+        // niezaladowanych zostaje ostatnia znana zawartosc.
+        for (Map.Entry<BlockPos, ConnectedEndpointInfo> e : knownEndpoints.entrySet()) {
+            if (component.storages.contains(e.getKey())) {
+                net.getEndpoints().put(e.getKey(), e.getValue());
+            }
         }
         net.updateTrackedChunks();
         return net;
@@ -382,12 +448,14 @@ public class VelocePipeNetworkManager extends SavedData {
                         ConnectedEndpointInfo.Type.REFINED_STORAGE);
                 ep.refreshIfLoaded(level);
                 net.getEndpoints().put(np, ep);
+                knownEndpoints.put(np, ep);
             } else if (VelocePipeBlock.canConnectToInventory(level, np, d.getOpposite())) {
                 BlockPos canonical = getCanonicalInventoryPos(np, ns);
                 ConnectedEndpointInfo ep = new ConnectedEndpointInfo(canonical, d.getOpposite(),
                         ConnectedEndpointInfo.Type.INVENTORY);
                 ep.refreshIfLoaded(level);
                 net.getEndpoints().put(canonical, ep);
+                knownEndpoints.put(canonical, ep);
             }
         }
     }
@@ -594,13 +662,18 @@ public class VelocePipeNetworkManager extends SavedData {
         // To jest cala zaleta plaskiej struktury: rozciecie jest darmowe
         // i zawsze poprawne.
         world.removePipe(pos);
-        // Sasiedzi traca polaczenie z ta rura.
+        // Sasiedzi traca polaczenie z ta rura. syncPipe() uniewazni takze
+        // opis komponentu, wiec maszyny NATYCHMIAST przestana widziec
+        // odcieta czesc sieci - bez tego cache trzymalby stary, polaczony
+        // uklad i terminal pokazywalby itemy z czesci, ktorej juz nie ma.
         for (Direction d : Direction.values()) {
             BlockPos np = pos.relative(d);
             if (world.hasPipe(np)) {
                 syncPipe(level, np);
             }
         }
+        // Sama pozycja tez mogla miec zapamietany opis.
+        world.invalidateComponent(pos);
 
         UUID netId = pipeToNetwork.remove(pos);
         if (netId == null) return;
