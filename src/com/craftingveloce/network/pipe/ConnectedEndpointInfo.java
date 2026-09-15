@@ -1,6 +1,7 @@
 package com.craftingveloce.network.pipe;
 
 import com.craftingveloce.rs.RefinedStorageHelper;
+import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -54,6 +55,9 @@ public class ConnectedEndpointInfo {
 
     /** Minimalny odstep miedzy skanami tego samego inwentarza, w tickach. */
     public static final int SCAN_INTERVAL_TICKS = 10;
+
+    /** Czy blad skanu zostal juz zaraportowany (zeby nie spamowac logu). */
+    private boolean scanFailureLogged;
 
     public ConnectedEndpointInfo(BlockPos pos, Direction accessSide, Type type) {
         this.pos = pos;
@@ -141,7 +145,21 @@ public class ConnectedEndpointInfo {
             }
             cachedCounts.clear();
             cachedCounts.putAll(newCounts);
-        } catch (Throwable ignored) {
+            scanFailureLogged = false;
+        } catch (Throwable t) {
+            // NIE polykamy tego po cichu.
+            //
+            // Wczesniej byl tu `catch (Throwable ignored) {}`. Gdy skanowanie
+            // inwentarza rzucalo (np. zepsuty magazyn z innego moda),
+            // cachedCounts zostawalo ze STARYMI wartosciami - gracz widzial
+            // nieaktualne liczby i nie mial jak zgadnac dlaczego. Teraz
+            // przynajmniej raz na endpoint mowimy o tym w logu.
+            if (!scanFailureLogged) {
+                scanFailureLogged = true;
+                VeloceLog.Network.failure(VeloceLog.Side.SERVER,
+                        "endpoint scan failed at %s (type=%s) - counts stay stale: %s",
+                        pos, type, t);
+            }
         }
     }
 
