@@ -58,8 +58,17 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         }
     }
 
-    /** Ile itemow ma byc w sieci (prog). */
+    /** Ile itemow ma byc w sieci (prog). Nowy sensor startuje z 64. */
     public static final long DEFAULT_THRESHOLD = 64L;
+
+    /**
+     * Dolna granica progu.
+     *
+     * <p>Nie zero: "mniej niz 0 sztuk" nie zdarza sie NIGDY, wiec tryb
+     * "ponizej" z progiem 0 nie wlaczylby pradu ani razu - a wygladalby na
+     * ustawiony. Jedynka jest najmniejsza wartoscia, ktora cos znaczy.
+     */
+    public static final long MIN_THRESHOLD = 1L;
 
     /** Gorna granica progu - chroni przed absurdalnymi wartosciami z pola tekstowego. */
     public static final long MAX_THRESHOLD = 1_000_000_000L;
@@ -138,7 +147,7 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
 
     /** Ustawia prog, przycinajac do sensownego zakresu. */
     public void setThreshold(long value) {
-        long clamped = Math.max(0L, Math.min(MAX_THRESHOLD, value));
+        long clamped = Math.max(MIN_THRESHOLD, Math.min(MAX_THRESHOLD, value));
         if (clamped == threshold) {
             return;
         }
@@ -295,7 +304,7 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
                 ? ItemStack.parse(registries, tag.getCompound("Filter")).orElse(ItemStack.EMPTY)
                 : ItemStack.EMPTY;
         threshold = tag.contains("Threshold")
-                ? Math.max(0L, Math.min(MAX_THRESHOLD, tag.getLong("Threshold")))
+                ? Math.max(MIN_THRESHOLD, Math.min(MAX_THRESHOLD, tag.getLong("Threshold")))
                 : DEFAULT_THRESHOLD;
         mode = tag.contains("Mode") && "HIGH".equals(tag.getString("Mode")) ? Mode.HIGH : Mode.LOW;
         // Pole tylko-synchronizacyjne: jest w pakiecie bloku, nie ma go

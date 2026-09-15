@@ -6,9 +6,11 @@ import com.craftingveloce.inventory.VeloceThresholdSensorMenu;
 import com.craftingveloce.network.OpenFilterPKT;
 import com.craftingveloce.network.SensorConfigPKT;
 import com.craftingveloce.network.SetFilterPKT;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -18,23 +20,23 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * GUI Veloce Threshold Sensor.
  *
- * <p><b>Uklad:</b> jeden slot filtra, pole na prog, trzy male przyciski
- * i ekwipunek gracza - w tej samej siatce co ekstraktor (sloty od x=26,
- * ekwipunek od y=84).
+ * <p><b>Jeden wiersz, wysrodkowany:</b> slot itemu, pole liczby, "+", "-"
+ * i guzik trybu. Wszystkie wspolrzedne pochodza z
+ * {@link VeloceThresholdSensorMenu} - ekran nie ma wlasnej kopii ukladu.
  *
- * <p><b>Trzy przyciski.</b>
- * <ol>
- *   <li><b>tryb</b> - przelacza warunek miedzy "za malo" a "wystarczy",
- *       czyli wlasnie tryb normalny i odwrotny, o ktory chodzilo,</li>
- *   <li><b>-</b> i <b>+</b> - progu o jeden. Wieksze wartosci wpisuje sie
- *       w pole tekstowe.</li>
- * </ol>
+ * <p><b>Zero napisow w GUI.</b> Gracz nie chcial tekstow ("Inventory",
+ * "In network", "Output: ON") ani kwadratu w teksturze, ktory byl dla nich
+ * miejscem. Nie ma ich - stan wyjscia widac po diodzie na bloku, a tryb po
+ * ikonie guzika.
+ *
+ * <p><b>Guzik trybu to pochodnia redstone.</b> Zapalona = "co najmniej tyle"
+ * (sygnal wprost), zgaszona = "ponizej" (odwrotka). Klik przelacza tryb, czyli
+ * odwraca sygnal - standardowa odwrotka redstone.
  *
  * <p><b>Pole tekstowe</b> przyjmuje tylko cyfry. Zapisujemy je po zatwierdzeniu
  * (Enter) albo po wyjsciu z pola - a nie przy kazdym wcisnietym klawiszu, bo
@@ -47,17 +49,14 @@ public class VeloceThresholdSensorScreen
     private static final ResourceLocation GUI_TEXTURE = ResourceLocation.fromNamespaceAndPath(
             CraftingVeloceMod.MODID, "textures/gui/threshold_sensor.png");
 
-    private static final int FIELD_X = 50;
-    private static final int FIELD_Y = 18;
-    private static final int FIELD_W = 76;
-    private static final int FIELD_H = 16;
-
-    private static final int BUTTON_Y = 44;
-    private static final int MODE_W = 84;
-    private static final int STEP_W = 22;
+    /** Ikony trybu: waniliowe tekstury bloku pochodni (16x16). */
+    private static final ResourceLocation TORCH_LIT =
+            ResourceLocation.withDefaultNamespace("textures/block/redstone_torch.png");
+    private static final ResourceLocation TORCH_OFF =
+            ResourceLocation.withDefaultNamespace("textures/block/redstone_torch_off.png");
 
     private EditBox thresholdField;
-    private Button modeButton;
+    private ModeButton modeButton;
 
     /**
      * Tryb wybrany w GUI - to, co widzi gracz i co dopiero poleci na serwer.
@@ -72,15 +71,15 @@ public class VeloceThresholdSensorScreen
     private long sentThreshold = Long.MIN_VALUE;
     private boolean sentHighMode;
 
+    /** Lustro filtra po stronie klienta (blok entity jest zrodlem prawdy). */
+    private ItemStack clientFilter = ItemStack.EMPTY;
+
     public VeloceThresholdSensorScreen(VeloceThresholdSensorMenu menu,
                                        Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        // Ta sama siatka i te same wymiary co ekstraktor.
-        this.imageWidth = 212;
-        this.imageHeight = 166;
-        this.inventoryLabelY = this.imageHeight - 94;
-        this.inventoryLabelX = 26;
-        this.titleLabelX = 26;
+        this.imageWidth = VeloceThresholdSensorMenu.PANEL_WIDTH;
+        this.imageHeight = VeloceThresholdSensorMenu.PANEL_HEIGHT;
+        this.titleLabelX = 8;
     }
 
     @Override
@@ -92,55 +91,87 @@ public class VeloceThresholdSensorScreen
         this.sentHighMode = this.uiHighMode;
 
         this.thresholdField = new EditBox(this.font,
-                this.leftPos + FIELD_X, this.topPos + FIELD_Y, FIELD_W, FIELD_H,
+                this.leftPos + VeloceThresholdSensorMenu.FIELD_X,
+                this.topPos + VeloceThresholdSensorMenu.ROW_Y,
+                VeloceThresholdSensorMenu.FIELD_W, VeloceThresholdSensorMenu.FIELD_H,
                 Component.translatable("gui.craftingveloce.sensor.threshold"));
         this.thresholdField.setValue(Long.toString(threshold));
         this.thresholdField.setMaxLength(10);
         // Tylko cyfry - pole jest liczbowe, wiec nie ma po co wpuszczac liter.
         this.thresholdField.setFilter(s -> s.isEmpty() || s.chars().allMatch(Character::isDigit));
-        this.thresholdField.setResponder(s -> { /* zapis dopiero po zatwierdzeniu */ });
         addRenderableWidget(this.thresholdField);
 
-        this.modeButton = Button.builder(modeLabel(), b -> toggleMode())
-                .bounds(this.leftPos + 26, this.topPos + BUTTON_Y, MODE_W, 18)
-                .tooltip(net.minecraft.client.gui.components.Tooltip.create(
-                        Component.translatable("gui.craftingveloce.sensor.mode.tip")))
-                .build();
-        addRenderableWidget(this.modeButton);
-
-        addRenderableWidget(Button.builder(Component.literal("-"), b -> step(-1))
-                .bounds(this.leftPos + 26 + MODE_W + 4, this.topPos + BUTTON_Y, STEP_W, 18)
-                .tooltip(stepTip())
-                .build());
         addRenderableWidget(Button.builder(Component.literal("+"), b -> step(1))
-                .bounds(this.leftPos + 26 + MODE_W + 4 + STEP_W + 4, this.topPos + BUTTON_Y,
-                        STEP_W, 18)
+                .bounds(this.leftPos + VeloceThresholdSensorMenu.STEP_PLUS_X,
+                        this.topPos + VeloceThresholdSensorMenu.ROW_Y,
+                        VeloceThresholdSensorMenu.BTN_W, VeloceThresholdSensorMenu.ROW_H)
                 .tooltip(stepTip())
                 .build());
+        addRenderableWidget(Button.builder(Component.literal("-"), b -> step(-1))
+                .bounds(this.leftPos + VeloceThresholdSensorMenu.STEP_MINUS_X,
+                        this.topPos + VeloceThresholdSensorMenu.ROW_Y,
+                        VeloceThresholdSensorMenu.BTN_W, VeloceThresholdSensorMenu.ROW_H)
+                .tooltip(stepTip())
+                .build());
+
+        // Guzik trybu na koncu wiersza - ikona zamiast napisu.
+        this.modeButton = addRenderableWidget(new ModeButton(
+                this.leftPos + VeloceThresholdSensorMenu.MODE_X,
+                this.topPos + VeloceThresholdSensorMenu.ROW_Y));
     }
 
-    private net.minecraft.client.gui.components.Tooltip stepTip() {
-        return net.minecraft.client.gui.components.Tooltip.create(
-                Component.translatable("gui.craftingveloce.sensor.step.tip"));
+    /**
+     * Guzik trybu: pochodnia zamiast napisu "When below".
+     *
+     * <p>Kolor ikony NIE zmienia sie przy kliknieciu "na chwile" - pochodnia
+     * pokazuje TRYB, a nie chwilowy stan wyjscia. Inaczej gracz nie wiedzialby,
+     * jaki tryb jest ustawiony, gdy warunek akurat nie jest spelniony.
+     */
+    private final class ModeButton extends Button {
+
+        ModeButton(int x, int y) {
+            super(x, y, VeloceThresholdSensorMenu.BTN_W, VeloceThresholdSensorMenu.ROW_H,
+                    Component.empty(), b -> toggleMode(), Button.DEFAULT_NARRATION);
+            setTooltip(modeTooltip());
+        }
+
+        @Override
+        protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+            super.renderWidget(graphics, mouseX, mouseY, partialTick);
+            // Ikona 16x16 wysrodkowana w guziku 20x20 (po 2 px z kazdej strony).
+            graphics.blit(torchTexture(), getX() + 2, getY() + 2, 0f, 0f, 16, 16, 16, 16);
+        }
     }
 
-    private Component modeLabel() {
-        return Component.translatable(this.uiHighMode
-                ? "gui.craftingveloce.sensor.mode.high"
-                : "gui.craftingveloce.sensor.mode.low");
+    private ResourceLocation torchTexture() {
+        return this.uiHighMode ? TORCH_LIT : TORCH_OFF;
+    }
+
+    private Tooltip modeTooltip() {
+        return Tooltip.create(Component.translatable(this.uiHighMode
+                        ? "gui.craftingveloce.sensor.mode.high"
+                        : "gui.craftingveloce.sensor.mode.low")
+                .append(Component.literal("\n"))
+                .append(Component.translatable("gui.craftingveloce.sensor.mode.invert")
+                        .withStyle(ChatFormatting.DARK_GRAY)));
+    }
+
+    private Tooltip stepTip() {
+        return Tooltip.create(Component.translatable("gui.craftingveloce.sensor.step.tip"));
     }
 
     private void toggleMode() {
         this.uiHighMode = !this.uiHighMode;
         if (this.modeButton != null) {
-            this.modeButton.setMessage(modeLabel());
+            this.modeButton.setTooltip(modeTooltip());
         }
         sendConfig();
     }
 
     /** Progu o jeden - liczone od tego, co gracz WIDZI w polu. */
     private void step(int delta) {
-        long next = Math.max(0L, currentFieldValue() + delta);
+        long next = Math.max(VeloceThresholdSensorBlockEntity.MIN_THRESHOLD,
+                currentFieldValue() + delta);
         this.thresholdField.setValue(Long.toString(next));
         sendConfig();
     }
@@ -185,7 +216,8 @@ public class VeloceThresholdSensorScreen
         String text = this.thresholdField == null ? "" : this.thresholdField.getValue().trim();
         if (!text.isEmpty()) {
             try {
-                return Math.max(0L, Long.parseLong(text));
+                return Math.max(VeloceThresholdSensorBlockEntity.MIN_THRESHOLD,
+                        Long.parseLong(text));
             } catch (NumberFormatException ignored) {
                 // pole przyjmuje tylko cyfry, wiec to praktycznie nie wystapi
             }
@@ -207,22 +239,21 @@ public class VeloceThresholdSensorScreen
             }
         }
         // Tryb z serwera przyjmujemy TYLKO gdy nie mamy wlasnej, jeszcze
-        // niepotwierdzonej zmiany - inaczej nadpisanie cofnęłoby klik gracza
+        // niepotwierdzonej zmiany - inaczej nadpisanie cofneloby klik gracza
         // (serwer odpowiada z opoznieniem jednego ticku).
         boolean serverHigh = this.menu.getMode() == VeloceThresholdSensorBlockEntity.Mode.HIGH;
         if (this.sentHighMode == this.uiHighMode && serverHigh != this.uiHighMode) {
             this.uiHighMode = serverHigh;
             this.sentHighMode = serverHigh;
+            // Ikona czyta tryb przy rysowaniu, ale podpowiedz jest budowana
+            // raz - trzeba ja odswiezyc, bo inaczej opisywalaby stary tryb.
             if (this.modeButton != null) {
-                this.modeButton.setMessage(modeLabel());
+                this.modeButton.setTooltip(modeTooltip());
             }
         }
         // Filtr mogl zostac zmieniony wspolnym pakietem - odswiezamy lustro.
         this.clientFilter = this.menu.getFilter();
     }
-
-    /** Lustro filtra po stronie klienta (blok entity jest zrodlem prawdy). */
-    private ItemStack clientFilter = ItemStack.EMPTY;
 
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
@@ -236,60 +267,43 @@ public class VeloceThresholdSensorScreen
         }
     }
 
+    /**
+     * Bez napisu "Inventory".
+     *
+     * <p>Gracz nie chcial zadnych tekstow w tym GUI - zostaje sam tytul
+     * (nazwa bloku), zeby bylo wiadomo, co sie otworzylo.
+     */
+    @Override
+    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
+        graphics.drawString(this.font, this.title, this.titleLabelX, this.titleLabelY,
+                0x404040, false);
+    }
+
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
-        renderStatus(graphics);
         renderFilterTooltip(graphics, mouseX, mouseY);
         this.renderTooltip(graphics, mouseX, mouseY);
     }
 
     /**
-     * Stan czujnika pod przyciskami.
+     * Podpowiedz slotu itemu - dwa stany, bez instrukcji-obrazka.
      *
-     * <p>Pokazujemy TRZY rzeczy, bo bez kazdej z nich gracz nie wie, dlaczego
-     * prad jest albo go nie ma: ile jest w sieci, jaki jest prog i czy warunek
-     * jest spelniony.
+     * <p>Tak samo jak w ekstraktorze: pusty slot to samo "Empty filter".
      */
-    private void renderStatus(GuiGraphics graphics) {
-        int x = this.leftPos + 26;
-        int y = this.topPos + 70;
-
-        long count = this.menu.getLastCount();
-        String countText = count < 0
-                ? Component.translatable("gui.craftingveloce.sensor.count.unknown").getString()
-                : Component.translatable("gui.craftingveloce.sensor.count", count).getString();
-        graphics.drawString(this.font, countText, x, y, 0x404040, false);
-
-        if (this.menu.getFilter().isEmpty()) {
-            graphics.drawString(this.font,
-                    Component.translatable("gui.craftingveloce.sensor.noFilter").getString(),
-                    x, y + 10, 0x8B0000, false);
-            return;
-        }
-        boolean met = this.menu.isPowered();
-        Component state = Component.translatable(met
-                ? "gui.craftingveloce.sensor.output.on"
-                : "gui.craftingveloce.sensor.output.off");
-        graphics.drawString(this.font, state.getString(), x, y + 10,
-                met ? 0x006400 : 0x404040, false);
-    }
-
     private void renderFilterTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         if (!isHovering(VeloceThresholdSensorMenu.FILTER_SLOT_X,
                 VeloceThresholdSensorMenu.FILTER_SLOT_Y, 16, 16, mouseX, mouseY)) {
             return;
         }
-        List<Component> lines = new ArrayList<>();
+        List<Component> lines;
         if (clientFilter.isEmpty()) {
-            lines.add(Component.translatable("gui.craftingveloce.sensor.filterEmpty"));
+            lines = List.of(Component.translatable("gui.craftingveloce.sensor.filterEmpty"));
         } else {
-            lines.add(clientFilter.getHoverName());
-            lines.add(Component.translatable("gui.craftingveloce.sensor.filterChange")
-                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+            lines = List.of(clientFilter.getHoverName(),
+                    Component.translatable("gui.craftingveloce.sensor.filterChange")
+                            .withStyle(ChatFormatting.DARK_GRAY));
         }
-        lines.add(Component.translatable("gui.craftingveloce.sensor.filterHint")
-                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
         graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
     }
 

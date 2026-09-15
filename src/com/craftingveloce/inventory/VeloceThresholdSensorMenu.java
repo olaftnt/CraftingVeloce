@@ -14,10 +14,14 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 /**
  * Menu Veloce Threshold Sensor.
  *
- * <p><b>Uklad.</b> Jeden slot FILTRA (widmo - ikone rysuje ekran, wartosc trzyma
- * block entity), pole na prog i trzy przyciski rysuje ekran, a ponizej jest
- * ekwipunek gracza. Siatka jest ta sama co w ekstraktorze: sloty od x=26,
- * ekwipunek od y=84, hotbar na y=142.
+ * <p><b>Uklad.</b> JEDEN wysrodkowany wiersz: slot itemu, pole liczby, "+",
+ * "-" i guzik trybu. Ponizej ekwipunek gracza (siatka jak w ekstraktorze:
+ * ekwipunek od y=84, hotbar na y=142).
+ *
+ * <p>Wszystkie wspolrzedne GUI zyja TUTAJ - ekran czyta je z tej klasy, a
+ * generator tekstury maluje ramke slotu pod ta sama liczba. Dzieki temu nie ma
+ * trzech kopii, ktore moga sie rozjechac (build.py pilnuje pary
+ * menu &lt;-&gt; generator).
  *
  * <p>Menu nie trzyma progu ani trybu - one zyja w block entity. Dzieki temu
  * dokladnie ta sama wartosc jest widziana przez serwer (ktory na jej podstawie
@@ -25,9 +29,34 @@ import net.minecraft.world.level.block.entity.BlockEntity;
  */
 public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
 
-    /** Pozycja slotu filtra - musi sie zgadzac z rysowaniem i klikaniem. */
-    public static final int FILTER_SLOT_X = 26;
-    public static final int FILTER_SLOT_Y = 18;
+    /** Panel - ta sama szerokosc co tekstura i ekran (imageWidth). */
+    public static final int PANEL_WIDTH = 212;
+    public static final int PANEL_HEIGHT = 166;
+
+    // ---------------- wiersz glowny (wysrodkowany) ----------------
+    //
+    //  slot 16 | 4 | pole 38 | 4 | "+" 20 | 4 | "-" 20 | 4 | tryb 20
+    //
+    // Szerokosc wiersza = 16 + 4 + 38 + 4 + 20 + 4 + 20 + 4 + 20 = 130, a
+    // (212 - 130) / 2 = 41 - dokladnie tyle marginesu z KAZDEJ strony. Pole
+    // liczby jest o POLOWE krotsze, niz bylo (bylo 76 px).
+    /** Gorny brzeg wiersza; slot 16 px jest w nim wysrodkowany (2 px zapasu). */
+    public static final int ROW_Y = 26;
+    public static final int ROW_H = 20;
+    public static final int GAP = 4;
+    public static final int SLOT_SIZE = 16;
+    public static final int FIELD_X = 61;
+    public static final int FIELD_W = 38;
+    public static final int FIELD_H = 20;
+    public static final int BTN_W = 20;
+    public static final int STEP_PLUS_X = 103;
+    public static final int STEP_MINUS_X = 127;
+    /** Guzik trybu (pochodnia) - trzeci guzik w wierszu. */
+    public static final int MODE_X = 151;
+
+    /** Slot itemu: pierwszy element wiersza. Generator maluje tu ramke. */
+    public static final int FILTER_SLOT_X = 41;
+    public static final int FILTER_SLOT_Y = 28;
 
     private static final int PLAYER_X = 26;
     private static final int PLAYER_Y = 84;

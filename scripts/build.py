@@ -232,13 +232,22 @@ def validate_gui_layout():
     # Bateria i jej slot zyja w menu pieca ELEKTRYCZNEGO i w jego ekranie.
     paths["menu_el"] = "src/com/craftingveloce/inventory/VeloceElectricFurnaceMenu.java"
     paths["ekran_el"] = "src/com/craftingveloce/client/gui/VeloceElectricFurnaceScreen.java"
+    # Sensor: slot itemu stawia menu, a ramke pod nim maluje generator GUI.
+    # To ta sama para co w piecu - i wlasnie ta para byla poza kontrola, dopoki
+    # generator zapisywal ja krotko ("FILTER_X, FILTER_Y = 26, 18"), czego
+    # wyrazenie regularne nie widzi.
+    paths["menu_s"] = "src/com/craftingveloce/inventory/VeloceThresholdSensorMenu.java"
+    paths["gen_s"] = "scripts/gen_sensor_textures.py"
     names = ["FILTER_X", "FILTER_Y", "FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y",
              "FLAME_X", "FLAME_Y",
              "BATTERY_X", "BATTERY_Y", "BATTERY_W", "BATTERY_H", "NUB_W", "NUB_H",
-             "BATTERY_SLOT_X", "BATTERY_SLOT_Y"]
+             "BATTERY_SLOT_X", "BATTERY_SLOT_Y",
+             "FILTER_SLOT_X", "FILTER_SLOT_Y"]
     # Domyslnie porownujemy trojke pieca PALIWOWEGO: menu, ekran, generator.
     # Pozostale elementy maja wlasne listy nizej.
     who = {n: ["menu", "ekran", "generator"] for n in names}
+    for n in ("FILTER_SLOT_X", "FILTER_SLOT_Y"):
+        who[n] = ["menu_s", "gen_s"]            # sensor: menu + generator
     for n in ("FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y"):
         who[n] = ["menu", "generator"]          # ekran ich nie potrzebuje
     for n in ("FLAME_X", "FLAME_Y"):
@@ -265,6 +274,50 @@ def validate_gui_layout():
         fail("uklad GUI nie zgadza sie miedzy plikami:\n  " + "\n  ".join(problems))
     print("    OK (uklad GUI zgodny: " + ", ".join(
         f"{n}={values[n][who[n][0]]}" for n in names) + ")")
+
+
+def validate_sensor_row():
+    """
+    Wiersz sensora: wysrodkowany, rowne odstepy, nic na sobie nie lezy.
+
+    Gracz poprosil wprost o JEDEN wyrownany rzad (slot itemu, pole liczby, "+",
+    "-", guzik trybu) i o wycentrowanie. Wspolrzedne sa recznie policzonymi
+    liczbami, a literowke widac dopiero w grze - jako krzywy GUI. Tu liczymy to
+    samo, co zrobi gracz: marginesy i odstepy.
+    """
+    path = "src/com/craftingveloce/inventory/VeloceThresholdSensorMenu.java"
+    if not os.path.exists(path):
+        return
+    text = open(path, encoding="utf-8").read()
+    names = ["PANEL_WIDTH", "GAP", "SLOT_SIZE", "FIELD_W", "FIELD_X",
+             "BTN_W", "FILTER_SLOT_X", "STEP_PLUS_X", "STEP_MINUS_X", "MODE_X"]
+    v = {}
+    for n in names:
+        m = re.search(r"\b" + re.escape(n) + r"\s*=\s*(-?\d+)", text)
+        if not m:
+            fail(f"brak stalej {n} w {path} (build.py czyta je pojedynczo)")
+        v[n] = int(m.group(1))
+
+    pieces = [("slot", v["FILTER_SLOT_X"], v["SLOT_SIZE"]),
+              ("pole", v["FIELD_X"], v["FIELD_W"]),
+              ("+", v["STEP_PLUS_X"], v["BTN_W"]),
+              ("-", v["STEP_MINUS_X"], v["BTN_W"]),
+              ("tryb", v["MODE_X"], v["BTN_W"])]
+
+    problems = []
+    for (an, ax, aw), (bn, bx, _bw) in zip(pieces, pieces[1:]):
+        gap = bx - (ax + aw)
+        if gap != v["GAP"]:
+            problems.append(f"odstep {an} -> {bn} = {gap} px, ma byc {v['GAP']}")
+    left = pieces[0][1]
+    right = v["PANEL_WIDTH"] - (pieces[-1][1] + pieces[-1][2])
+    if left != right:
+        problems.append(f"wiersz nie jest wysrodkowany: lewy margines {left}, prawy {right}")
+
+    if problems:
+        fail("wiersz sensora:\n  " + "\n  ".join(problems))
+    row_w = pieces[-1][1] + pieces[-1][2] - pieces[0][1]
+    print(f"    OK (wiersz sensora wysrodkowany: {row_w} px, margines {left} px z kazdej strony)")
 
 
 def game_running():
@@ -428,6 +481,7 @@ def main():
     validate_packet_docs()
     validate_lang_keys()
     validate_gui_layout()
+    validate_sensor_row()
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "
