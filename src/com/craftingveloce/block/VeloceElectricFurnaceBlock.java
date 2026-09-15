@@ -12,6 +12,10 @@ import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.LevelAccessor;
+import javax.annotation.Nullable;
 
 /**
  * Velocity Electric Furnace - zrodlo ciepla zasilane Forge Energy.
@@ -71,6 +75,44 @@ public class VeloceElectricFurnaceBlock extends BaseEntityBlock implements Entit
             sp.openMenu(provider, pos);
         }
         return InteractionResult.sidedSuccess(world.isClientSide);
+    }
+
+    /**
+     * Zglasza piec do sieci rur przy postawieniu.
+     *
+     * <p><b>BUG, ktory to naprawia.</b> Piec byl zarejestrowany jako wezel
+     * (VeloceNodeBlocks) i potrafil dzialac jako zrodlo ciepla, ale NIE
+     * zglaszal sie przy postawieniu - w przeciwienstwie do terminala,
+     * kontrolera, craftera i ekstraktora. Skutek: postawienie pieca obok
+     * istniejacej rury nie odswiezalo sieci, wiec piec nie byl w niej widziany
+     * (a bez tego crafter go nie znajdowal i nie mial czym przepalac).
+     *
+     * <p>Dzialalo tylko w jedna strone: gdy rura byla stawiana PO piecu,
+     * skan rury sam go odkrywal. Odwrotna kolejnosc - i nic.
+     */
+    @Override
+    public void setPlacedBy(Level world, BlockPos pos, BlockState state,
+                            @Nullable net.minecraft.world.entity.LivingEntity placer,
+                            ItemStack stack) {
+        super.setPlacedBy(world, pos, state, placer, stack);
+        if (!world.isClientSide) {
+            com.tom.storagemod.inventory.InventoryCableNetwork n =
+                    com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(world);
+            n.markNodeInvalid(pos);
+            if (world instanceof net.minecraft.server.level.ServerLevel sl) {
+                VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
+            }
+        }
+    }
+
+    @Override
+    public void destroy(net.minecraft.world.level.LevelAccessor world, BlockPos pos,
+                        BlockState state) {
+        super.destroy(world, pos, state);
+        if (world instanceof net.minecraft.server.level.ServerLevel l) {
+            com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
+            VelocePipeNetworkManager.get(l).onTerminalRemoved(l, pos);
+        }
     }
 
     @Override

@@ -210,6 +210,23 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             return terminal.canConnectFrom(neighborState, dir.getOpposite());
         }
 
+        // 2. NASZE WEZLY (terminal, kontroler, crafter, ekstraktor, OBA PIECE).
+        //
+        // BUG, ktory to naprawia: ten warunek wymienial typy blokow RECZNIE
+        // i piece w nim nie bylo. Rura nie ustawiala wiec sobie ramienia w
+        // strone pieca - wygladala jak niepodlaczona, a siec kabli Toma jej
+        // nie widziala. To dokladnie ten sam blad, ktory juz raz wyciagnal
+        // kontroler z jego wlasnej sieci.
+        //
+        // Teraz pytamy VeloceNodeBlocks - JEDNO zrodlo prawdy o wezlach,
+        // ktorego uzywa tez budowa sieci. Nowy wezel zadziala wiec w obu
+        // miejscach naraz, bez pamietania o drugim.
+        if (com.craftingveloce.network.pipe.VeloceNodeBlocks.isNode(neighborState.getBlock())
+                && com.craftingveloce.network.pipe.VeloceNodeBlocks.connectsFrom(
+                        neighborState, neighborState.getBlock(), dir.getOpposite())) {
+            return true;
+        }
+
         // 3. Another IInventoryCable (Tom's Storage cable, etc.)
         if (neighborState.getBlock() instanceof IInventoryCable cable) {
             return cable.canConnectFrom(neighborState, dir.getOpposite());
