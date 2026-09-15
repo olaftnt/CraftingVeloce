@@ -427,6 +427,49 @@ public final class VeloceAutoCrafter {
      * i tak ma swiezy stock z diffa. Dzieki temu siec czytamy raz na tick,
      * a nie raz na item.
      */
+    /**
+     * Ile sztuk da sie <b>dorobic z surowcow</b> - bez tego, co juz gotowe.
+     *
+     * <p><b>BUG, ktory to naprawia.</b> Poprzednia wersja liczyla tak:
+     * <pre>
+     *   total = maxCraftable(stock)      // = fromStock + lo
+     *   craftable = total - onStock      // = lo
+     * </pre>
+     * i wydawalo sie, ze zapas jest odjety. Ale <b>nie jest</b>: funkcja
+     * {@code plan} (uzywana w bisekcji wewnatrz {@code maxCraftable}) NAJPIERW
+     * ZUZYWA to, co juz lezy na stanie, i dopiero reszte craftuje. Wiec
+     * {@code lo} = maksimum "ile mozna MIEĆ", a nie "ile mozna DOROBIC" -
+     * czyli zawiera zapas. Odjecie zapasu nic nie dawalo, bo ten sam zapas
+     * byl juz wliczony w {@code lo}.
+     *
+     * <p><b>Objaw.</b> Terminal pokazywal licznik, ktory zmienial sie od
+     * przelozenia gotowego itemu:
+     * <pre>
+     *   356  (0 na stanie)
+     *   355  po scraftowaniu 1 logu: +3 do bufora, -1 log  (-4 z surowcow +3 zapas)
+     *   354  po wyjeciu 1 sztuki z bufora                 (-1 zapas)
+     *   353  po wyjeciu kolejnej                          (-1 zapas)
+     * </pre>
+     * Gotowe itemy w buforze pomniejszaly wiec liczbe "ile moge jeszcze
+     * zrobic", choc te dwie rzeczy mialy byc rozdzielone.
+     *
+     * <p><b>Rozwiazanie.</b> Liczymy z zapasem tego itemu WYZEROWANYM.
+     * Wtedy plan nie ma czego zuzyc na poczatek, wiec bisekcja znajduje
+     * dokladnie to, ile da sie wyprodukowac z surowcow. Wynik nie zalezy od
+     * tego, ile gotowych sztuk lezy w buforze, w skrzyni czy gdziekolwiek.
+     *
+     * @return ile da sie dorobic z surowcow (UNKNOWN_COUNT gdy brak budzetu)
+     */
+    private static long craftableFromRaw(ServerLevel level, Item item, Map<Item, Long> stock,
+                                         Set<Item> enabled,
+                                         Map<Item, ResourceLocation> preferred) {
+        Map<Item, Long> rawStock = new HashMap<>(stock);
+        rawStock.put(item, 0L);
+        // maxCraftable przy zerowym zapasie zwraca samo "lo" (bo fromStock = 0),
+        // czyli dokladnie ilosc wykonalna z surowcow.
+        return maxCraftable(level, item, rawStock, enabled, preferred);
+    }
+
     public static long countCraftableFromStock(
             ServerLevel level, Item item, Map<Item, Long> stock,
             Set<Item> enabledItems, Map<Item, ResourceLocation> preferred,
@@ -434,13 +477,12 @@ public final class VeloceAutoCrafter {
         if (!enabledItems.contains(item)) {
             return 0L;
         }
-        long onStock = stock.getOrDefault(item, 0L);
         startEstimate(budgetNanos);
-        long total = maxCraftable(level, item, stock, enabledItems, preferred);
-        if (total == UNKNOWN_COUNT) {
+        long craftable = craftableFromRaw(level, item, stock, enabledItems, preferred);
+        if (craftable == UNKNOWN_COUNT) {
             return UNKNOWN_COUNT;
         }
-        return Math.max(0L, total - onStock);
+        return Math.max(0L, craftable);
     }
 
     /**
@@ -504,10 +546,9 @@ public final class VeloceAutoCrafter {
                 break;
             }
             Map<Item, Long> stock = new HashMap<>(stockSnapshot);
-            long onStock = stock.getOrDefault(item, 0L);
             startEstimate(deadline == 0L ? 0L
                     : Math.max(1_000_000L, deadline - System.nanoTime()));
-            long total = maxCraftable(level, item, stock, enabledItems, preferred);
+            long total = craftableFromRaw(level, item, stock, enabledItems, preferred);
             if (total == UNKNOWN_COUNT) {
                 // Nie zmiescilismy sie w budzecie - nie zgadujemy, mowimy
                 // GUI, ze partia jest niekompletna i przerwamy petle.
@@ -518,7 +559,7 @@ public final class VeloceAutoCrafter {
             // surplus > 0, wiec "nie da sie juz nic zrobic" bylo nieodroznialne
             // od "nie policzono tego itemu" i klient zachowywal stara, zawyzona
             // liczbe. Zero to konkretna, poprawna odpowiedz.
-            out.put(item, Math.max(0L, total - onStock));
+            out.put(item, Math.max(0L, total));
         }
         return new BatchResult(out, complete);
     }
