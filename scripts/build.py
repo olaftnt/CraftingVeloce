@@ -153,8 +153,18 @@ def main():
     copy_clean("assets", os.path.join(STAGING, "assets"))
     copy_clean("data", os.path.join(STAGING, "data"))
 
+    # META-INF bierzemy z src_meta/, a NIE ze stagingu.
+    #
+    # Wczesniej neoforge.mods.toml istnial WYLACZNIE w katalogu staging
+    # (craftingveloce_jar_root/) i nie byl wersjonowany. Wyczyszczenie stagingu
+    # oznaczalo build bez metadanych moda - JAR, ktorego loader nie widzi.
+    META_SRC = "src_meta"
+    if os.path.exists(os.path.join(META_SRC, "META-INF")):
+        copy_clean(os.path.join(META_SRC, "META-INF"),
+                   os.path.join(STAGING, "META-INF"))
+
     if not os.path.exists(os.path.join(STAGING, "META-INF", "neoforge.mods.toml")):
-        fail("brak META-INF/neoforge.mods.toml w stagingu - JAR bylby niepoprawny")
+        fail("brak META-INF/neoforge.mods.toml (zrodlo: src_meta/META-INF/)")
 
     if os.path.exists(JAR_NAME):
         os.remove(JAR_NAME)

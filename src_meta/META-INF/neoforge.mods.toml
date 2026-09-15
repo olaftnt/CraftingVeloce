@@ -1,0 +1,33 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT License"
+
+[[mods]]
+modId="craftingveloce"
+version="1.0.0"
+displayName="CraftingVeloce"
+authors="olafalencynowicz"
+description='''
+CraftingVeloce mod integrating with Tom's Simple Storage.
+'''
+
+[[dependencies.craftingveloce]]
+    modId="neoforge"
+    type="required"
+    versionRange="[21.0.0-beta,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.craftingveloce]]
+    modId="minecraft"
+    type="required"
+    versionRange="[1.21.0,1.21.2)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.craftingveloce]]
+    modId="toms_storage"
+    type="required"
+    versionRange="[2.4.0,)"
+    ordering="AFTER"
+    side="BOTH"
