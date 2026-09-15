@@ -7,5 +7,7 @@
     "item.craftingveloce.veloce_extractor": "Veloce Extractor",
     "block.craftingveloce.veloce_crafting_table": "Veloce Crafting Table",
     "item.craftingveloce.veloce_crafting_table": "Veloce Crafting Table",
-    "item.craftingveloce.wrench": "Veloce Wrench"
+    "item.craftingveloce.wrench": "Veloce Wrench",
+    "block.craftingveloce.veloce_controller": "Veloce Controller",
+    "item.craftingveloce.veloce_controller": "Veloce Controller"
 }

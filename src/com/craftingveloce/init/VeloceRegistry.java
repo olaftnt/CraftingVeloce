@@ -110,6 +110,23 @@ public class VeloceRegistry {
                     VELOCE_CRAFTING_TABLE.get()
             ));
 
+    // 6. Veloce Controller (monitoring sieci + filtrowanie itemow)
+    public static final DeferredBlock<com.craftingveloce.block.VeloceControllerBlock> VELOCE_CONTROLLER = BLOCKS.register(
+            "veloce_controller",
+            com.craftingveloce.block.VeloceControllerBlock::new
+    );
+
+    public static final DeferredItem<BlockItem> VELOCE_CONTROLLER_ITEM = ITEMS.registerSimpleBlockItem(
+            "veloce_controller",
+            VELOCE_CONTROLLER
+    );
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.craftingveloce.block.entity.VeloceControllerBlockEntity>> VELOCE_CONTROLLER_BE =
+            BLOCK_ENTITY_TYPES.register("veloce_controller", () -> createBEType(
+                    (pos, state) -> new com.craftingveloce.block.entity.VeloceControllerBlockEntity(pos, state),
+                    VELOCE_CONTROLLER.get()
+            ));
+
 
     @FunctionalInterface
     public interface BlockEntityFactory<T extends BlockEntity> {

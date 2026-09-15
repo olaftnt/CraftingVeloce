@@ -22,6 +22,7 @@ import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -119,7 +120,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
 
             if (currentOutput.isEmpty()) {
                 // Pull up to full stack
-                ItemStack pulled = net.extractItem(sl, filter.getItem(), maxStack);
+                ItemStack pulled = extractOrCraft(sl, net, filter.getItem(), maxStack);
                 if (!pulled.isEmpty()) {
                     outputInventory.setItem(i, pulled);
                     setChanged();
@@ -127,7 +128,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
             } else if (ItemStack.isSameItemSameComponents(currentOutput, filter)) {
                 int needed = maxStack - currentOutput.getCount();
                 if (needed > 0) {
-                    ItemStack pulled = net.extractItem(sl, filter.getItem(), needed);
+                    ItemStack pulled = extractOrCraft(sl, net, filter.getItem(), needed);
                     if (!pulled.isEmpty()) {
                         currentOutput.grow(pulled.getCount());
                         outputInventory.setItem(i, currentOutput);
@@ -136,6 +137,37 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
                 }
             }
         }
+    }
+
+    /**
+     * Wyciaga item z sieci, a jesli go tam nie ma - probuje go auto-wycraftowac
+     * (o ile w sieci jest crafter z wlaczona receptura dla tego itemu).
+     *
+     * <p>Dzieki temu extractor dziala identycznie jak terminal: filtrujesz deski,
+     * wlaczasz auto-crafting desek i extractor sam je dostarcza, nawet jesli
+     * nikt ich wczesniej nie wyprodukowal.
+     */
+    private ItemStack extractOrCraft(ServerLevel sl, VelocePipeNetwork net, Item item, int count) {
+        ItemStack direct = net.extractItem(sl, item, count);
+        if (!direct.isEmpty()) {
+            return direct;
+        }
+
+        // Auto-crafting: tylko jesli jakis crafter ma wlaczona recepture dla itemu.
+        var crafter = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .findEnabledCrafter(sl, net, item);
+        if (crafter == null) {
+            return ItemStack.EMPTY;
+        }
+
+        var preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getPreferredRecipes(sl, net);
+        var result = com.craftingveloce.crafting.VeloceAutoCrafter.ensureAvailable(
+                sl, net, item, count, null, preferred);
+        if (!result.success()) {
+            return ItemStack.EMPTY;
+        }
+        return net.extractItem(sl, item, count);
     }
 
     @Override

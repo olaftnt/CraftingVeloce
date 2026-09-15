@@ -44,18 +44,34 @@ public class ClientTerminalHelper {
         return Minecraft.getInstance().hitResult;
     }
 
-    public static void openCraftingTableScreen(BlockPos pos, java.util.Set<Item> enabledItems) {
+    public static void openCraftingTableScreen(BlockPos pos, java.util.Set<Item> enabledItems,
+                                               java.util.Map<Item, net.minecraft.resources.ResourceLocation> preferredRecipes) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             mc.setScreen(new com.craftingveloce.client.gui.VeloceCraftingTableScreen(
-                    mc.player, mc.player.connection.enabledFeatures(), true, pos, enabledItems));
+                    mc.player, mc.player.connection.enabledFeatures(), true, pos, enabledItems, preferredRecipes));
         }
     }
 
-    public static void updateCraftingTableState(BlockPos pos, java.util.Set<Item> enabledItems) {
+    public static void updateCraftingTableState(BlockPos pos, java.util.Set<Item> enabledItems,
+                                                java.util.Map<Item, net.minecraft.resources.ResourceLocation> preferredRecipes) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof com.craftingveloce.client.gui.VeloceCraftingTableScreen screen) {
-            screen.updateEnabledItems(enabledItems);
+            screen.updateEnabledItems(enabledItems, preferredRecipes);
+        }
+    }
+
+    /** Otwiera GUI Veloce Controller z obrazem sieci. */
+    public static void openControllerScreen(BlockPos pos,
+                                            java.util.Map<Item, Long> stock,
+                                            java.util.Set<Item> craftable,
+                                            java.util.Set<Item> craftingEnabled,
+                                            java.util.Map<Item, Integer> hotbar) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            mc.setScreen(new com.craftingveloce.client.gui.VeloceControllerScreen(
+                    mc.player, mc.player.connection.enabledFeatures(), true,
+                    pos, stock, craftable, craftingEnabled, hotbar));
         }
     }
 }

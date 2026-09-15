@@ -179,6 +179,73 @@ public class ConnectedEndpointInfo {
         return result;
     }
 
+    /**
+     * Wklada item do tego endpointu (odwrotnosc {@link #extractItem}).
+     *
+     * <p>Uzywane przez auto-crafter do odkładania wynikow craftowania.
+     * Obsluguje te same trzy rodzaje magazynow co ekstrakcja: Refined Storage,
+     * NeoForge ItemHandler oraz vanilla Container.
+     *
+     * @return true, jesli udalo sie wlozyc cala stacke
+     */
+    public boolean insertItem(ServerLevel level, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return true;
+        }
+
+        if (type == Type.REFINED_STORAGE) {
+            boolean ok = RefinedStorageHelper.insertItem(level, pos, accessSide, stack);
+            if (ok) {
+                refreshIfLoaded(level);
+            }
+            return ok;
+        }
+
+        boolean wasLoaded = level.isLoaded(pos);
+        if (!wasLoaded) {
+            level.setChunkForced(chunkPos.x, chunkPos.z, true);
+            level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true);
+        }
+
+        ItemStack remaining = stack.copy();
+        try {
+            BlockState state = level.getBlockState(pos);
+            BlockEntity be = level.getBlockEntity(pos);
+            IItemHandler handler = Capabilities.ItemHandler.BLOCK.getCapability(level, pos, state, be, accessSide);
+            if (handler != null) {
+                for (int i = 0; i < handler.getSlots() && !remaining.isEmpty(); i++) {
+                    remaining = handler.insertItem(i, remaining, false);
+                }
+            } else if (be instanceof Container container) {
+                for (int i = 0; i < container.getContainerSize() && !remaining.isEmpty(); i++) {
+                    ItemStack inSlot = container.getItem(i);
+                    int max = Math.min(container.getMaxStackSize(), remaining.getMaxStackSize());
+                    if (inSlot.isEmpty()) {
+                        int move = Math.min(max, remaining.getCount());
+                        container.setItem(i, remaining.split(move));
+                    } else if (ItemStack.isSameItemSameComponents(inSlot, remaining)) {
+                        int space = max - inSlot.getCount();
+                        if (space > 0) {
+                            int move = Math.min(space, remaining.getCount());
+                            inSlot.grow(move);
+                            remaining.shrink(move);
+                            container.setChanged();
+                        }
+                    }
+                }
+            }
+
+            refreshIfLoaded(level);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        } finally {
+            if (!wasLoaded) {
+                level.setChunkForced(chunkPos.x, chunkPos.z, false);
+            }
+        }
+        return remaining.isEmpty();
+    }
+
     public CompoundTag toNbt() {
         CompoundTag tag = new CompoundTag();
         tag.putLong("Pos", pos.asLong());

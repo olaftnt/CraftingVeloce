@@ -232,8 +232,21 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
 
     /**
      * Extracts an item from the connected network (Refined Storage or Tom's Storage / chests or Pipe Network).
+     *
+     * <p>Jesli itemu nie ma w sieci, probuje go <b>auto-wycraftowac</b> - patrz
+     * {@link #craftItemFromNetwork}. Dzieki temu gracz moze wyciagnac deski,
+     * majac wlaczone auto-craftowanie dla desek, nawet jesli nikt ich nie
+     * wyprodukowal wczesniej: craftowanie jest natychmiastowe i nie przechodzi
+     * przez zaden fizyczny blok posredni.
      */
     public ItemStack extractItemFromConnectedNetwork(ItemStack requested, int count) {
+        return extractItemFromConnectedNetwork(requested, count, true);
+    }
+
+    /**
+     * @param allowCrafting czy wolno dotworzyc item auto-craftingiem, gdy brak go w sieci
+     */
+    public ItemStack extractItemFromConnectedNetwork(ItemStack requested, int count, boolean allowCrafting) {
         if (level == null || level.isClientSide || !(level instanceof ServerLevel sl) || requested.isEmpty() || count <= 0) {
             return ItemStack.EMPTY;
         }
@@ -245,8 +258,17 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
             ItemStack extracted = net.extractItem(sl, requested.getItem(), count);
             if (!extracted.isEmpty()) {
                 syncCountsToAllWatchers();
+                return extracted;
             }
-            return extracted;
+            // 1b. Nie ma w sieci - sprobuj auto-craftingu (jesli wlaczony dla tego itemu).
+            if (allowCrafting) {
+                ItemStack crafted = craftItemFromNetwork(sl, net, requested, count);
+                if (!crafted.isEmpty()) {
+                    syncCountsToAllWatchers();
+                    return crafted;
+                }
+            }
+            return ItemStack.EMPTY;
         }
 
         Direction connDir = getConnectionDirection();
@@ -273,5 +295,45 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         }
 
         return ItemStack.EMPTY;
+    }
+
+    /**
+     * Probuje auto-wycraftowac item i natychmiast go oddac.
+     *
+     * <p>Warunki:
+     * <ol>
+     *   <li>W sieci musi byc auto-crafter, ktory ma <b>wlaczona</b> recepture
+     *       dla tego itemu (patrz {@code VeloceCraftingTableBlockEntity}).
+     *       Jesli nie ma zadnego wlaczonego craftera dla itemu - nie craftujemy.</li>
+     *   <li>Craftowanie jest natychmiastowe: silnik pobiera skladniki z sieci
+     *       i wklada wynik. Nic nie idzie przez fizyczny blok posredni.</li>
+     * </ol>
+     *
+     * @return wycraftowany stack albo {@link ItemStack#EMPTY}
+     */
+    private ItemStack craftItemFromNetwork(ServerLevel sl, VelocePipeNetwork net,
+                                           ItemStack requested, int count) {
+        Item item = requested.getItem();
+
+        // Sprawdz, czy jakikolwiek crafter w tej sieci ma wlaczona recepture
+        // dla tego itemu. Bez tego nie craftujemy - gracz musi swiadomie wlaczyc.
+        var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .findEnabledCrafter(sl, net, item);
+        if (enabled == null) {
+            return ItemStack.EMPTY;
+        }
+
+        // Preferowana receptura: ta, ktora gracz wybral dla danego klocka.
+        var preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getPreferredRecipes(sl, net);
+
+        var result = com.craftingveloce.crafting.VeloceAutoCrafter.ensureAvailable(
+                sl, net, item, count, null, preferred);
+        if (!result.success()) {
+            return ItemStack.EMPTY;
+        }
+
+        // Wynik zostal wlozony do sieci - wyciagnij go teraz dla gracza.
+        return net.extractItem(sl, item, count);
     }
 }

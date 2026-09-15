@@ -9,10 +9,15 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
-public record SyncCraftingTableStatePKT(BlockPos pos, Set<Item> enabledItems) implements CustomPacketPayload {
+/** S→C: aktualizacja stanu auto-craftera (wlaczone itemy + preferowane receptury). */
+public record SyncCraftingTableStatePKT(BlockPos pos, Set<Item> enabledItems,
+                                        Map<Item, ResourceLocation> preferredRecipes)
+        implements CustomPacketPayload {
 
     public static final Type<SyncCraftingTableStatePKT> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath("craftingveloce", "sync_crafting_table_state"));
@@ -26,6 +31,11 @@ public record SyncCraftingTableStatePKT(BlockPos pos, Set<Item> enabledItems) im
         for (Item item : pkt.enabledItems) {
             buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(item));
         }
+        buf.writeInt(pkt.preferredRecipes.size());
+        for (Map.Entry<Item, ResourceLocation> e : pkt.preferredRecipes.entrySet()) {
+            buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(e.getKey()));
+            buf.writeResourceLocation(e.getValue());
+        }
     }
 
     private static SyncCraftingTableStatePKT decode(FriendlyByteBuf buf) {
@@ -35,9 +45,21 @@ public record SyncCraftingTableStatePKT(BlockPos pos, Set<Item> enabledItems) im
         for (int i = 0; i < count; i++) {
             ResourceLocation rl = buf.readResourceLocation();
             Item item = BuiltInRegistries.ITEM.get(rl);
-            if (item != null) items.add(item);
+            if (item != null) {
+                items.add(item);
+            }
         }
-        return new SyncCraftingTableStatePKT(pos, items);
+        int prefCount = buf.readInt();
+        Map<Item, ResourceLocation> prefs = new HashMap<>();
+        for (int i = 0; i < prefCount; i++) {
+            ResourceLocation itemKey = buf.readResourceLocation();
+            ResourceLocation recipeId = buf.readResourceLocation();
+            Item item = BuiltInRegistries.ITEM.get(itemKey);
+            if (item != null) {
+                prefs.put(item, recipeId);
+            }
+        }
+        return new SyncCraftingTableStatePKT(pos, items, prefs);
     }
 
     @Override
@@ -46,8 +68,7 @@ public record SyncCraftingTableStatePKT(BlockPos pos, Set<Item> enabledItems) im
     }
 
     public static void handle(SyncCraftingTableStatePKT pkt, IPayloadContext ctx) {
-        ctx.enqueueWork(() -> {
-            com.craftingveloce.client.ClientTerminalHelper.updateCraftingTableState(pkt.pos(), pkt.enabledItems());
-        });
+        ctx.enqueueWork(() -> com.craftingveloce.client.ClientTerminalHelper
+                .updateCraftingTableState(pkt.pos(), pkt.enabledItems(), pkt.preferredRecipes()));
     }
 }

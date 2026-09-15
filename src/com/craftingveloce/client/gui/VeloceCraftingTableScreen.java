@@ -1,41 +1,78 @@
 package com.craftingveloce.client.gui;
 
 import com.craftingveloce.network.CraftingTableToggleItemPKT;
+import com.craftingveloce.network.CraftingTableCycleRecipePKT;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.NonNullList;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.GameType;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import javax.annotation.Nullable;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+/**
+ * GUI auto-craftera (Veloce Crafting Table).
+ *
+ * <p>Rozszerza creative inventory, ale z waznymi roznicami:
+ * <ul>
+ *   <li><b>Pokazuje tylko itemy craftowalne</b> - bez energii, paliwa, XP.
+ *       Item bez receptury nie pojawia sie wcale (w poprzedniej wersji byl
+ *       fioletowy overlay; teraz jest po prostu ukryty).</li>
+ *   <li><b>Kolor tla</b> pokazuje stan auto-craftingu:
+ *       czerwony = ma recepture, wylaczony; zielony = wlaczony.</li>
+ *   <li><b>Shift+scroll</b> na itemie z wieloma recepturami przelacza aktywna
+ *       recepture (ta, ktora crafter uzyje jako pierwsza).</li>
+ *   <li><b>Tooltip</b> pokazuje kazda recepture w osobnej linii, z liczba sztuk
+ *       mozliwych do zrobienia z tego, co jest w sieci.</li>
+ * </ul>
+ */
 public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
 
     private final BlockPos tablePos;
     private Set<Item> enabledItems;
+    private Map<Item, ResourceLocation> preferredRecipes;
 
     @Nullable
     private GameType modeBeforeOpen;
 
     private static Field slotWrapperTargetField;
 
-    // Cached set of items that have crafting recipes
-    private Set<Item> craftableItems = null;
+    /** Cache: item -> lista receptur (id + wynik + skladniki). */
+    private Map<Item, List<ClientRecipe>> craftableItems = null;
+
+    /** Indeks itemu pod kursorem przy ostatnim shift+scrollu (do cyklowania). */
+    private Item lastScrolledItem = null;
+
+    /** Receptura widziana po stronie klienta (do tooltipow i cyklowania). */
+    private record ClientRecipe(ResourceLocation id, ItemStack result, List<List<ItemStack>> options) {
+        int resultCount() {
+            return Math.max(1, result.getCount());
+        }
+    }
 
     static {
         try {
@@ -52,14 +89,19 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
         }
     }
 
-    public VeloceCraftingTableScreen(LocalPlayer player, FeatureFlagSet enabledFeatures, boolean displayOperatorCreativeTab, BlockPos tablePos, Set<Item> enabledItems) {
+    public VeloceCraftingTableScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
+                                     boolean displayOperatorCreativeTab, BlockPos tablePos,
+                                     Set<Item> enabledItems,
+                                     Map<Item, ResourceLocation> preferredRecipes) {
         super(player, enabledFeatures, displayOperatorCreativeTab);
         this.tablePos = tablePos;
         this.enabledItems = new HashSet<>(enabledItems);
+        this.preferredRecipes = new HashMap<>(preferredRecipes);
     }
 
-    public void updateEnabledItems(Set<Item> items) {
+    public void updateEnabledItems(Set<Item> items, Map<Item, ResourceLocation> prefs) {
         this.enabledItems = new HashSet<>(items);
+        this.preferredRecipes = new HashMap<>(prefs);
     }
 
     @Override
@@ -78,20 +120,74 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
         suppressHotbarSlots();
     }
 
-    private Set<Item> getCraftableItems() {
-        if (craftableItems != null) return craftableItems;
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return Collections.emptySet();
-        craftableItems = new HashSet<>();
-        List<net.minecraft.world.item.crafting.RecipeHolder<CraftingRecipe>> recipes =
-                mc.level.getRecipeManager().getAllRecipesFor(RecipeType.CRAFTING);
-        for (var holder : recipes) {
-            ItemStack result = holder.value().getResultItem(mc.level.registryAccess());
-            if (!result.isEmpty()) {
-                craftableItems.add(result.getItem());
-            }
+    /**
+     * Buduje indeks itemow craftowalnych z receptur dostepnych po stronie klienta.
+     * Uzywamy tylko typow "bez infrastruktury" - tak samo jak serwerowy rejestr.
+     */
+    private Map<Item, List<ClientRecipe>> getCraftableItems() {
+        if (craftableItems != null) {
+            return craftableItems;
         }
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) {
+            return Collections.emptyMap();
+        }
+        Map<Item, List<ClientRecipe>> out = new LinkedHashMap<>();
+        var registries = mc.level.registryAccess();
+
+        collectType(mc, RecipeType.CRAFTING, registries, out);
+        collectType(mc, RecipeType.STONECUTTING, registries, out);
+        collectType(mc, RecipeType.SMITHING, registries, out);
+
+        craftableItems = out;
         return craftableItems;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void collectType(Minecraft mc, RecipeType<?> type,
+                             net.minecraft.core.HolderLookup.Provider registries,
+                             Map<Item, List<ClientRecipe>> out) {
+        List<net.minecraft.world.item.crafting.RecipeHolder<?>> holders = new ArrayList<>();
+        try {
+            holders.addAll(mc.level.getRecipeManager().getAllRecipesFor((RecipeType) type));
+        } catch (Throwable t) {
+            return;
+        }
+        for (var holder : holders) {
+            var recipe = holder.value();
+            if (recipe.isSpecial()) {
+                continue;
+            }
+            ItemStack result;
+            try {
+                result = recipe.getResultItem(registries);
+            } catch (Throwable t) {
+                continue;
+            }
+            if (result.isEmpty()) {
+                continue;
+            }
+            NonNullList<Ingredient> ings = recipe.getIngredients();
+            List<List<ItemStack>> options = new ArrayList<>();
+            boolean any = false;
+            for (Ingredient ing : ings) {
+                ItemStack[] items = ing.getItems();
+                if (items.length == 0) {
+                    continue;
+                }
+                any = true;
+                List<ItemStack> list = new ArrayList<>(items.length);
+                for (ItemStack s : items) {
+                    list.add(s.copy());
+                }
+                options.add(list);
+            }
+            if (!any) {
+                continue;
+            }
+            out.computeIfAbsent(result.getItem(), k -> new ArrayList<>())
+                    .add(new ClientRecipe(holder.id(), result.copy(), options));
+        }
     }
 
     private boolean isPlayerInventorySlot(Slot slot) {
@@ -133,42 +229,44 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
         if (isPlayerInventorySlot(slot)) {
             return;
         }
-
-        // Skip the trash slot (bottom right corner)
         if (slot.x == 173 && slot.y == 112) {
             return;
         }
 
-        if (slot.hasItem()) {
-            ItemStack stack = slot.getItem();
-            Item item = stack.getItem();
-            Set<Item> craftable = getCraftableItems();
-
-            // Determine color overlay
-            int overlayColor;
-            if (!craftable.contains(item)) {
-                // Purple: no crafting recipe
-                overlayColor = 0x77800080;
-            } else if (enabledItems.contains(item)) {
-                // Green: enabled / ON
-                overlayColor = 0x7700AA00;
-            } else {
-                // Red: has recipe but OFF (default)
-                overlayColor = 0x77AA0000;
-            }
-
-            // Render the item first
+        if (!slot.hasItem()) {
             super.renderSlot(graphics, slot);
+            return;
+        }
 
-            // Then draw the colored overlay on top
-            RenderSystem.disableDepthTest();
+        ItemStack stack = slot.getItem();
+        Item item = stack.getItem();
+        List<ClientRecipe> recipes = getCraftableItems().get(item);
+
+        // Nie pokazujemy itemow bez receptury craftowalnej - w tym GUI nie maja sensu.
+        if (recipes == null || recipes.isEmpty()) {
+            return;
+        }
+
+        int overlayColor = enabledItems.contains(item)
+                ? 0x7700AA00   // zielony: auto-crafting WLACZONY
+                : 0x77AA0000;  // czerwony: ma recepture, ale wylaczony
+
+        super.renderSlot(graphics, slot);
+
+        RenderSystem.disableDepthTest();
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 200);
+        graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 16, overlayColor);
+        graphics.pose().popPose();
+        RenderSystem.enableDepthTest();
+
+        // Znacznik wielu receptur w prawym gornym rogu.
+        if (recipes.size() > 1) {
             graphics.pose().pushPose();
-            graphics.pose().translate(0, 0, 200);
-            graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 16, overlayColor);
+            graphics.pose().translate(0, 0, 250);
+            graphics.drawString(this.font, String.valueOf(recipes.size()),
+                    slot.x + 12, slot.y + 1, 0xFFFFFF, true);
             graphics.pose().popPose();
-            RenderSystem.enableDepthTest();
-        } else {
-            super.renderSlot(graphics, slot);
         }
     }
 
@@ -176,41 +274,115 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        // Blank out the hotbar area
         int x1 = this.leftPos + 8;
         int y1 = this.topPos + 111;
         int x2 = this.leftPos + 170;
         int y2 = this.topPos + 130;
         graphics.fill(x1, y1, x2, y2, 0xFFC6C6C6);
+
+        renderRecipeTooltip(graphics, mouseX, mouseY);
+    }
+
+    /** Tooltip: kazda receptura w osobnej linii + ile sztuk da sie zrobic. */
+    private void renderRecipeTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        Slot slot = getSlotUnderMouse();
+        if (slot == null || isPlayerInventorySlot(slot) || !slot.hasItem()) {
+            return;
+        }
+        Item item = slot.getItem().getItem();
+        List<ClientRecipe> recipes = getCraftableItems().get(item);
+        if (recipes == null || recipes.isEmpty()) {
+            return;
+        }
+
+        List<Component> lines = new ArrayList<>();
+        lines.add(slot.getItem().getHoverName());
+
+        ResourceLocation pref = preferredRecipes.get(item);
+        for (ClientRecipe r : recipes) {
+            boolean active = pref != null ? pref.equals(r.id()) : recipes.indexOf(r) == 0;
+            String marker = active ? "▶ " : "  ";
+            String color = active ? "§a" : "§7";
+            String name = r.result().getHoverName().getString();
+            lines.add(Component.literal(color + marker + r.resultCount() + "x " + name));
+            lines.add(Component.literal("§8     " + shortId(r.id())));
+        }
+
+        lines.add(Component.empty());
+        if (recipes.size() > 1) {
+            lines.add(Component.literal("§eShift+scroll §7zmienia recepture"));
+        }
+        lines.add(Component.literal("§7Klik: " + (enabledItems.contains(item)
+                ? "§cWYLACZ §7auto-crafting"
+                : "§aWŁACZ §7auto-crafting")));
+
+        graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
+    }
+
+    private static String shortId(ResourceLocation id) {
+        String s = id.toString();
+        return s.length() > 40 ? s.substring(0, 37) + "..." : s;
     }
 
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         if (this.minecraft == null || this.minecraft.player == null) return;
-
         if (slot == null || isPlayerInventorySlot(slot)) return;
-
-        // Trash slot - ignore
         if (slot.x == 173 && slot.y == 112) return;
 
         ItemStack item = slot.getItem();
         if (item.isEmpty()) return;
 
         Item clickedItem = item.getItem();
+        List<ClientRecipe> recipes = getCraftableItems().get(clickedItem);
+        if (recipes == null || recipes.isEmpty()) return;
 
-        // Only allow toggling items that have crafting recipes
-        Set<Item> craftable = getCraftableItems();
-        if (!craftable.contains(clickedItem)) return;
-
-        // Toggle enabled state
         if (enabledItems.contains(clickedItem)) {
             enabledItems.remove(clickedItem);
         } else {
             enabledItems.add(clickedItem);
         }
-
-        // Send to server
         PacketDistributor.sendToServer(new CraftingTableToggleItemPKT(tablePos, clickedItem));
+    }
+
+    /**
+     * Shift+scroll na itemie z wieloma recepturami przelacza aktywna recepture.
+     * Cyklowanie robimy lokalnie (dla natychmiastowego feedbacku) i wysylamy
+     * do serwera, ktory zapisuje preferencje w block entity.
+     */
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (this.minecraft != null && this.minecraft.player != null && scrollY != 0) {
+            boolean shift = net.minecraft.client.gui.screens.Screen.hasShiftDown();
+            if (shift) {
+                Slot slot = getSlotUnderMouse();
+                if (slot != null && !isPlayerInventorySlot(slot) && slot.hasItem()) {
+                    Item item = slot.getItem().getItem();
+                    List<ClientRecipe> recipes = getCraftableItems().get(item);
+                    if (recipes != null && recipes.size() > 1) {
+                        List<ResourceLocation> ids = new ArrayList<>(recipes.size());
+                        for (ClientRecipe r : recipes) {
+                            ids.add(r.id());
+                        }
+                        ResourceLocation current = preferredRecipes.get(item);
+                        int idx = current == null ? -1 : ids.indexOf(current);
+                        int next = (int) (((idx + 1) % ids.size() + ids.size()) % ids.size());
+                        if (scrollY < 0) {
+                            next = (int) (((idx + 1) % ids.size() + ids.size()) % ids.size());
+                        } else {
+                            next = (int) (((idx - 1) % ids.size() + ids.size()) % ids.size());
+                        }
+                        ResourceLocation chosen = ids.get(next);
+                        preferredRecipes.put(item, chosen);
+                        lastScrolledItem = item;
+                        PacketDistributor.sendToServer(
+                                new CraftingTableCycleRecipePKT(tablePos, item, chosen));
+                        return true;
+                    }
+                }
+            }
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     @Override

@@ -161,4 +161,58 @@ public class RefinedStorageHelper {
         }
         return ItemStack.EMPTY;
     }
+
+    /**
+     * Wklada item do sieci Refined Storage podlaczonej do targetPos.
+     *
+     * <p>Uzywane przez auto-crafter do odkładania wynikow craftowania.
+     *
+     * @return true, jesli cala stacka zostala przyjeta
+     */
+    public static boolean insertItem(Level level, BlockPos targetPos, Direction side, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return true;
+        }
+        try {
+            BlockState state = level.getBlockState(targetPos);
+            BlockEntity be = level.getBlockEntity(targetPos);
+
+            NetworkNodeContainerProvider provider = RefinedStorageNeoForgeApi.INSTANCE
+                    .getNetworkNodeContainerProviderCapability()
+                    .getCapability(level, targetPos, state, be, side);
+
+            if (provider == null) {
+                return false;
+            }
+
+            for (InWorldNetworkNodeContainer container : provider.getContainers()) {
+                if (container == null || container.getNode() == null) {
+                    continue;
+                }
+                Network network = container.getNode().getNetwork();
+                if (network == null) {
+                    continue;
+                }
+
+                StorageNetworkComponent storage = network.getComponent(StorageNetworkComponent.class);
+                if (storage == null) {
+                    continue;
+                }
+
+                ItemResource resource = ItemResource.ofItemStack(stack);
+                long inserted = storage.insert(resource, stack.getCount(), Action.EXECUTE, Actor.EMPTY);
+                if (inserted >= stack.getCount()) {
+                    return true;
+                }
+                // Czesciowo przyjeto - zmniejsz i probuj dalej w kolejnych kontenerach.
+                stack = stack.copyWithCount(stack.getCount() - (int) inserted);
+                if (stack.isEmpty()) {
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+        return false;
+    }
 }

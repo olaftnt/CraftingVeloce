@@ -1,0 +1,85 @@
+package com.craftingveloce.block.entity;
+
+import com.craftingveloce.crafting.VeloceCraftingRegistry;
+import com.craftingveloce.crafting.VeloceRecipeRegistry;
+import com.craftingveloce.init.VeloceRegistry;
+import com.craftingveloce.network.OpenControllerScreenPKT;
+import com.craftingveloce.network.pipe.VelocePipeNetwork;
+import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.network.PacketDistributor;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Block entity Veloce Controller.
+ *
+ * <p>Zbiera i wysyla do klienta pelny obraz sieci potrzebny do GUI:
+ * <ul>
+ *   <li>{@code stock} - ile sztuk kazdego itemu jest fizycznie w sieci</li>
+ *   <li>{@code craftable} - ktore itemy maja recepture wykonywalna bez energii</li>
+ *   <li>{@code craftingEnabled} - dla ktorych auto-crafting jest wlaczony
+ *       (czyli crafter potrafi je zrobic, nawet bez itemow na stocku)</li>
+ *   <li>{@code hotbar} - co gracz ma w hotbarze (do kolorowania ikon)</li>
+ * </ul>
+ */
+public class VeloceControllerBlockEntity extends BlockEntity {
+
+    public VeloceControllerBlockEntity(BlockPos pos, BlockState state) {
+        super(VeloceRegistry.VELOCE_CONTROLLER_BE.get(), pos, state);
+    }
+
+    /** Zbiera aktualny stan sieci i wysyla GUI graczowi. */
+    public void syncToPlayer(ServerPlayer player) {
+        if (!(level instanceof ServerLevel sl)) {
+            return;
+        }
+        VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
+        VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
+
+        Map<Item, Long> stock = net == null ? Map.of() : net.getAllItemCounts(sl);
+        Set<Item> craftable = VeloceRecipeRegistry.getAllCraftableItems(sl);
+        Set<Item> craftingEnabled = net == null
+                ? Set.of()
+                : VeloceCraftingRegistry.getAllEnabledItems(sl, net);
+
+        // Hotbar gracza - ktore itemy ma pod reka (kolorowanie ikon).
+        Map<Item, Integer> hotbar = new HashMap<>();
+        for (int slot = 0; slot < 9; slot++) {
+            ItemStack st = player.getInventory().getItem(slot);
+            if (!st.isEmpty()) {
+                hotbar.merge(st.getItem(), st.getCount(), Integer::sum);
+            }
+        }
+
+        PacketDistributor.sendToPlayer(player, new OpenControllerScreenPKT(
+                this.getBlockPos(), stock, craftable, craftingEnabled, hotbar));
+    }
+
+    @Override
+    protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
+        super.saveAdditional(tag, registries);
+        // Controller nie przechowuje stanu - jest tylko widokiem na siec.
+    }
+
+    @Override
+    public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
+        super.loadAdditional(tag, registries);
+    }
+
+    /** Pomocnicze: id itemu (do NBT/debugowania). */
+    public static ResourceLocation idOf(Item item) {
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item);
+    }
+}
