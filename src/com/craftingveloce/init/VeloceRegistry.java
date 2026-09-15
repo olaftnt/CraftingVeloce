@@ -1,10 +1,7 @@
 package com.craftingveloce.init;
 
-import com.craftingveloce.block.VeloceCableBlock;
-import com.craftingveloce.block.VeloceConnectorBlock;
 import com.craftingveloce.block.VelocePipeBlock;
 import com.craftingveloce.block.VeloceTomTerminalBlock;
-import com.craftingveloce.block.entity.VeloceConnectorBlockEntity;
 import com.craftingveloce.block.entity.VelocePipeBlockEntity;
 import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
 import com.craftingveloce.item.VeloceWrenchItem;
@@ -71,32 +68,6 @@ public class VeloceRegistry {
             () -> new VeloceWrenchItem(new Item.Properties())
     );
 
-    // 4. Legacy/Connector blocks (kept for backwards compatibility)
-    public static final DeferredBlock<VeloceCableBlock> VELOCE_CABLE = BLOCKS.register(
-            "veloce_cable",
-            VeloceCableBlock::new
-    );
-
-    public static final DeferredItem<BlockItem> VELOCE_CABLE_ITEM = ITEMS.registerSimpleBlockItem(
-            "veloce_cable",
-            VELOCE_CABLE
-    );
-
-    public static final DeferredBlock<VeloceConnectorBlock> VELOCE_CONNECTOR = BLOCKS.register(
-            "veloce_connector",
-            VeloceConnectorBlock::new
-    );
-
-    public static final DeferredItem<BlockItem> VELOCE_CONNECTOR_ITEM = ITEMS.registerSimpleBlockItem(
-            "veloce_connector",
-            VELOCE_CONNECTOR
-    );
-
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceConnectorBlockEntity>> VELOCE_CONNECTOR_BE =
-            BLOCK_ENTITY_TYPES.register("veloce_connector", () -> createBEType(
-                    (pos, state) -> new VeloceConnectorBlockEntity(pos, state),
-                    VELOCE_CONNECTOR.get()
-            ));
 
     @FunctionalInterface
     public interface BlockEntityFactory<T extends BlockEntity> {

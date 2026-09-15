@@ -30,6 +30,8 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import javax.annotation.Nullable;
+import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -69,6 +71,9 @@ public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock impleme
         if (!world.isClientSide) {
             InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
             n.markNodeInvalid(pos);
+            if (world instanceof ServerLevel sl) {
+                VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
+            }
         }
     }
 
@@ -77,6 +82,7 @@ public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock impleme
         super.destroy(world, pos, state);
         if (world instanceof ServerLevel l) {
             InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
+            VelocePipeNetworkManager.get(l).onTerminalRemoved(pos);
         }
     }
 
@@ -96,16 +102,18 @@ public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock impleme
         TerminalPos p = state.getValue(TERMINAL_POS);
         if (p == TerminalPos.UP) d = Direction.UP;
         if (p == TerminalPos.DOWN) d = Direction.DOWN;
-        return dir == d;
+        return dir != d.getOpposite();
     }
 
     @Override
     public List<BlockFace> nextScan(Level world, BlockState state, BlockPos pos) {
-        Direction d = state.getValue(FACING);
-        TerminalPos p = state.getValue(TERMINAL_POS);
-        if (p == TerminalPos.UP) d = Direction.UP;
-        if (p == TerminalPos.DOWN) d = Direction.DOWN;
-        return Collections.singletonList(new BlockFace(pos.relative(d), d.getOpposite()));
+        List<BlockFace> list = new ArrayList<>();
+        for (Direction d : Direction.values()) {
+            if (canConnectFrom(state, d)) {
+                list.add(new BlockFace(pos.relative(d), d.getOpposite()));
+            }
+        }
+        return list;
     }
 
     @Override

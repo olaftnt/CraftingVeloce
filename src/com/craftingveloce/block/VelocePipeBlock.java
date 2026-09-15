@@ -3,6 +3,8 @@ package com.craftingveloce.block;
 import com.craftingveloce.block.entity.VelocePipeBlockEntity;
 import com.craftingveloce.init.VeloceRegistry;
 import com.craftingveloce.item.VeloceWrenchItem;
+import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
+import com.craftingveloce.rs.RefinedStorageHelper;
 import com.mojang.serialization.MapCodec;
 import com.tom.storagemod.block.IInventoryCable;
 import com.tom.storagemod.inventory.InventoryCableNetwork;
@@ -172,12 +174,22 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             return true;
         }
 
-        // 2. Another IInventoryCable (Tom's Storage cable, Veloce cable, etc.)
+        // 2. Storage Terminal (connects from any side except the front screen)
+        if (neighborState.getBlock() instanceof VeloceTomTerminalBlock terminal) {
+            return terminal.canConnectFrom(neighborState, dir.getOpposite());
+        }
+
+        // 3. Another IInventoryCable (Tom's Storage cable, etc.)
         if (neighborState.getBlock() instanceof IInventoryCable cable) {
             return cable.canConnectFrom(neighborState, dir.getOpposite());
         }
 
-        // 3. Inventory block
+        // 4. Refined Storage (Interface, Controller, Cables, etc.)
+        if (RefinedStorageHelper.hasRSNetwork(level, neighborPos, dir.getOpposite())) {
+            return true;
+        }
+
+        // 5. Inventory block
         return canConnectToInventory(level, neighborPos, dir.getOpposite());
     }
 
@@ -288,6 +300,13 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         world.setBlockAndUpdate(pos, newState);
         InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
 
+        if (world instanceof ServerLevel sl) {
+            VelocePipeNetworkManager.get(sl).rebuildAt(sl, pos);
+            if (side != null) {
+                VelocePipeNetworkManager.get(sl).rebuildAt(sl, pos.relative(side));
+            }
+        }
+
         world.playSound(null, pos, SoundEvents.ITEM_FRAME_ROTATE_ITEM, SoundSource.BLOCKS, 1.0F, 1.2F);
         if (player != null) {
             player.swing(hand, true);
@@ -345,6 +364,9 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             for (Direction d : Direction.values()) {
                 InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos.relative(d));
             }
+            if (world instanceof ServerLevel sl) {
+                VelocePipeNetworkManager.get(sl).onPipePlaced(sl, pos);
+            }
         }
     }
 
@@ -369,6 +391,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         super.destroy(world, pos, state);
         if (world instanceof ServerLevel l) {
             InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
+            VelocePipeNetworkManager.get(l).onPipeBroken(l, pos);
         }
     }
 
@@ -382,6 +405,9 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             }
             InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
             InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighbor);
+            if (world instanceof ServerLevel sl) {
+                VelocePipeNetworkManager.get(sl).onNeighborChanged(sl, pos, neighbor);
+            }
         }
     }
 

@@ -3,9 +3,5 @@
     "item.craftingveloce.veloce_tom_terminal": "Veloce Storage Terminal",
     "block.craftingveloce.veloce_pipe": "Veloce Pipe",
     "item.craftingveloce.veloce_pipe": "Veloce Pipe",
-    "item.craftingveloce.wrench": "Veloce Wrench",
-    "block.craftingveloce.veloce_cable": "Veloce Cable",
-    "item.craftingveloce.veloce_cable": "Veloce Cable",
-    "block.craftingveloce.veloce_connector": "Veloce Inventory Connector",
-    "item.craftingveloce.veloce_connector": "Veloce Inventory Connector"
+    "item.craftingveloce.wrench": "Veloce Wrench"
 }

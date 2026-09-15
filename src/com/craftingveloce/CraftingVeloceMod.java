@@ -34,8 +34,6 @@ public class CraftingVeloceMod {
                         output.accept(VeloceRegistry.VELOCE_TOM_TERMINAL_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_PIPE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_WRENCH.get());
-                        output.accept(VeloceRegistry.VELOCE_CABLE_ITEM.get());
-                        output.accept(VeloceRegistry.VELOCE_CONNECTOR_ITEM.get());
                     })
                     .build()
     );
@@ -71,6 +69,27 @@ public class CraftingVeloceMod {
                 event.setUseItem(net.neoforged.neoforge.common.util.TriState.TRUE);
                 event.setCancellationResult(result.result());
                 event.setCanceled(true);
+            }
+        });
+
+        NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.BlockEvent.BreakEvent.class, event -> {
+            if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
+                net.minecraft.core.BlockPos pos = event.getPos();
+                com.craftingveloce.network.pipe.VelocePipeNetworkManager manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
+                if (manager.getNetworkForPipe(pos) != null) {
+                    manager.onPipeBroken(sl, pos);
+                }
+            }
+        });
+
+        NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.ExplosionEvent.Detonate.class, event -> {
+            if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
+                com.craftingveloce.network.pipe.VelocePipeNetworkManager manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
+                for (net.minecraft.core.BlockPos pos : event.getAffectedBlocks()) {
+                    if (manager.getNetworkForPipe(pos) != null) {
+                        manager.onPipeBroken(sl, pos);
+                    }
+                }
             }
         });
     }
