@@ -100,8 +100,12 @@ public class VeloceExtractorBlock extends BaseEntityBlock implements EntityBlock
     @Override
     public void onRemove(BlockState state, Level world, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!state.is(newState.getBlock())) {
-            BlockEntity be = world.getBlockEntity(pos);
-            if (be instanceof VeloceExtractorBlockEntity extractorBE) {
+            // Tylko po stronie serwera. onRemove() leci na OBU stronach, a
+            // Containers.dropContents() nie ma wlasnego sprawdzenia - na
+            // kliencie tworzyloby to duchowe encje itemow.
+            // (VeloceCraftingTableBlock ma to dobrze; ekstraktor nie mial.)
+            if (!world.isClientSide
+                    && world.getBlockEntity(pos) instanceof VeloceExtractorBlockEntity extractorBE) {
                 Containers.dropContents(world, pos, extractorBE.getOutputInventory());
             }
             super.onRemove(state, world, pos, newState, isMoving);
