@@ -281,17 +281,28 @@ public class ConnectedEndpointInfo {
      *
      * @return true, jesli udalo sie wlozyc cala stacke
      */
-    public boolean insertItem(ServerLevel level, ItemStack stack) {
+    /**
+     * Wklada ile sie da i zwraca RESZTE.
+     *
+     * <p><b>Po co zostaw pozostaly stos, a nie sam boolean.</b> Poprzednia
+     * wersja zwracala {@code remaining.isEmpty()}, wiec przy CZESCIOWYM
+     * przyjeciu (np. beczka prawie pelna) mowila "nie udalo sie" - mimo ze
+     * czesc itemow juz fizycznie weszla. Wolajacy nie zabieral wtedy niczego
+     * graczowi, a itemy byly juz w magazynie: DUPLIKACJA.
+     *
+     * @return to, czego NIE udalo sie wlozyc (EMPTY gdy wszystko przyjete)
+     */
+    public ItemStack insertItemLeftover(ServerLevel level, ItemStack stack) {
         if (stack.isEmpty()) {
-            return true;
+            return ItemStack.EMPTY;
         }
 
         if (type == Type.REFINED_STORAGE) {
-            boolean ok = RefinedStorageHelper.insertItem(level, pos, accessSide, stack);
-            if (ok) {
+            ItemStack left = RefinedStorageHelper.insertItemLeftover(level, pos, accessSide, stack);
+            if (left.getCount() != stack.getCount()) {
                 refreshIfLoaded(level);
             }
-            return ok;
+            return left;
         }
 
         boolean wasLoaded = level.isLoaded(pos);
@@ -299,7 +310,7 @@ public class ConnectedEndpointInfo {
         if (!wasLoaded) {
             // Bez wymuszania przy zapisie swiata - patrz extractItem.
             if (VeloceChunkLoader.isFrozen()) {
-                return false;
+                return stack;
             }
             VeloceChunkLoader.retain(level, chunkKey);
             level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true);
@@ -341,7 +352,12 @@ public class ConnectedEndpointInfo {
                 VeloceChunkLoader.release(level, chunkKey);
             }
         }
-        return remaining.isEmpty();
+        return remaining;
+    }
+
+    /** Zgodnosc: true gdy wszystko przyjete. */
+    public boolean insertItem(ServerLevel level, ItemStack stack) {
+        return insertItemLeftover(level, stack).isEmpty();
     }
 
     public CompoundTag toNbt() {

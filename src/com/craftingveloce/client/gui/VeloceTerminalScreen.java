@@ -440,44 +440,39 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      *   <li>shift + prawy klik - doslownie wszystko, hotbar tez.</li>
      * </ul>
      *
-     * <p>Nic nie jest kasowane: serwer wklada item do pierwszego magazynu,
-     * ktory go przyjmie, a reszte oddaje z powrotem.
+     * <p><b>Klient wysyla tylko TRYB i nic nie rusza u siebie.</b> Poprzednia
+     * wersja wysylala kopie stosu i czyscila kursor lokalnie - a serwer nie
+     * zabieral niczego graczowi, wiec item powstawal i w beczce, i w ekwipunku
+     * (fizyczna duplikacja). Teraz serwer sam zabiera itemy i odsyla zmiany.
      */
     private void handleStoreClick(int mouseButton, ClickType clickType) {
         if (this.minecraft == null || this.minecraft.player == null) {
             return;
         }
-        LocalPlayer player = this.minecraft.player;
-
+        // Nic nie trzymamy na kursorze i nie ma czego odkladac.
         boolean shift = clickType == ClickType.QUICK_MOVE;
         boolean rightClick = mouseButton == 1;
 
+        int mode;
         if (shift) {
-            boolean includeHotbar = rightClick;
-            for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-                // Hotbar to sloty 0..8 - shift+lewy je pomija.
-                if (!includeHotbar && i < 9) {
-                    continue;
-                }
-                ItemStack st = player.getInventory().getItem(i);
-                if (st.isEmpty()) {
-                    continue;
-                }
-                PacketDistributor.sendToServer(new com.craftingveloce.network.TerminalStoreItemPKT(
-                        terminalPos, st.copy(), true));
-                player.getInventory().setItem(i, ItemStack.EMPTY);
+            mode = rightClick
+                    ? com.craftingveloce.network.TerminalStoreItemPKT.MODE_EVERYTHING
+                    : com.craftingveloce.network.TerminalStoreItemPKT.MODE_INVENTORY;
+        } else {
+            if (this.menu == null || this.menu.getCarried().isEmpty()) {
+                return;
             }
-            return;
+            mode = com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR;
         }
 
-        // Zwykly klik: to, co na kursorze.
-        ItemStack carried = this.menu == null ? ItemStack.EMPTY : this.menu.getCarried();
-        if (carried.isEmpty()) {
-            return;
-        }
-        PacketDistributor.sendToServer(new com.craftingveloce.network.TerminalStoreItemPKT(
-                terminalPos, carried.copy(), true));
-        if (this.menu != null) {
+        PacketDistributor.sendToServer(
+                new com.craftingveloce.network.TerminalStoreItemPKT(terminalPos, mode));
+
+        // Kursor czyscimy tez u siebie, zeby GUI zareagowalo od razu.
+        // Serwer robi to samo u siebie (i to on jest zrodlem prawdy), wiec
+        // nie ma juz sytuacji, w ktorej item zostaje i tu, i tam.
+        if (mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR
+                && this.menu != null) {
             this.menu.setCarried(ItemStack.EMPTY);
         }
     }

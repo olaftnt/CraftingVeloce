@@ -482,25 +482,24 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
     }
 
     /**
-     * Wklada item gracza do sieci (slot "strzalki" w GUI terminala).
+     * Wklada itemy gracza do sieci (slot "strzalki" w GUI terminala).
      *
-     * <p><b>To nie kasuje itemu.</b> Vanilla na tym miejscu niszczy przedmiot;
-     * u nas trafia on do pierwszego magazynu, ktory go przyjmie. Jesli nic go
-     * nie przyjmie, zostaje u gracza - nigdy nie znika.
+     * <p><b>Serwer sam czyta stan gracza i sam zabiera itemy.</b> To jest
+     * kluczowe dla poprawnosci: poprzednia wersja dostawala stos w pakiecie
+     * i wrzucala go do sieci, nie zabierajac niczego graczowi - item
+     * istnial jednoczesnie w beczce i w ekwipunku (duplikacja). Teraz
+     * wkladamy DOKLADNIE tyle, ile udalo sie zabrac, i zabieramy DOKLADNIE
+     * tyle, ile udalo sie wlozyc.
      *
-     * <p><b>Czego NIE ruszamy:</b>
-     * <ul>
-     *   <li>bufory crafterow - to pamiec robocza na wyniki posrednie, nie
-     *       magazyn; wrzucenie tam itemu gracza mieszaloby planowanie,</li>
-     *   <li>ekstraktory - one tylko wydaja, nie przyjmuja.</li>
-     * </ul>
-     * Na szczescie ekstraktor w ogole nie jest endpointem sieci, a crafter ma
-     * wlasny typ endpointu (CRAFTING_BUFFER), wiec wystarczy go pominac.
+     * <p><b>Czego nie ruszamy:</b> bufory crafterow (pamiec robocza planera,
+     * nie magazyn) i ekstraktory (tylko wydaja). Patrz
+     * {@link VelocePipeNetwork#insertIntoStorage}.
      *
-     * @param wholeStack true = cala zawartosc kursora, false = jedna sztuka
+     * @param mode {@link com.craftingveloce.network.TerminalStoreItemPKT#MODE_CURSOR},
+     *             {@code MODE_INVENTORY} (bez hotbara) albo {@code MODE_EVERYTHING}
      */
-    public void storeFromPlayer(ServerPlayer player, ItemStack stack, boolean wholeStack) {
-        if (stack.isEmpty() || !(level instanceof ServerLevel sl)) {
+    public void storeFromPlayer(ServerPlayer player, int mode) {
+        if (!(level instanceof ServerLevel sl)) {
             return;
         }
         VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
@@ -509,16 +508,66 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
             return;
         }
 
-        ItemStack toStore = wholeStack ? stack.copy() : stack.copyWithCount(1);
-        ItemStack leftover = net.insertIntoStorage(sl, toStore);
-
-        // Cokolwiek sie nie zmiescilo, wraca graczowi - zadne cudo nie ginie.
-        if (!leftover.isEmpty()) {
-            if (!player.getInventory().add(leftover)) {
-                player.drop(leftover, false);
+        int moved = 0;
+        if (mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR) {
+            // inventoryMenu, a nie containerMenu: sync kursora idzie wlasnie
+            // przez to menu (tak samo jak w TerminalPullItemPKT.resyncInventories).
+            // Ekran terminala nie otwiera menu po stronie serwera, wiec
+            // containerMenu to wlasnie inventoryMenu - ale nie zgadujemy.
+            moved += storeStack(sl, net, player.inventoryMenu);
+        } else {
+            boolean includeHotbar = mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_EVERYTHING;
+            var inv = player.getInventory();
+            for (int i = 0; i < inv.getContainerSize(); i++) {
+                // Sloty 0..8 to hotbar - zwykly shift je pomija.
+                if (!includeHotbar && i < 9) {
+                    continue;
+                }
+                ItemStack st = inv.getItem(i);
+                if (st.isEmpty()) {
+                    continue;
+                }
+                ItemStack leftover = net.insertIntoStorage(sl, st.copy());
+                int stored = st.getCount() - leftover.getCount();
+                if (stored > 0) {
+                    st.shrink(stored);
+                    if (st.isEmpty()) {
+                        inv.setItem(i, ItemStack.EMPTY);
+                    }
+                    moved += stored;
+                }
             }
         }
+
+        if (moved <= 0) {
+            return;
+        }
+        // Odsylamy zmiany, zeby kursor i ekwipunek zgadzaly sie u klienta.
+        com.craftingveloce.network.TerminalPullItemPKT.resyncInventories(player);
         syncCountsToAllWatchers();
+    }
+
+    /**
+     * Zabiera stos z kursora gracza i wklada go do sieci.
+     *
+     * @return ile sztuk udalo sie przeniesc
+     */
+    private int storeStack(ServerLevel sl, VelocePipeNetwork net,
+                           net.minecraft.world.inventory.AbstractContainerMenu menu) {
+        ItemStack carried = menu.getCarried();
+        if (carried.isEmpty()) {
+            return 0;
+        }
+        ItemStack leftover = net.insertIntoStorage(sl, carried.copy());
+        int stored = carried.getCount() - leftover.getCount();
+        if (stored <= 0) {
+            return 0;
+        }
+        carried.shrink(stored);
+        if (carried.isEmpty()) {
+            menu.setCarried(ItemStack.EMPTY);
+        }
+        return stored;
     }
 
     /**

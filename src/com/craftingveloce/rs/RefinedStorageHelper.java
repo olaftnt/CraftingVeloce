@@ -169,9 +169,22 @@ public class RefinedStorageHelper {
      *
      * @return true, jesli cala stacka zostala przyjeta
      */
+    /**
+     * Wklada ile sie da i zwraca RESZTE.
+     *
+     * <p>Ten sam blad co w {@code ConnectedEndpointInfo}: stara wersja zwracala
+     * sam boolean, wiec czesciowe przyjecie bylo raportowane jako porazka -
+     * a itemy juz byly w magazynie. Wolajacy nie zabieral ich wtedy graczowi,
+     * co konczylo sie duplikacja.
+     */
+    /** Zgodnosc: true gdy wszystko przyjete. */
     public static boolean insertItem(Level level, BlockPos targetPos, Direction side, ItemStack stack) {
+        return insertItemLeftover(level, targetPos, side, stack).isEmpty();
+    }
+
+    public static ItemStack insertItemLeftover(Level level, BlockPos targetPos, Direction side, ItemStack stack) {
         if (stack.isEmpty()) {
-            return true;
+            return ItemStack.EMPTY;
         }
         try {
             BlockState state = level.getBlockState(targetPos);
@@ -182,7 +195,7 @@ public class RefinedStorageHelper {
                     .getCapability(level, targetPos, state, be, side);
 
             if (provider == null) {
-                return false;
+                return stack;
             }
 
             for (InWorldNetworkNodeContainer container : provider.getContainers()) {
@@ -202,17 +215,17 @@ public class RefinedStorageHelper {
                 ItemResource resource = ItemResource.ofItemStack(stack);
                 long inserted = storage.insert(resource, stack.getCount(), Action.EXECUTE, Actor.EMPTY);
                 if (inserted >= stack.getCount()) {
-                    return true;
+                    return ItemStack.EMPTY;
                 }
                 // Czesciowo przyjeto - zmniejsz i probuj dalej w kolejnych kontenerach.
                 stack = stack.copyWithCount(stack.getCount() - (int) inserted);
                 if (stack.isEmpty()) {
-                    return true;
+                    return ItemStack.EMPTY;
                 }
             }
         } catch (Throwable t) {
             t.printStackTrace();
         }
-        return false;
+        return stack;
     }
 }

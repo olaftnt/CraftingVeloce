@@ -126,12 +126,14 @@ public class VelocePipeNetwork {
         }
         ItemStack remaining = stack.copy();
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {
+            if (remaining.isEmpty()) {
+                break;
+            }
             if (endpoint.getType() == ConnectedEndpointInfo.Type.CRAFTING_BUFFER) {
                 continue;   // bufor craftera to nie magazyn
             }
-            if (endpoint.insertItem(level, remaining)) {
-                return ItemStack.EMPTY;
-            }
+            // Kazdy endpoint oddaje RESZTE, wiec czesciowe przyjecie nie ginie.
+            remaining = endpoint.insertItemLeftover(level, remaining);
         }
         return remaining;
     }
