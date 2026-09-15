@@ -124,6 +124,24 @@ public class CraftingVeloceMod {
             }
         });
 
+        // --- Reakcja na zmiany w swiecie ---------------------------------
+        // Chunki z blokami sieci moga sie zaladowac/rozladowac w dowolnym
+        // momencie (gracz podchodzi, odchodzi, chunk zostaje wyciagniety przez
+        // inny mod). Stock sieci zmienia sie wtedy gwaltownie, wiec cache
+        // craftowalnosci musi o tym wiedziec - inaczej GUI pokazuje stare liczby.
+        NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.ChunkEvent.Load.class, event -> {
+            if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
+                com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
+                        .onChunkChanged(sl, event.getChunk().getPos(), true);
+            }
+        });
+        NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.ChunkEvent.Unload.class, event -> {
+            if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
+                com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
+                        .onChunkChanged(sl, event.getChunk().getPos(), false);
+            }
+        });
+
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.BlockEvent.BreakEvent.class, event -> {
             if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                 net.minecraft.core.BlockPos pos = event.getPos();

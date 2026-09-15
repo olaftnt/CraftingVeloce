@@ -61,6 +61,19 @@ public class VelocePipeNetwork {
         }
     }
 
+    /**
+     * Czysci zapamietane liczby wszystkich endpointow.
+     *
+     * <p>Wywolywane gdy zmienil sie uklad sieci (podlaczenie/odlaczenie
+     * inventory, zaladowanie chunka). Bez tego endpoint usunietej skrzyni
+     * nadal raportowalby swoja dawna zawartosc.
+     */
+    public void invalidateEndpointCache() {
+        for (ConnectedEndpointInfo ep : endpoints.values()) {
+            ep.getCachedCounts().clear();
+        }
+    }
+
     public Map<Item, Long> getAllItemCounts(ServerLevel level) {
         Map<Item, Long> total = new HashMap<>();
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {

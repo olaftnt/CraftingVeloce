@@ -437,6 +437,17 @@ public final class VeloceCraftingCache {
                 "crafting cache: endpoint set changed - scheduling refresh");
     }
 
+    /**
+     * Wymus pelny skan stocku przy najblizszym ticku.
+     *
+     * <p>Uzywane gdy zmienil sie uklad sieci (wezel postawiony albo usuniety).
+     * Nie robimy skanu natychmiast - to by oznaczalo prace w losowym momencie,
+     * np. podczas ladowania swiata. Zamiast tego przyspieszamy najblizszy tick.
+     */
+    public void forceRefreshOnNextTick() {
+        lastFullStockScan = Long.MIN_VALUE;
+    }
+
     /** Item zmienil sie lokalnie (np. po craftowaniu). */
     public void invalidateChain(ServerLevel level, Set<Item> changed) {
         queueChain(level, changed);

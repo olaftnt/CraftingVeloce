@@ -6,6 +6,7 @@ import com.craftingveloce.block.entity.VelocePipeBlockEntity;
 import com.craftingveloce.rs.RefinedStorageHelper;
 import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -72,6 +73,9 @@ public class VelocePipeNetworkManager extends SavedData {
             if (netId != null && networks.containsKey(netId)) {
                 VelocePipeNetwork net = networks.get(netId);
                 net.getTerminals().add(terminalPos);
+                // Nowy wezel = nowe dane w GUI (i nowy crafter moze craftowac).
+                com.craftingveloce.crafting.VeloceCraftingCache.get(net)
+                        .onEndpointChanged(level);
                 net.updateTrackedChunks();
                 terminalToNetwork.put(terminalPos, netId);
                 setDirty();
@@ -97,6 +101,35 @@ public class VelocePipeNetworkManager extends SavedData {
 
     public void onPipePlaced(ServerLevel level, BlockPos pos) {
         rebuildAt(level, pos);
+    }
+
+    /**
+     * Reakcja na zaladowanie lub rozladowanie chunka.
+     *
+     * <p>Gdy chunk z blokami sieci wchodzi lub wychodzi z symulacji, stock tej
+     * sieci zmienia sie gwaltownie (zawartosc skrzyn nie jest juz czytana albo
+     * znowu jest). Cache craftowalnosci musi zostac o tym powiadomiony, inaczej
+     * GUI pokazuje nieaktualne liczby - a to bylo widoczne jako "liczby sie
+     * rozjezdzaja po odejsciu od bazy".
+     *
+     * <p>Przegladamy tylko sieci, ktore faktycznie dotykaja tego chunka.
+     */
+    public void onChunkChanged(ServerLevel level, ChunkPos chunkPos, boolean loaded) {
+        int affected = 0;
+        for (VelocePipeNetwork net : networks.values()) {
+            if (!net.getTrackedChunks().contains(chunkPos)) {
+                continue;
+            }
+            affected++;
+            com.craftingveloce.crafting.VeloceCraftingCache.get(net)
+                    .onEndpointChanged(level);
+        }
+        if (affected > 0) {
+            com.craftingveloce.util.VeloceLog.Network.detail(
+                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                    "chunk %s %s affects %d network(s) - cache invalidated",
+                    chunkPos, loaded ? "loaded" : "unloaded", affected);
+        }
     }
 
     public void onPipeBroken(ServerLevel level, BlockPos pos) {
@@ -155,15 +188,49 @@ public class VelocePipeNetworkManager extends SavedData {
             VelocePipeNetwork net = networks.get(netId);
             if (net != null) {
                 net.getTerminals().remove(terminalPos);
+                // Wezel zniknal - jego dane nie sa juz aktualne. Cache dostanie
+                // pelny skan przy najblizszym ticku (lastFullStockScan).
+                net.invalidateEndpointCache();
+                com.craftingveloce.crafting.VeloceCraftingCache.get(net)
+                        .forceRefreshOnNextTick();
                 net.updateTrackedChunks();
                 setDirty();
             }
         }
     }
 
+    /**
+     * Reakcja na zmiane sasiada rury: podlaczenie lub odlaczenie inventory,
+     * postawienie albo znikniecie bloku obok.
+     *
+     * <p>Po przebudowie sieci trzeba uniewaznic cache craftowalnosci, bo zmienil
+     * sie sklad magazynow. Bez tego GUI pokazywaloby liczby z poprzedniego
+     * ukladu - np. po odlaczeniu skrzyni nadal widac jej zawartosc.
+     */
     public void onNeighborChanged(ServerLevel level, BlockPos pipePos, BlockPos neighborPos) {
         if (!level.isLoaded(pipePos)) return;
         rebuildAt(level, pipePos);
+
+        // Uniewaznij cache sieci dotknietych ta zmiana. Szukamy po pozycji rury
+        // oraz po pozycji sasiada - zmiana mogla dodac albo usunac endpoint.
+        Set<VelocePipeNetwork> touched = new HashSet<>();
+        for (VelocePipeNetwork net : networks.values()) {
+            if (net.getPipes().contains(pipePos)
+                    || net.getEndpoints().containsKey(neighborPos)
+                    || net.getTerminals().contains(neighborPos)) {
+                touched.add(net);
+            }
+        }
+        for (VelocePipeNetwork net : touched) {
+            com.craftingveloce.crafting.VeloceCraftingCache.get(net).onEndpointChanged(level);
+            // Bufor endpointu mogl wskazywac na usunieta skrzynie - przelicz od nowa.
+            net.invalidateEndpointCache();
+        }
+        if (!touched.isEmpty()) {
+            com.craftingveloce.util.VeloceLog.Network.detail(
+                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                    "neighbor change at %s -> invalidated %d network(s)", neighborPos, touched.size());
+        }
     }
 
     public static BlockPos getCanonicalInventoryPos(BlockPos pos, BlockState state) {
