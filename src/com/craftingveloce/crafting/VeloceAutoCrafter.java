@@ -95,10 +95,17 @@ public final class VeloceAutoCrafter {
     /**
      * Budzet na przeliczenie widocznej strony terminala.
      *
-     * <p>To leci na watku serwera, wiec musi zostawiac zapas na resztę
-     * ticku. 8 ms to gorna granica, ktora jeszcze nie psuje 20 TPS.
+     * <p>To leci na watku serwera, wiec musi zostawiac zapas na reszte ticku.
+     *
+     * <p><b>Dlaczego 25 ms, a nie 8.</b> Przy 8 ms budzet pekal w polowie
+     * strony (w logu: "instant craftable count for 45 item(s) -> 17 result(s)
+     * in 8 ms (complete=false)"). A przy incomplete odpowiedzi klient CELOWO
+     * zachowuje stare liczby dla niedokonczonych itemow - wiec uzytkownik
+     * widzial nieaktualne "ile da sie zrobic" i to jest wlasnie zglaszany
+     * blad. 25 ms zdarza sie tylko przy otwarciu/przewinieciu strony, nie co
+     * tick, wiec jest bezpieczne.
      */
-    public static final long DEFAULT_ESTIMATE_BUDGET_NS = 8_000_000L;
+    public static final long DEFAULT_ESTIMATE_BUDGET_NS = 25_000_000L;
 
     private VeloceAutoCrafter() {
     }
@@ -431,6 +438,9 @@ public final class VeloceAutoCrafter {
 
         for (Item item : items) {
             if (!enabledItems.contains(item)) {
+                // Wpis "nie da sie zrobic" jest POPRAWNY i musi trafic do
+                // wyniku - inaczej GUI zachowaloby stara, zawyzona liczbe.
+                out.put(item, 0L);
                 continue;
             }
             // Przerwij, gdy minie budzet - reszta przy nastepnym zadaniu.
@@ -449,10 +459,11 @@ public final class VeloceAutoCrafter {
                 complete = false;
                 break;
             }
-            long surplus = Math.max(0L, total - onStock);
-            if (surplus > 0) {
-                out.put(item, surplus);
-            }
+            // Zapisujemy TAKZE zera. Wczesniej wpis pojawial sie tylko dla
+            // surplus > 0, wiec "nie da sie juz nic zrobic" bylo nieodroznialne
+            // od "nie policzono tego itemu" i klient zachowywal stara, zawyzona
+            // liczbe. Zero to konkretna, poprawna odpowiedz.
+            out.put(item, Math.max(0L, total - onStock));
         }
         return new BatchResult(out, complete);
     }

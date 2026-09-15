@@ -71,6 +71,22 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
 
     public void updateNetworkCounts(Map<Item, Long> counts, Map<Item, Long> craftable) {
         this.networkCounts = new HashMap<>(counts);
+
+        // Stock sie zmienil - czyli cos wyciagnieto albo skraftowano. Liczby
+        // "ile da sie jeszcze zrobic" sa teraz NIEAKTUALNE i trzeba o nie
+        // zapytac ponownie.
+        //
+        // BUG, ktory tu byl: liczenie w terminalu nie przeliczalo sie po
+        // skraftowaniu itemu. Serwer po udanym crafcie wolal tylko
+        // syncCountsToAllWatchers(), ktore wysyla sam STOCK - bez przeliczonych
+        // liczb craftowalnosci. Klient odswiezal zielone liczby, ale zolte "+N"
+        // zostawaly stare, bo zapytanie o nie leci dopiero przy zmianie
+        // sygnatury widocznej strony - a skraftowanie itemu tej sygnatury nie
+        // zmienia (te same itemy, ta sama kolejnosc).
+        //
+        // force=true, bo sygnatura strony sie nie zmienila i bez tego
+        // requestVisibleCounts() wyszloby od razu.
+        requestVisibleCounts(true);
         // NIE nadpisujemy calej mapy craftowalnosci.
         //
         // Tlo (cache) wysyla swoja migawke, ktora podczas ponownego skanu jest
@@ -89,9 +105,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      * nadpisali cala mape, tlo (cache) i natychmiastowa odpowiedz
      * nadpisywalyby sie nawzajem i liczby by migotaly.
      *
-     * <p>Usuwamy tez wpisy dla pytanych itemow, ktorych nie ma w wyniku -
-     * bo odpowiedz zawiera tylko wartosci > 0. Bez tego item, ktorego juz
-     * nie da sie zrobic, zachowalby stara liczbe.
+     * <p>Usuwamy tez wpisy dla pytanych itemow, ktorych nie ma w wyniku.
+     * Serwer od pewnego czasu przysyla takze ZERA (konkretna odpowiedz "nie da
+     * sie juz nic zrobic"), ale czyszczenie zostaje jako zabezpieczenie dla
+     * odpowiedzi z serwera bez tych zer.
      */
     public void updateCraftableCounts(Map<Item, Long> craftable, boolean complete) {
         com.craftingveloce.util.VeloceLog.Gui.detail(
