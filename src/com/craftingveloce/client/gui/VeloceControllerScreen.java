@@ -74,7 +74,14 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     private final BlockPos controllerPos;
-    private final Map<Item, Long> stock;
+    /**
+     * Stock sieci - ODSWIEZANY co sekunde pakietem tempa.
+     *
+     * <p>Nie jest finalny od czasu, gdy kontroler dostaje swiezy stock razem
+     * z tempem (patrz SyncControllerFlowPKT): przy otwartym GUI gracz moze
+     * wyjac item ze skrzynki i liczba ma sie zmienic od razu.
+     */
+    private Map<Item, Long> stock;
     /**
      * Itemy, ktore crafter REALNIE zrobi (auto-crafting wlaczony) - zielone tlo.
      *
@@ -235,11 +242,13 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      *            dla innego kontrolera, zeby nie podmieszac danych
      */
     public void updateFlow(net.minecraft.core.BlockPos pos,
+                           Map<Item, Long> stock,
                            Map<Item, VeloceFlowTracker.Movement> perMinute,
                            Map<Item, VeloceFlowTracker.Movement> perHour) {
         if (!controllerPos.equals(pos)) {
             return;
         }
+        this.stock = new HashMap<>(stock);
         this.flowPerMinute = new HashMap<>(perMinute);
         this.flowPerHour = new HashMap<>(perHour);
     }

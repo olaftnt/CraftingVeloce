@@ -251,7 +251,7 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `SensorConfigPKT` | C→S | `BlockPos pos, long threshold, boolean highMode` |
 | `ControllerPreferKindPKT` | C→S | `BlockPos pos, Item item, boolean preferFurnace` |
 | `SetFilterPKT` | C→S | `BlockPos pos, int filterIndex, ItemStack filterItem` |
-| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, VeloceFlowTracker.Movement> perMinute, Map<Item, VeloceFlowTracker.Movement> perHour` |
+| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Map<Item, VeloceFlowTracker.Movement> perMinute, Map<Item, VeloceFlowTracker.Movement> perHour` |
 | `SyncCraftableCountsPKT` | S→C | `BlockPos pos, Map<Item, Long> counts, boolean complete` |
 | `SyncCraftingTableStatePKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes` |
 | `SyncExtractorFiltersPKT` | S→C | `BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting` |

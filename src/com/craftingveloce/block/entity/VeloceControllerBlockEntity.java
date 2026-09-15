@@ -136,10 +136,24 @@ public class VeloceControllerBlockEntity extends BlockEntity
         return result;
     }
 
-    /** Wysyla graczowi samo tempo przeplywu (odpowiedz na zapytanie klienta). */
+    /**
+     * Wysyla graczowi tempo przeplywu I swiezy stock (odpowiedz na zapytanie).
+     *
+     * <p>Stock jedzie razem z tempem, bo kontroler ma sie odswiezac tak samo
+     * jak terminal: bez tego wyjecie itemu ze skrzynki przy otwartym GUI nie
+     * zmienialo ani liczby, ani koloru ikony.
+     */
     public void sendFlowTo(ServerPlayer player) {
+        Map<Item, Long> stock = Map.of();
+        if (level instanceof ServerLevel sl) {
+            VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                    .getNetworkForTerminal(sl, worldPosition);
+            if (net != null) {
+                stock = net.getAllItemCounts(sl);
+            }
+        }
         PacketDistributor.sendToPlayer(player, new com.craftingveloce.network.SyncControllerFlowPKT(
-                worldPosition,
+                worldPosition, stock,
                 flow.movements(VeloceFlowTracker.Window.MINUTE),
                 flow.movements(VeloceFlowTracker.Window.HOUR)));
     }
