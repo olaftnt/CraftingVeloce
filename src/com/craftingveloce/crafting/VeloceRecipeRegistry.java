@@ -133,76 +133,21 @@ public final class VeloceRecipeRegistry {
      * RecipeManager nie nadpisuje equals/hashCode, wiec zachowuje sie
      * tozsamosciowo jak poprzednio.
      */
-    private static final Map<RecipeManager, Map<Item, List<CraftingEntry>>> CACHE =
+    private static final Map<RecipeManager, Map<Item, List<ProcessingEntry>>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Osobny indeks receptur pieca (smelting/blasting/smoking). */
-    private static final Map<RecipeManager, Map<Item, List<CraftingEntry>>> FURNACE_CACHE =
+    private static final Map<RecipeManager, Map<Item, List<ProcessingEntry>>> FURNACE_CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private VeloceRecipeRegistry() {
     }
 
     /**
-     * Pojedyncza receptura zdolna wyprodukowac dany item.
-     *
-     * @param id          identyfikator receptury (do NBT / wyboru priorytetu)
-     * @param result      wynik (z iloscia)
-     * @param ingredients lista skladnikow; kazdy Ingredient to alternatywy
-     * @param type        typ receptury (crafting / stonecutting / smithing)
-     */
-    public record CraftingEntry(
-            ResourceLocation id,
-            ItemStack result,
-            NonNullList<Ingredient> ingredients,
-            RecipeType<?> type
-    ) {
-        /** Krotki opis do tooltipa: "2x Deska". */
-        public String describe() {
-            return result.getCount() + "x " + result.getHoverName().getString();
-        }
-
-        /**
-         * Czy to receptura PIECA - czyli czy wymaga zabrania jednego
-         * przepalenia z zasilonego pieca w sieci.
-         */
-        public boolean isFurnace() {
-            return isFurnaceType(type);
-        }
-
-        /** Czy receptura wymaga siatki (3x3) czy wystarczy 2x2 / 1x1. */
-        public boolean needsGrid(int size) {
-            if (!(type == RecipeType.CRAFTING)) {
-                return false;
-            }
-            for (Ingredient ing : ingredients) {
-                if (ing.getItems().length == 0) {
-                    continue;
-                }
-                if (countSlots(ing) > size * size) {
-                    return true;
-                }
-            }
-            // Dokladniejsza weryfikacja: liczba niepustych Ingredient
-            int used = 0;
-            for (Ingredient ing : ingredients) {
-                if (ing.getItems().length > 0) {
-                    used++;
-                }
-            }
-            return used > size * size;
-        }
-
-        private static int countSlots(Ingredient ing) {
-            return ing.getItems().length > 0 ? 1 : 0;
-        }
-    }
-
-    /**
      * Zwraca wszystkie receptury wytwarzajace dany item, ktore sa wykonywalne
      * bez energii/paliwa.
      */
-    public static List<CraftingEntry> getRecipesFor(Level level, Item item) {
+    public static List<ProcessingEntry> getRecipesFor(Level level, Item item) {
         if (!(level instanceof ServerLevel serverLevel)) {
             return List.of();
         }
@@ -222,16 +167,16 @@ public final class VeloceRecipeRegistry {
      *
      * @param heatAvailable czy w sieci jest zasilone zrodlo ciepla
      */
-    public static List<CraftingEntry> getRecipesFor(Level level, Item item, boolean heatAvailable) {
-        List<CraftingEntry> free = getRecipesFor(level, item);
+    public static List<ProcessingEntry> getRecipesFor(Level level, Item item, boolean heatAvailable) {
+        List<ProcessingEntry> free = getRecipesFor(level, item);
         if (!heatAvailable) {
             return free;
         }
-        List<CraftingEntry> furnace = getFurnaceRecipesFor(level, item);
+        List<ProcessingEntry> furnace = getFurnaceRecipesFor(level, item);
         if (furnace.isEmpty()) {
             return free;
         }
-        List<CraftingEntry> out = new ArrayList<>(free.size() + furnace.size());
+        List<ProcessingEntry> out = new ArrayList<>(free.size() + furnace.size());
         out.addAll(free);
         out.addAll(furnace);
         return out;
@@ -270,17 +215,17 @@ public final class VeloceRecipeRegistry {
     }
 
     /** Receptury dla itemu, posortowane tak, by pierwsza byla "domyslna". */
-    public static List<CraftingEntry> getOrdered(Level level, Item item, @Nullable ResourceLocation preferred) {        List<CraftingEntry> all = getRecipesFor(level, item);
+    public static List<ProcessingEntry> getOrdered(Level level, Item item, @Nullable ResourceLocation preferred) {        List<ProcessingEntry> all = getRecipesFor(level, item);
         if (all.size() <= 1 || preferred == null) {
             return all;
         }
-        List<CraftingEntry> ordered = new ArrayList<>(all.size());
-        for (CraftingEntry e : all) {
+        List<ProcessingEntry> ordered = new ArrayList<>(all.size());
+        for (ProcessingEntry e : all) {
             if (e.id().equals(preferred)) {
                 ordered.add(e);
             }
         }
-        for (CraftingEntry e : all) {
+        for (ProcessingEntry e : all) {
             if (!e.id().equals(preferred)) {
                 ordered.add(e);
             }
@@ -298,15 +243,15 @@ public final class VeloceRecipeRegistry {
      * <p>Wolajacy MUSI sam sprawdzic, ze w sieci jest zasilony piec - ta
      * metoda tylko czyta receptury.
      */
-    public static List<CraftingEntry> getFurnaceRecipesFor(Level level, Item item) {
+    public static List<ProcessingEntry> getFurnaceRecipesFor(Level level, Item item) {
         if (!(level instanceof ServerLevel serverLevel)) {
             return List.of();
         }
-        List<CraftingEntry> all = getFurnaceIndex(serverLevel).getOrDefault(item, List.of());
+        List<ProcessingEntry> all = getFurnaceIndex(serverLevel).getOrDefault(item, List.of());
         if (all.size() <= 1) {
             return all;
         }
-        List<CraftingEntry> sorted = new ArrayList<>(all);
+        List<ProcessingEntry> sorted = new ArrayList<>(all);
         sorted.sort(java.util.Comparator.comparingLong(VeloceRecipeRegistry::processingTicks));
         return sorted;
     }
@@ -317,7 +262,7 @@ public final class VeloceRecipeRegistry {
      * <p>Vanilla: blasting i smoking 100 t, smelting 200 t. Dla nieznanych
      * typow przyjmujemy 200 t, zeby nie faworyzowac niczego przypadkiem.
      */
-    private static long processingTicks(CraftingEntry entry) {
+    private static long processingTicks(ProcessingEntry entry) {
         if (entry.type() == RecipeType.BLASTING || entry.type() == RecipeType.SMOKING) {
             return 100L;
         }
@@ -325,14 +270,14 @@ public final class VeloceRecipeRegistry {
     }
 
     /** Buduje (lub pobiera z cache) indeks Item -> receptury pieca. */
-    private static Map<Item, List<CraftingEntry>> getFurnaceIndex(ServerLevel level) {
+    private static Map<Item, List<ProcessingEntry>> getFurnaceIndex(ServerLevel level) {
         RecipeManager manager = level.getRecipeManager();
-        Map<Item, List<CraftingEntry>> cached = FURNACE_CACHE.get(manager);
+        Map<Item, List<ProcessingEntry>> cached = FURNACE_CACHE.get(manager);
         if (cached != null) {
             return cached;
         }
         long start = System.nanoTime();
-        Map<Item, List<CraftingEntry>> built = buildIndex(manager, level, FURNACE_TYPES);
+        Map<Item, List<ProcessingEntry>> built = buildIndex(manager, level, FURNACE_TYPES);
         FURNACE_CACHE.put(manager, built);
 
         // SAMOKONTROLA (po to, zeby ten blad nie wrocil po cichu).
@@ -363,9 +308,9 @@ public final class VeloceRecipeRegistry {
     }
 
     /** Buduje (lub pobiera z cache) indeks Item -> receptury. */
-    private static Map<Item, List<CraftingEntry>> getIndex(ServerLevel level) {
+    private static Map<Item, List<ProcessingEntry>> getIndex(ServerLevel level) {
         RecipeManager manager = level.getRecipeManager();
-        Map<Item, List<CraftingEntry>> cached = CACHE.get(manager);
+        Map<Item, List<ProcessingEntry>> cached = CACHE.get(manager);
         if (cached != null) {
             return cached;
         }
@@ -374,7 +319,7 @@ public final class VeloceRecipeRegistry {
         // serwera. Mierzymy go, zeby dalo sie go wskazac w logu, gdyby ktos
         // znow zglaszal "klikniecie w terminal zamula serwer".
         long start = System.nanoTime();
-        Map<Item, List<CraftingEntry>> built = buildIndex(manager, level, FREE_TYPES);
+        Map<Item, List<ProcessingEntry>> built = buildIndex(manager, level, FREE_TYPES);
         CACHE.put(manager, built);
         VeloceLog.Craft.success(VeloceLog.Side.SERVER,
                 "recipe index built: %d item(s) with a recipe, %d ms",
@@ -382,10 +327,10 @@ public final class VeloceRecipeRegistry {
         return built;
     }
 
-    private static Map<Item, List<CraftingEntry>> buildIndex(RecipeManager manager,
+    private static Map<Item, List<ProcessingEntry>> buildIndex(RecipeManager manager,
                                                              ServerLevel level,
                                                              Set<RecipeType<?>> types) {
-        Map<Item, List<CraftingEntry>> index = new HashMap<>();
+        Map<Item, List<ProcessingEntry>> index = new HashMap<>();
         HolderLookup.Provider registries = level.registryAccess();
 
         // JEDNO przejscie po recepturach, nie jedno na typ.
@@ -411,9 +356,9 @@ public final class VeloceRecipeRegistry {
         }
 
         // Zamien na liste niezmienna i posortuj po id, zeby kolejnosc byla stabilna.
-        Map<Item, List<CraftingEntry>> result = new LinkedHashMap<>();
-        for (Map.Entry<Item, List<CraftingEntry>> e : index.entrySet()) {
-            List<CraftingEntry> list = e.getValue();
+        Map<Item, List<ProcessingEntry>> result = new LinkedHashMap<>();
+        for (Map.Entry<Item, List<ProcessingEntry>> e : index.entrySet()) {
+            List<ProcessingEntry> list = e.getValue();
             list.sort((a, b) -> a.id().toString().compareTo(b.id().toString()));
             result.put(e.getKey(), List.copyOf(list));
         }
@@ -436,7 +381,7 @@ public final class VeloceRecipeRegistry {
      * receptury - jedno zrodlo, wiec nie moze sie to rozjesc.
      */
     private static void addHolder(RecipeHolder<?> holder, HolderLookup.Provider registries,
-                                  Map<Item, List<CraftingEntry>> index, boolean trusted,
+                                  Map<Item, List<ProcessingEntry>> index, boolean trusted,
                                   Set<RecipeType<?>> allowedTypes) {
         var recipe = holder.value();
 
@@ -479,7 +424,11 @@ public final class VeloceRecipeRegistry {
         }
 
         Item out = result.getItem();
-        CraftingEntry entry = new CraftingEntry(
+        // Receptura waniliowa: jeden wynik i po jednej sztuce kazdego
+        // skladnika. Rodziny z innych modow buduja ProcessingEntry same
+        // (liczby sztuk, wiele wynikow, prawdopodobienstwa) - patrz
+        // ProcessingEntry.single() po przeciwienstwo.
+        ProcessingEntry entry = ProcessingEntry.single(
                 holder.id(),
                 result.copy(),
                 ingredients,
@@ -497,7 +446,7 @@ public final class VeloceRecipeRegistry {
     /** Mapa item -> liczba receptur (diagnostyka). */
     public static Map<Item, Integer> describeIndex(Level level) {
         Map<Item, Integer> out = new ConcurrentHashMap<>();
-        for (Map.Entry<Item, List<CraftingEntry>> e : getIndex((ServerLevel) level).entrySet()) {
+        for (Map.Entry<Item, List<ProcessingEntry>> e : getIndex((ServerLevel) level).entrySet()) {
             out.put(e.getKey(), e.getValue().size());
         }
         return out;

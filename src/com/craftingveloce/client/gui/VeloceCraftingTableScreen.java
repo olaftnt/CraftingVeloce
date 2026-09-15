@@ -145,9 +145,15 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         Map<Item, List<ClientRecipe>> out = new LinkedHashMap<>();
         var registries = mc.level.registryAccess();
 
-        collectType(mc, RecipeType.CRAFTING, registries, out);
-        collectType(mc, RecipeType.STONECUTTING, registries, out);
-        collectType(mc, RecipeType.SMITHING, registries, out);
+        // TYPY RECEPTUR Z JEDNEGO MIEJSCA. Wczesniej ta metoda miala wlasna,
+        // trzecia kopie listy (CRAFTING/STONECUTTING/SMITHING) obok
+        // VeloceRecipeRegistry i VeloceRecipeGraph - czyli dokladnie ten
+        // rodzaj duplikatu, ktory w tym projekcie juz kilka razy sie rozjechal.
+        // Teraz bierzemy rodziny z VeloceRecipeFamilies, wiec modul
+        // zarejestrowany przez compat/* pojawi sie tu bez zmiany kodu klienta.
+        for (RecipeType<?> type : com.craftingveloce.crafting.VeloceRecipeFamilies.withoutHeat()) {
+            collectType(mc, type, registries, out);
+        }
 
         craftableItems = out;
         craftableItemsKey = key;
@@ -166,7 +172,11 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         }
         for (var holder : holders) {
             var recipe = holder.value();
-            if (recipe.isSpecial()) {
+            // Filtr "special" TYLKO waniliowy - receptury modow czesto uzywaja
+            // tej flagi dla zwyklych receptur (Mekanism: wszystkie swoje),
+            // wiec odrzucanie po samym isSpecial() wycinalo cale mody z GUI.
+            // Ta sama reguła co w indeksie serwera (jedno zrodlo prawdy).
+            if (com.craftingveloce.crafting.VeloceRecipeRegistry.isVanillaSpecial(recipe)) {
                 continue;
             }
             ItemStack result;

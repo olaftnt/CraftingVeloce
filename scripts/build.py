@@ -503,6 +503,73 @@ def validate_node_blocks():
     print(f"    OK ({len(nodes)} wezlow sieci: interfejs + hooki parami)")
 
 
+def validate_recipe_model():
+    """
+    Jedna regula o recepturach = jedno miejsce w kodzie.
+
+    Ten projekt ma powtarzalny blad: te sama regule zapisano recznie w dwoch
+    miejscach i miejsca sie rozjechaly (lista wezlow sieci, lista packetow,
+    uklad GUI). Przy recepturach byly az TRZY kopie listy typow (rejestr,
+    graf, GUI craftera) i DWIE kopie filtra "special" - przez ten drugi filtr
+    receptury modow byly po cichu wyrzucane (Mekanism oznacza tak wszystkie
+    swoje), wiec zaden modul z innego moda nie mialby czego liczyc.
+
+    Pilnujemy trzech niezmiennikow:
+      1. istnieje JEDEN model receptury (ProcessingEntry) - bez drugiego
+         rekordu CraftingEntry,
+      2. liste typow receptur wolno deklarowac WYLACZNIE w
+         VeloceRecipeFamilies.java (reszta musi ja brac z tamtej klasy),
+      3. filtr "special" wolno stosowac WYLACZNIE w
+         VeloceRecipeRegistry.isVanillaSpecial (zawężenie do namespace
+         minecraft), a nie bezposrednio przez recipe.isSpecial().
+    """
+    src_root = "src"
+    if not os.path.isdir(src_root):
+        return
+    family_list = re.compile(
+        r"(?:static\s+)?(?:final\s+)?Set\s*<\s*RecipeType\s*<\s*\?\s*>\s*>\s+\w+\s*=\s*Set\.of")
+    dup_lists, dup_special, dup_model = [], [], []
+    for root, _dirs, files in os.walk(src_root):
+        for name in files:
+            if not name.endswith(".java"):
+                continue
+            path = os.path.join(root, name)
+            text = open(path, encoding="utf-8").read()
+            rel = path.replace(os.sep, "/")
+            if rel.endswith("VeloceRecipeFamilies.java"):
+                continue
+            if re.search(r"\brecord\s+CraftingEntry\s*\(", text):
+                dup_model.append(rel)
+            if family_list.search(text):
+                dup_lists.append(rel)
+            if ".isSpecial()" in text:
+                if rel.endswith("crafting/VeloceRecipeRegistry.java"):
+                    # Filtr WOLNO stosowac tylko tutaj - i dokladnie w jednym
+                    # miejscu (isVanillaSpecial). Druga proba w tym samym pliku
+                    # znaczylaby drugi filtr obok zawężonego do minecraft.
+                    uses = text.count(".isSpecial()")
+                    if uses != 1:
+                        dup_special.append(rel + f" ({uses}x, ma byc 1x)")
+                else:
+                    dup_special.append(rel)
+    problems = []
+    if dup_model:
+        problems.append("drugi model receptury (record CraftingEntry) w: "
+                        + ", ".join(dup_model))
+    if dup_lists:
+        problems.append("wlasna kopia listy typow receptur (ma byc tylko "
+                        "VeloceRecipeFamilies) w: " + ", ".join(dup_lists))
+    if dup_special:
+        problems.append("filtrowanie po recipe.isSpecial() poza "
+                        "isVanillaSpecial() w: " + ", ".join(dup_special))
+    if problems:
+        fail("model receptur:\n  " + "\n  ".join(problems))
+    entries = os.path.join(src_root, "com/craftingveloce/crafting/ProcessingEntry.java")
+    if not os.path.exists(entries):
+        fail("brak ProcessingEntry - jedynego modelu receptury")
+    print("    OK (jeden model receptury, jedna lista rodzin, jeden filtr special)")
+
+
 def game_running():
     """
     Czy Minecraft z tego profilu wlasnie dziala?
@@ -668,6 +735,7 @@ def main():
     validate_helper_docs()
     validate_sensor_row()
     validate_node_blocks()
+    validate_recipe_model()
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "

@@ -199,7 +199,7 @@ public final class VeloceAutoCrafter {
         }
 
         /** Receptury dla itemu, z piecem tylko gdy jest czym palic. */
-        List<VeloceRecipeRegistry.CraftingEntry> recipesFor(Item item) {
+        List<ProcessingEntry> recipesFor(Item item) {
             return VeloceRecipeRegistry.getRecipesFor(level, item, heatOps() > 0);
         }
 
@@ -793,7 +793,7 @@ public final class VeloceAutoCrafter {
             this.heatRemaining = heatRemaining;
         }
 
-        void add(VeloceRecipeRegistry.CraftingEntry recipe, long times) {
+        void add(ProcessingEntry recipe, long times) {
             runs.add(new PlannedRun(recipe, times));
         }
 
@@ -816,7 +816,7 @@ public final class VeloceAutoCrafter {
         }
     }
 
-    record PlannedRun(VeloceRecipeRegistry.CraftingEntry recipe, long times) {
+    record PlannedRun(ProcessingEntry recipe, long times) {
     }
 
     /**
@@ -865,7 +865,7 @@ public final class VeloceAutoCrafter {
             // Receptury pieca tylko dopoki jest czym zaplacic. Gdy budzet
             // ciepla sie skonczy, piec przestaje byc opcja - tak samo, jak
             // przestalby nia byc, gdyby brakowalo skladnikow.
-            List<VeloceRecipeRegistry.CraftingEntry> recipes =
+            List<ProcessingEntry> recipes =
                     orderRecipes(level, item, preferred, plan.heatRemaining > 0,
                             network.prefersFurnace(item));
             if (recipes.isEmpty()) {
@@ -873,7 +873,7 @@ public final class VeloceAutoCrafter {
             }
 
             // Probuj kolejne receptury - pierwsza wykonalna wygrywa.
-            for (VeloceRecipeRegistry.CraftingEntry recipe : recipes) {
+            for (ProcessingEntry recipe : recipes) {
                 Map<Item, Long> snapshot = new HashMap<>(stock);
                 int planMark = plan.runs.size();
                 if (planRecipe(level, network, enabled, preferred, recipe, remaining, stock, plan, visiting, depth)) {
@@ -897,10 +897,16 @@ public final class VeloceAutoCrafter {
     private static boolean planRecipe(ServerLevel level, VelocePipeNetwork network,
                                       Set<Item> enabled,
                                       Map<Item, ResourceLocation> preferred,
-                                      VeloceRecipeRegistry.CraftingEntry recipe, long amount,
+                                      ProcessingEntry recipe, long amount,
                                       Map<Item, Long> stock, Plan plan,
                                       Set<Item> visiting, int depth) {
-        long perCraft = Math.max(1, recipe.result().getCount());
+        // Ile sztuk daje JEDNO wykonanie: wynik glowny razy jego liczba.
+        //
+        // Liczymy z wyniku GLOWNEGO (pierwszy gwarantowany), a nie z sumy
+        // wszystkich - planowanie widzi tylko wyniki gwarantowane, zeby nigdy
+        // nie obiecac itemu, ktory moze nie wypasc (patrz ProcessingEntry).
+        ItemStack primary = recipe.primaryResult();
+        long perCraft = Math.max(1, primary.getCount());
         long times = (amount + perCraft - 1) / perCraft;
         if (times <= 0 || times > CRAFT_MAX_STEPS) {
             return false;
@@ -919,7 +925,16 @@ public final class VeloceAutoCrafter {
         }
 
         // Najpierw zaplanuj skladniki (rekurencja), potem zapisz siebie.
-        for (Ingredient ing : recipe.ingredients()) {
+        //
+        // LICZBY SZTUK: skladnik moze wymagac wiecej niz jednej sztuki na
+        // wykonanie (Alchemistry IngredientStack, Mekanism SizedIngredient).
+        // Wczesniej planer zakladal `need = times`, wiec taka receptura
+        // zuzywalaby w planie mniej, niz naprawde potrzebuje - liczby w GUI
+        // bylyby zawyzone, a wykonanie gubilo itemy.
+        List<Ingredient> ingredientList = recipe.ingredients();
+        for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
+            Ingredient ing = ingredientList.get(ingIndex);
+            long perIngredient = recipe.ingredientCount(ingIndex);
             List<ItemStack> options = nonEmpty(ing);
             if (options.isEmpty()) {
                 continue;
@@ -931,7 +946,7 @@ public final class VeloceAutoCrafter {
             for (ItemStack opt : options) {
                 Item optItem = opt.getItem();
                 long avail = stock.getOrDefault(optItem, 0L);
-                long need = times;
+                long need = times * perIngredient;
                 if (avail >= need) {
                     stock.put(optItem, avail - need);
                     supplied = true;
@@ -982,9 +997,14 @@ public final class VeloceAutoCrafter {
         // wiec kolejne sloty desek w recepturze nie mogly ich znalezc i plan
         // padal z "brak bazowych skladnikow" - mimo ze klody byly w sieci.
         // To bylo zrodlo bledu "nie moge zrobic fence a mam logi w skrzynce".
-        ItemStack result = recipe.result();
-        if (!result.isEmpty()) {
-            stock.merge(result.getItem(), times * perCraft, Long::sum);
+        //
+        // Zaliczamy WSZYSTKIE wyniki gwarantowane (Fission ma dwa), a nie
+        // tylko glowny - inaczej receptura wielowyjsciowa tworzylaby w planie
+        // mniej, niz daje w rzeczywistosci.
+        for (ItemStack guaranteed : recipe.guaranteedResults()) {
+            if (!guaranteed.isEmpty()) {
+                stock.merge(guaranteed.getItem(), times * guaranteed.getCount(), Long::sum);
+            }
         }
         return true;
     }
@@ -1092,18 +1112,23 @@ public final class VeloceAutoCrafter {
      */
     private static long countFurnaceOnly(ServerLevel level, Item item,
                                          Map<Item, Long> stock, long heatOps) {
-        List<VeloceRecipeRegistry.CraftingEntry> recipes =
+        List<ProcessingEntry> recipes =
                 VeloceRecipeRegistry.getRecipesFor(level, item, true);
         if (recipes.isEmpty()) {
             return 0L;
         }
         long best = 0;
-        for (VeloceRecipeRegistry.CraftingEntry recipe : recipes) {
+        for (ProcessingEntry recipe : recipes) {
             if (!recipe.isFurnace()) {
                 return -1L;   // jest tez crafting - to robota dla planera
             }
             long runs = Long.MAX_VALUE;
-            for (Ingredient ingredient : recipe.ingredients()) {
+            List<Ingredient> ingredientList = recipe.ingredients();
+            for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
+                Ingredient ingredient = ingredientList.get(ingIndex);
+                // Skladnik moze wymagac kilku sztuk (Alchemistry, Mekanism) -
+                // wtedy limit to stock podzielony przez te liczbe, a nie przez 1.
+                long perIngredient = recipe.ingredientCount(ingIndex);
                 long bestOption = 0;
                 for (ItemStack option : ingredient.getItems()) {
                     Item raw = option.getItem();
@@ -1112,7 +1137,7 @@ public final class VeloceAutoCrafter {
                         // prawdziwym limitem, planer policzy to lepiej.
                         return -1L;
                     }
-                    long needed = Math.max(1, option.getCount());
+                    long needed = Math.max(1, option.getCount()) * perIngredient;
                     bestOption = Math.max(bestOption, stock.getOrDefault(raw, 0L) / needed);
                 }
                 runs = Math.min(runs, bestOption);
@@ -1125,7 +1150,7 @@ public final class VeloceAutoCrafter {
                 return 0L;
             }
             best = Math.max(best, Math.min(MAX_ESTIMATE_RESULT,
-                    runs * Math.max(1, recipe.result().getCount())));
+                    runs * Math.max(1, recipe.primaryResult().getCount())));
         }
         return best;
     }
@@ -1195,7 +1220,7 @@ public final class VeloceAutoCrafter {
      */
     private static long estimateUpperBound(ServerLevel level, Item item,
                                            Map<Item, Long> stock,
-                                           java.util.List<VeloceRecipeRegistry.CraftingEntry> recipes,
+                                           java.util.List<ProcessingEntry> recipes,
                                            boolean heatAvailable) {
         long total = 0;
         for (long v : stock.values()) {
@@ -1258,7 +1283,7 @@ public final class VeloceAutoCrafter {
                 if (cost <= 0.0) {
                     continue;   // receptura bez zadnej dostepnej opcji skladnika
                 }
-                double yield = Math.max(1, recipe.result().getCount()) / cost;
+                double yield = Math.max(1, recipe.primaryResult().getCount()) / cost;
                 if (yield > best) {
                     best = yield;
                 }
@@ -1277,11 +1302,13 @@ public final class VeloceAutoCrafter {
      * opcji), bo wtedy nie wnosimy jej do maksimum.
      */
     private static double rawCostOfRecipe(ServerLevel level,
-                                          VeloceRecipeRegistry.CraftingEntry recipe,
+                                          ProcessingEntry recipe,
                                           Map<Item, Double> memo, Set<Item> visiting,
                                           int depth, boolean heatAvailable) {
         double cost = 0.0;
-        for (Ingredient ing : recipe.ingredients()) {
+        List<Ingredient> ingredientList = recipe.ingredients();
+        for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
+            Ingredient ing = ingredientList.get(ingIndex);
             double cheapest = Double.MAX_VALUE;
             for (ItemStack opt : nonEmpty(ing)) {
                 double yield = maxYieldPerRawUnit(level, opt.getItem(), memo, visiting,
@@ -1293,7 +1320,9 @@ public final class VeloceAutoCrafter {
             if (cheapest == Double.MAX_VALUE) {
                 return 0.0;
             }
-            cost += 1.0 / cheapest;
+            // Skladnik zuzywa `ingredientCount` sztuk na wykonanie, wiec
+            // kosztuje tyle razy wiecej surowca.
+            cost += recipe.ingredientCount(ingIndex) / cheapest;
         }
         return cost;
     }
@@ -1351,7 +1380,7 @@ public final class VeloceAutoCrafter {
 
     /** Jedno wykonanie receptury: pobierz skladniki, wstaw wynik. */
     private static boolean runOnce(ServerLevel level, Context ctx,
-                                   VeloceRecipeRegistry.CraftingEntry recipe,
+                                   ProcessingEntry recipe,
                                    java.util.List<com.craftingveloce.block.entity.VeloceHeatSource> heat) {
         // 1. NAJPIERW POBRANIE SKLADNIKOW, POTEM ZAPLATA CIEPLEM.
         //
@@ -1365,16 +1394,25 @@ public final class VeloceAutoCrafter {
         // Wowczas jedyna przyczyna niepowodzenia jest brak pradu/paliwa,
         // a wtedy zwracamy rowniez pobrane itemy.
         NonNullList<ItemStack> consumed = NonNullList.create();
-        for (Ingredient ing : recipe.ingredients()) {
-            ItemStack taken = takeOne(level, ctx, ing);
-            if (taken.isEmpty()) {
-                // Zwrot pobranych - nie gubimy itemow.
-                for (ItemStack s : consumed) {
-                    deposit(level, ctx, s);
+        List<Ingredient> ingredientList = recipe.ingredients();
+        for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
+            Ingredient ing = ingredientList.get(ingIndex);
+            // Skladnik moze wymagac kilku sztuk na jedno wykonanie
+            // (Alchemistry IngredientStack, Mekanism SizedIngredient).
+            // Plan liczy sie z ta sama liczba, wiec wykonanie musi ja
+            // pobrac - inaczej powstalby darmowy nadmiar w sieci.
+            int units = recipe.ingredientCount(ingIndex);
+            for (int unit = 0; unit < units; unit++) {
+                ItemStack taken = takeOne(level, ctx, ing);
+                if (taken.isEmpty()) {
+                    // Zwrot pobranych - nie gubimy itemow.
+                    for (ItemStack s : consumed) {
+                        deposit(level, ctx, s);
+                    }
+                    return false;
                 }
-                return false;
+                consumed.add(taken);
             }
-            consumed.add(taken);
         }
 
         // 2. Zaplata cieplem.
@@ -1392,8 +1430,25 @@ public final class VeloceAutoCrafter {
             return false;
         }
 
-        ItemStack result = recipe.result().copy();
-        deposit(level, ctx, result);
+        // 3. Wyniki.
+        //
+        // Wszystkie, nie tylko glowny: Fission ma dwa, a crushing Create
+        // bywa troche wiecej. Rzucamy koscia PER WYNIK (resultChances), wiec
+        // gracz czasem dostanie wiecej, nigdy mniej niz zaplanowano - plan
+        // bowiem widzi wylacznie wyniki gwarantowane (patrz ProcessingEntry).
+        List<ItemStack> results = recipe.results();
+        for (int i = 0; i < results.size(); i++) {
+            ItemStack single = results.get(i);
+            if (single.isEmpty()) {
+                continue;
+            }
+            float chance = i < recipe.resultChances().size()
+                    ? recipe.resultChances().get(i) : 1.0f;
+            if (chance < 1.0f && level.random.nextFloat() >= chance) {
+                continue;
+            }
+            deposit(level, ctx, single.copy());
+        }
         return true;
     }
 
@@ -1539,10 +1594,10 @@ public final class VeloceAutoCrafter {
     }
 
     /** Receptury w kolejnosci preferencji gracza. */
-    private static List<VeloceRecipeRegistry.CraftingEntry> orderRecipes(
+    private static List<ProcessingEntry> orderRecipes(
             ServerLevel level, Item item, Map<Item, ResourceLocation> preferred,
             boolean heatAvailable, boolean furnaceFirst) {
-        List<VeloceRecipeRegistry.CraftingEntry> all =
+        List<ProcessingEntry> all =
                 VeloceRecipeRegistry.getRecipesFor(level, item, heatAvailable);
         if (all.size() <= 1) {
             return all;
@@ -1552,7 +1607,7 @@ public final class VeloceAutoCrafter {
         //    to najdokladniejsza decyzja gracza.
         ResourceLocation pref = preferred.get(item);
         if (pref != null) {
-            List<VeloceRecipeRegistry.CraftingEntry> ordered = new ArrayList<>(all.size());
+            List<ProcessingEntry> ordered = new ArrayList<>(all.size());
             for (var e : all) {
                 if (e.id().equals(pref)) {
                     ordered.add(e);
@@ -1574,7 +1629,7 @@ public final class VeloceAutoCrafter {
         //    i planer normalnie uzyje craftingu. Dzieki temu wybor "wole piec"
         //    nie odbiera graczowi mozliwosci zrobienia itemu inaczej.
         if (furnaceFirst && heatAvailable) {
-            List<VeloceRecipeRegistry.CraftingEntry> ordered = new ArrayList<>(all.size());
+            List<ProcessingEntry> ordered = new ArrayList<>(all.size());
             for (var e : all) {
                 if (e.isFurnace()) {
                     ordered.add(e);

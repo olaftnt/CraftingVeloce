@@ -58,6 +58,29 @@ public final class VeloceRecipeFamilies {
         return Set.copyOf(MOD_FAMILIES.keySet());
     }
 
+    /**
+     * Typy receptur, ktore nie potrzebuja pieca: {@link #FREE} plus rodziny
+     * zarejestrowane przez moduly z innych modow.
+     *
+     * <p>Uzywa tego GUI craftera (lista receptur do pokazania), ktore nie zna
+     * ciepla. Dzieki temu modul zarejestrowany przez {@code compat/*} pojawia
+     * sie w GUI bez zmiany w kodzie klienta.
+     */
+    public static synchronized Set<RecipeType<?>> withoutHeat() {
+        Set<RecipeType<?>> out = new java.util.LinkedHashSet<>(FREE);
+        for (Set<RecipeType<?>> types : MOD_FAMILIES.values()) {
+            out.addAll(types);
+        }
+        return Set.copyOf(out);
+    }
+
+    /** Wszystkie znane typy receptur: bez pieca, piecowe i z modow. */
+    public static synchronized Set<RecipeType<?>> all() {
+        Set<RecipeType<?>> out = new java.util.LinkedHashSet<>(withoutHeat());
+        out.addAll(FURNACE);
+        return Set.copyOf(out);
+    }
+
     public static boolean isFree(RecipeType<?> type) {
         return FREE.contains(type);
     }
