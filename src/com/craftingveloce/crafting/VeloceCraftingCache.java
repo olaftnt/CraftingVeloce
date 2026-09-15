@@ -132,12 +132,19 @@ public final class VeloceCraftingCache {
     private boolean initialScanQueued = false;
 
     /**
-     * Czy trzeba przeliczyc wszystko od nowa, bo zmienil sie sklad sieci.
+     * Wymusza diff stocku na najblizszym ticku, bez czyszczenia cache.
      *
-     * <p>Ustawiane przy dolaczeniu/odlaczeniu skrzyni, zaladowaniu chunka czy
-     * zmianie wezlow. Wykonywane porcjami w ticku, zeby nie zamulic serwera.
+     * <p>Ustawiane, gdy zmienil sie sklad sieci (dolaczona/odlaczona skrzynia,
+     * chunk, wezel). Diff sam znajdzie zmienione itemy i zakolejkuje tylko
+     * ich lancuch - to o rzedy wielkosci tansze od pelnego reskanu.
      */
-    private boolean needsFullRescan = false;
+    private boolean forceStockScan = false;
+
+    /** Ile razy dany item wracal do kolejki, bo nie zmiescil sie w budzecie. */
+    private final Map<Item, Integer> retries = new HashMap<>();
+
+    /** Po tylu nieudanych probach odpuszczamy item (zostaje stara liczba). */
+    private static final int MAX_RETRIES = 3;
 
     /** Migawka stocku do wykrywania zmian. */
     private final Map<Item, Long> lastStock = new HashMap<>();
@@ -266,7 +273,8 @@ public final class VeloceCraftingCache {
         long now = level.getGameTime();
         boolean firstScan = lastFullStockScan == Long.MIN_VALUE;
         int interval = now < busyUntil ? BUSY_SCAN_INTERVAL : FULL_STOCK_SCAN_INTERVAL;
-        if (firstScan || now - lastFullStockScan >= interval) {
+        if (firstScan || forceStockScan || now - lastFullStockScan >= interval) {
+            forceStockScan = false;
             lastFullStockScan = now;
             detectStockChanges(level);
             if (System.nanoTime() - start > TICK_BUDGET_NS) {
@@ -281,21 +289,16 @@ public final class VeloceCraftingCache {
             maintainForcedChunks(level);
         }
 
-        // 2. Pierwszy skan ALBO ponowny skan po zmianie skladu sieci.
-        //    Kolejkujemy itemy obecne w sieci (to widzi GUI) oraz - w ramach
-        //    limitu - reszte wlaczonych.
-        if ((!initialScanQueued || needsFullRescan) && pending.isEmpty()) {
+        // 2. Pierwszy skan: kolejkujemy itemy obecne w sieci (to widzi GUI)
+        //    oraz - w ramach limitu - reszte wlaczonych.
+        //
+        //    UWAGA: zmiana skladu sieci NIE robi juz pelnego reskanu (patrz
+        //    onEndpointChanged) - obsluguje ja diff stocku z punktu 1.
+        if (!initialScanQueued && pending.isEmpty()) {
             initialScanQueued = true;
-            boolean rescan = needsFullRescan;
-            needsFullRescan = false;
-            // Przy ponownym skanie czyscimy stare liczby, zeby nie pokazywac
-            // nieaktualnych wartosci podczas przeliczania.
-            if (rescan) {
-                craftable.clear();
-            }
             queueInitialScan(enabledItems);
             VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                    "crafting cache: {} scan starting", rescan ? "full rescan" : "initial");
+                    "crafting cache: initial scan starting");
         }
 
         // 3. Przeliczaj porcje, dopoki starcza budzetu.
@@ -311,9 +314,24 @@ public final class VeloceCraftingCache {
             }
             // Budzet na ten jeden item: nie wiecej niz zostalo do konca ticku.
             long remaining = TICK_BUDGET_NS - (System.nanoTime() - start);
-            long n = VeloceAutoCrafter.countCraftableNow(
-                    level, network, item, enabledItems, preferred,
+            long n = VeloceAutoCrafter.countCraftableFromStock(
+                    level, item, lastStock, enabledItems, preferred,
                     Math.max(1_000_000L, remaining));
+            if (n == VeloceAutoCrafter.UNKNOWN_COUNT) {
+                // Budzet sie skonczyl w polowie - nie kasujemy starej liczby,
+                // tylko wracamy z itemem w nastepnym ticku. Po kilku probach
+                // odpuszczamy, zeby nie krecic sie w kolko w nieskonczonosc.
+                int tries = retries.merge(item, 1, Integer::sum);
+                queued.remove(item);
+                if (tries <= MAX_RETRIES && pending.size() < MAX_QUEUE) {
+                    queued.add(item);
+                    pending.add(item);
+                } else {
+                    retries.remove(item);
+                }
+                continue;
+            }
+            retries.remove(item);
             if (n > 0) {
                 craftable.put(item, n);
             } else {
@@ -551,11 +569,16 @@ public final class VeloceCraftingCache {
         // zdarzen bylo duzo, cache nigdy nie konczyl liczenia - liczby w GUI
         // zostawaly stare az do ponownego otwarcia terminala.
         //
-        // Zamiast tego: oznaczamy pelny skan jako potrzebny i pozwalamy
-        // normalnemu tickowi go wykonac, porcjami.
-        needsFullRescan = true;
+        // Zamiast tego: wymuszamy na najblizszym ticku zwykly diff stocku.
+        // Diff sam wykryje, ktore itemy zniknely/pojawily sie w sieci i
+        // zakolejkuje TYLKO ich lancuch. Poprzednia wersja ustawiala
+        // needsFullRescan, co czyscilo cache i wrzucalo z powrotem wszystkie
+        // ~500 itemow przy KAZDEJ zmianie skladu sieci. Przy kilku sieciach
+        // i ciaglych zmianach (chunk load/unload) kolejka nigdy sie nie
+        // konczyla i serwer przestawal odpowiadac na interakcje gracza.
+        forceStockScan = true;
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "crafting cache: network composition changed - full rescan scheduled");
+                "crafting cache: network composition changed - stock diff scheduled");
     }
 
     /**

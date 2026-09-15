@@ -70,6 +70,15 @@ public final class VeloceAutoCrafter {
     private static final int MAX_ESTIMATE_OPS = 2_000_000;
 
     /**
+     * Wynik "nie udalo sie policzyc" (budzet czasowy sie skonczyl).
+     *
+     * <p>Rozroznienie wazne: 0 znaczy "na pewno nie da sie zrobic", a
+     * {@code UNKNOWN_COUNT} znaczy "nie wiem, sprobuj pozniej". Bez tego
+     * przerwane planowanie kasowalo licznik w GUI.
+     */
+    public static final long UNKNOWN_COUNT = -1L;
+
+    /**
      * Domyslny budzet czasu na jedno szacowanie, w nanosekundach.
      *
      * <p>25 ms to wartosc bezpieczna dla pojedynczego itemu przy natychmiastowym
@@ -217,12 +226,28 @@ public final class VeloceAutoCrafter {
     private static final ThreadLocal<long[]> ESTIMATE_DEADLINE =
             ThreadLocal.withInitial(() -> new long[]{0L});
 
+    /**
+     * Czy biezace szacowanie zostalo przerwane z braku budzetu.
+     *
+     * <p>Bez tego rozroznienia przerwane planowanie wygladalo identycznie jak
+     * "nie da sie tego zrobic" - item dostawal 0 i znikalo mu licznik w GUI,
+     * mimo ze tak naprawde po prostu nie zdazylismy policzyc.
+     */
+    private static final ThreadLocal<boolean[]> ESTIMATE_ABORTED =
+            ThreadLocal.withInitial(() -> new boolean[]{false});
+
     /** Ustawia budzet czasowy dla biezacego szacowania. */
     private static void startEstimate(long budgetNanos) {
         ESTIMATE_OPS.get()[0] = 0;
+        ESTIMATE_ABORTED.get()[0] = false;
         ESTIMATE_DEADLINE.get()[0] = budgetNanos > 0
                 ? System.nanoTime() + budgetNanos
                 : 0L;
+    }
+
+    /** Czy biezace szacowanie zostalo przerwane (wynik nieznany). */
+    private static boolean estimateAborted() {
+        return ESTIMATE_ABORTED.get()[0];
     }
 
     /**
@@ -234,11 +259,15 @@ public final class VeloceAutoCrafter {
     private static boolean estimateBudgetExceeded() {
         int ops = ESTIMATE_OPS.get()[0]++;
         if (ops > MAX_ESTIMATE_OPS) {
+            ESTIMATE_ABORTED.get()[0] = true;
             return true;
         }
         long deadline = ESTIMATE_DEADLINE.get()[0];
         if (deadline != 0L && (ops & 63) == 0) {
-            return System.nanoTime() > deadline;
+            if (System.nanoTime() > deadline) {
+                ESTIMATE_ABORTED.get()[0] = true;
+                return true;
+            }
         }
         return false;
     }
@@ -275,11 +304,30 @@ public final class VeloceAutoCrafter {
             return 0L;
         }
         Map<Item, Long> stock = new HashMap<>(network.getAllItemCounts(level));
+        return countCraftableFromStock(level, item, stock, enabledItems, preferred, budgetNanos);
+    }
+
+    /**
+     * Jak {@link #countCraftableNow}, ale ze stockiem podanym z zewnatrz.
+     *
+     * <p>Cache w tle liczy setki itemow na tick. Czytanie calego stocku sieci
+     * przy KAZDYM z nich bylo najdrozsza czescia tej petli - a przeciez cache
+     * i tak ma swiezy stock z diffa. Dzieki temu siec czytamy raz na tick,
+     * a nie raz na item.
+     */
+    public static long countCraftableFromStock(
+            ServerLevel level, Item item, Map<Item, Long> stock,
+            Set<Item> enabledItems, Map<Item, ResourceLocation> preferred,
+            long budgetNanos) {
+        if (!enabledItems.contains(item)) {
+            return 0L;
+        }
         long onStock = stock.getOrDefault(item, 0L);
         startEstimate(budgetNanos);
         long total = maxCraftable(level, item, stock, enabledItems, preferred);
-        // Zwracamy tylko nadwyzke ponad stock - inaczej licznik pokazywalby
-        // przedmioty, ktore juz leza w sieci, jako "do zrobienia".
+        if (total == UNKNOWN_COUNT) {
+            return UNKNOWN_COUNT;
+        }
         return Math.max(0L, total - onStock);
     }
 
@@ -345,6 +393,12 @@ public final class VeloceAutoCrafter {
             startEstimate(deadline == 0L ? 0L
                     : Math.max(1_000_000L, deadline - System.nanoTime()));
             long total = maxCraftable(level, item, stock, enabledItems, preferred);
+            if (total == UNKNOWN_COUNT) {
+                // Nie zmiescilismy sie w budzecie - nie zgadujemy, mowimy
+                // GUI, ze partia jest niekompletna i przerwamy petle.
+                complete = false;
+                break;
+            }
             long surplus = Math.max(0L, total - onStock);
             if (surplus > 0) {
                 out.put(item, surplus);
@@ -589,6 +643,11 @@ public final class VeloceAutoCrafter {
             } else {
                 hi = mid - 1;
             }
+        }
+        // Budzet sie skonczyl w trakcie - wynik jest niemiarodajny.
+        // Zwracamy UNKNOWN, zeby GUI zachowalo poprzednia liczbe.
+        if (estimateAborted()) {
+            return UNKNOWN_COUNT;
         }
         return fromStock + lo;
     }
