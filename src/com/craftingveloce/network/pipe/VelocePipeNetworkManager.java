@@ -237,17 +237,12 @@ public class VelocePipeNetworkManager extends SavedData {
      */
     public static boolean nodeConnectsToPipe(ServerLevel level, BlockPos nodePos, Direction pipeSide) {
         BlockState state = level.getBlockState(nodePos);
-        Block block = state.getBlock();
-        if (block instanceof VeloceTomTerminalBlock terminalBlock) {
-            return terminalBlock.canConnectFrom(state, pipeSide);
-        }
-        if (block instanceof com.craftingveloce.block.VeloceExtractorBlock extractorBlock) {
-            return extractorBlock.canConnectFrom(state, pipeSide);
-        }
-        if (block instanceof com.craftingveloce.block.VeloceCraftingTableBlock craftingTableBlock) {
-            return craftingTableBlock.canConnectFrom(state, pipeSide);
-        }
-        return false;
+        // Cala wiedza o typach wezlow mieszka w VeloceNodeBlocks - tutaj tylko
+        // przekazujemy pytanie. Wczesniej byl tu recznie pisany lancuch
+        // instanceof, ktory nie znal kontrolera ani piecow, przez co kontroler
+        // dostawal null z getNetworkForTerminal (pusty stock + "auto-crafting
+        // wylaczony" dla wszystkich itemow).
+        return VeloceNodeBlocks.connectsFrom(state, state.getBlock(), pipeSide);
     }
 
     /**
@@ -522,39 +517,18 @@ public class VelocePipeNetworkManager extends SavedData {
             BlockState ns = level.getBlockState(np);
             Block nb = ns.getBlock();
 
-            if (nb instanceof VeloceTomTerminalBlock t) {
-                if (t.canConnectFrom(ns, d.getOpposite())) {
-                    net.getTerminals().add(np);
-                    knownNodes.add(np.immutable());
-                }
-            } else if (nb instanceof com.craftingveloce.block.VeloceExtractorBlock e) {
-                if (e.canConnectFrom(ns, d.getOpposite())) {
-                    net.getTerminals().add(np);
-                    knownNodes.add(np.immutable());
-                }
-            } else if (nb instanceof com.craftingveloce.block.VeloceCraftingTableBlock c) {
-                if (c.canConnectFrom(ns, d.getOpposite())) {
-                    net.getTerminals().add(np);
-                    knownNodes.add(np.immutable());
-                    net.getEndpoints().put(np, new CraftingBufferEndpoint(np, d.getOpposite()));
-                }
-            } else if (nb instanceof com.craftingveloce.block.VeloceVelocityFurnaceBlock) {
-                // Velocity Furnace: WEZEL, ale NIE magazyn.
-                //
-                // Wazel jest konieczny z dwoch powodow:
-                //   1. crafter musi go znalezc, zeby uzyc receptur pieca,
-                //   2. jego chunk jest utrzymywany, wiec piec pali sie CALY
-                //      CZAS takze wtedy, gdy gracz jest daleko - a to jest
-                //      wlasnie koszt instant craftowania.
-                // Magazynem nie jest: nie oddajemy do niego itemow sieci,
-                // on sam zaciaga z niej paliwo wg wlasnych filtrow.
-                net.getTerminals().add(np);
-                knownNodes.add(np.immutable());
-            } else if (nb instanceof com.craftingveloce.block.VeloceElectricFurnaceBlock) {
-                // To samo dla wersji elektrycznej - tez wezel, tez nie magazyn.
-                net.getTerminals().add(np);
-                knownNodes.add(np.immutable());
-            } else if (RefinedStorageHelper.hasRSNetwork(level, np, d.getOpposite())) {
+            // WEZLY - wszystkie przez jedno miejsce (VeloceNodeBlocks), zeby
+            // lista typow nie mogla sie znowu rozjechac z nodeConnectsToPipe.
+            //
+            // UWAGA na kierunek: jestesmy przy RURZE, wiec do wezla idziemy
+            // przez `d`, a wezel patrzy na rure przez `d.getOpposite()`.
+            if (VeloceNodeBlocks.isNode(nb)
+                    && VeloceNodeBlocks.connectsFrom(ns, nb, d.getOpposite())) {
+                registerNode(net, np, nb, d.getOpposite());
+                continue;
+            }
+
+            if (RefinedStorageHelper.hasRSNetwork(level, np, d.getOpposite())) {
                 ConnectedEndpointInfo ep = new ConnectedEndpointInfo(np, d.getOpposite(),
                         ConnectedEndpointInfo.Type.REFINED_STORAGE);
                 ep.refreshIfLoaded(level);
@@ -568,6 +542,25 @@ public class VelocePipeNetworkManager extends SavedData {
                 net.getEndpoints().put(canonical, ep);
                 knownEndpoints.put(canonical, ep);
             }
+        }
+    }
+
+    /**
+     * Rejestruje wezel w sieci.
+     *
+     * <p>Kazdy wezel trafia do {@code terminals} (to lista rzeczy, ktore trzeba
+     * symulowac - patrz {@code VeloceCraftingCache.collectChunksToKeep}, ktora
+     * wlasnie z niej bierze chunki do force-loadowania) oraz do
+     * {@code knownNodes} (zeby nie znikal z sieci, gdy jego chunk wypadnie).
+     *
+     * <p>Crafter dodatkowo wystawia swoj bufor jako endpoint sieci - to on jest
+     * miejscem, gdzie ląduje wynik craftu.
+     */
+    private void registerNode(VelocePipeNetwork net, BlockPos pos, Block block, Direction towardPipe) {
+        net.getTerminals().add(pos);
+        knownNodes.add(pos.immutable());
+        if (block instanceof com.craftingveloce.block.VeloceCraftingTableBlock) {
+            net.getEndpoints().put(pos, new CraftingBufferEndpoint(pos, towardPipe));
         }
     }
 

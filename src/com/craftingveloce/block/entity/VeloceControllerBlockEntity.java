@@ -48,6 +48,23 @@ public class VeloceControllerBlockEntity extends BlockEntity {
         VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
 
+        // BRAK SIECI NIE MOZE BYC PRZEMILCZANY.
+        //
+        // BUG, ktory to ukrywalo: kontroler nie byl rozpoznawany jako wezel
+        // (patrz VeloceNodeBlocks), wiec `net` bylo tu ZAWSZE null. Kontroler
+        // dostawal pusty stock i pusty zbior itemow z wlaczonym auto-craftingiem
+        // - i pokazywal "auto-crafting wylaczony" dla WSZYSTKICH itemow, mimo
+        // ze crafter w sieci mial je wlaczone. Bez tego logu wygladalo to jak
+        // blad w samym auto-craftingu, a nie w podlaczeniu kontrolera.
+        if (net == null) {
+            com.craftingveloce.util.VeloceLog.Block.failure(
+                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                    "controller at %s is NOT connected to any pipe network "
+                            + "(stock and auto-crafting will show as empty) - "
+                            + "place a pipe directly next to it",
+                    worldPosition);
+        }
+
         Map<Item, Long> stock = net == null ? Map.of() : net.getAllItemCounts(sl);
         Set<Item> craftable = VeloceRecipeRegistry.getAllCraftableItems(sl);
         Set<Item> craftingEnabled = net == null
