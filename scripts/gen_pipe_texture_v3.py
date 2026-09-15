@@ -71,22 +71,58 @@ def build_pipe_region():
     #    i na wypadek powrotu do poprzedniego wzoru.
 
 
-def build_head_region():
-    """Region B: [8,0 .. 16,8] - glowica 8x8 (bez zmian rozmiaru regionu).
+def build_side_region():
+    """Region B: [8,0 .. 16,8] - BOK rury (wzdluz osi).
 
-    Wersja v4: brak szarych pasow, okno 4x4 (zamiast 4x2) - spojne z rura.
+    To jest kluczowy region dla ciaglosci! Opaska biegnie TYLKO po bokach
+    (wiersze 0,1,6,7), a okno jest OTWARTE na krawedziach dlugosci
+    (kolumny 8 i 15).
+
+    Dlaczego: boki ramion stykaja sie ze soba na granicy blokow. Gdyby
+    okno bylo zamkniete ramka (jak w regionie A), na kazdym styku
+    powstalby czarny pasek w poprzek rury - widoczny jako "podzial
+    na kwadraty". Otwarte krawedzie daja jedno ciagle okno wzdluz rury.
+
+    Modele uzywaja UV [8,0,12,8] (4 px dlugosci = dlugosc ramienia),
+    wiec mapowanie jest 1:1 i okno zajmuje pelne 4 px.
+
+        szer 0  K K K K
+        szer 1  K K K K
+        szer 2  . . . .     <- otwarte na OBU krawedziach
+        szer 3  . . . .
+        szer 4  . . . .
+        szer 5  . . . .
+        szer 6  K K K K
+        szer 7  K K K K
     """
-    ox, oy = 8, 0
+    for y in range(8):
+        for x in range(8, 16):
+            put(x, y, BLACK)
+    # okno otwarte: wiersze 2..5, WSZYSTKIE kolumny regionu B
+    for y in range(2, 6):
+        for x in range(8, 16):
+            put(x, y, CLEAR)
+
+
+def build_head_region():
+    """Region C: [0,8 .. 8,16] - glowica/nozzle 8x8.
+
+    UWAGA: region zostal PRZENIESIONY z [8,0..16,8] na [0,8..8,16],
+    bo stare miejsce zajmuje teraz BOK rury (region B). Bez tego
+    glowica nadpisalaby bok rury i zepsula ciaglosc okna.
+    """
+    ox, oy = 0, 8
     for y in range(8):
         for x in range(8):
             put(ox + x, oy + y, BLACK)
-    # okno 4x4 na srodku (takie samo jak na scianach rury)
+    # okno 4x4 na srodku (takie samo jak na licu rury)
     for y in (2, 3, 4, 5):
         for x in (2, 3, 4, 5):
             put(ox + x, oy + y, CLEAR)
 
 
 build_pipe_region()
+build_side_region()
 build_head_region()
 
 

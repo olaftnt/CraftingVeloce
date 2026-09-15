@@ -308,7 +308,7 @@ Rdzeń używał **tego samego regionu na wszystkich 6 ścianach**, a boki ramien
 prostokątny** region. Na zakręcie przód rdzenia (region `[10..16]`) stykał się z bokiem ramienia
 (region `[0..5]`) → wzór się łamał, opaska nie była ciągła.
 
-### Rozwiązanie: jeden symetryczny region 8×8
+### Rozwiązanie: symetryczne regiony 8×8
 
 Rura ma przekrój **kwadratowy 8×8 px**, więc każda ściana wzdłuż rury jest dokładnie 8×8.
 Wszystkie ściany `pipe_core` i `pipe_part` mapują **ten sam region `[0,0,8,8]`**.
@@ -319,35 +319,55 @@ w różnych osiach) daje identyczny obraz:
 ```
         dlugosc ->
         0  1  2  3  4  5  6  7
-szer 0  K  K  G  G  G  G  K  K      K = czarna opaska (opaque)
-szer 1  K  K  G  G  G  G  K  K      G = szary odcień
-szer 2  K  K  .  .  .  .  K  K      . = przezroczyste okno
+szer 0  K  K  K  K  K  K  K  K      K = czarna opaska (opaque)
+szer 1  K  K  K  K  K  K  K  K      . = przezroczyste okno
+szer 2  K  K  .  .  .  .  K  K
 szer 3  K  K  .  .  .  .  K  K
 szer 4  K  K  .  .  .  .  K  K
 szer 5  K  K  .  .  .  .  K  K
-szer 6  K  K  G  G  G  G  K  K
-szer 7  K  K  G  G  G  G  K  K
+szer 6  K  K  K  K  K  K  K  K
+szer 7  K  K  K  K  K  K  K  K
 ```
 
 - Ramka opaski 2 px dookoła + **okno 4×4** na środku każdej ściany
   (zależność: `rozmiar ściany = okno + 2 × opaska`, czyli `8 = 4 + 2×2`)
-- **Paleta ograniczona do 2 kolorów**: czerń `(18,18,20)` + szary `(58,58,64)`.
-  Bez fioletu, bez dodatkowych rozjaśnień — celowo, decyzja projektowa.
-- Szary pas rozbija płaszczyznę opaski w wierszach 0,1,6,7 (kolumny 2–5),
-  dzięki czemu rura nie jest jednolitą czernią
-- kolumny 0 i 7 to opaska → na styku bloków **brak szczeliny**, opaska jest ciągła
+- **Paleta: jedna nieprzezroczysta barwa** — czerń `(18,18,20)` + przezroczystość.
+  Bez fioletu, bez szarości, bez rozjaśnień — celowo, decyzja projektowa.
+- kolumny 0 i 7 to opaska → opaska biegnie ciągle wzdłuż rury
 - `rotation: 90` **usunięte** — przy kwadratowym regionie mapowanie jest 1:1,
   a rotacja łamałaby symetrię
 
+### Trzy regiony tekstury (atlas 16×16)
+
+| Region | Zakres | Przeznaczenie |
+|--------|--------|---------------|
+| **A** | `[0,0 .. 8,8]` | **LICO** rury (przekrój) — pełna ramka + okno 4×4 |
+| **B** | `[8,0 .. 16,8]` | **BOK** rury (wzdłuż osi) — opaska tylko po bokach |
+| **C** | `[0,8 .. 8,16]` | **GŁOWICA** (nozzle) — ramka + okno 4×4 |
+
+Rozdzielenie lica i boku jest **konieczne**, żeby rura nie była „podzielona na kwadraty":
+
+- **Lico** (`north`/`south` ramienia) to przekrój poprzeczny — tam rura nie biegnie
+  wzdłuż, więc potrzebna jest pełna ramka. UV `[0,0,8,8]`.
+- **Bok** (`east`/`west`/`up`/`down` ramienia) biegnie **wzdłuż** rury. Gdyby miał
+  zamkniętą ramkę, na **każdym styku bloków** powstałby czarny pasek w poprzek rury.
+  Dlatego okno jest tam **otwarte na krawędziach** (kolumny 8 i 15 przezroczyste
+  w wierszach 2–5), a opaska biegnie tylko po bokach. UV `[8,0,12,8]`
+  (4 px = długość ramienia, mapowanie 1:1).
+
+Efekt: dwa sąsiednie bloki dają **jedno ciągłe okno** wzdłuż rury — bez czarnego podziału.
+
 ### Geometria rury i hitbox (WAŻNE — trzy miejsca muszą być spójne)
 
-Przy zmianie grubości rury trzeba zaktualizować **wszystkie trzy** miejsca, inaczej
+Przy zmianie grubości rury trzeba zaktualizować **wszystkie** miejsca, inaczej
 rura będzie grubsza wizualnie, ale nie da się w nią kliknąć:
 
 | Co | Gdzie | Wartość |
 |----|-------|---------|
 | Model | `pipe_core.json`, `pipe_part.json` | `from 4..12` |
-| UV | te same modele | `[0,0,8,8]` |
+| UV lica | `pipe_core`, `pipe_part` north/south | `[0,0,8,8]` |
+| UV boków | `pipe_part` east/west/up/down | `[8,0,12,8]` |
+| UV głowicy | `pipe_extract` | `[0,8,8,16]` / `[0,8,1,16]` |
 | Hitbox | `VelocePipeBlock.SHAPE_*` | `Block.box(4,…,12,…)` |
 | Raycast klucza | `VelocePipeBlock.MIN/MAX` | `4.0/16` … `12.0/16` |
 
@@ -359,35 +379,18 @@ Nozzle (`pipe_extract`) jest **10×10 px (`3..13`)**, czyli o 1 px większy od r
 z każdej strony — dzięki temu głowica jest wyraźnie widoczna. Jego hitbox
 (`SHAPE_EXTRACT_*`) to `Shapes.or(SHAPE_*, Block.box(3,…,13,…))`.
 
-### Nozzle (`pipe_extract`) — region 8×8
-
-Nozzle używa osobnego regionu tekstury:
-- `north`/`south` (przód/tył) → `[8,0,16,8]` (pełne 8×8)
-- `east`/`west`/`up`/`down` (boki) → `[8,0,9,8]` (pasek 1×8 z lewej krawędzi regionu)
-
-### Atlas tekstury 16×16
-
-| Region | Przeznaczenie |
-|--------|---------------|
-| `[0,0 .. 6,6]` | ściany rury (opaska + okno) |
-| `[8,0 .. 16,8]` | głowica / nozzle |
-
-**Tekstura jest autorstwa użytkownika** — `veloce_pipe.png` to plik robiony ręcznie,
-nie generowany skryptem. Jest to źródło prawdy dla wyglądu rury.
-
-⚠️ `scripts/gen_pipe_texture_OLD_DRAFT.py` to **archiwalny** generator wcześniejszej
-wersji roboczej. **Nie uruchamiaj go** — nadpisałby obecną teksturę.
-
 ### Testy symetrii (uruchamiane ręcznie)
 
 Przy zmianie wzoru sprawdź, że przechodzą:
 1. **Symetria alphy** pozioma i pionowa — decyduje o tym, gdzie widać przez rurę
-2. **Symetria koloru** pozioma i pionowa — przy obecnej palecie (czerń + szary) przechodzi w pełni,
-   bo wzór nie ma już żadnego asymetrycznego akcentu
+2. **Symetria koloru** pozioma i pionowa — przy jednokolorowej palecie przechodzi w pełni,
+   bo wzór nie ma żadnego asymetrycznego akcentu
 3. **Ciągłość opaski** — kolumny 0 i 7 opaque w każdym wierszu
 4. **Okna przezroczyste** — wszystkie 16 pikseli okna (4×4) ma `alpha == 0`
-5. **Liczba kolorów** — dokładnie 2 nieprzezroczyste (czerń + szary); łapie przypadkowe
-   dodanie fioletu lub rozjaśnień
+5. **Liczba kolorów** — dokładnie 1 nieprzezroczysty (czerń); łapie przypadkowe
+   dodanie fioletu, szarości lub rozjaśnień
+6. **Ciągłość wzdłuż rury** — symuluj 3 segmenty ramion i sprawdź, że w wierszach
+   okna regionu B nie ma ani jednego czarnego piksela (inaczej wróci „podział na kwadraty")
 
 ---
 
