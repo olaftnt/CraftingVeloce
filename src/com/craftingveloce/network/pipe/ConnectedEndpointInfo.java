@@ -288,6 +288,31 @@ public class ConnectedEndpointInfo {
     /** Czy juz logowalismy, ze endpointu nie da sie odczytac. */
     private boolean notReadableLogged = false;
 
+    /**
+     * Do kiedy NIE wczytujemy chunku dla tego magazynu po nieudanej operacji.
+     *
+     * <p><b>BUG, ktory to naprawia (petla load/unload).</b> Gdy magazyn lezy
+     * w niezaladowanym chunku, operacja wczytuje go na chwile
+     * ({@code getChunk(..., true)} - bez force). Jesli cache tego magazynu byl
+     * NIEAKTUALNY (mowil "mam ten item", a w srodku go nie bylo), to po
+     * wczytaniu nic nie udawalo sie zabrac - a cache NIE byl poprawiany, bo
+     * odswiezanie robilo sie tylko przy sukcesie. Wolajacy (ekstraktory,
+     * piec, crafter) pytal wiec dalej, a KAZDE pytanie wczytywalo chunk
+     * jeszcze raz: prawdziwa petla load/unload, w praktyce 10 razy na sekunde
+     * przez cale minuty.
+     *
+     * <p>Nasz licznik petli tego nie widzial, bo pilnowal wylacznie
+     * {@code setChunkForced} - a to sa zwykle wczytania bez wymuszenia.
+     *
+     * <p>Po nieudanej probie odczekujemy wiec pelny czas i dopiero wtedy
+     * probujemy znowu. Nieudana proba znaczy "cache klamal", a nie "sprobuj
+     * jeszcze raz za dwie sekundy".
+     */
+    private long opLoadBlockedUntilTick = Long.MIN_VALUE;
+
+    /** Jak dlugo nie wczytujemy chunku po nieudanej operacji (tickow). */
+    private static final long FAILED_OP_LOAD_COOLDOWN_TICKS = 200L;
+
     /** Wynik odczytu jednego pojemnika: liczby, wolne sloty, miejsce w czesciowych stosach. */
     private record SlotScan(Map<Item, Long> counts, int freeSlots, Map<Item, Integer> partialSpace) {
     }
@@ -524,6 +549,12 @@ public class ConnectedEndpointInfo {
             // wywolania, a operacja konczy sie w tym samym ticku, wiec chunk
             // wypada pozniej NORMALNYM mechanizmem gry. Budzet na tick chroni
             // przed zamuleniem, gdy wolajacy idzie w petli (crafter, extractor).
+            // Blokada po nieudanej probie - patrz opLoadBlockedUntilTick.
+            // Bez tego ten sam magazyn z nieaktualnym cache wczytywalby chunk
+            // w kolko (load/unload co kilkadziesiat tickow).
+            if (level.getGameTime() < opLoadBlockedUntilTick) {
+                return ItemStack.EMPTY;
+            }
             if (VeloceChunkLoader.isFrozen()) {
                 return ItemStack.EMPTY;
             }
@@ -535,6 +566,7 @@ public class ConnectedEndpointInfo {
             }
             com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
                     com.craftingveloce.debug.ChunkOpNotifier.Op.EXTRACT);
+            VeloceChunkLoader.noteOpLoad(level, chunkKey, pos, "wyciagniecie");
             com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
                     "chunk UNLOADED -> wczytuje na czas operacji (bez force); item=%s zadane=%d",
                     item, maxCount);
@@ -553,6 +585,14 @@ public class ConnectedEndpointInfo {
         ItemStack result = extractNow(level, item, maxCount);
         if (!result.isEmpty()) {
             refreshIfLoaded(level);
+        } else if (!wasLoaded) {
+            // Cache klamal: wczytalismy chunk, a itemu nie bylo. Poprawiamy
+            // prawde (chunk jest juz zaladowany, wiec to tani odczyt) ORAZ
+            // odstawiamy ten magazyn na chwile. Bez tego wolajacy pytalby
+            // dalej, a kazde pytanie wczytywalo chunk od nowa - petla
+            // load/unload dokladnie taka, jaka widac bylo w logu.
+            refreshIfLoaded(level);
+            opLoadBlockedUntilTick = level.getGameTime() + FAILED_OP_LOAD_COOLDOWN_TICKS;
         }
         return result;
     }
@@ -696,6 +736,12 @@ public class ConnectedEndpointInfo {
             // chunk nie ma zadnego biletu wymuszenia, wiec wypada NORMALNIE,
             // zwyklym mechanizmem gry - dokladnie tak, jak powinno byc.
             // ============================================================
+            // Blokada po nieudanej probie - patrz opLoadBlockedUntilTick.
+            // Ta sama petla load/unload co przy wyciaganiu: magazyn z
+            // nieaktualnym cache przyjmowalby (albo odrzucal) stos w kolko.
+            if (level.getGameTime() < opLoadBlockedUntilTick) {
+                return stack;
+            }
             ChunkTrace.at("INSERT", level, pos,
                     "chunk UNLOADED -> wczytuje na czas operacji (bez force); stos=%dx %s",
                     stack.getCount(), stack.getItem());
@@ -714,6 +760,7 @@ public class ConnectedEndpointInfo {
                         pos, VeloceChunkLoader.MAX_OP_LOADS_PER_TICK);
                 return stack;
             }
+            VeloceChunkLoader.noteOpLoad(level, chunkKey, pos, "wlozenie");
             level.getChunkSource().getChunk(
                     chunkPos.x, chunkPos.z,
                     net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true);

@@ -228,6 +228,41 @@ public final class VeloceChunkLoader {
         }
     }
 
+    /**
+     * Wykrywa petle WCZYTAN BEZ WYMUSZENIA i mowi o niej wprost.
+     *
+     * <p><b>Po co osobny licznik.</b> {@code watchForce} pilnuje wylacznie
+     * {@code setChunkForced}, a prawdziwa petla load/unload moze dzialac
+     * wylacznie na {@code getChunk(..., true)} - czyli na wczytaniach "na czas
+     * operacji", bez zadnego wymuszenia. Dokladnie taka petla przeszla przez
+     * nasz system niezauwazona: magazyn z nieaktualnym cache kazal wczytywac
+     * ten sam chunk 220 razy w 22 sekundy, a licznik wymuszen milczal, bo
+     * {@code isHeld()} bylo fałszem.
+     *
+     * <p>Liczymy wiec wczytania per chunk i po przekroczeniu progu mowimy
+     * KTO i PO CO je robi. To ta sama idea co przy wymuszeniach, tylko dla
+     * drugiej sciezki.
+     */
+    public static void noteOpLoad(ServerLevel level, long chunkKey, BlockPos pos, String reason) {
+        Map<Long, ForceWatch> watch = OP_LOAD_WATCH.computeIfAbsent(level, k -> new HashMap<>());
+        long now = level.getGameTime();
+        ForceWatch w = watch.get(chunkKey);
+        if (w == null || now < w.windowStart || now - w.windowStart > FORCE_THROTTLE_WINDOW_TICKS) {
+            w = new ForceWatch();
+            w.windowStart = now;
+            watch.put(chunkKey, w);
+        }
+        w.count++;
+        if (w.count == FORCE_THROTTLE_LIMIT) {
+            VeloceLog.Network.failure(VeloceLog.Side.SERVER,
+                    "chunk %s wczytany %d razy w %d tickow BEZ wymuszenia (%s @%s)"
+                            + " - to petla load/unload; najczestsza przyczyna: magazyn"
+                            + " z nieaktualnym cache, ktorego nie da sie odczytac",
+                    new ChunkPos(chunkKey), w.count, FORCE_THROTTLE_WINDOW_TICKS,
+                    reason, pos);
+        }
+    }
+
     /** Okno, w ktorym liczymy wymuszenia tego samego chunku. */
     private static final long FORCE_THROTTLE_WINDOW_TICKS = 200L;
 
@@ -241,6 +276,14 @@ public final class VeloceChunkLoader {
     }
 
     private static final Map<ServerLevel, Map<Long, ForceWatch>> FORCE_WATCH = new WeakHashMap<>();
+
+    /**
+     * Licznik wczytan BEZ wymuszenia, per chunk - patrz {@link #noteOpLoad}.
+     *
+     * <p>Slabe klucze na swiaty (jak pozostale mapy sledzenia) + przycinanie
+     * w {@link #pruneTrackingMaps}, zeby dluga sesja nie rosla w pamieci.
+     */
+    private static final Map<ServerLevel, Map<Long, ForceWatch>> OP_LOAD_WATCH = new WeakHashMap<>();
 
     /**
      * Zwalnia bilet jednego wlasciciela.
@@ -448,15 +491,27 @@ public final class VeloceChunkLoader {
                 FORCE_WATCH.remove(level);
             }
         }
+        // Ten sam sposob przycinania dla licznika wczytan bez wymuszenia -
+        // bez tego dluga sesja trzymalaby wpis po kazdym dotknietym chunku.
+        Map<Long, ForceWatch> opLoads = OP_LOAD_WATCH.get(level);
+        if (opLoads != null) {
+            opLoads.entrySet().removeIf(e -> now < e.getValue().windowStart
+                    || now - e.getValue().windowStart > FORCE_THROTTLE_WINDOW_TICKS);
+            if (opLoads.isEmpty()) {
+                OP_LOAD_WATCH.remove(level);
+            }
+        }
     }
 
     /** Diagnostyka: ile wpisow trzymaja mapy pomocnicze (do wykrywania wyciekow). */
     public static String trackingMapSizes(ServerLevel level) {
         Map<Long, Long> windows = HIT_WINDOW.get(level);
         Map<Long, ForceWatch> watch = FORCE_WATCH.get(level);
+        Map<Long, ForceWatch> opLoads = OP_LOAD_WATCH.get(level);
         Map<Long, Entry> refs = REFS.get(level);
         return "hits=" + (windows == null ? 0 : windows.size())
                 + ", forceWatch=" + (watch == null ? 0 : watch.size())
+                + ", opLoadWatch=" + (opLoads == null ? 0 : opLoads.size())
                 + ", refs=" + (refs == null ? 0 : refs.size());
     }
 
