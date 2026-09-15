@@ -25,35 +25,6 @@ public class VelocePipeNetwork {
     private final Set<ChunkPos> trackedChunks = new HashSet<>();
 
     /**
-     * Sieci, z ktorymi ta siec jest POLACZONA (tablica polaczen).
-     *
-     * <p>To nie sa KOPIE sieci - to referencje do obiektow, ktore nadal zyja
-     * jako osobne byty. Dzieki temu terminal stojacy w tej sieci widzi itemy
-     * ze wszystkich polaczonych, a jednoczesnie kazda z nich zachowuje wlasne
-     * force-loady i cache.
-     *
-     * <p>Ustawiane przez {@code VelocePipeNetworkManager} na podstawie
-     * {@code VeloceNetworkGraph}. Puste = siec stoi sama.
-     */
-    private final java.util.List<VelocePipeNetwork> linked = new java.util.ArrayList<>();
-
-    /** Podmienia liste polaczonych sieci (wolane przez menedzera). */
-    public void setLinkedNetworks(java.util.List<VelocePipeNetwork> networks) {
-        linked.clear();
-        if (networks != null) {
-            linked.addAll(networks);
-        }
-        // Agregat zalezal od tego zestawu - musi byc przeliczony od nowa.
-        aggregateCache = null;
-        aggregateCacheTick = Long.MIN_VALUE;
-    }
-
-    /** Sieci polaczone z ta (bez niej samej). */
-    public java.util.List<VelocePipeNetwork> getLinkedNetworks() {
-        return java.util.Collections.unmodifiableList(linked);
-    }
-
-    /**
      * Cache zagregowanego stanu sieci.
      *
      * <p>Kilku odbiorcow (cache craftowalnosci, GUI terminala, pakiety,
@@ -219,12 +190,16 @@ public class VelocePipeNetwork {
         Map<Item, Long> total = new HashMap<>();
         int skipped = 0;
 
-        // POLACZONE SIECI: gracz polaczyl rury, wiec terminal ma widziec
-        // zawartosc wszystkich sieci w grupie - ale kazda z nich nadal liczy
-        // i trzyma swoje wlasne chunki.
-        for (VelocePipeNetwork other : linked) {
-            total.putAll(other.getAllItemCounts(level, force));
-        }
+        // UWAGA: nie ma tu juz przechodzenia po "polaczonych sieciach".
+        //
+        // Bylo to resztka po starym modelu, w ktorym sieci sie scalaly i dzielily
+        // (byla nawet klasa VeloceNetworkGraph, ktorej juz nie ma - komentarz
+        // sie do niej odwolywal). Plaska struktura zalatwia to inaczej: gracz
+        // laczy rury, wiec powstaje JEDEN komponent i jedna siec. Lista
+        // `linked` nie byla NIGDY wypelniana (setLinkedNetworks nie mial ani
+        // jednego wolajacego), wiec ta petla byla martwa - a gdyby ktos ja
+        // kiedys ozywil, dwie sieci wskazujace na siebie dalyby nieskonczona
+        // rekurencje i StackOverflowError w ticku. Usuniete razem z polem.
 
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {
             // BUDZET SKANU. To byla ostatnia niezbudzetowana ciezka operacja
