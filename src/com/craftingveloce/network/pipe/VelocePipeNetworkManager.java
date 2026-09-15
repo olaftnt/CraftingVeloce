@@ -59,7 +59,17 @@ public class VelocePipeNetworkManager extends SavedData {
      * powstaje tylko krawedz. Rozlaczenie usuwa krawedz i obie sieci wracaja
      * dokladnie do stanu sprzed - z wlasnymi cache i force-loadami.
      */
-    private final VeloceNetworkGraph graph = new VeloceNetworkGraph();
+    /**
+     * Plaska struktura wszystkich rur: pozycja -> realne polaczenia.
+     *
+     * <p>To jest ZRODLO PRAWDY o tym, co jest z czym polaczone. Sieci
+     * ({@link VelocePipeNetwork}) sa tylko WYNIKIEM zapytania na tej
+     * strukturze - nie ma juz zadnego scalania ani rozdzielania obiektow.
+     *
+     * <p>Dzieki temu rozciecie sieci nie wymaga zgadywania podzialu: komponenty
+     * rozdzielaja sie same, bo wynikaja wprost z polaczen miedzy r urami.
+     */
+    private final VelocePipeWorld world = new VelocePipeWorld();
 
     /** Tick ostatniej przebudowy - do odstepu miedzy nimi. */
     private long lastRebuildTick = Long.MIN_VALUE;
@@ -183,6 +193,205 @@ public class VelocePipeNetworkManager extends SavedData {
         return false;
     }
 
+    /**
+     * Synchronizuje plaska strukture z tym, co stoi w swiecie wokol danej rury.
+     *
+     * <p>Robimy to LOKALNIE: sprawdzamy szesc sasiadow tej jednej rury i nic
+     * wiecej. Nie ma tu zadnego BFS po swiecie, wiec nie zalezy od tego, ktore
+     * chunki sa zaladowane - a to bylo zrodlem bledu, w ktorym siec "ucinala
+     * sie" na granicy niezaladowanego chunku.
+     *
+     * <p>Wywolywane przy postawieniu rury, przy zmianie sasiada i przy
+     * zniszczeniu. Kolejne wywolanie dla tej samej rury jest tanie, bo
+     * {@code setNeighbours} porownuje zbior i nic nie robi, gdy sie nie zmienil.
+     */
+    public void syncPipe(ServerLevel level, BlockPos pos) {
+        if (!level.isLoaded(pos)) {
+            return;
+        }
+        BlockState state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof VelocePipeBlock pipe)) {
+            world.removePipe(pos);
+            return;
+        }
+        world.addPipe(pos);
+
+        VelocePipeBlockEntity be = level.getBlockEntity(pos) instanceof VelocePipeBlockEntity p
+                ? p : null;
+
+        Set<BlockPos> neighbours = new HashSet<>();
+        for (Direction d : Direction.values()) {
+            // Zamknieta strona (wrench) = brak polaczenia w tym kierunku.
+            // To wlasnie tutaj zamknieta strona ROZCINA siec.
+            if (be != null && be.isDisconnected(d)) {
+                continue;
+            }
+            BlockPos np = pos.relative(d);
+            if (!level.isLoaded(np)) {
+                continue;
+            }
+            BlockState ns = level.getBlockState(np);
+            if (!(ns.getBlock() instanceof VelocePipeBlock)) {
+                continue;
+            }
+            // Sasiad musi byc otwarty w nasza strone - inaczej polaczenie
+            // byloby jednostronne.
+            if (level.getBlockEntity(np) instanceof VelocePipeBlockEntity other
+                    && other.isDisconnected(d.getOpposite())) {
+                continue;
+            }
+            world.addPipe(np);
+            neighbours.add(np);
+        }
+        world.setNeighbours(pos, neighbours);
+    }
+
+    /**
+     * Synchronizuje rury wokol danej pozycji - gdy zmienil sie sasiad.
+     *
+     * <p>Sprawdzamy sama pozycje oraz jej szesc sasiedztw. To wystarczy, bo
+     * polaczenie miedzy dwiema rurami zalezy TYLKO od tych dwoch rur.
+     */
+    public void syncAround(ServerLevel level, BlockPos pos) {
+        syncPipe(level, pos);
+        for (Direction d : Direction.values()) {
+            syncPipe(level, pos.relative(d));
+        }
+    }
+
+    /**
+     * Buduje opis sieci z KOMPONENTU plaskiej struktury.
+     *
+     * <p><b>To jest miejsce, w ktorym "siec" przestaje byc obiektem, ktory sie
+     * scala i dzieli.</b> Nie ma tu zadnego merge'owania ani rozdzielania:
+     * bierzemy komponent (zbior rur polaczonych ze soba, wyliczony przez
+     * {@link VelocePipeWorld}) i czytamy z niego, co sie w nim znajduje.
+     *
+     * <p>Dzieki temu:
+     * <ul>
+     *   <li>polaczenie dwoch sieci = jedna wieksza grupa rur,</li>
+     *   <li>rozciecie = dwie mniejsze grupy,</li>
+     *   <li>nic nie trzeba zgadywac ani przenosic.</li>
+     * </ul>
+     *
+     * @param seed rura, od ktorej zaczynamy czytanie komponentu
+     * @return opis sieci albo {@code null}, gdy nie ma tam zadnej rury
+     */
+    @Nullable
+    public VelocePipeNetwork buildFromComponent(ServerLevel level, BlockPos seed) {
+        if (!world.hasPipe(seed)) {
+            // Struktura moze byc jeszcze nie zsynchronizowana (np. po wczytaniu
+            // swiata) - synchronizujemy lokalnie i probujemy ponownie.
+            syncPipe(level, seed);
+            if (!world.hasPipe(seed)) {
+                return null;
+            }
+        }
+        Set<BlockPos> members = world.componentMembers(seed);
+        if (members.isEmpty()) {
+            return null;
+        }
+
+        // Identyfikator sieci bierzemy z reprezentanta komponentu. Ten sam
+        // uklad rur daje ten sam identyfikator, wiec cache i force-loady
+        // przezywaja kolejne przebudowy bez zadnego przenoszenia.
+        UUID id = world.componentOf(seed) != null
+                ? UUID.nameUUIDFromBytes(world.componentOf(seed).toShortString().getBytes())
+                : UUID.randomUUID();
+
+        VelocePipeNetwork net = new VelocePipeNetwork(id);
+        net.getPipes().addAll(members);
+
+        // Czytamy, co stoi obok rur: wezly (terminal/crafter/extractor)
+        // i magazyny. Bez BFS po swiecie - tylko szesc kierunkow od kazdej
+        // rury, a rury znamy z komponentu (takze te z niezaladowanych chunkow).
+        for (BlockPos pipePos : members) {
+            if (!level.isLoaded(pipePos)) {
+                // Rura w niezaladowanym chunku: nie odczytamy jej sasiadow,
+                // ale sama rura JEST czescia sieci. Zachowujemy wiec to, co
+                // juz o niej wiemy z poprzedniego przebiegu.
+                preserveKnownNeighbours(level, net, pipePos);
+                continue;
+            }
+            collectNeighbours(level, net, pipePos);
+        }
+        net.updateTrackedChunks();
+        return net;
+    }
+
+    /**
+     * Zachowuje to, co juz wiemy o rurze z niezaladowanego chunku.
+     *
+     * <p>Bez tego zawartosc magazynow stojacych daleko znikalaby z GUI po
+     * kazdym przeliczeniu sieci - bo nie ma skad jej odczytac.
+     */
+    private void preserveKnownNeighbours(ServerLevel level, VelocePipeNetwork net, BlockPos pipePos) {
+        UUID owner = pipeToNetwork.get(pipePos);
+        if (owner == null) {
+            return;
+        }
+        VelocePipeNetwork old = networks.get(owner);
+        if (old == null) {
+            return;
+        }
+        for (Direction d : Direction.values()) {
+            BlockPos np = pipePos.relative(d);
+            if (net.getEndpoints().containsKey(np) || net.getTerminals().contains(np)) {
+                continue;
+            }
+            ConnectedEndpointInfo ep = old.getEndpoints().get(np);
+            if (ep != null) {
+                net.getEndpoints().put(np, ep);
+            }
+            if (old.getTerminals().contains(np)) {
+                net.getTerminals().add(np);
+            }
+        }
+    }
+
+    /**
+     * Zbiera wezly i magazyny stojace obok jednej rury.
+     *
+     * <p>To jedyne miejsce, ktore dotyka swiata przy budowie sieci - i jest
+     * lokalne: szesc kierunkow od jednej rury.
+     */
+    private void collectNeighbours(ServerLevel level, VelocePipeNetwork net, BlockPos pipePos) {
+        for (Direction d : Direction.values()) {
+            BlockPos np = pipePos.relative(d);
+            if (!level.isLoaded(np)) {
+                continue;
+            }
+            BlockState ns = level.getBlockState(np);
+            Block nb = ns.getBlock();
+
+            if (nb instanceof VeloceTomTerminalBlock t) {
+                if (t.canConnectFrom(ns, d.getOpposite())) {
+                    net.getTerminals().add(np);
+                }
+            } else if (nb instanceof com.craftingveloce.block.VeloceExtractorBlock e) {
+                if (e.canConnectFrom(ns, d.getOpposite())) {
+                    net.getTerminals().add(np);
+                }
+            } else if (nb instanceof com.craftingveloce.block.VeloceCraftingTableBlock c) {
+                if (c.canConnectFrom(ns, d.getOpposite())) {
+                    net.getTerminals().add(np);
+                    net.getEndpoints().put(np, new CraftingBufferEndpoint(np, d.getOpposite()));
+                }
+            } else if (RefinedStorageHelper.hasRSNetwork(level, np, d.getOpposite())) {
+                ConnectedEndpointInfo ep = new ConnectedEndpointInfo(np, d.getOpposite(),
+                        ConnectedEndpointInfo.Type.REFINED_STORAGE);
+                ep.refreshIfLoaded(level);
+                net.getEndpoints().put(np, ep);
+            } else if (VelocePipeBlock.canConnectToInventory(level, np, d.getOpposite())) {
+                BlockPos canonical = getCanonicalInventoryPos(np, ns);
+                ConnectedEndpointInfo ep = new ConnectedEndpointInfo(canonical, d.getOpposite(),
+                        ConnectedEndpointInfo.Type.INVENTORY);
+                ep.refreshIfLoaded(level);
+                net.getEndpoints().put(canonical, ep);
+            }
+        }
+    }
+
     /** Zwalnia kolejke przy zamykaniu/rozladowaniu swiata. */
     public void clearPendingRebuilds() {
         pendingRebuilds.clear();
@@ -205,9 +414,9 @@ public class VelocePipeNetworkManager extends SavedData {
         return level.getDataStorage().computeIfAbsent(factory(), "veloce_pipe_networks");
     }
 
-    /** Tablica polaczen miedzy sieciami - do raportow i testow. */
-    public VeloceNetworkGraph getGraph() {
-        return graph;
+    /** Plaska struktura rur - zrodlo prawdy o polaczeniach. */
+    public VelocePipeWorld getWorld() {
+        return world;
     }
 
     public VelocePipeNetwork getNetworkById(UUID id) {
@@ -219,33 +428,43 @@ public class VelocePipeNetworkManager extends SavedData {
         return id != null ? networks.get(id) : null;
     }
 
+    /**
+     * Siec, do ktorej nalezy ten wezel.
+     *
+     * <p><b>Jak to teraz dziala.</b> Nie ma zadnego "przypisywania wezla do
+     * sieci" ani utrzymywania tej relacji. Bierzemy pierwsza rure obok wezla
+     * (z tej strony, z ktorej wezel naprawde moze sie podlaczyc) i czytamy
+     * CALY komponent, do ktorego ta rura nalezy - {@link #buildFromComponent}.
+     *
+     * <p>Dzieki temu relacja "wezel nalezy do sieci" jest WYLICZANA, a nie
+     * przechowywana. Nie ma czego zsynchronizowac ani zgubic przy laczeniu
+     * i rozcinaniu - jesli rury sa polaczone, wezel widzi cala grupe, a jesli
+     * je rozetniesz, widzi tylko swoja czesc.
+     */
+    @Nullable
     public VelocePipeNetwork getNetworkForTerminal(ServerLevel level, BlockPos terminalPos) {
-        UUID id = terminalToNetwork.get(terminalPos);
-        if (id != null && networks.containsKey(id)) {
-            return networks.get(id);
-        }
-
-        // Szukamy sieci wsrod sasiadow, ale TYLKO z tej strony, z ktorej wezel
-        // naprawde moze sie podlaczyc (patrz nodeConnectsToPipe).
+        // Szukamy rury obok wezla, z tej strony, z ktorej polaczenie jest
+        // w ogole mozliwe (terminal ma przod, ktory sie nie laczy).
         for (Direction d : Direction.values()) {
-            BlockPos neighborPos = terminalPos.relative(d);
-            UUID netId = pipeToNetwork.get(neighborPos);
-            if (netId == null || !networks.containsKey(netId)) {
-                continue;
-            }
-            // d to kierunek OD wezla DO rury, wiec z perspektywy rury jest to
-            // strona przeciwna.
+            BlockPos pipePos = terminalPos.relative(d);
             if (!nodeConnectsToPipe(level, terminalPos, d.getOpposite())) {
                 continue;
             }
-            VelocePipeNetwork net = networks.get(netId);
-            net.getTerminals().add(terminalPos);
-            net.updateTrackedChunks();
-            terminalToNetwork.put(terminalPos, netId);
-            // Doszedl wezel - jego dane sa czescia stocku sieci.
-            net.invalidateEndpointCache(level);
-            setDirty();
-            return net;
+            // Rura moze byc w niezaladowanym chunku - wtedy synchronizujemy
+            // ja ze stanu zapisanego, a nie ze swiata.
+            if (!world.hasPipe(pipePos) && !level.isLoaded(pipePos)) {
+                continue;
+            }
+            if (!world.hasPipe(pipePos)) {
+                syncPipe(level, pipePos);
+            }
+            if (!world.hasPipe(pipePos)) {
+                continue;
+            }
+            VelocePipeNetwork net = buildFromComponent(level, pipePos);
+            if (net != null) {
+                return net;
+            }
         }
         return null;
     }
@@ -265,6 +484,9 @@ public class VelocePipeNetworkManager extends SavedData {
     }
 
     public void onPipePlaced(ServerLevel level, BlockPos pos) {
+        // Struktura najpierw, przebudowa potem - inaczej przebudowa nie
+        // wiedzialaby o nowej rurze.
+        syncAround(level, pos);
         rebuildAt(level, pos);
     }
 
@@ -365,6 +587,21 @@ public class VelocePipeNetworkManager extends SavedData {
     }
 
     public void onPipeBroken(ServerLevel level, BlockPos pos) {
+        // NAJWAZNIEJSZE: usuniecie rury ze struktury od razu rozcina siec.
+        //
+        // Nie trzeba nic przeliczac ani zgadywac podzialu - komponenty
+        // rozdzielaja sie SAME, bo wynikaja wprost z polaczen miedzy rurami.
+        // To jest cala zaleta plaskiej struktury: rozciecie jest darmowe
+        // i zawsze poprawne.
+        world.removePipe(pos);
+        // Sasiedzi traca polaczenie z ta rura.
+        for (Direction d : Direction.values()) {
+            BlockPos np = pos.relative(d);
+            if (world.hasPipe(np)) {
+                syncPipe(level, np);
+            }
+        }
+
         UUID netId = pipeToNetwork.remove(pos);
         if (netId == null) return;
 
@@ -412,10 +649,6 @@ public class VelocePipeNetworkManager extends SavedData {
             }
         }
 
-        // Usuniecie rury moze rozerwac styk dwoch sieci. Sprawdzamy to OD RAZU,
-        // a nie dopiero przy nastepnej przebudowie: jesli sieci mialy byc
-        // rozdzielone, gracz musi to zobaczyc natychmiast w terminalu.
-        refreshLinkedNetworks(level);
         setDirty();
     }
 
@@ -467,6 +700,10 @@ public class VelocePipeNetworkManager extends SavedData {
      */
     public void onNeighborChanged(ServerLevel level, BlockPos pipePos, BlockPos neighborPos) {
         if (!level.isLoaded(pipePos)) return;
+        // Struktura najpierw: zmiana sasiada moze dodac polaczenie (postawiona
+        // rura) albo je zabrac (zamknieta strona, zburzona rura). Bez tego
+        // siec nie wiedzialaby o zmianie.
+        syncAround(level, pipePos);
         // Przebudowe ODKLADAMY do ticku (patrz pendingRebuilds). Robienie
         // pelnego BFS w kazdym neighborChanged oznaczalo przebudowe sieci
         // kilka razy na tick, gdy obok pracowala jakas maszyna.
@@ -491,10 +728,6 @@ public class VelocePipeNetworkManager extends SavedData {
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
                     "neighbor change at %s -> invalidated %d network(s)", neighborPos, touched.size());
         }
-        // Postawienie rury moze POLACZYC dwie sieci (albo zamknieta strona je
-        // rozciac) - graf musi to zobaczyc od razu, zeby terminal od razu
-        // widzial nowa zawartosc.
-        refreshLinkedNetworks(level);
     }
 
     public static BlockPos getCanonicalInventoryPos(BlockPos pos, BlockState state) {
@@ -725,7 +958,6 @@ public class VelocePipeNetworkManager extends SavedData {
             // Ta siec przestaje istniec jako osobny byt - zwalniamy jej
             // force-loady, bo jej rury i wezly przechodza do finalId.
             com.craftingveloce.crafting.VeloceCraftingCache.drop(level, oldId);
-            graph.forget(oldId);
             networks.remove(oldId);
             for (BlockPos p : oldNet.getPipes()) {
                 pipeToNetwork.remove(p);
@@ -762,13 +994,6 @@ public class VelocePipeNetworkManager extends SavedData {
         }
 
         // Wyczysc wpisy grafu dla sieci, ktore juz nie istnieja.
-        for (UUID oldId : new java.util.ArrayList<>(graph.allNodes())) {
-            if (!networks.containsKey(oldId)) {
-                graph.forget(oldId);
-            }
-        }
-
-        refreshLinkedNetworks(level);
         setDirty();
         return newNet;
     }
@@ -789,105 +1014,6 @@ public class VelocePipeNetworkManager extends SavedData {
         return candidates.stream().min(UUID::compareTo).orElseGet(UUID::randomUUID);
     }
 
-    /**
-     * Wykrywa styki miedzy sieciami i wpisuje je do tablicy polaczen.
-     *
-     * <p>Dwie sieci stykaja sie, gdy rura jednej sasiaduje z rura drugiej -
-     * czyli gdy leza w odleglosci 1 i ZADNA z nich nie ma zamknietej strony
-     * w tym kierunku. Zamknieta strona (wrench) jest wiec ROZCIECIEM lacza,
-     * zgodnie z tym jak dziala wrench w innych modach.
-     *
-     * <p>Wykrywanie jest lokalne: sprawdzamy tylko sasiadow rur, ktore juz
-     * znamy. Nie ma tu zadnego BFS po calym swiecie, wiec nie zalezy od tego,
-     * ktore chunki sa zaladowane.
-     */
-    private void refreshLinkedNetworks(ServerLevel level) {
-        // Zbieramy wszystkie styki: para sieci -> pozycja styku.
-        Map<String, UUID[]> pairs = new HashMap<>();
-        Map<String, Set<Long>> found = new HashMap<>();
-
-        for (Map.Entry<BlockPos, UUID> e : pipeToNetwork.entrySet()) {
-            BlockPos pos = e.getKey();
-            UUID mine = e.getValue();
-            if (!level.isLoaded(pos)) {
-                continue;
-            }
-            VelocePipeBlockEntity be = level.getBlockEntity(pos) instanceof VelocePipeBlockEntity p
-                    ? p : null;
-            for (Direction d : Direction.values()) {
-                // Zamknieta strona = rozciecie lacza.
-                if (be != null && be.isDisconnected(d)) {
-                    continue;
-                }
-                BlockPos np = pos.relative(d);
-                UUID theirs = pipeToNetwork.get(np);
-                if (theirs == null || theirs.equals(mine)) {
-                    continue;
-                }
-                // Sasiad tez musi byc otwarty w nasza strone.
-                if (level.isLoaded(np)
-                        && level.getBlockEntity(np) instanceof VelocePipeBlockEntity other
-                        && other.isDisconnected(d.getOpposite())) {
-                    continue;
-                }
-                String key = VeloceNetworkGraph.pairKey(mine, theirs);
-                pairs.putIfAbsent(key, new UUID[]{mine, theirs});
-                found.computeIfAbsent(key, k -> new HashSet<>()).add(np.asLong());
-            }
-        }
-
-        // Wpisujemy nowe styki. Stare, ktorych juz nie ma, usuwamy.
-        for (Map.Entry<String, UUID[]> e : pairs.entrySet()) {
-            UUID[] pair = e.getValue();
-            Set<Long> points = found.getOrDefault(e.getKey(), Set.of());
-            for (long p : points) {
-                graph.link(pair[0], pair[1], p);
-            }
-        }
-        // Krawedzie, ktorych juz nie ma w swiecie (rura zniknela), usuwamy.
-        //
-        // Robimy to na podstawie FAKTYCZNYCH stykow, a nie nazw w logu:
-        // dla kazdej pary w grafie sprawdzamy, czy ktorykolwiek z jej punktow
-        // styku nadal istnieje w swiecie.
-        for (UUID a : new java.util.ArrayList<>(graph.allNodes())) {
-            for (UUID b : new java.util.ArrayList<>(graph.neighbours(a))) {
-                if (a.compareTo(b) > 0) {
-                    continue;   // ta sama krawedz widziana z drugiej strony
-                }
-                java.util.Set<Long> points = graph.contactPoints(a, b);
-                boolean alive = false;
-                for (long packed : points) {
-                    BlockPos cp = BlockPos.of(packed);
-                    // Styk zyje, jesli obie rury nadal sa i sa do siebie
-                    // przypisane jako rozne sieci.
-                    UUID atCp = pipeToNetwork.get(cp);
-                    if (atCp != null && (atCp.equals(a) || atCp.equals(b))) {
-                        alive = true;
-                        break;
-                    }
-                }
-                if (!alive) {
-                    // Usuwamy po kolei wszystkie punkty - unlink sam zdecyduje,
-                    // czy krawedz znikla (znika przy ostatnim).
-                    for (long packed : points) {
-                        graph.unlink(a, b, packed);
-                    }
-                }
-            }
-        }
-
-        // Rozdajemy kazdej sieci liste polaczonych - to widzi terminal.
-        for (VelocePipeNetwork net : networks.values()) {
-            java.util.List<VelocePipeNetwork> linked = new java.util.ArrayList<>();
-            for (UUID otherId : graph.neighbours(net.getId())) {
-                VelocePipeNetwork other = networks.get(otherId);
-                if (other != null) {
-                    linked.add(other);
-                }
-            }
-            net.setLinkedNetworks(linked);
-        }
-    }
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
@@ -897,6 +1023,50 @@ public class VelocePipeNetworkManager extends SavedData {
         }
         tag.put("Networks", netList);
         return tag;
+    }
+
+    /**
+     * Odtwarza plaska strukture rur z zapisanych sieci.
+     *
+     * <p><b>Po co.</b> Struktura polaczen NIE jest zapisywana osobno - i dobrze,
+     * bo bylby to duplikat tych samych danych. Zapisywane sa sieci (z listami
+     * rur i wezlow), a z nich odtwarzamy polaczenia: dla kazdej rury szukamy
+     * sasiadow w tym samym zbiorze rur.
+     *
+     * <p>Dzieki temu struktura jest kompletna ZARAZ po wejsciu do swiata, bez
+     * czekania, az gracz podejdzie do kazdej rury - a to bylo konieczne, zeby
+     * terminal widzial zawartosc magazynow stojacych w niezaladowanych chunkach.
+     *
+     * <p>Polaczenia wyznaczamy z samych pozycji (odleglosc 1 w jednej osi),
+     * bez dotykania swiata. Zamkniete strony (wrench) nie sa tu znane - zostana
+     * uwzglednione przy pierwszej synchronizacji z swiatem, gdy chunk sie
+     * zaladuje. Do tego czasu traktujemy rury jako polaczone, co jest
+     * bezpieczniejsze niz uznanie ich za rozdzielone.
+     */
+    private void rebuildWorldFromNetworks() {
+        world.clear();
+        for (VelocePipeNetwork net : networks.values()) {
+            for (BlockPos pipe : net.getPipes()) {
+                world.addPipe(pipe);
+            }
+        }
+        // Druga faza: polaczenia. Rura laczy sie z sasiadem, jesli obie sa
+        // w tym samym zbiorze i stykaja sie sciana.
+        for (VelocePipeNetwork net : networks.values()) {
+            for (BlockPos pipe : net.getPipes()) {
+                Set<BlockPos> neighbours = new HashSet<>();
+                for (Direction d : Direction.values()) {
+                    BlockPos np = pipe.relative(d);
+                    if (world.hasPipe(np)) {
+                        neighbours.add(np);
+                    }
+                }
+                world.setNeighbours(pipe, neighbours);
+            }
+        }
+        VeloceLog.Network.success(VeloceLog.Side.SERVER,
+                "odtworzono strukture rur: %d rur, %d komponentow",
+                world.pipeCount(), world.componentCount());
     }
 
     public static VelocePipeNetworkManager load(CompoundTag tag, HolderLookup.Provider provider) {
@@ -913,6 +1083,10 @@ public class VelocePipeNetworkManager extends SavedData {
                 manager.terminalToNetwork.put(t, net.getId());
             }
         }
+        // Struktura polaczen od razu kompletna - inaczej terminal nie widzialby
+        // zawartosci magazynow w niezaladowanych chunkach az do podejscia
+        // gracza do kazdej rury.
+        manager.rebuildWorldFromNetworks();
         return manager;
     }
 }

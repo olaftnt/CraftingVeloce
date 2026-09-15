@@ -354,22 +354,19 @@ public class CVDebugCommand {
         }
         player.sendSystemMessage(Component.literal("  §7razem: §f" + mine + " §7chunk(ow)"));
 
-        // --- POLACZENIA: tablica polaczen miedzy sieciami ---
-        var graph = VelocePipeNetworkManager.get(sl).getGraph();
-        var links = graph.describeLinks();
+        // --- STRUKTURA RUROW: z czego wynika ta siec ---
+        var world = VelocePipeNetworkManager.get(sl).getWorld();
+        var root = world.componentOf(pipePos);
+        int pipesInComponent = root == null ? 0 : world.componentMembers(pipePos).size();
         player.sendSystemMessage(Component.literal(
-                "§b--- Polaczone sieci (tablica polaczen): " + links.size() + " ---"));
-        if (links.isEmpty()) {
-            player.sendSystemMessage(Component.literal(
-                    "  §7(brak - ta siec stoi samodzielnie)"));
-        }
-        for (var e : links.entrySet()) {
-            player.sendSystemMessage(Component.literal(
-                    "  §e" + e.getKey() + " §7stykow: §f" + e.getValue()));
-        }
+                "§b--- Struktura rur ---"));
         player.sendSystemMessage(Component.literal(
-                "  §7W grupie tej sieci: §f"
-                        + graph.findGroup(id).size() + " §7sieci"));
+                "  §7Rur w tej sieci: §f" + pipesInComponent
+                        + " §7| wszystkich rur: §f" + world.pipeCount()
+                        + " §7| komponentow: §f" + world.componentCount()));
+        player.sendSystemMessage(Component.literal(
+                "  §7Polaczenia tej rury: §f" + world.neighbours(pipePos).size()
+                        + " §7(z 6 mozliwych)"));
 
         // --- ZASOBY: co siec widzi ---
         Map<Item, Long> netCounts = net.getAllItemCounts(sl);
