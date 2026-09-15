@@ -290,6 +290,76 @@ animowane itemy *wewnątrz* bloków, więc każdy block model ma ustawiony `rend
 przy animowanych itemach renderowanych wewnątrz bloku, bo krawędzie się „szarpią".
 `translucent` obsługuje stopniowaną alfę i poprawne mieszanie kolorów.
 
+---
+
+## 🧵 Tekstura i UV rury (`veloce_pipe`) — ciągłość na zakrętach
+
+### Problem, który był wcześniej
+
+Oryginalne UV było **niespójne**, przez co na zakrętach wzór się rozjeżdżał:
+
+| Model | Ściana | Stare UV | Rozmiar |
+|-------|--------|----------|---------|
+| `pipe_core` | wszystkie 6 ścian | `[10,0,16,6]` | 6×6 |
+| `pipe_part` | north/south (przód) | `[10,0,16,6]` | 6×6 |
+| `pipe_part` | east/west/up/down (boki) | `[0,0,5,6]` + `rotation:90` | 5×6 |
+
+Rdzeń używał **tego samego regionu na wszystkich 6 ścianach**, a boki ramienia brały **inny,
+prostokątny** region. Na zakręcie przód rdzenia (region `[10..16]`) stykał się z bokiem ramienia
+(region `[0..5]`) → wzór się łamał, opaska nie była ciągła.
+
+### Rozwiązanie: jeden symetryczny region 6×6
+
+Rura ma przekrój **kwadratowy 6×6 px**, więc każda ściana wzdłuż rury jest dokładnie 6×6.
+Wszystkie ściany `pipe_core` i `pipe_part` mapują teraz **ten sam region `[0,0,6,6]`**.
+
+Wzorzec jest **symetryczny lustrzanie względem obu osi**, więc obrót o 90° (zakręty, ramiona
+w różnych osiach) daje identyczny obraz:
+
+```
+        dlugosc ->
+        0  1  2  3  4  5
+szer 0  o  K  K  K  K  o      o = rozjaśnienie (róg opaski)
+szer 1  K  -  P  P  -  K      K = czarna opaska (opaque)
+szer 2  K  .  K  K  .  K      . = przezroczyste okno
+szer 3  K  .  K  K  .  K      - = rim nad/pod oknem
+szer 4  K  -  P  P  -  K      P = fioletowy akcent (na poprzeczce)
+szer 5  o  K  K  K  K  o
+```
+
+- 2 podłużne okienka na segment, rozdzielone poprzeczką w środku
+- kolumny 0 i 5 to opaska → na styku bloków **brak szczeliny**, opaska jest ciągła
+- `rotation: 90` **usunięte** — było potrzebne tylko dla prostokątnego regionu 5×6;
+  przy kwadratowym 6×6 mapowanie jest 1:1 i rotacja łamałaby symetrię
+
+### Nozzle (`pipe_extract`) — region 8×8
+
+Nozzle jest większy (8×8) i ma cienkie ściany boczne, więc używa osobnego regionu:
+- `north`/`south` (przód/tył) → `[8,0,16,8]` (pełne 8×8)
+- `east`/`west`/`up`/`down` (boki) → `[8,0,9,8]` (pasek 1×8 z lewej krawędzi regionu)
+
+### Atlas tekstury 16×16
+
+| Region | Przeznaczenie |
+|--------|---------------|
+| `[0,0 .. 6,6]` | ściany rury (opaska + okna) |
+| `[8,0 .. 16,8]` | głowica / nozzle |
+
+Tekstura jest **generowana skryptem**: `scripts/gen_pipe_texture.py` (edytuj i uruchom ponownie,
+zamiast malować ręcznie). Skrypt wypisuje podgląd ASCII i jest źródłem prawdy dla wzoru.
+
+### Testy symetrii (uruchamiane ręcznie)
+
+Przy zmianie wzoru sprawdź, że przechodzą:
+1. **Symetria alphy** pozioma i pionowa — decyduje o tym, gdzie widać przez rurę
+2. **Symetria koloru** pozioma i pionowa — dzięki jednorodnemu fioletowi przechodzi w pełni
+3. **Ciągłość opaski** — kolumny 0 i 5 opaque w każdym wierszu
+4. **Okna przezroczyste** — wszystkie 4 piksele okien mają `alpha == 0`
+
+---
+
+## 🔍 Transparency / render_type (WAŻNE dla animowanych itemów)
+
 ### ⚠️ Pułapki
 
 - `ItemBlockRenderTypes.setRenderLayer()` ma guard `checkClientLoading()` w
@@ -308,9 +378,10 @@ przy animowanych itemach renderowanych wewnątrz bloku, bo krawędzie się „sz
 - **Loot tables** — bloki po zniszczeniu nie dropują się (brak `data/craftingveloce/loot_table/blocks/`)
 - **Crafting recipes** — brak receptur craftu dla bloków (można tylko creative)
 - **Textures** — `veloce_crafting_table.png` to przebarwiona wersja extractora (placeholder)
-- **`veloce_pipe.png` jest CZARNA** — 100 nieprzezroczystych pikseli ma kolor `(0,0,0)`,
-  czyli brak danych kolorystycznych. Alpha (przezroczystość) jest poprawna. Oryginalna,
-  kolorowa wersja leży w `veloce_pipe-kopia.png` (fiolet `201,45,234` + szarości) i można ją
-  przywrócić jednym `cp`. Render fix (`translucent`) NIE zmienia koloru tekstury — naprawia
-  tylko przezroczystość.
+- **`veloce_pipe.png` przeprojektowana** — czarna wersja (100 px `(0,0,0)`) została zastąpiona
+  nową teksturą z czarną opaską i podłużnymi okienkami, generowaną przez
+  `scripts/gen_pipe_texture.py`. Poprzednia kolorowa wersja to `veloce_pipe-kopia.png`.
+- **UV rury zmienione na wspólny region `[0,0,6,6]`** — jeśli w przyszłości dodasz nowy element
+  rury, użyj tego samego regionu i **nie dodawaj `rotation`** (region jest kwadratowy i
+  symetryczny; rotacja łamie ciągłość na zakrętach).
 - **src/moze_intel/** — patchowane klasy InventoryExchange moda, logika wyłączenia EMC tooltipów — trzeba zdecydować jak czysto to rozwiązać (osobny JAR patch?)
