@@ -319,15 +319,20 @@ w różnych osiach) daje identyczny obraz:
 ```
         dlugosc ->
         0  1  2  3  4  5
-szer 0  o  K  K  K  K  o      o = rozjaśnienie (róg opaski)
-szer 1  K  -  P  P  -  K      K = czarna opaska (opaque)
+szer 0  K  K  G  G  K  K      K = czarna opaska (opaque)
+szer 1  K  K  G  G  K  K      G = szary odcień (rozjaśnia płaszczyznę)
 szer 2  K  .  K  K  .  K      . = przezroczyste okno
-szer 3  K  .  K  K  .  K      - = rim nad/pod oknem
-szer 4  K  -  P  P  -  K      P = fioletowy akcent (na poprzeczce)
-szer 5  o  K  K  K  K  o
+szer 3  K  .  K  K  .  K
+szer 4  K  K  G  G  K  K
+szer 5  K  K  G  G  K  K
 ```
 
 - 2 podłużne okienka na segment, rozdzielone poprzeczką w środku
+- **Paleta ograniczona do 2 kolorów**: czerń `(18,18,20)` + szary `(58,58,64)`.
+  Bez fioletu, bez dodatkowych rozjaśnień — celowo, decyzja projektowa.
+- Szary pas (kolumny 2,3) rozbija duże płaszczyzny czerni, żeby rura nie była
+  jednolitą plamą. Leży **wyłącznie w wierszach opaski** — poprzeczka między
+  oknami (wiersze 2,3) zostaje czarna, inaczej okna straciłyby kontrast.
 - kolumny 0 i 5 to opaska → na styku bloków **brak szczeliny**, opaska jest ciągła
 - `rotation: 90` **usunięte** — było potrzebne tylko dla prostokątnego regionu 5×6;
   przy kwadratowym 6×6 mapowanie jest 1:1 i rotacja łamałaby symetrię
@@ -352,9 +357,12 @@ zamiast malować ręcznie). Skrypt wypisuje podgląd ASCII i jest źródłem pra
 
 Przy zmianie wzoru sprawdź, że przechodzą:
 1. **Symetria alphy** pozioma i pionowa — decyduje o tym, gdzie widać przez rurę
-2. **Symetria koloru** pozioma i pionowa — dzięki jednorodnemu fioletowi przechodzi w pełni
+2. **Symetria koloru** pozioma i pionowa — przy obecnej palecie (czerń + szary) przechodzi w pełni,
+   bo wzór nie ma już żadnego asymetrycznego akcentu
 3. **Ciągłość opaski** — kolumny 0 i 5 opaque w każdym wierszu
 4. **Okna przezroczyste** — wszystkie 4 piksele okien mają `alpha == 0`
+5. **Liczba kolorów** — dokładnie 2 nieprzezroczyste (czerń + szary); łapie przypadkowe
+   dodanie fioletu lub rozjaśnień
 
 ---
 

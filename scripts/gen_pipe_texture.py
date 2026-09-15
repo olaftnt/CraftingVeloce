@@ -10,14 +10,17 @@ Projekt:
     o 90 stopni (zakrety, ramiona w roznych osiach) daja identyczny wynik.
 
 Region A [0,0 .. 6,6]  - sciany rury:
-     szer 0  K K K K K K
-     szer 1  K K K K K K
+     szer 0  K K G G K K
+     szer 1  K K G G K K
      szer 2  K . K K . K      K = czarna opaska
-     szer 3  K . K K . K      . = przezroczyste okno
-     szer 4  K K K K K K
-     szer 5  K K K K K K
+     szer 3  K . K K . K      G = szary odcien (rozjaśnia plaszczyzne)
+     szer 4  K K G G K K      . = przezroczyste okno
+     szer 5  K K G G K K
 
 Region B [8,0 .. 16,8] - glowica/nozzle (8x8), z okienkiem.
+
+Paleta jest CELOWO ograniczona do czerni + jednego szarego odcienia.
+Brak fioletu i brak dodatkowych rozjasnien.
 """
 import struct, zlib
 
@@ -25,11 +28,8 @@ W = H = 16
 
 # --- paleta ---
 OPAQUE_BLACK = (18, 18, 20, 255)      # opaska - niemal czarna, lekko niebieskawa
-OPAQUE_BLACK2 = (28, 28, 32, 255)     # rozjasnienie krawedzi opaski
+GREY = (58, 58, 64, 255)              # odcien szarosci (3.2x jasniejszy od bazy)
 CLEAR = (0, 0, 0, 0)                  # pelna przezroczystosc (okno)
-RIM = (52, 52, 58, 255)               # delikatny highlight na krawedzi opaski
-ACCENT = (201, 45, 234, 255)          # fiolet akcentowy (z oryginalu)
-ACCENT_D = (150, 32, 176, 255)        # ciemniejszy fiolet
 
 px = [[CLEAR for _ in range(W)] for _ in range(H)]
 
@@ -43,21 +43,27 @@ def build_pipe_region():
     """Region A: [0,0 .. 6,6] - wzor sciany rury, symetryczny.
 
     Uklad (wiersz = szerokosc sciany, kolumna = dlugosc wzdluz rury):
-        szer 0  o K K K K o      o=rozjasnienie  K=opaska  .=okno
-        szer 1  K K K K K K
+        szer 0  K K G G K K
+        szer 1  K K G G K K
         szer 2  K . K K . K
         szer 3  K . K K . K
-        szer 4  K K K K K K
-        szer 5  o K K K K o
+        szer 4  K K G G K K
+        szer 5  K K G G K K
 
-    Symetria: kol1<->kol4, kol2<->kol3, wiersz2<->wiersz3.
+    Symetria: kol1<->kol4, kol2<->kol3, wiersz1<->wiersz4, wiersz0<->wiersz5.
     Wzorzec jest symetryczny wzgledem OBU osi, wiec obrot o 90 stopni
     (zakrety, ramiona w roznych osiach) daje identyczny obraz.
+
+    UWAGA na kolizje rol: kolumny 2,3 to jednoczesnie
+      - czesc poziomej opaski (wiersze 0,1,4,5)
+      - POPRZECZKA miedzy oknami (wiersze 2,3)
+    Szarosc dajemy TYLKO w wierszach opaski; poprzeczka zostaje czarna,
+    inaczej okna stracilyby kontrast.
     """
     WINDOW_COLS = (1, 4)
     WINDOW_ROWS = (2, 3)
 
-    # 1. baza: cala opaska
+    # 1. baza: cala opaska czarna
     for y in range(6):
         for x in range(6):
             put(x, y, OPAQUE_BLACK)
@@ -67,24 +73,12 @@ def build_pipe_region():
         for x in WINDOW_COLS:
             put(x, y, CLEAR)
 
-    # 3. rozjasnienie naroznikow opaski (symetrycznie, wszystkie 4 narozniki)
-    for x in (0, 5):
-        put(x, 0, OPAQUE_BLACK2)
-        put(x, 5, OPAQUE_BLACK2)
-
-    # 4. rim nad i pod kazdym oknem -> okno ma czytelna ramke
-    for x in WINDOW_COLS:
-        put(x, 1, RIM)
-        put(x, 4, RIM)
-
-    # 5. akcent: fioletowy blysk na srodkowej poprzeczce.
-    #    Kolumny 2,3 to poprzeczka miedzy oknami - jest OPAQUE,
-    #    wiec fiolet nie psuje przezroczystosci.
-    #    JEDNORODNY kolor (nie jasny/ciemny) -> pelna symetria koloru,
-    #    dzieki czemu obrot o 90 st. na zakretach daje identyczny obraz.
-    for x in (2, 3):
-        put(x, 1, ACCENT)
-        put(x, 4, ACCENT)
+    # 3. szary pas rozbijajacy plaszczyzne czerni.
+    #    Tylko wiersze opaski (0,1,4,5) i tylko kolumny 2,3.
+    #    Poprzeczka (wiersze 2,3) zostaje czarna -> kontrast okien.
+    for y in (0, 1, 4, 5):
+        for x in (2, 3):
+            put(x, y, GREY)
 
 
 def build_head_region():
@@ -93,20 +87,14 @@ def build_head_region():
     for y in range(8):
         for x in range(8):
             put(ox + x, oy + y, OPAQUE_BLACK)
-    # ramka
-    for x in range(8):
-        put(ox + x, oy + 0, OPAQUE_BLACK2)
-        put(ox + x, oy + 7, OPAQUE_BLACK2)
-    for y in range(8):
-        put(ox + 0, oy + y, OPAQUE_BLACK2)
-        put(ox + 7, oy + y, OPAQUE_BLACK2)
+    # szary pas w gornej i dolnej czesci glowicy (rozjaśnia plaszczyzne)
+    for y in (1, 6):
+        for x in (1, 2, 3, 4, 5, 6):
+            put(ox + x, oy + y, GREY)
     # okienko 4x2 na srodku
     for y in (3, 4):
         for x in (2, 3, 4, 5):
             put(ox + x, oy + y, CLEAR)
-    # akcent
-    put(ox + 3, oy + 6, ACCENT)
-    put(ox + 4, oy + 6, ACCENT_D)
 
 
 build_pipe_region()
@@ -137,19 +125,15 @@ print(f"zapisano {out} ({len(png)} bajtow)")
 
 
 # --- podglad ASCII ---
-print("\nPodglad (K=opaska, .=okno, o=rozjasnienie, P=fiolet):")
+print("\nPodglad (K=czarny, G=szary, .=okno):")
 for y in range(H):
     s = ''
     for x in range(W):
         c = px[y][x]
         if c[3] == 0:
             s += '.'
-        elif c == ACCENT or c == ACCENT_D:
-            s += 'P'
-        elif c == RIM:
-            s += '-'
-        elif c == OPAQUE_BLACK2:
-            s += 'o'
+        elif c == GREY:
+            s += 'G'
         else:
             s += 'K'
     print(f"  {y:2d} {s}")
