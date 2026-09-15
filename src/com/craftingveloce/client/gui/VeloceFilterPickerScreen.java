@@ -97,6 +97,12 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
 
     @Override
     public void containerTick() {
+        // MUSI byc super. Baza (VeloceCreativeScreen) utrzymuje w tym miejscu
+        // filtr listy itemow i ukrywanie zakladek administracyjnych. Wczesniej
+        // ta metoda byla pusta, wiec po zmianie zakladki w tym oknie lista nie
+        // byla juz filtrowana - picker pokazywal itemy, ktorych nie powinien
+        // (i tracil spojnosc z reszta naszych GUI).
+        super.containerTick();
     }
 
     @Override
