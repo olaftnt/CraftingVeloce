@@ -207,6 +207,7 @@ public final class VeloceAutoCrafter {
         Map<Item, Long> netStock = network.getAllItemCounts(level, true);
         long inNetwork = netStock.getOrDefault(item, 0L);
         long available = inInventory + inNetwork;
+        long onStockBefore = inNetwork;
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
                 "%s: inventory=%d, network=%d, requested=%d",
                 item, inInventory, inNetwork, count);
@@ -230,6 +231,10 @@ public final class VeloceAutoCrafter {
         startEstimate(planBudgetNanos);
         Map<Item, Long> stock = snapshotStock(ctx, netStock);
         Plan plan = new Plan();
+
+        // Ile UDALO sie zaplanowac (moze byc mniej niz missing).
+        long planned = missing;
+
         if (!plan(level, ctx.enabledItems, ctx.preferred, item, missing, stock, plan, new HashSet<>(), 0)) {
             if (estimateAborted()) {
                 VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
@@ -237,21 +242,45 @@ public final class VeloceAutoCrafter {
                         item, missing, planBudgetNanos / 1_000_000L);
                 return CraftResult.fail("craftingveloce.craft.error.tooComplex");
             }
-            logPlanFailure(level, ctx, item, missing, stock);
-            return CraftResult.fail("craftingveloce.craft.error.noBase");
+
+            // NIE MA DOść NA PELNA ILOSC - sprobuj zrobic MNIEJ.
+            //
+            // BUG, ktory tu byl: planowanie szlo na dokladnie `missing` sztuk,
+            // a jesli sie nie udalo, cala operacja przepadala. Ekstraktor, ktory
+            // chcial pelny stack (np. 64), nie dostawal NIC, nawet gdy w sieci
+            // bylo dość materialu na 12 sztuk. Teraz schodzimy w dol, az
+            // znajdziemy ilosc wykonalna.
+            planned = planAsMuchAsPossible(level, ctx, item, missing, stock, plan, planBudgetNanos,
+                    /* allowRetry */ true);
+            if (planned <= 0) {
+                logPlanFailure(level, ctx, item, missing, stock);
+                return CraftResult.fail("craftingveloce.craft.error.noBase");
+            }
         }
 
         // Faza 2: wykonanie dokladnie tego, co zaplanowano.
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "plan for %s: %d recipe run(s) to execute", item, plan.runs.size());
+                "plan for %s x%d: %d recipe run(s) to execute",
+                item, planned, plan.runs.size());
         if (!execute(level, ctx, plan)) {
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                     "execution failed for %s - ingredients vanished mid-craft", item);
             return CraftResult.fail("craftingveloce.craft.error.extract");
         }
+        // Zwracamy ilosc, ktora REALNIE powstała - moze byc mniejsza od
+        // zamowionej, gdy nie bylo dość materialu (patrz planAsMuchAsPossible).
+        // Wczesniej log i wynik klamaly pelna iloscia, mimo ze wykonano mniej.
+        // Ile realnie przybylo w sieci. to jest liczba, ktora wolajacy moze
+        // bezpiecznie wyciagnac - nie zamowiona ilosc.
+        long actuallyCrafted = Math.max(0L, planned);
+        Map<Item, Long> after = network.getAllItemCounts(level, true);
+        long gained = after.getOrDefault(item, 0L) - onStockBefore;
+        if (gained > 0) {
+            actuallyCrafted = gained;
+        }
         VeloceLog.Craft.success(VeloceLog.Side.SERVER,
-                "crafted %s x%d successfully", item, count);
-        return CraftResult.ok(count);
+                "crafted %s x%d successfully (requested %d)", item, actuallyCrafted, count);
+        return CraftResult.ok((int) Math.min(Integer.MAX_VALUE, actuallyCrafted));
     }
 
 
@@ -473,6 +502,74 @@ public final class VeloceAutoCrafter {
      * i czego brakuje. Wlaczane tylko przy niepowodzeniu, wiec nie zasmieca
      * loga w normalnej pracy.
      */
+    /**
+     * Znajduje NAJWIEKSZA ilosc itemu, ktora da sie zaplanowac z tego stocku.
+     *
+     * <p>Uzywane, gdy nie udalo sie zaplanowac pelnej zamowionej ilosci. Bisekcja
+     * po ilosci: zamiast oddawac "nie da sie" i zostawiac gracza z niczym,
+     * dostarczamy tyle, ile realnie jestesmy w stanie zrobic (np. 12 z 64).
+     *
+     * @return ilosc wpisana do {@code plan}, albo 0 gdy nie da sie zrobic nic
+     */
+    private static long planAsMuchAsPossible(ServerLevel level, Context ctx, Item item,
+                                             long wanted, Map<Item, Long> stock, Plan plan,
+                                             long planBudgetNanos, boolean allowRetry) {
+        // Krok 1: znajdz JAKAKOLWIEK wykonalna ilosc, schodzac po polowie.
+        // To logarytmicznie malo prob.
+        long found = 0;
+        Plan best = null;
+        for (long tryAmount = wanted / 2; tryAmount >= 1; tryAmount /= 2) {
+            startEstimate(planBudgetNanos);
+            Map<Item, Long> copy = new HashMap<>(stock);
+            Plan candidate = new Plan();
+            if (plan(level, ctx.enabledItems, ctx.preferred, item, tryAmount, copy,
+                    candidate, new HashSet<>(), 0)) {
+                found = tryAmount;
+                best = candidate;
+                break;
+            }
+            if (estimateAborted()) {
+                return 0;   // budzet - nie ma sensu probowac dalej
+            }
+        }
+        if (found <= 0 || best == null) {
+            return 0;
+        }
+
+        // Krok 2: dobij do gory, o ile budzet pozwala.
+        //
+        // Samo schodzenie po polowie gubilo ilosci: przy zamowieniu 64
+        // znajdowalo 32 i konczylo, mimo ze wykonalne bylo np. 40. Zwiekszamy
+        // wiec krokami polowy pozostalej odleglosci, az przestanie sie udawac.
+        long lo = found;
+        long hi = wanted;
+        while (lo < hi && !estimateAborted()) {
+            long mid = lo + (hi - lo + 1) / 2;
+            if (mid == lo) {
+                break;
+            }
+            startEstimate(planBudgetNanos);
+            Map<Item, Long> copy = new HashMap<>(stock);
+            Plan candidate = new Plan();
+            if (plan(level, ctx.enabledItems, ctx.preferred, item, mid, copy,
+                    candidate, new HashSet<>(), 0)) {
+                lo = mid;
+                best = candidate;
+            } else {
+                hi = mid - 1;
+                if (estimateAborted()) {
+                    break;
+                }
+            }
+        }
+
+        plan.runs.clear();
+        plan.runs.addAll(best.runs);
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "%s: full amount %d not craftable, doing %d instead", item, wanted, lo);
+        return lo;
+    }
+
     /**
      * Loguje, dlaczego planowanie sie nie udalo.
      *

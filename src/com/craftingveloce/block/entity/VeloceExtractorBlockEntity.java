@@ -263,13 +263,19 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
             return ItemStack.EMPTY;
         }
 
+        // Bierzemy DOKLADNIE tyle, ile realnie powstalo - nie tyle, o ile
+        // prosilismy. Gdy materialu starczylo na 12 z 64, ensureAvailable
+        // robi 12 i tyle ma trafic do slotu; zadanie 64 wyciagneloby przy
+        // okazji itemy, ktore lezaly w sieci z innych powodow.
+        int got = Math.max(1, Math.min(count, result.produced()));
+
         // Wynik trafia najpierw do bufora craftera, ktory nie jest endpointem
         // sieci - dlatego najpierw wyciagamy z buforow, potem z sieci.
-        ItemStack fromBuffer = extractFromBuffers(buffers, item, count);
+        ItemStack fromBuffer = extractFromBuffers(buffers, item, got);
         if (!fromBuffer.isEmpty()) {
             return fromBuffer;
         }
-        return net.extractItem(sl, item, count);
+        return net.extractItem(sl, item, got);
     }
 
     /** Budzet planowania dla jednego brakujacego itemu w cyklu extractora. */
