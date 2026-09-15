@@ -575,14 +575,37 @@ public final class VeloceAutoCrafter {
                 break;
             }
             Map<Item, Long> stock = new HashMap<>(stockSnapshot);
-            startEstimate(deadline == 0L ? 0L
-                    : Math.max(1_000_000L, deadline - System.nanoTime()));
+            // Budzet na TEN item = rowny udzial z reszty czasu, a nie cale okno.
+            //
+            // BUG, ktory to naprawia: kazdy item dostawal CALE pozostale okno,
+            // wiec jeden zbyt zlozony (albo drogi) zjadal budzet calej partii
+            // i reszta itemow nie dostawala liczb - w logu gracza widac bylo
+            // "45 item(s) -> 0 result(s) (complete=false)". Rowny udzial
+            // gwarantuje, ze kazdy item ma swoja szanse, a te, ktore nie
+            // zdaza, trafia do kolejnej partii (patrz rotacja wyzej).
+            long slice = 0L;
+            if (deadline != 0L) {
+                long left = Math.max(0L, deadline - System.nanoTime());
+                slice = Math.max(MIN_ITEM_BUDGET_NS, left / Math.max(1, size - i));
+            }
+            startEstimate(slice);
             long total = craftableFromRaw(level, network, item, stock, enabledItems, preferred, heatOps);
             if (total == UNKNOWN_COUNT) {
-                // Nie zmiescilismy sie w budzecie - nie zgadujemy, mowimy
-                // GUI, ze partia jest niekompletna i przerwamy petle.
+                // TEN item nie zmiescil sie w budzecie - pomijamy GO, ale NIE
+                // przerywamy calej partii.
+                //
+                // BUG, ktory to naprawia: `break` konczyl partie po pierwszym
+                // trudnym itemie. W logu gracza bylo to widac jako
+                // "instant craftable count for 45 item(s) -> 0 result(s)
+                // (complete=false)" - JEDEN zbyt zlozony item (albo chwilowy
+                // brak czasu) odbieral liczby WSZYSTKIM pozostalym, a gracz
+                // widzial to jako "kontroler nie umie policzyc pieca".
+                //
+                // Kolejny item dostaje swiezy budzet (startEstimate nizej),
+                // a gdy skonczy sie CZAS, petla przerwie sie na sprawdzeniu
+                // deadline'u na gorze - wiec nie ma ryzyka zapetlenia.
                 complete = false;
-                break;
+                continue;
             }
             // Zapisujemy TAKZE zera. Wczesniej wpis pojawial sie tylko dla
             // surplus > 0, wiec "nie da sie juz nic zrobic" bylo nieodroznialne
@@ -965,6 +988,18 @@ public final class VeloceAutoCrafter {
             return fromStock;
         }
 
+        // SZYBKA SCIEZKA dla itemow powstajacych WYLACZNIE w piecu z surowcow,
+        // ktore same nie maja receptury (np. szklo z piasku).
+        //
+        // Po co: odpowiedz jest wtedy zwykla arytmetyka na stocku, a nie
+        // bisekcja z pelnym planowaniem. Dzieki temu takie itemy (a jest ich
+        // kilkadziesiat - patrz "furnace=74" w logu) nie zjadaja budzetu
+        // partii i nie znikaja z GUI, gdy budzet sie skonczy.
+        long furnaceOnly = countFurnaceOnly(level, item, stock, heatOps);
+        if (furnaceOnly >= 0) {
+            return fromStock + furnaceOnly;
+        }
+
         // Gorna granica bisekcji.
         //
         // BUG, ktory tu byl: bralismy sume WSZYSTKICH sztuk w sieci i twierdzilismy,
@@ -1002,6 +1037,61 @@ public final class VeloceAutoCrafter {
         return fromStock + lo;
     }
 
+    /**
+     * Ile sztuk itemu da sie zrobic w piecu - bez planera.
+     *
+     * <p>Stosuje sie TYLKO wtedy, gdy item powstaje wylacznie w piecach i z
+     * surowcow, ktore same nie maja zadnej receptury. Wtedy limitem jest
+     * wyłącznie stock surowca, wiec wynik to
+     * {@code min(stock_surowca / ile_potrzeba) * ile_wychodzi} - dokladnie to,
+     * co policzylby planer, tylko bez bisekcji.
+     *
+     * <p>Jesli item ma tez recepture craftingowa, albo ktorys surowiec da sie
+     * dorobic (ma wlasna recepture), szybka sciezka sie wycofuje: wtedy wynik
+     * zalezy od calego lancucha i musi go policzyc planer.
+     *
+     * @return policzona liczba sztuk albo {@code -1} = "uzyj planera"
+     */
+    private static long countFurnaceOnly(ServerLevel level, Item item,
+                                         Map<Item, Long> stock, long heatOps) {
+        List<VeloceRecipeRegistry.CraftingEntry> recipes =
+                VeloceRecipeRegistry.getRecipesFor(level, item, true);
+        if (recipes.isEmpty()) {
+            return 0L;
+        }
+        long best = 0;
+        for (VeloceRecipeRegistry.CraftingEntry recipe : recipes) {
+            if (!recipe.isFurnace()) {
+                return -1L;   // jest tez crafting - to robota dla planera
+            }
+            long runs = Long.MAX_VALUE;
+            for (Ingredient ingredient : recipe.ingredients()) {
+                long bestOption = 0;
+                for (ItemStack option : ingredient.getItems()) {
+                    Item raw = option.getItem();
+                    if (!VeloceRecipeRegistry.getRecipesFor(level, raw, true).isEmpty()) {
+                        // Surowiec sam jest craftowalny - sam stock nie jest
+                        // prawdziwym limitem, planer policzy to lepiej.
+                        return -1L;
+                    }
+                    long needed = Math.max(1, option.getCount());
+                    bestOption = Math.max(bestOption, stock.getOrDefault(raw, 0L) / needed);
+                }
+                runs = Math.min(runs, bestOption);
+            }
+            if (runs == Long.MAX_VALUE) {
+                return -1L;   // receptura bez sensownych skladnikow
+            }
+            // Bez ciepla piec nie zrobi nic - ale to juz wiemy po heatOps.
+            if (heatOps <= 0) {
+                return 0L;
+            }
+            best = Math.max(best, Math.min(MAX_ESTIMATE_RESULT,
+                    runs * Math.max(1, recipe.result().getCount())));
+        }
+        return best;
+    }
+
     /** Limit wyniku szacowania - chroni przed absurdalna bisekcja. */
     private static final long MAX_ESTIMATE_RESULT = 100_000L;
 
@@ -1029,6 +1119,15 @@ public final class VeloceAutoCrafter {
      * obetnie wyniku; jest zas malenka, zeby nie kusilo liczenia "w
      * nieskonczonosc" i nie ryzykowac przepelnienia.
      */
+    /**
+     * Najkrotszy budzet, jaki dostaje pojedynczy item w partii (0.2 ms).
+     *
+     * <p>Bez dolnej granicy rowny udzial przy dlugiej liscie spadlby do zera
+     * i zadnego itemu nie daloby sie policzyc. 0.2 ms wystarcza na proste
+     * receptury, a zbyt zlozone i tak trafiaja do kolejnej partii.
+     */
+    private static final long MIN_ITEM_BUDGET_NS = 200_000L;
+
     private static final long ESTIMATE_HEAT_OPS = 1_000_000L;
 
     /**

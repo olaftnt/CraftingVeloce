@@ -499,6 +499,24 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
+     * Czy item da sie zrobic OBIEMA drogami: crafterem i piecem.
+     *
+     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> Preferencje
+     * pokazywalismy kazdemu itemowi z receptura pieca - takze szkłu, ktore
+     * powstaje WYLACZNIE w piecu i nie ma receptury craftingowej. Gracz widzial
+     * wiec wybor "Preference: Crafting / Furnace" dla itemu, ktory craftingiem
+     * nie da sie zrobic, i slusznie pytal, po co ten wybor jest. Preferencja ma
+     * sens tylko wtedy, gdy jest miedzy czym wybierac.
+     *
+     * <p>Sprawdzamy {@code craftingEnabled} (crafter realnie to zrobi), a nie
+     * samo "ma recepture" - item z wylaczonym craftingiem tez ma tylko jedna
+     * dostepna droge.
+     */
+    private boolean hasBothPaths(Item item) {
+        return craftingEnabled.contains(item) && furnaceCraftable.contains(item);
+    }
+
+    /**
      * Preferencja "crafting czy piec" - tylko dla itemow, ktore MOZNA przepalic.
      *
      * <p>Pokazujemy ja wprost ("Preference: Crafting" / "Preference: Furnace"),
@@ -510,8 +528,8 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      * zniknela, bo prawy klik jest jedynym sensownym klikiem na tej ikonie.
      */
     private void addPreferenceLines(List<Component> lines, Item item) {
-        if (!furnaceCraftable.contains(item)) {
-            return;   // nie ma czego preferowac - jest tylko crafting
+        if (!hasBothPaths(item)) {
+            return;   // jest tylko jedna droga - nie ma czego preferowac
         }
         boolean furnace = furnacePreferred.contains(item);
         lines.add(Component.translatable(furnace
@@ -543,8 +561,9 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
             return;
         }
         Item item = slot.getItem().getItem();
-        if (!furnaceCraftable.contains(item)) {
-            // Tylko crafting - nie ma miedzy czym wybierac.
+        if (!hasBothPaths(item)) {
+            // Jedna droga (sam crafting albo sam piec) - nie ma miedzy czym
+            // wybierac, wiec prawy klik nic nie robi (patrz hasBothPaths).
             return;
         }
         boolean preferFurnace = !furnacePreferred.contains(item);

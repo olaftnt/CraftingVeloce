@@ -122,9 +122,18 @@ public class VeloceControllerBlockEntity extends BlockEntity
         }
         java.util.Map<Item, ResourceLocation> preferred =
                 VeloceCraftingRegistry.getPreferredRecipes(sl, net);
-        return com.craftingveloce.crafting.VeloceAutoCrafter.countCraftableBatchResult(
+        long start = System.nanoTime();
+        var result = com.craftingveloce.crafting.VeloceAutoCrafter.countCraftableBatchResult(
                 sl, net, items, enabled, preferred,
                 com.craftingveloce.crafting.VeloceAutoCrafter.DEFAULT_ESTIMATE_BUDGET_NS);
+        // Ten sam log co terminal - bez niego nie da sie stwierdzic, czy
+        // kontroler w ogole dostal liczby (a gracz wlasnie to zglosil).
+        com.craftingveloce.util.VeloceLog.Craft.detail(
+                com.craftingveloce.util.VeloceLog.Side.SERVER,
+                "controller craftable count for %d item(s) -> %d result(s) in %d ms (complete=%s)",
+                items.size(), result.counts().size(),
+                (System.nanoTime() - start) / 1_000_000L, result.complete());
+        return result;
     }
 
     /** Wysyla graczowi samo tempo przeplywu (odpowiedz na zapytanie klienta). */

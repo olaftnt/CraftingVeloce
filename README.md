@@ -326,7 +326,12 @@ została w tyle, tak jak wcześniej lista pakietów i sekcja GUI):
 > (`complete=false` w logu). Dlatego serwer startuje kolejną partię tam, gdzie
 > skończył poprzednią (rotacja — inaczej ogon listy nigdy nie doczekałby się
 > przeliczenia i trzymał stare liczby), a klient ponawia zapytanie, dopóki
-> odpowiedź nie jest pełna.
+> odpowiedź nie jest pełna. Każdy item w partii dostaje **równy udział** czasu:
+> jeden zbyt złożony item jest pomijany (i trafia do kolejnej partii), a nie
+> zabija całej partii — wcześniej kończył ją, więc w logu gracza widać było
+> `45 item(s) -> 0 result(s)`, czyli GUI bez ani jednej świeżej liczby.
+> Item, który powstaje **wyłącznie** w piecu z surowców bez własnych receptur
+> (np. szkło z piasku), liczy się osobną, tanią ścieżką — bez planera.
 - `openControllerScreen(BlockPos pos, Map<Item, Long> stock, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnacePowered, Set<Item> furnacePreferred)`
 
 > Uwaga na `disabledItems`: crafter działa w modelu **opt-out**, więc to zbiór
