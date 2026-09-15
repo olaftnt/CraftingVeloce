@@ -52,6 +52,9 @@ public class VeloceControllerBlockEntity extends BlockEntity
      * kontroler jest AKTUALNIE podlaczony.
      */
     private final VeloceFlowTracker flow = new VeloceFlowTracker();
+    /** Roznica stocku wobec tego, co juz poszlo do klientow (patrz sendFlowTo). */
+    private final com.craftingveloce.crafting.VeloceStockDeltas stockDeltas =
+            new com.craftingveloce.crafting.VeloceStockDeltas();
 
     /** Siec, dla ktorej zbieramy migawki - zeby wykryc przestawienie kontrolera. */
     private java.util.UUID sampledNetworkId;
@@ -139,23 +142,34 @@ public class VeloceControllerBlockEntity extends BlockEntity
     }
 
     /**
-     * Wysyla graczowi tempo przeplywu I swiezy stock (odpowiedz na zapytanie).
+     * Wysyla graczowi tempo przeplywu I ZMIANE stocku (odpowiedz na zapytanie).
      *
      * <p>Stock jedzie razem z tempem, bo kontroler ma sie odswiezac tak samo
      * jak terminal: bez tego wyjecie itemu ze skrzynki przy otwartym GUI nie
      * zmienialo ani liczby, ani koloru ikony.
+     *
+     * <p><b>Tylko zmiany.</b> Zapytanie leci raz na sekunde, a stock prawie
+     * nigdy sie nie zmienia - wysylanie calego obrazu sieci za kazdym razem
+     * znaczyloby tysiace wpisow na sekunde w duzej sieci (im wieksza siec, tym
+     * wiekszy ruch bez pozytku). Roznice liczy
+     * {@link com.craftingveloce.crafting.VeloceStockDeltas}, a raz na minute
+     * leci pelny zrzut jako zabezpieczenie przed rozjazdem.
      */
     public void sendFlowTo(ServerPlayer player) {
         Map<Item, Long> stock = Map.of();
+        long gameTime = 0L;
         if (level instanceof ServerLevel sl) {
+            gameTime = sl.getGameTime();
             VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
                     .getNetworkForTerminal(sl, worldPosition);
             if (net != null) {
                 stock = net.getAllItemCounts(sl);
             }
         }
+        com.craftingveloce.crafting.VeloceStockDeltas.Delta delta =
+                stockDeltas.diff(stock, gameTime);
         PacketDistributor.sendToPlayer(player, new com.craftingveloce.network.SyncControllerFlowPKT(
-                worldPosition, stock, flow.steadyRates()));
+                worldPosition, delta.changed(), delta.removed(), flow.steadyRates(), delta.full()));
     }
 
     /** Zbiera aktualny stan sieci i wysyla GUI graczowi. */

@@ -242,23 +242,40 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Odswieza samo tempo przeplywu - BEZ przebudowy ekranu.
+     * Odswieza tempo przeplywu i ZMIANE stocku - BEZ przebudowy ekranu.
      *
      * <p>To jest powod, dla ktorego przeplyw ma osobny pakiet: gdyby serwer
      * co sekunde przysylal pelny obraz sieci i kazal tworzyc ekran od nowa,
      * gracz tracilby przy kazdym odswiezeniu wybrany filtr, pozycje przewijania
      * i wpisane wyszukiwanie.
      *
-     * @param pos pozycja kontrolera, ktorego dotyczy pakiet - ignorujemy pakiety
-     *            dla innego kontrolera, zeby nie podmieszac danych
+     * <p><b>Stock przychodzi jako roznica, nie calosc</b> (patrz
+     * {@code VeloceStockDeltas}): w duzej sieci pelny obraz co sekunde to
+     * tysiace wpisow bez zmiany. Dlatego scalamy zmiany i usuwamy znikniete
+     * itemy, a pelny zrzut (raz na minute) po prostu zastepuje mape.
+     *
+     * @param pos     pozycja kontrolera, ktorego dotyczy pakiet - ignorujemy
+     *                pakiety dla innego kontrolera, zeby nie podmieszac danych
+     * @param changed wpisy nowe albo o zmienionej liczbie (wartosci bezwzgledne)
+     * @param removed itemy, ktorych w sieci juz nie ma
+     * @param full    czy to pelny zrzut (zastap stock, nie scalaj)
      */
     public void updateFlow(net.minecraft.core.BlockPos pos,
-                           Map<Item, Long> stock,
-                           Map<Item, Float> rates) {
+                           Map<Item, Long> changed,
+                           Set<Item> removed,
+                           Map<Item, Float> rates,
+                           boolean full) {
         if (!controllerPos.equals(pos)) {
             return;
         }
-        this.stock = new HashMap<>(stock);
+        if (full) {
+            this.stock = new HashMap<>(changed);
+        } else {
+            this.stock.putAll(changed);
+            for (Item item : removed) {
+                this.stock.remove(item);
+            }
+        }
         this.flowRate = new HashMap<>(rates);
     }
 
