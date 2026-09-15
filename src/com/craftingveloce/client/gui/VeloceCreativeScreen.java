@@ -1081,15 +1081,45 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         // pochlaniana bez zamykania okna. Fokus zostaje, wiec pisanie trwa,
         // a litera "e" trafia do pola przez charTyped - tak jak w wanilii.
         if (typing) {
+            boolean isEscape = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+            boolean isInventoryKey = this.minecraft != null && this.minecraft.options != null
+                    && this.minecraft.options.keyInventory != null
+                    && this.minecraft.options.keyInventory.matches(keyCode, scanCode);
+            if (isEscape || isInventoryKey) {
+                // Log dokladnie tego przypadku: bez niego nie da sie odroznic
+                // "poprawka nie dziala" od "gracz testuje stary JAR".
+                com.craftingveloce.util.VeloceLog.Gui.detail(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "pole tekstowe aktywne: klawisz %d zostaje w polu (okno sie nie zamyka)",
+                        keyCode);
+            }
+            if (isInventoryKey && this.minecraft != null && this.minecraft.options != null) {
+                // KLUCZOWE: samo POCHLONIECIE klawisza przez ekran NIE WYSTARCZA.
+                //
+                // Minecraft.handleKeybinds() co tick robi
+                //     while (options.keyInventory.consumeClick()) { ...otworz ekwipunek... }
+                // i NIE patrzy przy tym na ekran (sprawdzone w bajtkodzie: nie ma
+                // tam zadnego testu `screen == null`). Wiec nacisniete "E"
+                // zostawalo w kolejce klawisza i po chwili otwieralo ekwipunek -
+                // gracz widzial to jako "E zamyka mi GUI, kiedy pisze".
+                // Konsumujemy wiec ten klik, zeby handleKeybinds nie mial czego
+                // obsluzyc. Dokladnie takiego efektu oczekuje gracz: "E nie
+                // zamyka, kiedy pole tekstowe jest aktywne".
+                this.minecraft.options.keyInventory.consumeClick();
+            }
             // 1) Pole tekstowe samo wie, co zrobic z backspace, strzalkami,
-            //    Ctrl+A czy wklejaniem. NIE wolamy super.keyPressed - tam
-            //    wlasnie siedzi obsluga "E zamyka ekran".
-            net.minecraft.client.gui.components.events.GuiEventListener focused = this.getFocused();
-            if (focused != null && focused.keyPressed(keyCode, scanCode, modifiers)) {
+            //    Ctrl+A czy wklejaniem. Bierzemy fokus ekranu ALBO waniliowa
+            //    wyszukiwarke (patrz isTypingInTextField).
+            net.minecraft.client.gui.components.EditBox box =
+                    VeloceTerminalViewState.focusedTextBox(this, this.getFocused());
+            if (box != null && box.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
             // 2) Esc wychodzi z pola; kolejne Esc (bez fokusu) zamyka okno.
-            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+            if (isEscape) {
+                if (box != null) {
+                    box.setFocused(false);
+                }
                 this.setFocused(null);
                 return true;
             }
@@ -1148,8 +1178,20 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      */
     protected boolean isTypingInTextField() {
         try {
-            net.minecraft.client.gui.components.events.GuiEventListener focused = this.getFocused();
-            return focused instanceof net.minecraft.client.gui.components.EditBox;
+            // 1) Widget skupiony przez ekran (nasze wlasne pola, np. prog sensora).
+            if (this.getFocused() instanceof net.minecraft.client.gui.components.EditBox) {
+                return true;
+            }
+            // 2) WYSZUKIWARKA WANILI - pytamy SAM WIDGET, nie ekran.
+            //
+            // BUG, ktory to naprawia (zgloszenie gracza powtarzane dwa razy):
+            // sprawdzalismy tylko fokus EKRANU, a waniliowa wyszukiwarka
+            // creative zyje wlasnym zyciem. Gdy ekran nie wskazywal na nia jako
+            // na skupiony widget, ten test wychodzil FALSE, wiec "E" (klawisz
+            // ekwipunku) zamykalo GUI w trakcie pisania. Vanilla pyta wprost
+            // o searchBox.isFocused() (CreativeModeInventoryScreen.keyPressed)
+            // i to jest jedyne wiarygodne zrodlo tej informacji.
+            return VeloceTerminalViewState.isSearchBoxFocused(this);
         } catch (Throwable t) {
             return false;
         }

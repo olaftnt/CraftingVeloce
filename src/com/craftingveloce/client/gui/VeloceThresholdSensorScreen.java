@@ -378,6 +378,18 @@ public class VeloceThresholdSensorScreen
         // wyszukiwarek w ekranach creative. Pole obsluguje to, co chce
         // (cyfry, backspace, strzalki), a reszta jest pochlaniana.
         if (fieldFocused) {
+            // E (klawisz ekwipunku) zostawiony w kolejce klawisza i tak otworzylby
+            // ekwipunek: Minecraft.handleKeybinds() sprawdza go co tick bez
+            // patrzenia na ekran. Czyscimy wiec ten klik (patrz komentarz
+            // w VeloceCreativeScreen.keyPressed).
+            if (this.minecraft != null && this.minecraft.options != null
+                    && this.minecraft.options.keyInventory != null
+                    && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
+                com.craftingveloce.util.VeloceLog.Gui.detail(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "pole progu aktywne: E zostaje w polu (okno sie nie zamyka)");
+                this.minecraft.options.keyInventory.consumeClick();
+            }
             if (this.thresholdField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }

@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 
+import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -107,15 +108,64 @@ public final class VeloceTerminalViewState {
     }
 
     /** Wpisuje fraze do pola wyszukiwania i odswieza wyniki. */
+    /**
+     * Waniliowa wyszukiwarka tego ekranu (pole {@code searchBox}).
+     *
+     * <p>JEDNO miejsce z ta refleksja: korzysta z niej przywracanie frazy
+     * (applySearch) i pytanie "czy gracz wlasnie pisze" (isSearchBoxFocused).
+     * Wczesniej kazde miejsce robilo to samo osobno.
+     */
+    @Nullable
+    static EditBox searchBox(CreativeModeInventoryScreen screen) {
+        if (screen == null) {
+            return null;
+        }
+        try {
+            var f = CreativeModeInventoryScreen.class.getDeclaredField("searchBox");
+            f.setAccessible(true);
+            return f.get(screen) instanceof EditBox box ? box : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * Czy wyszukiwarka ma fokus - DOKLADNIE tak, jak pyta wanilia.
+     *
+     * <p><b>Po co osobne pytanie.</b> Sprawdzanie fokusu EKRANU
+     * ({@code Screen.getFocused()}) nie wystarcza: waniliowa wyszukiwarka
+     * creative zyje wlasnym zyciem i kiedy ekran nie wskazywal na nia jako na
+     * skupiony widget, nasz test "czy gracz pisze" wychodzil FALSE - i klawisz
+     * E (ekwipunek) zamykal GUI w trakcie pisania. Vanilla pyta wprost
+     * o {@code searchBox.isFocused()} (CreativeModeInventoryScreen.keyPressed)
+     * i to jest jedyne wiarygodne zrodlo tej informacji.
+     */
+    static boolean isSearchBoxFocused(CreativeModeInventoryScreen screen) {
+        EditBox box = searchBox(screen);
+        return box != null && box.isFocused();
+    }
+
+    /**
+     * Pole tekstowe, ktore powinno dostac klawisz: fokus ekranu albo
+     * wyszukiwarka wanilii (gdy to ona jest aktywna).
+     */
+    @Nullable
+    static EditBox focusedTextBox(CreativeModeInventoryScreen screen,
+                                  @Nullable net.minecraft.client.gui.components.events.GuiEventListener screenFocus) {
+        if (screenFocus instanceof EditBox box) {
+            return box;
+        }
+        EditBox search = searchBox(screen);
+        return search != null && search.isFocused() ? search : null;
+    }
+
     static void applySearch(CreativeModeInventoryScreen screen, String text) {
         if (screen == null || text == null || text.isEmpty()) {
             return;
         }
         try {
-            var f = CreativeModeInventoryScreen.class.getDeclaredField("searchBox");
-            f.setAccessible(true);
-            Object box = f.get(screen);
-            if (box instanceof EditBox editBox) {
+            EditBox editBox = searchBox(screen);
+            if (editBox != null) {
                 editBox.setValue(text);
                 var refresh = CreativeModeInventoryScreen.class
                         .getDeclaredMethod("refreshSearchResults");
