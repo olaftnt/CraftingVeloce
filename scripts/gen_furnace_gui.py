@@ -54,7 +54,10 @@ FLAME_Y = 27
 # Uwaga: samego plomienia NIE rysujemy w teksturze. Ekran sklada go
 # z dwoch sprite'ow wanilii (wygaszony obrys + zapalona czesc), dokladnie
 # tak, jak robi to waniliowy piec - patrz VeloceVelocityFurnaceScreen.
-BAR_X, BAR_Y, BAR_W, BAR_H = 150, 30, 18, 54
+BAR_X = 150
+BAR_Y = 30
+BAR_W = 18
+BAR_H = 54
 
 
 def panel(draw):

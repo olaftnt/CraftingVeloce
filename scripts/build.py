@@ -127,13 +127,19 @@ def validate_gui_layout():
         "generator": "scripts/gen_furnace_gui.py",
     }
     names = ["FILTER_X", "FILTER_Y", "FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y",
-             "FLAME_X", "FLAME_Y"]
+             "FLAME_X", "FLAME_Y", "BAR_X", "BAR_Y", "BAR_W", "BAR_H"]
     who = {n: [k for k in paths] for n in names}
     for n in ("FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y"):
         who[n] = ["menu", "generator"]          # ekran ich nie potrzebuje
     for n in ("FLAME_X", "FLAME_Y"):
         who[n] = ["ekran", "generator"]         # menu ich nie potrzebuje
+    for n in ("BAR_X", "BAR_Y", "BAR_W", "BAR_H"):
+        who[n] = ["ekran", "generator"]         # pasek energii pieca elektrycznego
 
+    paths["ekran_elektryczny"] = ("src/com/craftingveloce/client/gui/"
+                                  "VeloceElectricFurnaceScreen.java")
+    for n in ("BAR_X", "BAR_Y", "BAR_W", "BAR_H"):
+        who[n] = ["ekran_elektryczny", "generator"]
     values = {n: {k: consts(paths[k], [n])[n] for k in who[n]} for n in names}
 
     problems = []
