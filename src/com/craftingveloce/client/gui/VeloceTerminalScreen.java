@@ -1,0 +1,315 @@
+package com.craftingveloce.client.gui;
+
+import com.craftingveloce.network.TerminalPullItemPKT;
+import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.flag.FeatureFlagSet;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.GameType;
+import net.neoforged.neoforge.network.PacketDistributor;
+
+import javax.annotation.Nullable;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
+
+    private final BlockPos terminalPos;
+    private Map<Item, Long> networkCounts = new HashMap<>();
+
+    @Nullable
+    private GameType modeBeforeShop;
+
+    private static Method selectTabMethod;
+    private static Field selectedTabField;
+
+    static {
+        try {
+            for (Method m : CreativeModeInventoryScreen.class.getDeclaredMethods()) {
+                if (m.getParameterCount() == 1 && m.getParameterTypes()[0] == net.minecraft.world.item.CreativeModeTab.class) {
+                    m.setAccessible(true);
+                    selectTabMethod = m;
+                    break;
+                }
+            }
+            for (Field f : CreativeModeInventoryScreen.class.getDeclaredFields()) {
+                if (f.getType() == net.minecraft.world.item.CreativeModeTab.class) {
+                    f.setAccessible(true);
+                    selectedTabField = f;
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    public VeloceTerminalScreen(LocalPlayer player, FeatureFlagSet enabledFeatures, boolean displayOperatorCreativeTab, BlockPos terminalPos) {
+        super(player, enabledFeatures, displayOperatorCreativeTab);
+        this.terminalPos = terminalPos;
+    }
+
+    public void updateNetworkCounts(Map<Item, Long> counts) {
+        this.networkCounts = new HashMap<>(counts);
+    }
+
+    @Override
+    protected void init() {
+        if (this.minecraft == null || this.minecraft.gameMode == null) {
+            super.init();
+            return;
+        }
+        if (!this.minecraft.gameMode.hasInfiniteItems()) {
+            if (this.modeBeforeShop == null) {
+                this.modeBeforeShop = this.minecraft.gameMode.getPlayerMode();
+            }
+            this.minecraft.gameMode.setLocalMode(GameType.CREATIVE);
+        }
+        super.init();
+    }
+
+    @Override
+    public void containerTick() {
+    }
+
+    @Override
+    protected void renderSlot(GuiGraphics graphics, Slot slot) {
+        super.renderSlot(graphics, slot);
+
+        if (isShopSlot(slot) && slot.hasItem()) {
+            ItemStack stack = slot.getItem();
+            long count = networkCounts.getOrDefault(stack.getItem(), 0L);
+            if (count > 0) {
+                drawCountOverlay(graphics, this.font, count, slot.x, slot.y);
+            }
+        }
+    }
+
+    private static final DecimalFormat FORMAT_1_DEC;
+    static {
+        DecimalFormatSymbols sym = new DecimalFormatSymbols();
+        sym.setDecimalSeparator('.');
+        FORMAT_1_DEC = new DecimalFormat(".#;0.#", sym);
+    }
+
+    public static String formatCount(long number) {
+        if (number < 1000) return Long.toString(number);
+        if (number < 1000000) return FORMAT_1_DEC.format(number / 1000.0) + "K";
+        if (number < 1000000000) return FORMAT_1_DEC.format(number / 1000000.0) + "M";
+        return FORMAT_1_DEC.format(number / 1000000000.0) + "B";
+    }
+
+    private void drawCountOverlay(GuiGraphics graphics, Font font, long count, int x, int y) {
+        float scaleFactor = 0.6f;
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableBlend();
+        String text = formatCount(count);
+        graphics.pose().pushPose();
+        graphics.pose().scale(scaleFactor, scaleFactor, scaleFactor);
+        graphics.pose().translate(0, 0, 450);
+        float inverseScale = 1.0f / scaleFactor;
+        int textX = (int) (((float) x + 16.0f - font.width(text) * scaleFactor) * inverseScale);
+        int textY = (int) (((float) y + 16.0f - 7.0f * scaleFactor) * inverseScale);
+        graphics.drawString(font, text, textX, textY, 0x55FF55, true); // bright green
+        graphics.pose().popPose();
+        RenderSystem.enableDepthTest();
+    }
+
+    @Override
+    public List<Component> getTooltipFromContainerItem(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+
+        List<Component> tooltip = new ArrayList<>();
+        tooltip.add(stack.getHoverName());
+
+        long stored = networkCounts.getOrDefault(stack.getItem(), 0L);
+        if (stored > 0) {
+            tooltip.add(Component.literal("Stored in Network: ").withStyle(ChatFormatting.GRAY)
+                    .append(Component.literal(String.format("%,d", stored)).withStyle(ChatFormatting.GREEN)));
+        } else {
+            tooltip.add(Component.literal("Stored in Network: ").withStyle(ChatFormatting.GRAY)
+                    .append(Component.literal("0 (Not in network)").withStyle(ChatFormatting.RED)));
+        }
+
+        if (Screen.hasShiftDown() || Screen.hasControlDown()) {
+            int count = stack.getCount() > 1 ? stack.getCount() : stack.getMaxStackSize();
+            tooltip.add(Component.literal("PULL " + count + "x: ").withStyle(ChatFormatting.GOLD)
+                    .append(Component.literal("Shift-Click to pull stack from network").withStyle(ChatFormatting.YELLOW)));
+        } else {
+            tooltip.add(Component.literal("PULL 1x: ").withStyle(ChatFormatting.GOLD)
+                    .append(Component.literal("Click to pull 1 from network").withStyle(ChatFormatting.YELLOW)));
+        }
+
+        String modId = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace();
+        String modName = "minecraft".equals(modId) ? "Minecraft" : net.neoforged.fml.ModList.get().getModContainerById(modId)
+                .map(c -> c.getModInfo().getDisplayName())
+                .orElse(modId);
+        tooltip.add(Component.literal(modName).withStyle(ChatFormatting.BLUE, ChatFormatting.ITALIC));
+
+        return tooltip;
+    }
+
+    private boolean isPlayerSlot(Slot slot) {
+        if (slot == null || this.minecraft == null || this.minecraft.player == null) {
+            return false;
+        }
+        if (this.isInventoryOpen() && this.indexOfSlotIn(this.minecraft.player.inventoryMenu, slot) >= 0) {
+            return true;
+        }
+        return slot.container == this.minecraft.player.getInventory();
+    }
+
+    private boolean isShopSlot(Slot slot) {
+        if (slot == null || this.isPlayerSlot(slot)) {
+            return false;
+        }
+        // Trash / sell slot
+        return slot.x != 173 || slot.y != 112;
+    }
+
+    private void clickViaInventoryMenu(Slot slot, int slotId, int mouseButton, ClickType clickType) {
+        if (this.minecraft == null || this.minecraft.player == null || this.minecraft.gameMode == null) {
+            return;
+        }
+        LocalPlayer player = this.minecraft.player;
+        AbstractContainerMenu inventoryMenu = player.inventoryMenu;
+
+        int inventorySlotId;
+        if (slot == null) {
+            inventorySlotId = slotId;
+        } else {
+            int resolved = this.resolveInventoryMenuIndex(slot);
+            if (resolved < 0) {
+                return;
+            }
+            inventorySlotId = resolved;
+        }
+
+        if (inventorySlotId != -999 && (inventorySlotId < 0 || inventorySlotId >= inventoryMenu.slots.size())) {
+            return;
+        }
+
+        AbstractContainerMenu previous = player.containerMenu;
+        try {
+            player.containerMenu = inventoryMenu;
+            this.minecraft.gameMode.handleInventoryMouseClick(
+                    inventoryMenu.containerId, inventorySlotId, mouseButton, clickType, player);
+        } finally {
+            player.containerMenu = previous;
+        }
+    }
+
+    private int resolveInventoryMenuIndex(Slot slot) {
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return -1;
+        }
+        LocalPlayer player = this.minecraft.player;
+        AbstractContainerMenu inventoryMenu = player.inventoryMenu;
+
+        if (this.isInventoryOpen()) {
+            int byIdentity = this.indexOfSlotIn(inventoryMenu, slot);
+            if (byIdentity >= 0) {
+                return byIdentity;
+            }
+            int containerSlot = slot.getContainerSlot();
+            return (containerSlot >= 0 && containerSlot < inventoryMenu.slots.size()) ? containerSlot : -1;
+        }
+
+        if (slot.container == player.getInventory()) {
+            int containerSlot = slot.getContainerSlot();
+            if (containerSlot < 0 || containerSlot > 8) {
+                return -1;
+            }
+            return 36 + containerSlot;
+        }
+
+        return -1;
+    }
+
+    private int indexOfSlotIn(AbstractContainerMenu menu, Slot slot) {
+        for (int i = 0; i < menu.slots.size(); i++) {
+            if (menu.slots.get(i) == slot) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    @Override
+    protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return;
+        }
+
+        // 1) Player inventory slots
+        if (this.isPlayerSlot(slot)) {
+            this.clickViaInventoryMenu(slot, slotId, mouseButton, clickType);
+            return;
+        }
+
+        // Clicks outside the window
+        if (slot == null) {
+            this.clickViaInventoryMenu(null, slotId, mouseButton, clickType);
+            return;
+        }
+
+        // 2) Shop grid slots
+        if (!this.isShopSlot(slot)) {
+            return;
+        }
+
+        AbstractContainerMenu menu = this.menu;
+        if (menu != null && !menu.getCarried().isEmpty()) {
+            return;
+        }
+
+        ItemStack item = slot.getItem();
+        if (item.isEmpty()) {
+            return;
+        }
+
+        int count = 1;
+        if (clickType == ClickType.QUICK_MOVE) {
+            count = item.getMaxStackSize();
+        }
+
+        // Send pull packet to server! Never touch cursor on client to prevent ghost items
+        PacketDistributor.sendToServer(new TerminalPullItemPKT(terminalPos, item, count));
+    }
+
+    @Override
+    public void removed() {
+        if (this.minecraft != null && this.minecraft.player != null && this.menu != null
+                && !this.menu.getCarried().isEmpty()) {
+            ItemStack carried = this.menu.getCarried();
+            this.menu.setCarried(ItemStack.EMPTY);
+            if (!this.minecraft.player.getInventory().add(carried)) {
+                this.minecraft.player.drop(carried, false);
+            }
+        }
+        super.removed();
+        if (this.modeBeforeShop != null && this.minecraft != null && this.minecraft.gameMode != null) {
+            this.minecraft.gameMode.setLocalMode(this.modeBeforeShop);
+            this.modeBeforeShop = null;
+        }
+    }
+}

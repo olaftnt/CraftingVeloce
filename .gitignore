@@ -1,0 +1,10 @@
+*.class
+*.jar
+*.zip
+craftingveloce_classes/
+craftingveloce_jar_root/
+toms_storage_compiled/
+backup_archive/
+backup_extracted/
+compiled_classes/
+.DS_Store
