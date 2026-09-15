@@ -280,7 +280,8 @@ public class VelocePipeNetwork {
         return total;
     }
 
-    public ItemStack extractItem(ServerLevel level, Item item, int maxCount) {    for (ConnectedEndpointInfo endpoint : endpoints.values()) {
+    public ItemStack extractItem(ServerLevel level, Item item, int maxCount) {
+        for (ConnectedEndpointInfo endpoint : endpoints.values()) {
             if (endpoint.getCachedCounts().getOrDefault(item, 0L) > 0) {
                 ItemStack extracted = endpoint.extractItem(level, item, maxCount);
                 if (!extracted.isEmpty()) {

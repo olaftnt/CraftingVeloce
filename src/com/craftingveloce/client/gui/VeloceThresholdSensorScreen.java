@@ -267,7 +267,7 @@ public class VeloceThresholdSensorScreen
                     x, y + 10, 0x8B0000, false);
             return;
         }
-        boolean met = this.menu.conditionMet();
+        boolean met = this.menu.isPowered();
         Component state = Component.translatable(met
                 ? "gui.craftingveloce.sensor.output.on"
                 : "gui.craftingveloce.sensor.output.off");

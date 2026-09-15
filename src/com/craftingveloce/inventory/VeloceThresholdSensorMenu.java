@@ -101,12 +101,14 @@ public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
         return sensor == null ? -1L : sensor.getLastCount();
     }
 
-    /** Czy warunek jest spelniony - liczone TA SAMA metoda co w ticku serwera. */
-    public boolean conditionMet() {
-        return sensor != null && !sensor.getFilter().isEmpty()
-                && sensor.conditionMet(sensor.getLastCount());
-    }
-
+    /**
+     * Czy sensor wystawia teraz prad.
+     *
+     * <p>Bierzemy to ze STANU BLOKU, a nie z przeliczonego warunku. Stan bloku
+     * jest rozglaszany przez serwer i to on jest prawda; licznik po stronie
+     * klienta jest tylko wartoscia do wyswietlenia. Przeliczanie warunku
+     * z licznika pokazywalo odwrotny stan, gdy licznik byl jeszcze nieznany.
+     */
     public boolean isPowered() {
         return sensor != null && sensor.isPowered();
     }

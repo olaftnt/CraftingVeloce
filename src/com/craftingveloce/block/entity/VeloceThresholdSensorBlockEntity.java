@@ -95,7 +95,6 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
     private long lastSyncedCount = Long.MIN_VALUE;
 
     private int checkCooldown = CHECK_INTERVAL_TICKS;
-    private int clientSyncCooldown = 0;
 
     public VeloceThresholdSensorBlockEntity(BlockPos pos, BlockState state) {
         super(VeloceRegistry.THRESHOLD_SENSOR_BE.get(), pos, state);
@@ -216,12 +215,17 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         // Licznik jest pokazywany w GUI, wiec dosylamy go - ale TYLKO gdy
         // naprawde sie zmienil. Wysylanie co sekunde "na wszelki wypadek"
         // to ruch bez powodu przy stabilnym zapasie.
-        if (--clientSyncCooldown <= 0) {
-            clientSyncCooldown = 20;
-            if (count != lastSyncedCount) {
-                lastSyncedCount = count;
-                syncToClients();
-            }
+        //
+        // UWAGA NA JEDNOSTKI: ten kod jest osiagany TYLKO raz na
+        // CHECK_INTERVAL_TICKS (wyzej jest return), wiec kazdy licznik
+        // dekrementowany w tym miejscu liczy "sprawdzenia", a nie ticki.
+        // Poprzednia wersja trzymala tu osobny cooldown 20 - co dawalo
+        // 20 * 20 = 400 tickow (20 SEKUND) zamiast sekundy, wiec licznik
+        // w GUI odswiezal sie raz na 20 sekund. Samo porownanie z ostatnio
+        // doslana wartoscia wystarcza: jestesmy tu najwyzej raz na sekunde.
+        if (count != lastSyncedCount) {
+            lastSyncedCount = count;
+            syncToClients();
         }
     }
 
@@ -294,12 +298,27 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
                 ? Math.max(0L, Math.min(MAX_THRESHOLD, tag.getLong("Threshold")))
                 : DEFAULT_THRESHOLD;
         mode = tag.contains("Mode") && "HIGH".equals(tag.getString("Mode")) ? Mode.HIGH : Mode.LOW;
+        // Pole tylko-synchronizacyjne: jest w pakiecie bloku, nie ma go
+        // w zapisie swiata. Brak = jeszcze nie mierzono.
+        lastCount = tag.contains("LastCount") ? tag.getLong("LastCount") : -1L;
     }
 
+    /**
+     * Dane wysylane klientowi.
+     *
+     * <p><b>Dlaczego osobno od {@link #saveAdditional}.</b> {@code lastCount}
+     * jest wartoscia pochodna (wynik pomiaru sieci), wiec CELOWO nie trafia do
+     * zapisu swiata - po wczytaniu i tak jest liczona od nowa. Ale GUI czyta
+     * ja wlasnie z block entity po stronie klienta, a ta dostaje TYLKO to, co
+     * zwroci ta metoda. Bez dopisania jej tutaj licznik nie docieral do
+     * klienta NIGDY: GUI pokazywalo na stale "nieznane", a podpis stanu
+     * wyjscia byl liczony z -1, czyli mogl pokazywac odwrotnosc prawdy.
+     */
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
         CompoundTag tag = new CompoundTag();
         saveAdditional(tag, registries);
+        tag.putLong("LastCount", lastCount);
         return tag;
     }
 
