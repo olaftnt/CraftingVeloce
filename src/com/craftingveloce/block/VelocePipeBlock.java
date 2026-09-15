@@ -208,7 +208,8 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             boolean connected = canConnectDirection(level, pos, dir, pipeBE, neighborOverride);
             BlockPos neighborPos = pos.relative(dir);
             BlockState neighborState = (neighborOverride != null) ? neighborOverride : level.getBlockState(neighborPos);
-            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock;
+            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock
+                    || neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock;
             boolean extracting = !isExtractor && (pipeBE != null && pipeBE.isExtracting(dir)) && connected;
             state = state.setValue(PipeBlock.PROPERTY_BY_DIRECTION.get(dir), connected);
             state = state.setValue(EXTRACT_BY_DIRECTION[dir.ordinal()], extracting);
@@ -255,7 +256,8 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         if (side != null) {
             BlockPos neighborPos = pos.relative(side);
             BlockState neighborState = world.getBlockState(neighborPos);
-            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock;
+            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock
+                    || neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock;
             boolean isInventory = !isExtractor && (canConnectToInventory(world, neighborPos, side.getOpposite())
                     || RefinedStorageHelper.hasRSNetwork(world, neighborPos, side.getOpposite()));
             boolean isNeighborPipe = neighborState.getBlock() instanceof IInventoryCable;
@@ -310,7 +312,8 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
             BlockPos neighborPos = pos.relative(hitDir);
             BlockState neighborState = world.getBlockState(neighborPos);
-            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock;
+            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock
+                    || neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock;
             BlockEntity nbe = world.getBlockEntity(neighborPos);
             if (nbe instanceof VelocePipeBlockEntity otherPipe) {
                 otherPipe.setDisconnected(hitDir.getOpposite(), !disconnected);

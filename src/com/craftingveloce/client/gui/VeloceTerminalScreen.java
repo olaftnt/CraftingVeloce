@@ -2,10 +2,8 @@ package com.craftingveloce.client.gui;
 
 import com.craftingveloce.network.TerminalPullItemPKT;
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -24,7 +22,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -134,38 +131,7 @@ public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
 
     @Override
     public List<Component> getTooltipFromContainerItem(ItemStack stack) {
-        if (stack.isEmpty()) {
-            return java.util.Collections.emptyList();
-        }
-
-        List<Component> tooltip = new ArrayList<>();
-        tooltip.add(stack.getHoverName());
-
-        long stored = networkCounts.getOrDefault(stack.getItem(), 0L);
-        if (stored > 0) {
-            tooltip.add(Component.literal("Stored in Network: ").withStyle(ChatFormatting.GRAY)
-                    .append(Component.literal(String.format("%,d", stored)).withStyle(ChatFormatting.GREEN)));
-        } else {
-            tooltip.add(Component.literal("Stored in Network: ").withStyle(ChatFormatting.GRAY)
-                    .append(Component.literal("0 (Not in network)").withStyle(ChatFormatting.RED)));
-        }
-
-        if (Screen.hasShiftDown() || Screen.hasControlDown()) {
-            int count = stack.getCount() > 1 ? stack.getCount() : stack.getMaxStackSize();
-            tooltip.add(Component.literal("PULL " + count + "x: ").withStyle(ChatFormatting.GOLD)
-                    .append(Component.literal("Shift-Click to pull stack from network").withStyle(ChatFormatting.YELLOW)));
-        } else {
-            tooltip.add(Component.literal("PULL 1x: ").withStyle(ChatFormatting.GOLD)
-                    .append(Component.literal("Click to pull 1 from network").withStyle(ChatFormatting.YELLOW)));
-        }
-
-        String modId = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace();
-        String modName = "minecraft".equals(modId) ? "Minecraft" : net.neoforged.fml.ModList.get().getModContainerById(modId)
-                .map(c -> c.getModInfo().getDisplayName())
-                .orElse(modId);
-        tooltip.add(Component.literal(modName).withStyle(ChatFormatting.BLUE, ChatFormatting.ITALIC));
-
-        return tooltip;
+        return super.getTooltipFromContainerItem(stack);
     }
 
     private boolean isPlayerSlot(Slot slot) {

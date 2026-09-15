@@ -1,6 +1,8 @@
 package com.craftingveloce.client.gui;
 
 import com.craftingveloce.network.ExtractorSetFilterPKT;
+import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
@@ -8,12 +10,15 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import javax.annotation.Nullable;
 import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Map;
 
 public class VeloceFilterPickerScreen extends CreativeModeInventoryScreen {
 
@@ -22,6 +27,12 @@ public class VeloceFilterPickerScreen extends CreativeModeInventoryScreen {
 
     @Nullable
     private GameType modeBeforeOpen;
+
+    private Map<Item, Long> networkCounts = new HashMap<>();
+
+    public void updateNetworkCounts(Map<Item, Long> counts) {
+        this.networkCounts = new HashMap<>(counts);
+    }
 
     private static Field slotWrapperTargetField;
 
@@ -107,6 +118,30 @@ public class VeloceFilterPickerScreen extends CreativeModeInventoryScreen {
             return;
         }
         super.renderSlot(graphics, slot);
+        // Draw count overlay if this item is available in the network
+        if (slot.hasItem()) {
+            ItemStack stack = slot.getItem();
+            long count = networkCounts.getOrDefault(stack.getItem(), 0L);
+            if (count > 0) {
+                drawCountOverlay(graphics, this.font, count, slot.x, slot.y);
+            }
+        }
+    }
+
+    private void drawCountOverlay(GuiGraphics graphics, Font font, long count, int x, int y) {
+        float scaleFactor = 0.6f;
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableBlend();
+        String text = VeloceTerminalScreen.formatCount(count);
+        graphics.pose().pushPose();
+        graphics.pose().scale(scaleFactor, scaleFactor, scaleFactor);
+        graphics.pose().translate(0, 0, 450);
+        float inverseScale = 1.0f / scaleFactor;
+        int textX = (int) (((float) x + 16.0f - font.width(text) * scaleFactor) * inverseScale);
+        int textY = (int) (((float) y + 16.0f - 7.0f * scaleFactor) * inverseScale);
+        graphics.drawString(font, text, textX, textY, 0x55FF55, true);
+        graphics.pose().popPose();
+        RenderSystem.enableDepthTest();
     }
 
     @Override

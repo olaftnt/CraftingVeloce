@@ -241,6 +241,12 @@ public class VelocePipeNetworkManager extends SavedData {
                     }
                     continue;
                 }
+                if (neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock craftingTableBlock) {
+                    if (craftingTableBlock.canConnectFrom(neighborState, dir.getOpposite())) {
+                        discoveredTerminals.add(neighborPos);
+                    }
+                    continue;
+                }
 
                 // 3. Neighbor is Refined Storage
                 if (RefinedStorageHelper.hasRSNetwork(level, neighborPos, dir.getOpposite())) {

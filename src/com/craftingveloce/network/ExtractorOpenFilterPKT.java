@@ -32,6 +32,15 @@ public record ExtractorOpenFilterPKT(BlockPos pos, int filterIndex) implements C
             if (player.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5, pkt.pos().getZ() + 0.5) > 64.0) {
                 return;
             }
+            // Send network counts if connected to a network
+            if (player.level() instanceof net.minecraft.server.level.ServerLevel sl) {
+                com.craftingveloce.network.pipe.VelocePipeNetworkManager manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
+                com.craftingveloce.network.pipe.VelocePipeNetwork net = manager.getNetworkForTerminal(sl, pkt.pos());
+                if (net != null) {
+                    java.util.Map<net.minecraft.world.item.Item, Long> counts = net.getAllItemCounts(sl);
+                    PacketDistributor.sendToPlayer(player, new SyncTerminalCountsPKT(counts));
+                }
+            }
             // Send back to client to open the picker
             PacketDistributor.sendToPlayer(player, new OpenFilterPickerPKT(pkt.pos(), pkt.filterIndex()));
         });

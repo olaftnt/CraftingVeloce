@@ -20,6 +20,8 @@ public class ClientTerminalHelper {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof VeloceTerminalScreen screen) {
             screen.updateNetworkCounts(itemCounts);
+        } else if (mc.screen instanceof com.craftingveloce.client.gui.VeloceFilterPickerScreen screen) {
+            screen.updateNetworkCounts(itemCounts);
         }
     }
 
@@ -40,5 +42,20 @@ public class ClientTerminalHelper {
 
     public static net.minecraft.world.phys.HitResult getClientHitResult() {
         return Minecraft.getInstance().hitResult;
+    }
+
+    public static void openCraftingTableScreen(BlockPos pos, java.util.Set<Item> enabledItems) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            mc.setScreen(new com.craftingveloce.client.gui.VeloceCraftingTableScreen(
+                    mc.player, mc.player.connection.enabledFeatures(), true, pos, enabledItems));
+        }
+    }
+
+    public static void updateCraftingTableState(BlockPos pos, java.util.Set<Item> enabledItems) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof com.craftingveloce.client.gui.VeloceCraftingTableScreen screen) {
+            screen.updateEnabledItems(enabledItems);
+        }
     }
 }

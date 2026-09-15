@@ -1,0 +1,130 @@
+package com.craftingveloce.block;
+
+import com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity;
+import com.craftingveloce.init.VeloceRegistry;
+import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
+import com.mojang.serialization.MapCodec;
+import com.tom.storagemod.block.IInventoryCable;
+import com.tom.storagemod.inventory.InventoryCableNetwork;
+import com.tom.storagemod.util.BlockFace;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.block.BaseEntityBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.SoundType;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.phys.BlockHitResult;
+
+import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
+
+public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityBlock, IInventoryCable {
+
+    public static final MapCodec<VeloceCraftingTableBlock> CODEC = ChestBlock.simpleCodec(properties -> new VeloceCraftingTableBlock());
+
+    public VeloceCraftingTableBlock() {
+        super(BlockBehaviour.Properties.of()
+                .mapColor(MapColor.COLOR_CYAN)
+                .sound(SoundType.WOOD)
+                .strength(2.5F)
+                .lightLevel(s -> 7));
+    }
+
+    @Override
+    public RenderShape getRenderShape(BlockState state) {
+        return RenderShape.MODEL;
+    }
+
+    @Override
+    public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
+        return new VeloceCraftingTableBlockEntity(pos, state);
+    }
+
+    @Override
+    protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos, Player player, BlockHitResult hit) {
+        if (!world.isClientSide && player instanceof ServerPlayer serverPlayer) {
+            BlockEntity be = world.getBlockEntity(pos);
+            if (be instanceof VeloceCraftingTableBlockEntity ctBE) {
+                ctBE.syncToPlayer(serverPlayer);
+            }
+        }
+        return InteractionResult.sidedSuccess(world.isClientSide);
+    }
+
+    @Override
+    public void setPlacedBy(Level world, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
+        super.setPlacedBy(world, pos, state, placer, stack);
+        if (!world.isClientSide) {
+            InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
+            n.markNodeInvalid(pos);
+            if (world instanceof ServerLevel sl) {
+                VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
+            }
+        }
+    }
+
+    @Override
+    public void onRemove(BlockState state, Level world, BlockPos pos, BlockState newState, boolean isMoving) {
+        if (!state.is(newState.getBlock())) {
+            super.onRemove(state, world, pos, newState, isMoving);
+        }
+    }
+
+    @Override
+    public void destroy(LevelAccessor world, BlockPos pos, BlockState state) {
+        super.destroy(world, pos, state);
+        if (world instanceof ServerLevel l) {
+            InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
+            VelocePipeNetworkManager.get(l).onTerminalRemoved(pos);
+        }
+    }
+
+    @Override
+    public void neighborChanged(BlockState state, Level world, BlockPos pos, Block block, BlockPos neighbor, boolean isMoving) {
+        super.neighborChanged(state, world, pos, block, neighbor, isMoving);
+        if (!world.isClientSide) {
+            InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
+            n.markNodeInvalid(pos);
+            n.markNodeInvalid(neighbor);
+        }
+    }
+
+    @Override
+    public boolean canConnectFrom(BlockState state, Direction dir) {
+        return true;
+    }
+
+    @Override
+    public List<BlockFace> nextScan(Level world, BlockState state, BlockPos pos) {
+        List<BlockFace> list = new ArrayList<>();
+        for (Direction d : Direction.values()) {
+            list.add(new BlockFace(pos.relative(d), d.getOpposite()));
+        }
+        return list;
+    }
+
+    @Override
+    public boolean isFunctionalNode() {
+        return true;
+    }
+
+    @Override
+    protected MapCodec<? extends BaseEntityBlock> codec() {
+        return CODEC;
+    }
+}

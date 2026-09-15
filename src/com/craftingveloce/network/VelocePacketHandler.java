@@ -13,9 +13,12 @@ public class VelocePacketHandler {
             registrar.playToClient(SyncTerminalCountsPKT.TYPE, SyncTerminalCountsPKT.STREAM_CODEC, SyncTerminalCountsPKT::handle);
             registrar.playToClient(OpenFilterPickerPKT.TYPE, OpenFilterPickerPKT.STREAM_CODEC, OpenFilterPickerPKT::handle);
             registrar.playToClient(SyncExtractorFiltersPKT.TYPE, SyncExtractorFiltersPKT.STREAM_CODEC, SyncExtractorFiltersPKT::handle);
+            registrar.playToClient(OpenCraftingTableScreenPKT.TYPE, OpenCraftingTableScreenPKT.STREAM_CODEC, OpenCraftingTableScreenPKT::handle);
+            registrar.playToClient(SyncCraftingTableStatePKT.TYPE, SyncCraftingTableStatePKT.STREAM_CODEC, SyncCraftingTableStatePKT::handle);
             registrar.playToServer(TerminalPullItemPKT.TYPE, TerminalPullItemPKT.STREAM_CODEC, TerminalPullItemPKT::handle);
             registrar.playToServer(ExtractorSetFilterPKT.TYPE, ExtractorSetFilterPKT.STREAM_CODEC, ExtractorSetFilterPKT::handle);
             registrar.playToServer(ExtractorOpenFilterPKT.TYPE, ExtractorOpenFilterPKT.STREAM_CODEC, ExtractorOpenFilterPKT::handle);
+            registrar.playToServer(CraftingTableToggleItemPKT.TYPE, CraftingTableToggleItemPKT.STREAM_CODEC, CraftingTableToggleItemPKT::handle);
         });
     }
 }

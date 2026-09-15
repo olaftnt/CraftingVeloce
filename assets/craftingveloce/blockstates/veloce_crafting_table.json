@@ -1,0 +1,7 @@
+{
+    "variants": {
+        "": {
+            "model": "craftingveloce:block/veloce_crafting_table"
+        }
+    }
+}

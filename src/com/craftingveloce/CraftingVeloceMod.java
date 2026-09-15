@@ -33,6 +33,7 @@ public class CraftingVeloceMod {
                     .displayItems((params, output) -> {
                         output.accept(VeloceRegistry.VELOCE_TOM_TERMINAL_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_EXTRACTOR_ITEM.get());
+                        output.accept(VeloceRegistry.VELOCE_CRAFTING_TABLE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_PIPE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_WRENCH.get());
                     })

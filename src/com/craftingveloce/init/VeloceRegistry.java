@@ -93,6 +93,23 @@ public class VeloceRegistry {
             () -> new VeloceWrenchItem(new Item.Properties())
     );
 
+    // 5. Veloce Crafting Table (auto-crafter node)
+    public static final DeferredBlock<com.craftingveloce.block.VeloceCraftingTableBlock> VELOCE_CRAFTING_TABLE = BLOCKS.register(
+            "veloce_crafting_table",
+            com.craftingveloce.block.VeloceCraftingTableBlock::new
+    );
+
+    public static final DeferredItem<BlockItem> VELOCE_CRAFTING_TABLE_ITEM = ITEMS.registerSimpleBlockItem(
+            "veloce_crafting_table",
+            VELOCE_CRAFTING_TABLE
+    );
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity>> VELOCE_CRAFTING_TABLE_BE =
+            BLOCK_ENTITY_TYPES.register("veloce_crafting_table", () -> createBEType(
+                    (pos, state) -> new com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity(pos, state),
+                    VELOCE_CRAFTING_TABLE.get()
+            ));
+
 
     @FunctionalInterface
     public interface BlockEntityFactory<T extends BlockEntity> {
