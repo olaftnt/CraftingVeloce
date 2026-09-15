@@ -313,16 +313,63 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
         return result;
     }
 
+    /**
+     * Buduje wpis NBT jednego stosu, razem z numerem slotu.
+     *
+     * <p><b>BUG, ktory to naprawia (filtry i ekwipunek sie nie zapisywaly).</b>
+     * W 1.21.1 {@code ItemStack.save} ma postac:
+     * <pre>
+     *   public Tag save(HolderLookup.Provider provider, Tag prefix)
+     * </pre>
+     * czyli <b>ZWRACA nowy tag</b> (uzywajac przekazanego jako baze), a NIE
+     * mutuje go w miejscu. Poprzedni kod wolal:
+     * <pre>
+     *   itemTag.putByte("Slot", (byte) i);
+     *   stack.save(registries, itemTag);      // wynik WYRZUCONY
+     *   filterList.add(itemTag);
+     * </pre>
+     * wiec do zapisu trafial SAM numer slotu, bez przedmiotu. W pliku swiata
+     * widac to bylo doslownie tak:
+     * <pre>
+     *   Filters: [{'Slot': 6}]      // brak "id" i "count"
+     *   Outputs: [{'Slot': 6}]      // brak "id" i "count"
+     * </pre>
+     * Efekt: po ponownym wejsciu filtry i ekwipunek extractora byly puste.
+     *
+     * <p>Teraz bierzemy ZWRACANY tag. Numer slotu dokladamy do wyniku, wiec
+     * dziala niezaleznie od tego, czy implementacja zachowuje przekazana baze.
+     */
+    private static CompoundTag saveStackEntry(ItemStack stack, int slot,
+                                              HolderLookup.Provider registries) {
+        // save() rzuca wyjatkiem dla pustego stosu - wolajacy musi to sprawdzic.
+        CompoundTag base = new CompoundTag();
+        base.putByte("Slot", (byte) slot);
+        net.minecraft.nbt.Tag saved = stack.save(registries, base);
+        CompoundTag entry = saved instanceof CompoundTag ct ? ct : base;
+        entry.putByte("Slot", (byte) slot);
+        return entry;
+    }
+
+    /**
+     * Odczytuje stos z wpisu NBT.
+     *
+     * <p>Usuwamy z kopii wlasny klucz {@code Slot} przed parsowaniem, zeby
+     * kodek przedmiotu nie mial szans sie na nim potknac.
+     */
+    private static ItemStack loadStackEntry(CompoundTag entry,
+                                            HolderLookup.Provider registries) {
+        CompoundTag clean = entry.copy();
+        clean.remove("Slot");
+        return ItemStack.parse(registries, clean).orElse(ItemStack.EMPTY);
+    }
+
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         ListTag filterList = new ListTag();
         for (int i = 0; i < 9; i++) {
             if (!filterSlots.get(i).isEmpty()) {
-                CompoundTag itemTag = new CompoundTag();
-                itemTag.putByte("Slot", (byte) i);
-                filterSlots.get(i).save(registries, itemTag);
-                filterList.add(itemTag);
+                filterList.add(saveStackEntry(filterSlots.get(i), i, registries));
             }
         }
         tag.put("Filters", filterList);
@@ -341,10 +388,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
         for (int i = 0; i < outputInventory.getContainerSize(); i++) {
             ItemStack stack = outputInventory.getItem(i);
             if (!stack.isEmpty()) {
-                CompoundTag itemTag = new CompoundTag();
-                itemTag.putByte("Slot", (byte) i);
-                stack.save(registries, itemTag);
-                outputList.add(itemTag);
+                outputList.add(saveStackEntry(stack, i, registries));
             }
         }
         tag.put("Outputs", outputList);
@@ -359,7 +403,10 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
             CompoundTag itemTag = filterList.getCompound(i);
             int slot = itemTag.getByte("Slot") & 255;
             if (slot < 9) {
-                ItemStack.parse(registries, itemTag).ifPresent(s -> filterSlots.set(slot, s));
+                ItemStack loaded = loadStackEntry(itemTag, registries);
+                if (!loaded.isEmpty()) {
+                    filterSlots.set(slot, loaded);
+                }
             }
         }
 
@@ -378,7 +425,10 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
             CompoundTag itemTag = outputList.getCompound(i);
             int slot = itemTag.getByte("Slot") & 255;
             if (slot < outputInventory.getContainerSize()) {
-                ItemStack.parse(registries, itemTag).ifPresent(s -> outputInventory.setItem(slot, s));
+                ItemStack loaded = loadStackEntry(itemTag, registries);
+                if (!loaded.isEmpty()) {
+                    outputInventory.setItem(slot, loaded);
+                }
             }
         }
     }
