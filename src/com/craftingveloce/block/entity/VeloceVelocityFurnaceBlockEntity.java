@@ -281,9 +281,32 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             // Nie jest paliwem - nie spalamy go i nie blokujemy slotu.
             return;
         }
+        ItemStack burned = fuel.copyWithCount(1);
         fuelSlot.removeItem(0, 1);
         burnTicksTotal = burn;
         burnTicksRemaining = burn;
+        returnContainerRemainder(burned);
+    }
+
+    /**
+     * Oddaje to, co zostaje po spalonym paliwie - np. PUSTE WIADERKO po lawie.
+     *
+     * <p><b>BUG, ktory to naprawia (pytanie gracza: "co zrobi z wiaderkiem?").</b>
+     * Piec robil tylko {@code removeItem(0, 1)} i tyle - wiaderko znikalo.
+     * Vanilla oddaje pozostalosc z receptury itemu ({@code getCraftingRemainingItem}),
+     * a paliwo przyjezdza do nas z sieci, wiec tam tez wraca pozostalosc.
+     * Gdy siec jest pelna, reszta leci na ziemie przy piecu (patrz
+     * {@link #depositBack}) - NIGDY nie jest kasowana.
+     */
+    private void returnContainerRemainder(ItemStack burnedFuel) {
+        if (!burnedFuel.hasCraftingRemainingItem()) {
+            return;
+        }
+        ItemStack remainder = burnedFuel.getCraftingRemainingItem();
+        if (remainder.isEmpty()) {
+            return;
+        }
+        depositBack(remainder);
     }
 
     /**
@@ -480,15 +503,34 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         }
     }
 
-    /** Oddaje nadwyzke do sieci (gdy piec nie mial gdzie jej zmiescic). */
+    /**
+     * Oddaje item do sieci, a to czego siec nie przyjmie - upuszcza przy piecu.
+     *
+     * <p><b>BUG, ktory to naprawia (pytanie gracza: "co jesli siec nie ma
+     * miejsca?").</b> {@code insertIntoStorage} zwraca RESZTE, ktorej nie udalo
+     * sie wcisnac - a my ja ignorowalismy, wiec przy pelnej sieci item po prostu
+     * ZNIKAL (nadwyzka paliwa, puste wiaderko po lawie, cokolwiek). Teraz
+     * reszta trafia na ziemie przed piecem, tak jak robi to gracz wypelniajac
+     * skrzynke. Zaden item nie ginie.
+     */
     private void depositBack(ItemStack stack) {
         if (stack.isEmpty() || !(level instanceof ServerLevel sl)) {
             return;
         }
-        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+        // UWAGA: zmienna NIE moze nazywac sie `net` - przeslonilaby pakiet
+        // `net` i `net.minecraft...` przestaloby sie kompilowac (ten sam trap,
+        // ktory juz raz trafil sie w VelocePipeNetwork).
+        VelocePipeNetwork network = VelocePipeNetworkManager.get(sl)
                 .getNetworkForTerminal(sl, worldPosition);
-        if (net != null) {
-            net.insertIntoStorage(sl, stack);
+        ItemStack leftover = stack;
+        if (network != null) {
+            leftover = network.insertIntoStorage(sl, stack);
+        }
+        if (!leftover.isEmpty()) {
+            net.minecraft.world.level.block.Block.popResource(sl, worldPosition, leftover);
+            com.craftingveloce.util.VeloceLog.Block.failure(
+                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                    "piec: siec nie przyjmuje (%s) - upuszczam przy piecu", leftover);
         }
     }
 
