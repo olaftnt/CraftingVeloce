@@ -391,7 +391,7 @@ public class VelocePipeNetworkManager extends SavedData {
                 ? VelocePipeWorld.componentId(world.componentOf(seed))
                 : UUID.randomUUID();
 
-        VelocePipeNetwork net = new VelocePipeNetwork(id);
+        VelocePipeNetwork net = persistentNetwork(id, true);
         net.getPipes().addAll(members);
 
         // Czytamy, co stoi obok rur: wezly (terminal/crafter/extractor)
@@ -422,12 +422,45 @@ public class VelocePipeNetworkManager extends SavedData {
     }
 
     /** Buduje obiekt sieci z zapisanego opisu komponentu (bez dotykania swiata). */
+    /**
+     * Siec o danym UUID z magazynu TRWALEGO (albo nowa, jesli jeszcze jej nie ma).
+     *
+     * <p><b>BUG, ktory to naprawia (zgloszenie gracza: "kontroler nie zapisuje
+     * preferred").</b> Sciezki "na zadanie" - cache komponentu
+     * ({@link #toNetwork}) i odczyt ze swiata - budowaly ZA KAZDYM RAZEM nowy
+     * obiekt {@code VelocePipeNetwork}. Wszystko, co trzyma sie w sieci, a wiec
+     * takze preferencja "piec czy crafting" ustawiana prawym klikiem
+     * w kontrolerze, ladowalo w obiekcie, ktory natychmiast stawal sie smieciem
+     * (i nie trafial do zapisu swiata). Gracz ustawial preferencje, GUI ja
+     * pokazywalo - bo klient przelacza ja u siebie optymistycznie - a po
+     * ponownym otwarciu wracala domyslna.
+     *
+     * <p>Teraz obowiazuje TA SAMA zasada, co w {@link #scanAndBuildNetwork}:
+     * jedno UUID = JEDEN obiekt. Przebudowanie tylko odswieza jego zawartosc,
+     * wiec zapisy i odczyty (takze z pakietu i z zapisu swiata) dotycza tego
+     * samego miejsca.
+     */
+    private VelocePipeNetwork persistentNetwork(UUID id, boolean clearTopology) {
+        VelocePipeNetwork net = networks.get(id);
+        if (net == null) {
+            net = new VelocePipeNetwork(id);
+            networks.put(id, net);
+        } else if (clearTopology) {
+            net.getPipes().clear();
+            net.getTerminals().clear();
+            net.getEndpoints().clear();
+        }
+        return net;
+    }
+
     private VelocePipeNetwork toNetwork(ServerLevel level, BlockPos seed, VelocePipeWorld.Component component) {
         BlockPos root = world.componentOf(seed);
         UUID id = root != null
                 ? VelocePipeWorld.componentId(root)
                 : UUID.randomUUID();
-        VelocePipeNetwork net = new VelocePipeNetwork(id);
+        // TRWALY obiekt (patrz persistentNetwork) - inaczej preferencja
+        // ustawiona w kontrolerze ginelaby razem z tym obiektem.
+        VelocePipeNetwork net = persistentNetwork(id, true);
         net.getPipes().addAll(component.pipes);
 
         // Wezly: tak samo jak magazyny - przez sasiedztwo z rurami tego
@@ -1587,16 +1620,9 @@ public class VelocePipeNetworkManager extends SavedData {
         // Siec-ciaglosc: zachowujemy ja, jesli istnieje. Wtedy jej cache
         // i force-loady NIE sa ruszane (patrz VeloceCraftingCache.get, ktory
         // odswieza tylko referencje do obiektu pod tym samym UUID).
-        VelocePipeNetwork newNet = networks.get(finalId);
-        if (newNet == null) {
-            newNet = new VelocePipeNetwork(finalId);
-        } else {
-            // Stara zawartosc zniknie - budujemy nowa liste od zera, ale
-            // obiekt (a wiec UUID i cache) zostaje ten sam.
-            newNet.getPipes().clear();
-            newNet.getTerminals().clear();
-            newNet.getEndpoints().clear();
-        }
+        // Stara zawartosc zniknie - budujemy nowa liste od zera, ale obiekt
+        // (a wiec UUID, cache i preferencje) zostaje ten sam.
+        VelocePipeNetwork newNet = persistentNetwork(finalId, true);
         newNet.getPipes().addAll(visitedPipes);
         newNet.getTerminals().addAll(discoveredTerminals);
         newNet.getEndpoints().putAll(discoveredEndpoints);
