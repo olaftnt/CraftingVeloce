@@ -244,6 +244,12 @@ public class VelocePipeNetworkManager extends SavedData {
                 if (neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock craftingTableBlock) {
                     if (craftingTableBlock.canConnectFrom(neighborState, dir.getOpposite())) {
                         discoveredTerminals.add(neighborPos);
+                        // Bufor auto-craftera jest dodatkowo endpointem magazynu:
+                        // dzieki temu nadwyzka produkcji (np. 3 deski z 1 logu,
+                        // gdy gracz chcial 1) jest widoczna dla calej sieci i
+                        // mozna ja wyciagnac terminalem, rura czy hopperem.
+                        discoveredEndpoints.put(neighborPos, new CraftingBufferEndpoint(
+                                neighborPos, dir.getOpposite()));
                     }
                     continue;
                 }

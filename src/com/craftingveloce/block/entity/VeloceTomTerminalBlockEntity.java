@@ -374,6 +374,52 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         if (!result.success()) {
             return ItemStack.EMPTY;
         }
+
+        // Wynik craftowania trafia najpierw do bufora craftera (pamiec podreczna),
+        // a dopiero potem do endpointow sieci. Bufor NIE jest endpointem, wiec
+        // net.extractItem() go nie widzi - dlatego najpierw probujemy wyciagnac
+        // wlasnie z buforow, i tylko jako fallback z sieci.
+        ItemStack fromBuffer = extractFromBuffers(buffers, item, count);
+        if (!fromBuffer.isEmpty()) {
+            return fromBuffer;
+        }
         return net.extractItem(sl, item, count);
+    }
+
+    /**
+     * Wyciaga item z buforow auto-crafterow.
+     *
+     * <p>Bufor nie jest endpointem sieci, wiec standardowa ekstrakcja go pomija.
+     * Bez tego itemy wycraftowane na poczekaniu zostawalyby w bloku craftera
+     * zamiast trafic do gracza.
+     */
+    private static ItemStack extractFromBuffers(
+            java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers,
+            Item item, int count) {
+        ItemStack result = ItemStack.EMPTY;
+        int remaining = count;
+        for (var buf : buffers) {
+            if (remaining <= 0) {
+                break;
+            }
+            for (int slot = 0; slot < buf.getContainerSize() && remaining > 0; slot++) {
+                ItemStack inSlot = buf.getItem(slot);
+                if (inSlot.isEmpty() || inSlot.getItem() != item) {
+                    continue;
+                }
+                int take = Math.min(remaining, inSlot.getCount());
+                ItemStack taken = buf.removeItem(slot, take);
+                if (taken.isEmpty()) {
+                    continue;
+                }
+                if (result.isEmpty()) {
+                    result = taken.copy();
+                } else {
+                    result.grow(taken.getCount());
+                }
+                remaining -= taken.getCount();
+            }
+        }
+        return result;
     }
 }

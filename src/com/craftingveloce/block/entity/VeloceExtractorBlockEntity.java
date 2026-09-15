@@ -173,7 +173,45 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
         if (!result.success()) {
             return ItemStack.EMPTY;
         }
+
+        // Wynik trafia najpierw do bufora craftera, ktory nie jest endpointem
+        // sieci - dlatego najpierw wyciagamy z buforow, potem z sieci.
+        ItemStack fromBuffer = extractFromBuffers(buffers, item, count);
+        if (!fromBuffer.isEmpty()) {
+            return fromBuffer;
+        }
         return net.extractItem(sl, item, count);
+    }
+
+    /** Wyciaga item z buforow auto-crafterow. */
+    private static ItemStack extractFromBuffers(
+            java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers,
+            Item item, int count) {
+        ItemStack result = ItemStack.EMPTY;
+        int remaining = count;
+        for (var buf : buffers) {
+            if (remaining <= 0) {
+                break;
+            }
+            for (int slot = 0; slot < buf.getContainerSize() && remaining > 0; slot++) {
+                ItemStack inSlot = buf.getItem(slot);
+                if (inSlot.isEmpty() || inSlot.getItem() != item) {
+                    continue;
+                }
+                int take = Math.min(remaining, inSlot.getCount());
+                ItemStack taken = buf.removeItem(slot, take);
+                if (taken.isEmpty()) {
+                    continue;
+                }
+                if (result.isEmpty()) {
+                    result = taken.copy();
+                } else {
+                    result.grow(taken.getCount());
+                }
+                remaining -= taken.getCount();
+            }
+        }
+        return result;
     }
 
     @Override

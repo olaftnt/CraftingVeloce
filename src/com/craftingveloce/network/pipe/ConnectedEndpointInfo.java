@@ -26,7 +26,13 @@ public class ConnectedEndpointInfo {
 
     public enum Type {
         INVENTORY,
-        REFINED_STORAGE
+        REFINED_STORAGE,
+        /**
+         * Bufor auto-craftera - pamiec podreczna bloku, nie zasobnik w swiecie.
+         * Rozpoznawany po typie, zeby po restarcie swiata odtworzyc wlasciwa
+         * implementacje endpointu (patrz {@link CraftingBufferEndpoint}).
+         */
+        CRAFTING_BUFFER
     }
 
     private final BlockPos pos;
@@ -269,7 +275,11 @@ public class ConnectedEndpointInfo {
         Direction side = Direction.values()[tag.getInt("Side")];
         Type type = Type.valueOf(tag.getString("Type"));
 
-        ConnectedEndpointInfo info = new ConnectedEndpointInfo(pos, side, type);
+        // Bufor craftera ma wlasna implementacje (czyta z bufora bloku,
+        // a nie z zasobnika w swiecie) - trzeba ją odtworzyc po restarcie.
+        ConnectedEndpointInfo info = type == Type.CRAFTING_BUFFER
+                ? new CraftingBufferEndpoint(pos, side)
+                : new ConnectedEndpointInfo(pos, side, type);
         ListTag list = tag.getList("Cache", Tag.TAG_COMPOUND);
         for (int i = 0; i < list.size(); i++) {
             CompoundTag itemTag = list.getCompound(i);
