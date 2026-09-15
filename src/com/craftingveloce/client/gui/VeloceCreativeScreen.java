@@ -515,6 +515,52 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      * nadpisuja te metode zwracajac true.
      */
     /**
+     * Zbiera sloty zbroi i tarczy z menu ekwipunku gracza.
+     *
+     * <p>Creatiive inventory ich nie ma, ale zakladka Survival Inventory
+     * pokazuje prawdziwe menu gracza - i tam one sa. Trzeba je odroznic od
+     * zwyklych slotow ekwipunku, bo inaczej zostana ukryte.
+     */
+    protected java.util.Set<Slot> collectArmorAndShieldSlots() {
+        java.util.Set<Slot> out = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return out;
+        }
+        var inv = this.minecraft.player.inventoryMenu;
+        if (inv == null) {
+            return out;
+        }
+        int size = inv.slots.size();
+        var startF = reflectStaticInt(
+                "net.minecraft.world.inventory.InventoryMenu", "ARMOR_SLOT_START");
+        var countF = reflectStaticInt(
+                "net.minecraft.world.inventory.InventoryMenu", "ARMOR_SLOT_COUNT");
+        Integer shield = reflectStaticInt(
+                "net.minecraft.world.inventory.InventoryMenu", "SHIELD_SLOT");
+        if (startF == null || countF == null) {
+            return out;
+        }
+        for (int i = startF; i < startF + countF && i < size; i++) {
+            out.add(inv.slots.get(i));
+        }
+        if (shield != null && shield >= 0 && shield < size) {
+            out.add(inv.slots.get(shield));
+        }
+        return out;
+    }
+
+    /** Czyta statyczna stala int z klasy vanilla (null gdy sie nie uda). */
+    @Nullable
+    private static Integer reflectStaticInt(String className, String fieldName) {
+        try {
+            var f = Class.forName(className).getField(fieldName);
+            return f.getInt(null);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
      * Slot zastepczy dla ukrytych slotow gracza.
      *
      * <p>Osobna klasa (a nie anonimowa) po to, zeby dalo sie go ROZPOZNAC przy
@@ -544,8 +590,22 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         if (this.menu == null || this.minecraft == null || this.minecraft.player == null) {
             return;
         }
+        // Sloty zbroi i tarczy w zakladce Survival Inventory.
+        //
+        // BUG: te sloty maja kontener gracza, wiec isPlayerInventorySlot()
+        // kwalifikowalo je do ukrycia - i znikaly (zostawaly tylko zwykle
+        // sloty ekwipunku). Uzytkownik zglaszal brak slotu na tarcze.
+        //
+        // Rozpoznajemy je po POZYCJI w menu gracza (ARMOR_SLOT_START..COUNT),
+        // bo te stale sa stabilne, a sam slot nie ma wlasnego typu.
+        java.util.Set<Slot> armorAndShield = collectArmorAndShieldSlots();
+
         for (int i = 0; i < this.menu.slots.size(); i++) {
             Slot s = this.menu.slots.get(i);
+
+            if (armorAndShield.contains(s)) {
+                continue;   // zbroja i tarcza zostaja widoczne
+            }
 
             // Juz ukryty - nie zawijamy go drugi raz.
             //
@@ -610,7 +670,30 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             this.onClose();
             return true;
         }
-        // Klawisz ekwipunku (domyslnie E) tez zamyka - gracz tego oczekuje.
+        // Klawisz ekwipunku (domyslnie E) zamyka - ALE NIE gdy gracz wlasnie
+        // pisze w wyszukiwarce.
+        //
+        // BUG: E zamykalo okno bezwarunkowo, wiec wpisanie litery "e" w pole
+        // wyszukiwania (zakladka SEARCH) wyrzucalo gracza z GUI. Teraz
+        // sprawdzamy, czy fokus jest na polu tekstowym - jesli tak, klawisz
+        // nalezy do pola i ma tam trafic.
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE
+                || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER
+                || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER
+                || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) {
+            // Te klawisze obsluguje samo pole tekstowe (zatwierdzenie, wyjscie
+            // z pola) - nie zamykamy okna, gdy jest aktywne.
+            if (isTypingInTextField()) {
+                return super.keyPressed(keyCode, scanCode, modifiers);
+            }
+        }
+        if (isTypingInTextField()
+                && this.minecraft != null && this.minecraft.options != null
+                && this.minecraft.options.keyInventory != null
+                && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
+            // "e" jest zwyklym znakiem, gdy piszemy - niech idzie do pola.
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
         if (this.minecraft != null && this.minecraft.options != null
                 && this.minecraft.options.keyInventory != null
                 && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
@@ -618,6 +701,21 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    /**
+     * Czy gracz wlasnie pisze w polu tekstowym (wyszukiwarka).
+     *
+     * <p>Po to, zeby klawisze skrotow (E, Esc, Enter) nie zabieraly znakow
+     * ani nie zamykaly okna w trakcie pisania.
+     */
+    protected boolean isTypingInTextField() {
+        try {
+            net.minecraft.client.gui.components.events.GuiEventListener focused = this.getFocused();
+            return focused instanceof net.minecraft.client.gui.components.EditBox;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     @Override
