@@ -73,7 +73,6 @@
   "item.craftingveloce.veloce_pipe": "Veloce Pipe",
   "item.craftingveloce.veloce_tom_terminal": "Veloce Storage Terminal",
   "item.craftingveloce.wrench": "Veloce Wrench",
-  "gui.craftingveloce.electric.batterySlot": "Put a charged FE item here (battery, energy cube, flux tablet)",
   "gui.craftingveloce.controller.prefer.crafting": "Preference: Crafting",
   "gui.craftingveloce.controller.prefer.furnace": "Preference: Furnace",
   "gui.craftingveloce.controller.prefer.hint": "Right-click to switch (both still work)"

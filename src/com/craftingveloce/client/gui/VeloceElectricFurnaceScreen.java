@@ -107,8 +107,10 @@ public class VeloceElectricFurnaceScreen
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
 
+        // Tooltip TYLKO na baterii. Podpowiedz na slocie (co w niego wlozyc)
+        // zostala usunieta na zyczenie uzytkownika - slot ma mowic sam za
+        // siebie, a nie dokladac tekst przy najechaniu.
         renderBatteryTooltip(graphics, mouseX, mouseY);
-        renderBatterySlotHint(graphics, mouseX, mouseY);
         this.renderTooltip(graphics, mouseX, mouseY);
     }
 
@@ -132,24 +134,6 @@ public class VeloceElectricFurnaceScreen
         graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
     }
 
-    /**
-     * Podpowiedz na slocie baterii - TYLKO gdy slot jest pusty.
-     *
-     * <p>Gdy lezy w nim item, wanilia rysuje jego wlasny tooltip i doklejanie
-     * czegokolwiek tutaj tylko by go zaslanialo.
-     */
-    private void renderBatterySlotHint(GuiGraphics graphics, int mouseX, int mouseY) {
-        if (!isHovering(VeloceElectricFurnaceMenu.BATTERY_SLOT_X,
-                VeloceElectricFurnaceMenu.BATTERY_SLOT_Y, 16, 16, mouseX, mouseY)) {
-            return;
-        }
-        if (this.menu.getSlot(0).hasItem()) {
-            return;
-        }
-        graphics.renderTooltip(this.font,
-                Component.translatable("gui.craftingveloce.electric.batterySlot"),
-                mouseX, mouseY);
-    }
 
     /** Odswieza pasek z block entity klienta (bez osobnego pakietu). */
     @Override
