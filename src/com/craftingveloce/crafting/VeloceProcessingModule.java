@@ -5,6 +5,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.crafting.RecipeType;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -50,4 +51,20 @@ public interface VeloceProcessingModule {
 
     /** Czy maszyna tego modulu jest teraz zdolna wykonac operacje. */
     boolean powered(ServerLevel level, VelocePipeNetwork network);
+
+    /**
+     * Receptury tego modulu, ktore wytwarzaja dany item.
+     *
+     * <p><b>Po co.</b> Sama lista "co umiem zrobic" ({@link #producible}) nie
+     * wystarcza planerowi - on potrzebuje konkretnych receptur ze skladnikami
+     * i liczbami sztuk, zeby policzyc, ile da sie zrobic z tego, co jest
+     * w sieci. Moduly z innych modow maja wlasne modele receptur, wiec to one
+     * tlumacza je na wspolny {@link ProcessingEntry}.
+     *
+     * <p>Domyslnie pusto: modul, ktory tylko doklada gotowe receptury do
+     * wspolnego indeksu (jak piec), nie musi nic implementowac.
+     */
+    default List<ProcessingEntry> recipesFor(ServerLevel level, Item item) {
+        return List.of();
+    }
 }

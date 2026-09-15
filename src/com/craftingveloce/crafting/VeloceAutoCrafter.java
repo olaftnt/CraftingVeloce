@@ -8,6 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.RecipeType;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -200,10 +201,49 @@ public final class VeloceAutoCrafter {
 
         /** Receptury dla itemu, z piecem tylko gdy jest czym palic. */
         List<ProcessingEntry> recipesFor(Item item) {
-            return VeloceRecipeRegistry.getRecipesFor(level, item, heatOps() > 0);
+            return allRecipesFor(level, network, item, heatOps() > 0);
+        }
+
+        /**
+         * Maszyny modulow dla danego typu receptury - pobrane RAZ na wykonanie.
+         *
+         * <p>Ta sama lekcja co przy zrodlach ciepla: pobieranie listy maszyn
+         * przy KAZDEJ sztuce oznaczaloby pelne przejscie po wezlach sieci
+         * z sortowaniem setki razy w jednym ticku. W obrebie jednego zlecenia
+         * zbior maszyn sie nie zmienia.
+         */
+        java.util.List<com.craftingveloce.block.entity.VeloceProcessingSource> moduleSourcesFor(
+                RecipeType<?> type) {
+            if (moduleSourcesCache == null) {
+                moduleSourcesCache = new HashMap<>();
+            }
+            return moduleSourcesCache.computeIfAbsent(type,
+                    t -> VeloceProcessingSources.forType(level, network, t));
         }
 
         private long heatOpsCache = -1L;
+        private Map<RecipeType<?>, java.util.List<com.craftingveloce.block.entity.VeloceProcessingSource>>
+                moduleSourcesCache;
+    }
+
+    /**
+     * Receptury waniliowe PLUS receptury modulow z innych modow.
+     *
+     * <p>Kazdy modul, ktory stoi w sieci i jest zasilony, doklada swoje
+     * receptury na ten item - w innym wypadku automat nigdy nie uzylby
+     * kruszarki czy compaktora, mimo ze stoja podlaczone do rur.
+     */
+    private static List<ProcessingEntry> allRecipesFor(ServerLevel level, VelocePipeNetwork network,
+                                                       Item item, boolean heatAvailable) {
+        List<ProcessingEntry> vanilla = VeloceRecipeRegistry.getRecipesFor(level, item, heatAvailable);
+        List<ProcessingEntry> modules = VeloceModuleRecipes.forItem(level, network, item);
+        if (modules.isEmpty()) {
+            return vanilla;
+        }
+        List<ProcessingEntry> out = new ArrayList<>(vanilla.size() + modules.size());
+        out.addAll(vanilla);
+        out.addAll(modules);
+        return out;
     }
 
     /**
@@ -866,7 +906,7 @@ public final class VeloceAutoCrafter {
             // ciepla sie skonczy, piec przestaje byc opcja - tak samo, jak
             // przestalby nia byc, gdyby brakowalo skladnikow.
             List<ProcessingEntry> recipes =
-                    orderRecipes(level, item, preferred, plan.heatRemaining > 0,
+                    orderRecipes(level, network, item, preferred, plan.heatRemaining > 0,
                             network.prefersFurnace(item));
             if (recipes.isEmpty()) {
                 return false;
@@ -1041,7 +1081,7 @@ public final class VeloceAutoCrafter {
         if (!enabled.contains(item)) {
             return fromStock;
         }
-        var recipes = VeloceRecipeRegistry.getRecipesFor(level, item, heatOps > 0);
+        List<ProcessingEntry> recipes = allRecipesFor(level, network, item, heatOps > 0);
         if (recipes.isEmpty()) {
             return fromStock;
         }
@@ -1053,7 +1093,7 @@ public final class VeloceAutoCrafter {
         // bisekcja z pelnym planowaniem. Dzieki temu takie itemy (a jest ich
         // kilkadziesiat - patrz "furnace=74" w logu) nie zjadaja budzetu
         // partii i nie znikaja z GUI, gdy budzet sie skonczy.
-        long furnaceOnly = countFurnaceOnly(level, item, stock, heatOps);
+        long furnaceOnly = countFurnaceOnly(level, item, stock, heatOps, recipes);
         if (furnaceOnly >= 0) {
             return fromStock + furnaceOnly;
         }
@@ -1071,7 +1111,7 @@ public final class VeloceAutoCrafter {
         // ilosc przez to, ile sztuk danego itemu da sie z niego uzyskac w jednym
         // ciagu receptur. To wciaz tylko ograniczenie bisekcji (bezpieczne
         // zawyzenie), a prawdziwa wartosc i tak znajduje planer.
-        long hi = Math.min(estimateUpperBound(level, item, stock, recipes, heatOps > 0),
+        long hi = Math.min(estimateUpperBound(level, network, item, stock, recipes, heatOps > 0),
                 MAX_ESTIMATE_RESULT);
         if (hi <= 0) {
             return fromStock;
@@ -1111,9 +1151,8 @@ public final class VeloceAutoCrafter {
      * @return policzona liczba sztuk albo {@code -1} = "uzyj planera"
      */
     private static long countFurnaceOnly(ServerLevel level, Item item,
-                                         Map<Item, Long> stock, long heatOps) {
-        List<ProcessingEntry> recipes =
-                VeloceRecipeRegistry.getRecipesFor(level, item, true);
+                                         Map<Item, Long> stock, long heatOps,
+                                         List<ProcessingEntry> recipes) {
         if (recipes.isEmpty()) {
             return 0L;
         }
@@ -1218,8 +1257,8 @@ public final class VeloceAutoCrafter {
      * o tym decyduje planer. Wazne, zeby nie byl ZA MALY, bo wtedy obcinalibysmy
      * poprawne odpowiedzi.
      */
-    private static long estimateUpperBound(ServerLevel level, Item item,
-                                           Map<Item, Long> stock,
+    private static long estimateUpperBound(ServerLevel level, VelocePipeNetwork network,
+                                           Item item, Map<Item, Long> stock,
                                            java.util.List<ProcessingEntry> recipes,
                                            boolean heatAvailable) {
         long total = 0;
@@ -1242,7 +1281,7 @@ public final class VeloceAutoCrafter {
         // wartosci - np. przy 64 klodach patyczki pokazywaly sie jako 256,
         // choc realnie wychodzi 512. Za maly limit obcina poprawna odpowiedz,
         // wiec musi to byc prawdziwe (a nie zgrubne) zawyzenie.
-        double perRawUnit = maxYieldPerRawUnit(level, item,
+        double perRawUnit = maxYieldPerRawUnit(level, network, item,
                 new HashMap<>(), new HashSet<>(), 0, heatAvailable);
         double bound = total * Math.max(1.0, perRawUnit);
         if (bound >= MAX_ESTIMATE_RESULT) {
@@ -1266,7 +1305,8 @@ public final class VeloceAutoCrafter {
      * <p>Cykl receptur i zbyt gleboki lancuch traktujemy jak surowiec
      * (uzysk 1.0), zeby rekurencja byla skonczona.
      */
-    private static double maxYieldPerRawUnit(ServerLevel level, Item item,
+    private static double maxYieldPerRawUnit(ServerLevel level, VelocePipeNetwork network,
+                                             Item item,
                                              Map<Item, Double> memo, Set<Item> visiting,
                                              int depth, boolean heatAvailable) {
         Double cached = memo.get(item);
@@ -1278,8 +1318,9 @@ public final class VeloceAutoCrafter {
         }
         try {
             double best = 1.0;
-            for (var recipe : VeloceRecipeRegistry.getRecipesFor(level, item, heatAvailable)) {
-                double cost = rawCostOfRecipe(level, recipe, memo, visiting, depth, heatAvailable);
+            for (var recipe : allRecipesFor(level, network, item, heatAvailable)) {
+                double cost = rawCostOfRecipe(level, network, recipe, memo, visiting,
+                        depth, heatAvailable);
                 if (cost <= 0.0) {
                     continue;   // receptura bez zadnej dostepnej opcji skladnika
                 }
@@ -1301,7 +1342,7 @@ public final class VeloceAutoCrafter {
      * <p>Zwraca 0, gdy receptury nie da sie uzyc (skladnik nie ma zadnej
      * opcji), bo wtedy nie wnosimy jej do maksimum.
      */
-    private static double rawCostOfRecipe(ServerLevel level,
+    private static double rawCostOfRecipe(ServerLevel level, VelocePipeNetwork network,
                                           ProcessingEntry recipe,
                                           Map<Item, Double> memo, Set<Item> visiting,
                                           int depth, boolean heatAvailable) {
@@ -1311,7 +1352,7 @@ public final class VeloceAutoCrafter {
             Ingredient ing = ingredientList.get(ingIndex);
             double cheapest = Double.MAX_VALUE;
             for (ItemStack opt : nonEmpty(ing)) {
-                double yield = maxYieldPerRawUnit(level, opt.getItem(), memo, visiting,
+                double yield = maxYieldPerRawUnit(level, network, opt.getItem(), memo, visiting,
                         depth + 1, heatAvailable);
                 if (yield < cheapest) {
                     cheapest = yield;
@@ -1378,6 +1419,50 @@ public final class VeloceAutoCrafter {
         return true;
     }
 
+    /**
+     * Zaplata za JEDNO wykonanie receptury.
+     *
+     * <p><b>Trzy rodzaje receptur, trzy zrodla zaplaty:</b>
+     * <ul>
+     *   <li>rodzina {@code FREE} (crafting table, stonecutter, smithing) -
+     *       nie placi niczym, bo nie potrzebuje zadnej maszyny,</li>
+     *   <li>rodzina {@code FURNACE} - placi jednym przepaleniem z pieca,</li>
+     *   <li>rodzina modulu (Create/Alchemistry/Mekanism/...) - placi jedna
+     *       operacja z maszyny tego modulu (ktora sama przelicza to na FE).</li>
+     * </ul>
+     *
+     * <p>Lista maszyn jest brana z {@link Context} (pamiec na czas jednego
+     * zlecenia), zeby nie skanowac sieci przy kazdej sztuce.
+     *
+     * <p>Brak zaplaty NIE jest bledem konfiguracji - to zwykla sytuacja
+     * (piec bez paliwa, maszyna bez pradu). Wolajacy zwraca wtedy pobrane
+     * skladniki.
+     */
+    private static boolean payForOperation(ServerLevel level, Context ctx,
+                                           ProcessingEntry recipe,
+                                           java.util.List<com.craftingveloce.block.entity.VeloceHeatSource> heat) {
+        if (VeloceRecipeFamilies.isFree(recipe.type())) {
+            return true;
+        }
+        if (recipe.isFurnace()) {
+            if (VeloceHeatSources.consumeFrom(heat, 1)) {
+                return true;
+            }
+            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                    "recipe %s needs heat, but no powered furnace could pay for it",
+                    recipe.id());
+            return false;
+        }
+        // Modul z innego moda - maszyna musi stac w sieci i miec energie.
+        if (VeloceProcessingSources.consumeFrom(ctx.moduleSourcesFor(recipe.type()), 1)) {
+            return true;
+        }
+        VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                "recipe %s needs a powered machine for %s, but none could pay for it",
+                recipe.id(), recipe.type());
+        return false;
+    }
+
     /** Jedno wykonanie receptury: pobierz skladniki, wstaw wynik. */
     private static boolean runOnce(ServerLevel level, Context ctx,
                                    ProcessingEntry recipe,
@@ -1415,15 +1500,16 @@ public final class VeloceAutoCrafter {
             }
         }
 
-        // 2. Zaplata cieplem.
+        // 2. Zaplata za operacje.
         //
-        // VeloceHeatSources.consume bierze najpierw z pieca elektrycznego
-        // (priorytet 0), a dopiero gdy w nim zabraknie, dobiera reszte
-        // z paliwowego (1) - dokladnie jak w specyfikacji. Przy niepowodzeniu
-        // nie zabiera NICZEGO.
-        if (recipe.isFurnace() && !VeloceHeatSources.consumeFrom(heat, 1)) {
-            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
-                    "recipe %s needs heat, but no powered furnace could pay for it", recipe.id());
+        // Piec placi cieplem (VeloceHeatSources: najpierw elektryczny, potem
+        // paliwowy), maszyna modulu placi energia wlasna (VeloceProcessingSources),
+        // a receptury bez infrastruktury (crafting table, stonecutter, smithing)
+        // nie placa niczym - dlatego rozpoznajemy je po rodzinie, a nie po tym,
+        // "czy to nie piec".
+        //
+        // Przy niepowodzeniu nie zabieramy NICZEGO i zwracamy pobrane itemy.
+        if (!payForOperation(level, ctx, recipe, heat)) {
             for (ItemStack s : consumed) {
                 deposit(level, ctx, s);
             }
@@ -1595,10 +1681,10 @@ public final class VeloceAutoCrafter {
 
     /** Receptury w kolejnosci preferencji gracza. */
     private static List<ProcessingEntry> orderRecipes(
-            ServerLevel level, Item item, Map<Item, ResourceLocation> preferred,
+            ServerLevel level, VelocePipeNetwork network, Item item,
+            Map<Item, ResourceLocation> preferred,
             boolean heatAvailable, boolean furnaceFirst) {
-        List<ProcessingEntry> all =
-                VeloceRecipeRegistry.getRecipesFor(level, item, heatAvailable);
+        List<ProcessingEntry> all = allRecipesFor(level, network, item, heatAvailable);
         if (all.size() <= 1) {
             return all;
         }

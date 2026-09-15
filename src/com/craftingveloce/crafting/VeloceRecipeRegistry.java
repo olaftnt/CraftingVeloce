@@ -441,6 +441,11 @@ public final class VeloceRecipeRegistry {
     public static void invalidate() {
         CACHE.clear();
         FURNACE_CACHE.clear();
+        // Receptury modulow maja wlasne indeksy per modul oraz pamiec
+        // "ktore moduly sa zasilone" na czas ticku - wszystko musi zostac
+        // uniewaznione razem, inaczej po zmianie swiata planer widzialby
+        // maszyny z poprzedniego.
+        VeloceModuleRecipes.invalidate();
     }
 
     /** Mapa item -> liczba receptur (diagnostyka). */

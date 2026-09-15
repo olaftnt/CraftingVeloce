@@ -2,9 +2,7 @@ package com.craftingveloce.crafting;
 
 import com.craftingveloce.block.entity.VeloceHeatSource;
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
-import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.block.entity.BlockEntity;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -34,24 +32,10 @@ public final class VeloceHeatSources {
 
     /** Wszystkie zrodla ciepla w sieci - takze te bez paliwa/pradu. */
     public static List<VeloceHeatSource> allIn(ServerLevel level, VelocePipeNetwork network) {
-        List<VeloceHeatSource> out = new ArrayList<>();
-        if (network == null) {
-            return out;
-        }
-        // Kopiujemy i sortujemy pozycje, zeby kolejnosc byla powtarzalna -
-        // network.getTerminals() to zbior bez gwarantowanej kolejnosci.
-        List<BlockPos> nodes = new ArrayList<>(network.getTerminals());
-        nodes.sort(Comparator.comparingLong(BlockPos::asLong));
-
-        for (BlockPos pos : nodes) {
-            if (!level.isLoaded(pos)) {
-                continue;
-            }
-            BlockEntity be = level.getBlockEntity(pos);
-            if (be instanceof VeloceHeatSource heat) {
-                out.add(heat);
-            }
-        }
+        // Skanowanie sieci zyje w VeloceNetworkSources - jedna petla dla
+        // wszystkich rejestrow zrodel (pieca, maszyn modulow). Trzy kopie tej
+        // samej petli to trzy miejsca na zapomnienie o isLoaded/sortowaniu.
+        List<VeloceHeatSource> out = VeloceNetworkSources.scan(level, network, VeloceHeatSource.class);
         out.sort(Comparator.comparingInt(VeloceHeatSource::heatPriority));
         return out;
     }
