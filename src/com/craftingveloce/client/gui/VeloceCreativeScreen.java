@@ -456,6 +456,31 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         return Minecraft.getInstance();
     }
 
+    /**
+     * Niezawodne wyjscie z ekranu.
+     *
+     * <p>Te ekrany udaja creative inventory, wiec latwo o sytuacje, w ktorej
+     * gracz nie ma jak wyjsc - brak reagowania na Esc albo zablokowany stan.
+     * Wymuszamy zamkniecie po Esc i po klawiszu ekwipunku, niezaleznie od
+     * tego, co robi vanilla.
+     */
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // Esc zawsze zamyka.
+        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+            this.onClose();
+            return true;
+        }
+        // Klawisz ekwipunku (domyslnie E) tez zamyka - gracz tego oczekuje.
+        if (this.minecraft != null && this.minecraft.options != null
+                && this.minecraft.options.keyInventory != null
+                && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
+            this.onClose();
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
     @Override
     public void removed() {
         if (this.minecraft != null && this.minecraft.player != null && this.menu != null

@@ -91,7 +91,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      */
     @Override
     public void containerTick() {
-        // Nic nie robimy - liczby przychodza z serwera.
+        // WAZNE: wolamy baze - inaczej nie dziala wykrywanie zakladek ani
+        // filtrowanie itemow z VeloceCreativeScreen.
+        super.containerTick();
+        // Liczby craftowalnosci przychodza z serwera, wiec nic wiecej tu nie robimy.
     }
 
 
