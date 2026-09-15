@@ -166,8 +166,60 @@ public final class VeloceChunkLoader {
         }
         level.setChunkForced(ChunkPos.getX(chunkKey), ChunkPos.getZ(chunkKey), true);
         APPLIED.computeIfAbsent(level, k -> new HashSet<>()).add(chunkKey);
+        watchForce(level, chunkKey, owner, reason, ownerPos);
         return true;
     }
+
+    /**
+     * Wykrywa SYGNATURE PETLI load/unload i mowi o niej wprost.
+     *
+     * <p><b>Po co.</b> Petla wyglada w grze jako "chunk ciagle sie przeladowuje",
+     * ale w logu nie zostawiala po sobie sladu - chyba ze ktos celowo wlaczyl
+     * sledzenie. Bez tego zglaszane objawy ("wpada w petle") trzeba bylo
+     * odtwarzac z kodu, zamiast przeczytac je z loga.
+     *
+     * <p>Kazde FIZYCZNE wymuszenie tego samego chunku liczymy w oknie
+     * {@link #FORCE_THROTTLE_WINDOW_TICKS}. Po przekroczeniu progu logujemy
+     * RAZ na okno, podajac ostatniego wlasciciela i powod - czyli od razu
+     * wskazujemy, KTO kaze w kolko ladowac ten chunk.
+     *
+     * <p>Wymuszenie to nie to samo co uzycie: {@code retain} dla istniejacego
+     * biletu nie robi nic, wiec ten licznik lapie dokladnie przelaczanie
+     * {@code setChunkForced}, a nie zwykle sieganie do juz zaladowanego chunku.
+     */
+    private static void watchForce(ServerLevel level, long chunkKey, String owner,
+                                   Reason reason, BlockPos ownerPos) {
+        Map<Long, ForceWatch> watch = FORCE_WATCH.computeIfAbsent(level, k -> new HashMap<>());
+        long now = level.getGameTime();
+        ForceWatch w = watch.get(chunkKey);
+        if (w == null || now < w.windowStart || now - w.windowStart > FORCE_THROTTLE_WINDOW_TICKS) {
+            w = new ForceWatch();
+            w.windowStart = now;
+            watch.put(chunkKey, w);
+        }
+        w.count++;
+        if (w.count == FORCE_THROTTLE_LIMIT) {
+            VeloceLog.Network.failure(VeloceLog.Side.SERVER,
+                    "chunk %s forced %d times within %d ticks (last: owner=%s, reason=%s, at=%s)"
+                            + " - this is the load/unload loop signature",
+                    new ChunkPos(chunkKey), w.count, FORCE_THROTTLE_WINDOW_TICKS,
+                    owner, reason, ownerPos);
+        }
+    }
+
+    /** Okno, w ktorym liczymy wymuszenia tego samego chunku. */
+    private static final long FORCE_THROTTLE_WINDOW_TICKS = 200L;
+
+    /** Po ilu wymuszeniach w oknie uznajemy, ze to juz petla. */
+    private static final int FORCE_THROTTLE_LIMIT = 5;
+
+    /** Licznik wymuszen jednego chunku w biezacym oknie. */
+    private static final class ForceWatch {
+        long windowStart;
+        int count;
+    }
+
+    private static final Map<ServerLevel, Map<Long, ForceWatch>> FORCE_WATCH = new WeakHashMap<>();
 
     /**
      * Zwalnia bilet jednego wlasciciela.

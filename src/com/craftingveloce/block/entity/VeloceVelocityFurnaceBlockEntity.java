@@ -267,6 +267,9 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             if (filter.isEmpty()) {
                 continue;
             }
+            if (!canMergeIntoFuelSlot(filter)) {
+                continue;
+            }
             ItemStack got = net.extractItem(sl, filter.getItem(), wanted);
             if (got.isEmpty()) {
                 continue;   // ten filtr sie skonczyl - nastepny w kolejnosci
@@ -286,12 +289,45 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             if (burnTicksOf(probe) <= 0) {
                 continue;
             }
+            if (!canMergeIntoFuelSlot(probe)) {
+                continue;
+            }
             ItemStack got = net.extractItem(sl, entry.getKey(), wanted);
             if (!got.isEmpty()) {
                 wanted -= got.getCount();
                 mergeIntoFuelSlot(got);
             }
         }
+    }
+
+    /**
+     * Czy to paliwo zmiesci sie do slotu - sprawdzane PRZED pobraniem.
+     *
+     * <p><b>BUG, ktory to naprawia (petla pobierz-oddaj).</b> Wczesniej piec
+     * pobieral paliwo, a dopiero potem {@link #mergeIntoFuelSlot} odkrywal, ze
+     * w slocie lezy INNY rodzaj paliwa i nie da sie ich polaczyc - wiec
+     * oddawal je z powrotem do sieci przez {@code depositBack}.
+     *
+     * <p>Wygladalo to tak, co PULL_INTERVAL_TICKS, w nieskonczonosc:
+     * <pre>
+     *   pobierz charcoal z sieci -> nie pasuje do wegla w slocie -> oddaj charcoal
+     *   pobierz charcoal z sieci -> nie pasuje do wegla w slocie -> oddaj charcoal
+     *   ...
+     * </pre>
+     * A ze oddawanie do magazynu w niezaladowanym chunku wczytuje ten chunk,
+     * kazdy obrot petli to kolejne wczytanie chunku - czyli dokladnie ta
+     * petla load/unload, ktora widac bylo w grze.
+     *
+     * <p>Teraz po prostu NIE pobieramy tego, czego nie mozemy przyjac: piec
+     * najpierw wypala to, co ma w slocie, a dopiero potem siega po kolejny
+     * rodzaj paliwa.
+     */
+    private boolean canMergeIntoFuelSlot(ItemStack fuel) {
+        ItemStack current = fuelSlot.getItem(0);
+        if (current.isEmpty()) {
+            return true;   // pusty slot przyjmie wszystko
+        }
+        return ItemStack.isSameItemSameComponents(current, fuel);
     }
 
     /** Doklada pobrane paliwo do slotu (albo je zostawia, gdy sie nie zmiesci). */

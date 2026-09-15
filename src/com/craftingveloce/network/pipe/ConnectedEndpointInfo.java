@@ -540,11 +540,17 @@ public class ConnectedEndpointInfo {
             refreshIfLoaded(level);
         } catch (Throwable t) {
             t.printStackTrace();
-        } finally {
-            if (!wasLoaded) {
-                VeloceChunkLoader.release(level, chunkKey, "op:extract");
-            }
         }
+        // UWAGA: nie ma tu zadnego release("op:extract").
+        //
+        // Bylo - jako resztka po wersji, ktora wymuszala chunk synchronicznie.
+        // Gdy wprowadzono kolejke zadan, retain zniknal, a release zostal.
+        // Nie robil niczego zlego tylko dlatego, ze jest nieosiagalny: przy
+        // rozladowanym chunku metoda wychodzi wczesniej (zadanie do kolejki),
+        // wiec `!wasLoaded` w finally bylo zawsze falszywe. Martwy kod, ktory
+        // wygladal jak zywy - i dokladnie taki sam mechanizm (retain/release
+        // wokol jednorazowej operacji) powodowal petle load/unload przy
+        // wkladaniu.
 
         return result;
     }
@@ -633,10 +639,9 @@ public class ConnectedEndpointInfo {
         }
 
         boolean wasLoaded = level.isLoaded(pos);
-        boolean weLoadedChunk = false;
         long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
-            // Bez wymuszania przy zapisie swiata - patrz extractItem.
+            // Bez wczytywania przy zapisie swiata - patrz extractItem.
             if (VeloceChunkLoader.isFrozen()) {
                 return stack;
             }
@@ -655,17 +660,33 @@ public class ConnectedEndpointInfo {
             // Dodatkowo, gdy magazyn stal w niezaladowanym chunku (a tylko
             // WEZLY sa force-loadowane, nie magazyny), wkladanie ZAWSZE szlo
             // ta sciezka - wiec terminal na stale krzyczal "network full",
-            // mimo ze miejsca bylo duzo. Dodawanie skrzyn nie pomagalo, bo
-            // problemem nie byla pojemnosc, tylko to, ze wkladanie w ogole
-            // nie docieralo do magazynu.
+            // mimo ze miejsca bylo duzo.
             //
             // Wniosek: wolajacy MUSI znac prawdziwy wynik, zeby zabrac graczowi
-            // DOKLADNIE tyle, ile weszlo. Dlatego chunk wymuszamy tu i teraz
-            // (z biletem operacyjnym, zwalnianym w finally), zamiast kolejkować.
-            // Wkladanie jest akcja gracza (albo odlozeniem wyniku craftu),
-            // wiec jednorazowe wczytanie chunku jest tu w pelni uzasadnione.
+            // DOKLADNIE tyle, ile weszlo. Dlatego chunk wczytujemy tu i teraz.
+            //
+            // ============================================================
+            // NIE WOLNO TU UZYWAC retain()/release() - i to jest osobny blad,
+            // ktory tu byl. retain() robi setChunkForced(true), a release()
+            // setChunkForced(false), czyli w JEDNYM ticku przelaczamy znacznik
+            // wymuszenia w OBIE strony.
+            //
+            // Skutek widac bylo w grze jako petle: loaded -> unloaded ->
+            // loaded -> ... przy KAZDYM wkladaniu. A ze wkladanie bywa
+            // powtarzalne (crafter odklada wynik, piec oddaje nadwyzke
+            // paliwa, gracz klika), petla nie konczyla sie nigdy. Do tego
+            // setChunkForced jest zapisywany TRWALE w danych swiata, wiec
+            // kazde przelaczenie to takze zapis.
+            //
+            // To wymuszanie bylo zupelnie zbedne. getChunk(..., true) sam
+            // wczytuje chunk synchronicznie na czas tego wywolania, a cala
+            // operacja konczy sie w TYM SAMYM ticku - nie ma okna, w ktorym
+            // chunk moglby zostac rozladowany pod naszymi rekoma. Po powrocie
+            // chunk nie ma zadnego biletu wymuszenia, wiec wypada NORMALNIE,
+            // zwyklym mechanizmem gry - dokladnie tak, jak powinno byc.
+            // ============================================================
             ChunkTrace.at("INSERT", level, pos,
-                    "chunk UNLOADED -> wczytuje synchronicznie; stos=%dx %s",
+                    "chunk UNLOADED -> wczytuje na czas operacji (bez force); stos=%dx %s",
                     stack.getCount(), stack.getItem());
             if (!VeloceChunkLoader.tryReserveOpLoad(level)) {
                 // Budzet blokujacych wczytan na ten tick wyczerpany. Odmawiamy
@@ -682,9 +703,6 @@ public class ConnectedEndpointInfo {
                         pos, VeloceChunkLoader.MAX_OP_LOADS_PER_TICK);
                 return stack;
             }
-            VeloceChunkLoader.retain(level, chunkKey, "op:insert",
-                    VeloceChunkLoader.Reason.OPERATION, pos);
-            weLoadedChunk = true;
             level.getChunkSource().getChunk(
                     chunkPos.x, chunkPos.z,
                     net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true);
@@ -737,11 +755,9 @@ public class ConnectedEndpointInfo {
             refreshIfLoaded(level);
         } catch (Throwable t) {
             t.printStackTrace();
-        } finally {
-            if (weLoadedChunk) {
-                VeloceChunkLoader.release(level, chunkKey, "op:insert");
-            }
         }
+        // ZADNEGO release() - patrz komentarz wyzej. Chunk nie ma biletu
+        // wymuszenia, wiec wypada normalnie, kiedy gra uzna to za stosowne.
         return remaining;
     }
 
