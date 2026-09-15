@@ -147,22 +147,40 @@ public final class VeloceAutoCrafter {
         @Nullable
         final List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers;
 
+        /**
+         * Gdzie wypuscic to, czego siec nie przyjela.
+         *
+         * <p>Bez tego przy pelnej sieci wycraftowane itemy (i skladniki
+         * zwracane przy nieudanym wykonaniu) po prostu ginely.
+         */
+        @Nullable
+        final net.minecraft.core.BlockPos dropPos;
+
         public Context(ServerLevel level, VelocePipeNetwork network,
                        Set<Item> enabledItems, Map<Item, ResourceLocation> preferred,
                        @Nullable ItemInventory inventory) {
-            this(level, network, enabledItems, preferred, inventory, null);
+            this(level, network, enabledItems, preferred, inventory, null, null);
         }
 
         public Context(ServerLevel level, VelocePipeNetwork network,
                        Set<Item> enabledItems, Map<Item, ResourceLocation> preferred,
                        @Nullable ItemInventory inventory,
                        @Nullable List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers) {
+            this(level, network, enabledItems, preferred, inventory, buffers, null);
+        }
+
+        public Context(ServerLevel level, VelocePipeNetwork network,
+                       Set<Item> enabledItems, Map<Item, ResourceLocation> preferred,
+                       @Nullable ItemInventory inventory,
+                       @Nullable List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers,
+                       @Nullable net.minecraft.core.BlockPos dropPos) {
             this.level = level;
             this.network = network;
             this.enabledItems = enabledItems;
             this.preferred = preferred;
             this.inventory = inventory;
             this.buffers = buffers;
+            this.dropPos = dropPos;
         }
 
         boolean isEnabled(Item item) {
@@ -250,9 +268,17 @@ public final class VeloceAutoCrafter {
             // chcial pelny stack (np. 64), nie dostawal NIC, nawet gdy w sieci
             // bylo dość materialu na 12 sztuk. Teraz schodzimy w dol, az
             // znajdziemy ilosc wykonalna.
-            planned = planAsMuchAsPossible(level, ctx, item, missing, stock, plan, planBudgetNanos,
-                    /* allowRetry */ true);
+            planned = planAsMuchAsPossible(level, ctx, item, missing, stock, plan, planBudgetNanos);
             if (planned <= 0) {
+                // Rozroznienie wazne dla gracza: "nie zdazylem policzyc" to nie
+                // to samo co "nie masz z czego". Wczesniej oba konczyly sie
+                // komunikatem o braku skladnikow.
+                if (estimateAborted()) {
+                    VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                            "planning for %s x%d ran out of the %d ms budget",
+                            item, missing, planBudgetNanos / 1_000_000L);
+                    return CraftResult.fail("craftingveloce.craft.error.tooComplex");
+                }
                 logPlanFailure(level, ctx, item, missing, stock);
                 return CraftResult.fail("craftingveloce.craft.error.noBase");
             }
@@ -513,7 +539,7 @@ public final class VeloceAutoCrafter {
      */
     private static long planAsMuchAsPossible(ServerLevel level, Context ctx, Item item,
                                              long wanted, Map<Item, Long> stock, Plan plan,
-                                             long planBudgetNanos, boolean allowRetry) {
+                                             long planBudgetNanos) {
         // Krok 1: znajdz JAKAKOLWIEK wykonalna ilosc, schodzac po polowie.
         // To logarytmicznie malo prob.
         long found = 0;
@@ -544,10 +570,8 @@ public final class VeloceAutoCrafter {
         long lo = found;
         long hi = wanted;
         while (lo < hi && !estimateAborted()) {
+            // mid jest zawsze > lo, gdy lo < hi, wiec petla zawsze sie posuwa.
             long mid = lo + (hi - lo + 1) / 2;
-            if (mid == lo) {
-                break;
-            }
             startEstimate(planBudgetNanos);
             Map<Item, Long> copy = new HashMap<>(stock);
             Plan candidate = new Plan();
@@ -879,38 +903,104 @@ public final class VeloceAutoCrafter {
     private static long estimateUpperBound(ServerLevel level, Item item,
                                            Map<Item, Long> stock,
                                            java.util.List<VeloceRecipeRegistry.CraftingEntry> recipes) {
-        // Maksymalny uzysk na jedna sztuke surowca, w jednym ciagu receptur.
-        long bestYield = 1;
-        for (var recipe : recipes) {
-            long perCraft = Math.max(1, recipe.result().getCount());
-            // Skladniki tej receptury tez moga byc wytworzone, wiec liczymy
-            // krotki lancuch w gore (glebokosc ograniczona, to tylko oszacowanie).
-            long cheapest = 1;
-            for (Ingredient ing : recipe.ingredients()) {
-                long options = 0;
-                for (ItemStack opt : nonEmpty(ing)) {
-                    long have = stock.getOrDefault(opt.getItem(), 0L);
-                    if (have > 0) {
-                        options++;
-                    }
-                }
-                // Jesli skladnik jest dostepny, traktujemy go jako "1 jednostke".
-                // Interesuje nas tylko rzad wielkosci, nie dokladna liczba.
-                if (options > 0) {
-                    cheapest = Math.max(cheapest, 1);
-                }
-            }
-            bestYield = Math.max(bestYield, perCraft / cheapest);
-        }
-
         long total = 0;
         for (long v : stock.values()) {
             total += v;
         }
-        // Mnozymy przez najwiekszy uzysk i przez zapas na wieloetapowe lancuchy
-        // (np. kłoda -> deski -> patyki to dwa etapy). To ma byc ZAWYZENIE.
-        long bound = total * Math.max(bestYield, 4L);
-        return bound <= 0 ? total : bound;
+        if (total <= 0) {
+            return 0;
+        }
+        if (recipes.isEmpty()) {
+            return total;
+        }
+
+        // Ile sztuk naszego itemu da sie wycisnac z JEDNEJ sztuki surowca.
+        //
+        // BUG, ktory tu byl: zamiast prawdziwego lancucha liczylismy
+        // najwiekszy uzysk JEDNEJ receptury i mnozylismy go przez wszystko
+        // w sieci (z dolnym progiem 4). Dla itemu o dlugim lancuchu limit
+        // wychodzil ZA MALY, wiec bisekcja nigdy nie sprawdzala wiekszych
+        // wartosci - np. przy 64 klodach patyczki pokazywaly sie jako 256,
+        // choc realnie wychodzi 512. Za maly limit obcina poprawna odpowiedz,
+        // wiec musi to byc prawdziwe (a nie zgrubne) zawyzenie.
+        double perRawUnit = maxYieldPerRawUnit(level, item,
+                new HashMap<>(), new HashSet<>(), 0);
+        double bound = total * Math.max(1.0, perRawUnit);
+        if (bound >= MAX_ESTIMATE_RESULT) {
+            return MAX_ESTIMATE_RESULT;
+        }
+        return Math.max(total, (long) Math.ceil(bound));
+    }
+
+    /** Maksymalna glebokosc lancucha przy liczeniu gornej granicy. */
+    private static final int UPPER_BOUND_MAX_DEPTH = 16;
+
+    /**
+     * Ile sztuk {@code item} da sie uzyskac z JEDNEJ sztuki surowca.
+     *
+     * <p>Schodzi rekurencyjnie po recepturach, wiec widzi cale lancuchy
+     * (kloda -> deski -> patyczki), a nie tylko pierwszy krok. Wynik jest
+     * celowo ZAWYZONY - to wylacznie ograniczenie bisekcji, a nie odpowiedz
+     * dla gracza: gdy receptura pozwala wziac ten sam surowiec na kilka
+     * sposobow, zakladamy, ze starczy go na wszystkie naraz.
+     *
+     * <p>Cykl receptur i zbyt gleboki lancuch traktujemy jak surowiec
+     * (uzysk 1.0), zeby rekurencja byla skonczona.
+     */
+    private static double maxYieldPerRawUnit(ServerLevel level, Item item,
+                                             Map<Item, Double> memo, Set<Item> visiting,
+                                             int depth) {
+        Double cached = memo.get(item);
+        if (cached != null) {
+            return cached;
+        }
+        if (depth >= UPPER_BOUND_MAX_DEPTH || !visiting.add(item)) {
+            return 1.0;
+        }
+        try {
+            double best = 1.0;
+            for (var recipe : VeloceRecipeRegistry.getRecipesFor(level, item)) {
+                double cost = rawCostOfRecipe(level, recipe, memo, visiting, depth);
+                if (cost <= 0.0) {
+                    continue;   // receptura bez zadnej dostepnej opcji skladnika
+                }
+                double yield = Math.max(1, recipe.result().getCount()) / cost;
+                if (yield > best) {
+                    best = yield;
+                }
+            }
+            memo.put(item, best);
+            return best;
+        } finally {
+            visiting.remove(item);
+        }
+    }
+
+    /**
+     * Koszt receptury w jednostkach "sztuk surowca" (mniejszy = taniej).
+     *
+     * <p>Zwraca 0, gdy receptury nie da sie uzyc (skladnik nie ma zadnej
+     * opcji), bo wtedy nie wnosimy jej do maksimum.
+     */
+    private static double rawCostOfRecipe(ServerLevel level,
+                                          VeloceRecipeRegistry.CraftingEntry recipe,
+                                          Map<Item, Double> memo, Set<Item> visiting,
+                                          int depth) {
+        double cost = 0.0;
+        for (Ingredient ing : recipe.ingredients()) {
+            double cheapest = Double.MAX_VALUE;
+            for (ItemStack opt : nonEmpty(ing)) {
+                double yield = maxYieldPerRawUnit(level, opt.getItem(), memo, visiting, depth + 1);
+                if (yield < cheapest) {
+                    cheapest = yield;
+                }
+            }
+            if (cheapest == Double.MAX_VALUE) {
+                return 0.0;
+            }
+            cost += 1.0 / cheapest;
+        }
+        return cost;
     }
 
     /**
@@ -1037,15 +1127,34 @@ public final class VeloceAutoCrafter {
      * craftera i sa normalnie dostepne dla calej sieci.
      */
     private static void deposit(ServerLevel level, Context ctx, ItemStack stack) {
-        if (stack.isEmpty()) {
-            return;
+        ItemStack leftover = insertWhereverPossible(ctx, stack);
+        if (!leftover.isEmpty()) {
+            // BUG, ktory tu byl: reszta po przejsciu WSZYSTKICH endpointow byla
+            // po cichu porzucana. Przy pelnej sieci ginely wiec wycraftowane
+            // itemy - a takze SKLADNIKI zwracane przy nieudanym wykonaniu
+            // (runOnce oddaje je przez deposit). Teraz reszta trafia na ziemie
+            // przy bloku, ktory o craftowanie poprosil.
+            dropLeftover(level, ctx, leftover);
         }
-        // 1. Bufor crafterow (pamiec podreczna).
+    }
+
+    /**
+     * Wklada stos tam, gdzie sie da, i zwraca to, co zostalo.
+     *
+     * <p>Kolejnosc: bufor craftera (pamiec podreczna na nadwyzke), potem
+     * zwykle endpointy sieci (skrzynie).
+     */
+    private static ItemStack insertWhereverPossible(Context ctx, ItemStack stack) {
+        ItemStack remaining = stack;
+        if (remaining.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        // 1. Bufory crafterow.
         if (ctx.buffers != null) {
             for (var buf : ctx.buffers) {
-                stack = buf.insert(stack);
-                if (stack.isEmpty()) {
-                    return;
+                remaining = buf.insert(remaining);
+                if (remaining.isEmpty()) {
+                    return ItemStack.EMPTY;
                 }
             }
         }
@@ -1056,13 +1165,25 @@ public final class VeloceAutoCrafter {
         // endpointow: jesli pierwszy przyjal CZESC i zwrocil false, drugi
         // dostawal calosc i mogl ja przyjac - czyli przyjeta czesc byla
         // w sieci DWA razy.
-        ItemStack remaining = stack;
         for (var endpoint : ctx.network.getEndpoints().values()) {
             if (remaining.isEmpty()) {
-                return;
+                return ItemStack.EMPTY;
             }
-            remaining = endpoint.insertItemLeftover(level, remaining);
+            remaining = endpoint.insertItemLeftover(ctx.level, remaining);
         }
+        return remaining;
+    }
+
+    /** Awaryjnie wypuszcza reszte przy bloku, ktory zlecil craftowanie. */
+    private static void dropLeftover(ServerLevel level, Context ctx, ItemStack leftover) {
+        if (ctx.dropPos == null) {
+            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                    "network full and no drop position - losing %s", leftover);
+            return;
+        }
+        net.minecraft.world.level.block.Block.popResource(level, ctx.dropPos, leftover);
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "network full - dropped %s at %s", leftover, ctx.dropPos);
     }
 
     // ------------------------------------------------------------------
@@ -1117,10 +1238,6 @@ public final class VeloceAutoCrafter {
      *
      * <p>Kolejnosc zrodel: siec + ekwipunek + bufory crafterow.
      */
-    private static Map<Item, Long> snapshotStock(Context ctx) {
-        return snapshotStock(ctx, ctx.network.getAllItemCounts(ctx.level, true));
-    }
-
     /**
      * Jak wyzej, ale ze stanem sieci podanym z zewnatrz.
      *

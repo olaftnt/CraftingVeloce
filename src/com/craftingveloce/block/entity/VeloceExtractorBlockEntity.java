@@ -253,8 +253,9 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
                 .getPreferredRecipes(sl, net);
         var buffers = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getBuffers(sl, net);
+        // Pozycja bloku = miejsce awaryjnego zrzutu, gdyby siec byla pelna.
         var ctx = new com.craftingveloce.crafting.VeloceAutoCrafter.Context(
-                sl, net, enabled, preferred, null, buffers);
+                sl, net, enabled, preferred, null, buffers, this.getBlockPos());
         // Maly budzet planowania: to tlo, nie zadanie gracza. Reszta poczeka
         // na kolejny cykl, zamiast blokowac watek serwera.
         var result = com.craftingveloce.crafting.VeloceAutoCrafter

@@ -601,8 +601,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
 
         var buffers = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getBuffers(sl, net);
+        // Pozycja bloku = miejsce awaryjnego zrzutu, gdyby siec byla pelna.
         var ctx = new com.craftingveloce.crafting.VeloceAutoCrafter.Context(
-                sl, net, enabled, preferred, null, buffers);
+                sl, net, enabled, preferred, null, buffers, this.getBlockPos());
 
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
                 .ensureAvailable(sl, net, item, count, ctx);
