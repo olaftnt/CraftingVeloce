@@ -455,6 +455,19 @@ public class VelocePipeNetworkManager extends SavedData {
                 originPos, visitedPipes.size(), discoveredTerminals.size(),
                 discoveredEndpoints.size());
 
+        // ID wynikowej sieci liczymy PRZED petla scalania - potrzebne, zeby
+        // wiedziec, ktorych starych cache'y NIE kasowac.
+        //
+        // Przebudowa zachowuje to samo UUID (preferredId = istniejaca siec),
+        // a jej cache ma po prostu odswiezona referencje do nowego obiektu.
+        // Kasowanie go zwalnialo force-loady, wiec kazda przebudowa wykladowywala
+        // i ladowala chunki od nowa - mimo ze siec jest ta sama.
+        UUID finalId = preferredId != null
+                ? preferredId
+                : (intersectedOldNets.size() == 1
+                        ? intersectedOldNets.iterator().next()
+                        : UUID.randomUUID());
+
         // Preserve cached endpoints from old networks (crucial for unloaded chunks)
         for (UUID oldId : intersectedOldNets) {
             VelocePipeNetwork oldNet = networks.get(oldId);
@@ -472,8 +485,12 @@ public class VelocePipeNetworkManager extends SavedData {
                         }
                     }
                 }
-                // Clean up old network
-                com.craftingveloce.crafting.VeloceCraftingCache.drop(level, oldId);
+                // Sprzatamy TYLKO sieci, ktore naprawde znikaja. Siec o ID
+                // wynikowym jest przebudowywana, nie usuwana - jej cache
+                // (i force-loady) zostaja.
+                if (!oldId.equals(finalId)) {
+                    com.craftingveloce.crafting.VeloceCraftingCache.drop(level, oldId);
+                }
                 networks.remove(oldId);
                 for (BlockPos p : oldNet.getPipes()) {
                     pipeToNetwork.remove(p);
@@ -484,7 +501,6 @@ public class VelocePipeNetworkManager extends SavedData {
             }
         }
 
-        UUID finalId = preferredId != null ? preferredId : (intersectedOldNets.size() == 1 ? intersectedOldNets.iterator().next() : UUID.randomUUID());
         VelocePipeNetwork newNet = new VelocePipeNetwork(finalId);
         newNet.getPipes().addAll(visitedPipes);
         newNet.getTerminals().addAll(discoveredTerminals);

@@ -118,7 +118,17 @@ public final class VeloceCraftingCache {
 
     private static final Map<UUID, VeloceCraftingCache> CACHES = new HashMap<>();
 
-    private final VelocePipeNetwork network;
+    /**
+     * Siec, ktorej dotyczy ten cache.
+     *
+     * <p><b>NIE jest finalna i to jest celowe.</b> Przebudowa sieci tworzy NOWY
+     * obiekt {@link VelocePipeNetwork} pod TYM SAMYM UUID. Gdyby cache trzymal
+     * stara referencje, {@code maintainForcedChunks} liczylby chunki z sieci,
+     * ktora juz nie istnieje. Wczesniej obchodzono to kasujac cache przy kazdej
+     * przebudowie - a skasowanie cache zwalnia jego force-loady, wiec KAZDA
+     * przebudowa wykladowywala i ladowala chunki od nowa.
+     */
+    private volatile VelocePipeNetwork network;
 
     /** Gotowe liczby: ile da sie dorobic danego itemu. */
     private final Map<Item, Long> craftable = new HashMap<>();
@@ -198,7 +208,14 @@ public final class VeloceCraftingCache {
     }
 
     public static VeloceCraftingCache get(VelocePipeNetwork network) {
-        return CACHES.computeIfAbsent(network.getId(), id -> new VeloceCraftingCache(network));
+        VeloceCraftingCache cache = CACHES.computeIfAbsent(
+                network.getId(), id -> new VeloceCraftingCache(network));
+        // Siec mogla zostac przebudowana pod tym samym UUID - odswiezamy
+        // referencje, zamiast kasowac cache (co kosztowaloby force-loady).
+        if (cache.network != network) {
+            cache.network = network;
+        }
+        return cache;
     }
 
     /**
