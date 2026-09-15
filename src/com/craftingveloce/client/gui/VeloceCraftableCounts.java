@@ -171,6 +171,27 @@ public final class VeloceCraftableCounts {
         this.retryCooldown = RETRY_INTERVAL_TICKS;
         lastSignature = signature;
         initialRequestSent = true;
+
+        // KOLEJNOSC MA ZNACZENIE: serwer liczy partie w podanej kolejnosci
+        // i przerywa, gdy skonczy sie budzet. Itemy BEZ policzonej liczby ida
+        // wiec PIERWSZE - tylko klient wie, czego mu brakuje. Bez tego po
+        // kazdym ponowieniu liczone byly te same pozycje, a reszta trzymala
+        // stare (albo zadne) wartosci.
+        int unknown = 0;
+        for (Item it : visible) {
+            if (!counts.containsKey(it)) {
+                unknown++;
+            }
+        }
+        visible.sort(java.util.Comparator.comparingInt(it -> counts.containsKey(it) ? 1 : 0));
+
+        com.craftingveloce.util.VeloceLog.Gui.detail(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "asking for craftable counts: %d item(s), %d without a value "
+                        + "(first=%s, retry=%s; slots=%d, gracza=%d, puste=%d) -> %s",
+                visible.size(), unknown, firstRepeat, retry,
+                totalSlots, playerSlots, emptySlots, sample(visible, 8));
+
         lastRequested.clear();
         lastRequested.addAll(visible);
         PacketDistributor.sendToServer(

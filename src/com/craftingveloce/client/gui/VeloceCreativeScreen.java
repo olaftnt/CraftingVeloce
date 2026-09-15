@@ -1121,17 +1121,16 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
                 // zamyka, kiedy pole tekstowe jest aktywne".
                 this.minecraft.options.keyInventory.consumeClick();
             }
-            // 1) Pole tekstowe samo wie, co zrobic z backspace, strzalkami,
-            //    Ctrl+A czy wklejaniem. Bierzemy fokus ekranu ALBO waniliowa
-            //    wyszukiwarke (patrz isTypingInTextField).
-            net.minecraft.client.gui.components.EditBox box =
-                    VeloceTerminalViewState.focusedTextBox(this, this.getFocused());
-            if (box != null && box.keyPressed(keyCode, scanCode, modifiers)) {
-                return true;
-            }
-            // 2) Reszta - w tym klawisz ekwipunku - jest pochlaniana, zeby nie
-            //    zamknela okna. (Esc obslugujemy wyzej.)
-            return true;
+            // 1) Klawisz oddajemy WANILIOWEJ galezi tego ekranu.
+            //
+            //    BUG, ktory to naprawia: wolalismy pole tekstowe BEZPOSREDNIO,
+            //    przez co pomijalismy wazna czesc waniliowej obslugi -
+            //    CreativeModeInventoryScreen.keyPressed po kazdym nacisnietym
+            //    klawiszu sprawdza, czy tekst sie zmienil, i wtedy wola
+            //    refreshSearchResults(). Bez tego BACKSPACE zmienial tekst,
+            //    ale lista wynikow zostawala stara (zgloszenie gracza).
+            //    Wanilia obsluguje tez poprawnie strzalki, Ctrl+A i wklejanie.
+            return super.keyPressed(keyCode, scanCode, modifiers);
         }
 
         // Esc zamyka (gdy nie piszemy).
@@ -1183,11 +1182,53 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      * powstac.
      */
     protected void ensureGridItems() {
-        if (!hasGridItems()) {
+        if (hasGridItems()) {
+            return;
+        }
+        applyItemFilter();
+        if (hasGridItems()) {
             com.craftingveloce.util.VeloceLog.Gui.detail(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                    "sloty siatki byly puste - uzupelniam je z listy itemow");
-            applyItemFilter();
+                    "sloty siatki byly puste - uzupelnilem je z listy itemow");
+            return;
+        }
+        // Nadal puste - mowimy WPROST, co jest puste: lista itemow wanilii,
+        // czy dopiero sloty (np. przewiniecie poza liste). Bez tego kolejna
+        // poprawka bylaby znowu zgadywaniem.
+        com.craftingveloce.util.VeloceLog.Gui.detail(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "sloty siatki NADAL puste: slotow=%d, z itemami=%d, w menu=%d, "
+                        + "przewiniecie=%.2f",
+                this.menu == null ? -1 : this.menu.slots.size(),
+                countGridSlotsWithItems(),
+                menuItemCount(),
+                currentScrollOffset());
+    }
+
+    /** Ile slotow siatki (poza graczem) ma item - do diagnostyki. */
+    private int countGridSlotsWithItems() {
+        if (this.menu == null) {
+            return 0;
+        }
+        int n = 0;
+        for (Slot slot : this.menu.slots) {
+            if (slot != null && slot.hasItem() && !isPlayerInventorySlot(slot)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    /** Ile pozycji ma waniliowa lista itemow - do diagnostyki. */
+    private int menuItemCount() {
+        try {
+            if (itemsField == null || this.menu == null) {
+                return -1;
+            }
+            Object raw = itemsField.get(this.menu);
+            return raw instanceof java.util.List<?> list ? list.size() : -1;
+        } catch (Throwable t) {
+            return -1;
         }
     }
 

@@ -589,6 +589,7 @@ public final class VeloceAutoCrafter {
         // prostu liczyc w podanej kolejnosci.
         List<Item> queue = items instanceof List<Item> list ? list : new ArrayList<>(items);
         int size = queue.size();
+        int aborted = 0;
 
         for (int i = 0; i < size; i++) {
             Item item = queue.get(i);
@@ -636,6 +637,7 @@ public final class VeloceAutoCrafter {
                 // a gdy skonczy sie CZAS, petla przerwie sie na sprawdzeniu
                 // deadline'u na gorze - wiec nie ma ryzyka zapetlenia.
                 complete = false;
+                aborted++;
                 continue;
             }
             // Zapisujemy TAKZE zera. Wczesniej wpis pojawial sie tylko dla
@@ -643,6 +645,13 @@ public final class VeloceAutoCrafter {
             // od "nie policzono tego itemu" i klient zachowywal stara, zawyzona
             // liczbe. Zero to konkretna, poprawna odpowiedz.
             out.put(item, Math.max(0L, total));
+        }
+        if (aborted > 0) {
+            // Ile itemow nie zmiescilo sie w swoim udziale - to ta liczba
+            // tlumaczy "GUI nie pokazuje liczb dla czesci itemow".
+            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                    "craftable count: %d z %d itemow przerwalo szacowanie "
+                            + "(za ciezki item na swoj udzial czasu)", aborted, size);
         }
         return new BatchResult(out, complete, heatAnywhere);
     }
@@ -1149,13 +1158,20 @@ public final class VeloceAutoCrafter {
      * nieskonczonosc" i nie ryzykowac przepelnienia.
      */
     /**
-     * Najkrotszy budzet, jaki dostaje pojedynczy item w partii (0.2 ms).
+     * Najkrotszy budzet, jaki dostaje pojedynczy item w partii (2 ms).
      *
      * <p>Bez dolnej granicy rowny udzial przy dlugiej liscie spadlby do zera
-     * i zadnego itemu nie daloby sie policzyc. 0.2 ms wystarcza na proste
-     * receptury, a zbyt zlozone i tak trafiaja do kolejnej partii.
+     * i zadnego itemu nie daloby sie policzyc.
+     *
+     * <p><b>Dlaczego 2 ms, a nie 0.2 ms.</b> W logu gracza widac bylo partie
+     * "45 item(s) -> 9 result(s) in 25 ms (complete=false)" powtarzane w kolko:
+     * przy udziale 0.2 ms ciezkie itemy (szklo i jego warianty) PRZERYWALY
+     * szacowanie przy kazdym zadaniu, wiec nigdy nie dostawaly liczby, a ich
+     * miejsce w budzecie przepadalo. Wiekszy udzial sprawia, ze item dostaje
+     * PRAWDZIWA odpowiedz albo w ogole nie jest ruszany - a wtedy kolejne
+     * zadanie (klient ustawia braki pierwsze) bierze nastepne pozycje.
      */
-    private static final long MIN_ITEM_BUDGET_NS = 200_000L;
+    private static final long MIN_ITEM_BUDGET_NS = 2_000_000L;
 
     private static final long ESTIMATE_HEAT_OPS = 1_000_000L;
 
