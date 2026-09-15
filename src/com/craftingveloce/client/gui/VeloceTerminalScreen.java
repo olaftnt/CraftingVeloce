@@ -26,7 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
+public class VeloceTerminalScreen extends VeloceCreativeScreen {
 
     private final BlockPos terminalPos;
     private Map<Item, Long> networkCounts = new HashMap<>();
@@ -35,7 +35,6 @@ public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
     private Map<Item, Long> craftableCounts = new HashMap<>();
 
     @Nullable
-    private GameType modeBeforeShop;
 
     private static Method selectTabMethod;
     private static Field selectedTabField;
@@ -75,24 +74,6 @@ public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
         this.craftableCounts = new HashMap<>(craftable);
     }
 
-    @Override
-    protected void init() {
-        if (this.minecraft == null || this.minecraft.gameMode == null) {
-            super.init();
-            return;
-        }
-        if (!this.minecraft.gameMode.hasInfiniteItems()) {
-            if (this.modeBeforeShop == null) {
-                this.modeBeforeShop = this.minecraft.gameMode.getPlayerMode();
-            }
-            this.minecraft.gameMode.setLocalMode(GameType.CREATIVE);
-        }
-        super.init();
-    }
-
-    @Override
-    public void containerTick() {
-    }
 
     @Override
     protected void renderSlot(GuiGraphics graphics, Slot slot) {
@@ -313,9 +294,6 @@ public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
             }
         }
         super.removed();
-        if (this.modeBeforeShop != null && this.minecraft != null && this.minecraft.gameMode != null) {
-            this.minecraft.gameMode.setLocalMode(this.modeBeforeShop);
-            this.modeBeforeShop = null;
-        }
+
     }
 }

@@ -44,7 +44,7 @@ import java.util.Set;
  *   <li>czerwony - niedostepny (brak stocku i brak craftingu)</li>
  * </ul>
  */
-public class VeloceControllerScreen extends CreativeModeInventoryScreen {
+public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     /** Tryb filtrowania widoku. */
     public enum Filter {
@@ -68,7 +68,6 @@ public class VeloceControllerScreen extends CreativeModeInventoryScreen {
     private Filter filter = Filter.ALL;
 
     @Nullable
-    private GameType modeBeforeOpen;
 
     private static Field slotWrapperTargetField;
 
@@ -146,18 +145,7 @@ public class VeloceControllerScreen extends CreativeModeInventoryScreen {
 
     @Override
     protected void init() {
-        if (this.minecraft == null || this.minecraft.gameMode == null) {
-            super.init();
-            return;
-        }
-        if (!this.minecraft.gameMode.hasInfiniteItems()) {
-            if (this.modeBeforeOpen == null) {
-                this.modeBeforeOpen = this.minecraft.gameMode.getPlayerMode();
-            }
-            this.minecraft.gameMode.setLocalMode(GameType.CREATIVE);
-        }
-        super.init();
-        suppressHotbarSlots();
+        super.init();   // baza: tryb creative, ukrycie slotow gracza, filtr itemow
         buildFilterButtons();
     }
 
@@ -183,39 +171,8 @@ public class VeloceControllerScreen extends CreativeModeInventoryScreen {
         }
     }
 
-    private boolean isPlayerInventorySlot(Slot slot) {
-        if (slot == null || this.minecraft == null || this.minecraft.player == null) return false;
-        if (slot.container == this.minecraft.player.getInventory()) return true;
-        if (slotWrapperTargetField != null) {
-            try {
-                Object target = slotWrapperTargetField.get(slot);
-                if (target instanceof Slot ts && ts.container == this.minecraft.player.getInventory()) {
-                    return true;
-                }
-            } catch (Throwable ignored) {}
-        }
-        return false;
-    }
 
-    private void suppressHotbarSlots() {
-        if (this.menu == null || this.minecraft == null || this.minecraft.player == null) return;
-        for (int i = 0; i < this.menu.slots.size(); i++) {
-            Slot s = this.menu.slots.get(i);
-            if (isPlayerInventorySlot(s)) {
-                final Slot orig = s;
-                this.menu.slots.set(i, new Slot(orig.container, orig.getContainerSlot(), -10000, -10000) {
-                    @Override
-                    public boolean isActive() { return false; }
-                    @Override
-                    public boolean isHighlightable() { return false; }
-                });
-            }
-        }
-    }
 
-    @Override
-    public void containerTick() {
-    }
 
     // ---------- render ----------
 
@@ -350,9 +307,6 @@ public class VeloceControllerScreen extends CreativeModeInventoryScreen {
             this.menu.setCarried(ItemStack.EMPTY);
         }
         super.removed();
-        if (this.modeBeforeOpen != null && this.minecraft != null && this.minecraft.gameMode != null) {
-            this.minecraft.gameMode.setLocalMode(this.modeBeforeOpen);
-            this.modeBeforeOpen = null;
-        }
+
     }
 }

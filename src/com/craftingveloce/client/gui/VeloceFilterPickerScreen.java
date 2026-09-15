@@ -20,7 +20,7 @@ import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 
-public class VeloceFilterPickerScreen extends CreativeModeInventoryScreen {
+public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
 
     private final BlockPos extractorPos;
     private final int filterIndex;
@@ -94,19 +94,6 @@ public class VeloceFilterPickerScreen extends CreativeModeInventoryScreen {
         }
     }
 
-    private boolean isPlayerInventorySlot(Slot slot) {
-        if (slot == null || this.minecraft == null || this.minecraft.player == null) return false;
-        if (slot.container == this.minecraft.player.getInventory()) return true;
-        if (slotWrapperTargetField != null) {
-            try {
-                Object target = slotWrapperTargetField.get(slot);
-                if (target instanceof Slot ts && ts.container == this.minecraft.player.getInventory()) {
-                    return true;
-                }
-            } catch (Throwable ignored) {}
-        }
-        return false;
-    }
 
     @Override
     public void containerTick() {
