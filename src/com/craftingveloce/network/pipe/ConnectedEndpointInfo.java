@@ -339,15 +339,22 @@ public class ConnectedEndpointInfo {
             }
             com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
                     com.craftingveloce.debug.ChunkOpNotifier.Op.EXTRACT);
+            long cached = cachedCounts.getOrDefault(item, 0L);
+            com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
+                    "chunk UNLOADED -> kolejka; item=%s zadane=%d w cache=%d",
+                    item, maxCount, cached);
             scheduleExtract(level, item, maxCount);
             // Gracz widzi skutek od razu (item zniknie z listy), a serwer
             // doważa go w tle.
             return new ItemStack(item, Math.min(maxCount, (int) Math.min(
-                    Integer.MAX_VALUE, cachedCounts.getOrDefault(item, 0L))));
+                    Integer.MAX_VALUE, cached)));
         }
         // Chunk byl juz zaladowany - liczymy to jako uzycie, zeby czesto
         // odwiedzane chunki zostawaly w pamieci dluzej.
         VeloceChunkLoader.noteUse(level, chunkKey);
+        com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
+                "chunk LOADED -> zabranie natychmiast; item=%s zadane=%d w cache=%d",
+                item, maxCount, cachedCounts.getOrDefault(item, 0L));
 
         ItemStack result = ItemStack.EMPTY;
         try {
@@ -543,6 +550,9 @@ public class ConnectedEndpointInfo {
             // zwracamy CALY stos jako nieprzyjety, a kolejka wstawi go
             // w swoim ticku. Wolajacy zachowa sie tak, jak przy pelnym
             // magazynie - czyli item zostaje u gracza.
+            com.craftingveloce.debug.ChunkTrace.at("INSERT", level, pos,
+                    "chunk UNLOADED -> kolejka; stos=%dx %s",
+                    stack.getCount(), stack.getItem());
             scheduleInsert(stack.copy());
             return stack;
         } else {

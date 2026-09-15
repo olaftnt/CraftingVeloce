@@ -110,6 +110,12 @@ public final class ChunkDebugNotifier {
         // obszar, ktory nas w ogole obchodzi.
         List<String> things = verbose ? describeContents(level, pos, manager) : List.of();
 
+        // Zapis do konsoli - ZAWSZE, niezaleznie od tego, czy ktos patrzy
+        // na czat. To jest wlasnie dowod, ktorego szukamy w logu.
+        com.craftingveloce.debug.ChunkTrace.event("CHUNK",
+                "%s chunk[%d,%d] %s", "UNLOAD", pos.x, pos.z,
+                wasHeld ? "byl naszym force-loadem (!)" : "nie byl przez nas trzymany");
+
         MutableComponent header = Component.literal(
                 "§8[§6Veloce§8] §cUNLOAD §7chunk §f" + pos.x + ", " + pos.z
                         + (wasHeld ? " §8(§e! byl naszym force-loadem§8)" : ""));

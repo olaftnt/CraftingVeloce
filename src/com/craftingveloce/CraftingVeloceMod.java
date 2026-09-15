@@ -106,6 +106,7 @@ public class CraftingVeloceMod {
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             CVDebugCommand.register(event.getDispatcher());
             com.craftingveloce.commands.CVTestNetworkCommand.register(event.getDispatcher());
+            com.craftingveloce.commands.CVTraceCommand.register(event.getDispatcher());
         });
 
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock.class, event -> {

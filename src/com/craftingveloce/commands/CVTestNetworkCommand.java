@@ -237,6 +237,24 @@ public final class CVTestNetworkCommand {
         if (source.getPlayer() != null) {
             rememberPositions(source.getPlayer(), origin, endPos);
         }
+
+        // SZCZEGOLOWY ZAPIS DO KONSOLI - co postawilismy i w jakim stanie
+        // sa chunki. Na czacie tylko potwierdzenie, bo kilkadziesiat linii
+        // raportu jest nieczytelne w oknie czatu i znika po chwili.
+        com.craftingveloce.debug.ChunkTrace.event("BUILD",
+                "start=%s koniec=%s dlugosc=%d rur=%d chunkow=%d",
+                origin.toShortString(), endPos.toShortString(), length, pipeCount, chunkCount);
+        com.craftingveloce.debug.ChunkTrace.event("BUILD",
+                "terminal@%s baryłka@%s siec=%s wezlow=%d magazynow=%d",
+                origin.toShortString(), endPos.toShortString(), netLabel, nodes, endpoints);
+        if (net != null) {
+            com.craftingveloce.debug.ChunkTrace.snapshotChunks("PO BUDOWIE", level, net);
+            com.craftingveloce.debug.ChunkTrace.snapshotStock("PO BUDOWIE", level, net);
+        }
+        com.craftingveloce.debug.ChunkTrace.event("BUILD",
+                "chunki wymuszone na czas budowy ZWOLNIONE - teraz obowiazuja "
+                        + "normalne zasady (terminal trzyma, baryłka ma wypasc)");
+
         printTeleportHints(source, origin, endPos);
 
         source.sendSuccess(() -> Component.literal(

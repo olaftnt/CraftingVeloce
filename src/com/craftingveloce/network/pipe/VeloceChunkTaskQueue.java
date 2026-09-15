@@ -179,26 +179,34 @@ public final class VeloceChunkTaskQueue {
         boolean weForced = false;
 
         long start = System.nanoTime();
+        boolean ok = false;
+        String outcome = "";
         try {
             if (!wasLoaded) {
                 // Bilet operacyjny - zwolnimy go w finally, zeby gra mogla
                 // chunk rozladowac zaraz po zakonczeniu zadania.
+                com.craftingveloce.debug.ChunkTrace.event("QUEUE",
+                        "wymuszam chunk do zadania: %s %s @%s",
+                        task.kind(), task.describe(), task.pos().toShortString());
                 weForced = VeloceChunkLoader.retain(level, chunkKey, ownerFor(task),
                         VeloceChunkLoader.Reason.OPERATION, task.pos());
                 level.getChunkSource().getChunk(
                         net.minecraft.world.level.ChunkPos.getX(chunkKey),
                         net.minecraft.world.level.ChunkPos.getZ(chunkKey),
                         net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true);
+            } else {
+                com.craftingveloce.debug.ChunkTrace.event("QUEUE",
+                        "chunk byl juz zaladowany - zadanie bez wymuszania: %s %s",
+                        task.kind(), task.describe());
             }
 
             ItemStack result = task.run(level);
             completed++;
-            if (!result.isEmpty()) {
-                VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                        "chunk task %s at %s -> %s", task.kind(), task.pos(), result);
-            }
+            ok = true;
+            outcome = "wynik=" + (result.isEmpty() ? "nic" : result.toString());
         } catch (Throwable t) {
             // Zadanie nie moze wywalic ticku - logujemy i idziemy dalej.
+            outcome = "wyjatek=" + t;
             VeloceLog.Network.failure(VeloceLog.Side.SERVER,
                     "chunk task %s at %s failed: %s", task.kind(), task.pos(), t);
         } finally {
@@ -206,6 +214,14 @@ public final class VeloceChunkTaskQueue {
                 VeloceChunkLoader.release(level, chunkKey, ownerFor(task));
             }
             lastRunNanos = System.nanoTime() - start;
+            // DRUKUJEMY WERDYKT - to jest odpowiedz na pytanie "czy zadzialalo".
+            String finalOutcome = outcome;
+            boolean finalOk = ok;
+            com.craftingveloce.debug.ChunkTrace.result(
+                    "QUEUE:" + task.kind(), finalOk, !wasLoaded, wasLoaded,
+                    "%s | %s | trwalo=%d ms | zostalo=%d",
+                    task.describe(), finalOutcome,
+                    lastRunNanos / 1_000_000L, PENDING.size());
         }
     }
 

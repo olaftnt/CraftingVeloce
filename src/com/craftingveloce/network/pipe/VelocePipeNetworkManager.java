@@ -311,7 +311,11 @@ public class VelocePipeNetworkManager extends SavedData {
                     "chunk %s %s affects %d network(s) - cache invalidated",
                     chunkPos, loaded ? "loaded" : "unloaded", affected);
 
-            // Debug na czacie: pokaz graczom, co zniknelo/pojawilo sie w sieci.
+            // Zapis do konsoli: pelny cykl load/unload z liczba sieci.
+            // Na czacie tylko gdy monitor wlaczony - czat nie jest do logow.
+            com.craftingveloce.debug.ChunkTrace.event("CHUNK",
+                    "%s chunk[%d,%d] dotyczy %d sieci",
+                    loaded ? "LOAD" : "UNLOAD", chunkPos.x, chunkPos.z, affected);
             com.craftingveloce.debug.ChunkDebugNotifier.notifyChunkChange(
                     level, chunkPos, loaded, affectedThings);
         }
