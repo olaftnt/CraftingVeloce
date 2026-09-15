@@ -1,32 +1,31 @@
 #!/usr/bin/env python3
 """
-Generator tekstury rury Veloce v3 (veloce_pipe.png).
+Generator tekstury rury Veloce (veloce_pipe.png) - atlas 4 regionow.
 
-Zmiana wzgledem v2 (autorstwa uzytkownika):
-  - Rura poglebiona z 6x6 na 8x8 px (grubsza).
-  - Okno na scianie powiekszone z 2x2 na 4x4 px.
-  - Opaska zostaje 2 px z kazdej strony (te same proporcje co wczesniej).
+Cel: rura ma CIAGLE okno wzdluz dlugosci + cienka opaske (obejme) co blok.
 
-Zaleznosc:  rozmiar sciany S = rozmiar_okna + 2 * grubosc_opaski
-            8 = 4 + 2*2   -> OK
+ATLAS 16x16:
+  A  [0,0 .. 8,8]     LICO   - pelna ramka + okno 4x4 (czolo rury)
+  B1 [8,0 .. 12,8]    BOK    - dla scian east/west (u=Z=4, v=Y=8)
+  B2 [8,8 .. 16,12]   BOK    - dla scian up/down  (u=X=8, v=Z=4)
+  C  [0,8 .. 8,16]    GLOWICA- nozzle
 
-Zachowana paleta uzytkownika:
-    czern (18,18,20) + szary (58,58,64)
+KLUCZOWA ZASADA (dlaczego B1 i B2 sa osobne):
+  Rozne sciany maja rozne osie UV. Ramię north to element 8(X) x 8(Y) x 4(Z):
+    east/west (plaszczyzna ZY): u=Z(4) - dlugosc, v=Y(8) - szerokosc
+    up/down   (plaszczyzna XZ): u=X(8) - szerokosc, v=Z(4) - dlugosc
+  czyli na up/down osie sa ZAMIENIONE. Jeden wspolny region dalby
+  rozciagniecie i opaska poszlaby w zlym kierunku (efekt: brak opaski
+  od gory i kratki po bokach).
 
-Region rury to teraz [0,0 .. 8,8] (wczesniej [0,0 .. 6,6]).
-Modele uzywaja UV [0,0,8,8] - patrz pipe_core.json / pipe_part.json.
-
-Region glowicy (nozzle) zostaje [8,0 .. 16,8] (8x8) - bez zmian,
-ale nozzle jest wiekszy (10x10) niz rura, wiec pasek boczny czyta
-sie z lewej kolumny regionu jak dotychczas.
+  Dlatego B1 ma 4 kolumny x 8 wierszy, a B2 8 kolumn x 4 wiersze -
+  to ten sam wzor obrocony o 90 stopni.
 """
 import struct, zlib
 
 W = H = 16
-
-BLACK = (18, 18, 20, 255)   # czarna opaska (paleta uzytkownika)
-GREY = (58, 58, 64, 255)    # szary odcien (paleta uzytkownika)
-CLEAR = (0, 0, 0, 0)        # przezroczyste okno
+BLACK = (18, 18, 20, 255)
+CLEAR = (0, 0, 0, 0)
 
 px = [[CLEAR for _ in range(W)] for _ in range(H)]
 
@@ -36,94 +35,60 @@ def put(x, y, c):
         px[y][x] = c
 
 
-def build_pipe_region():
-    """Region A: [0,0 .. 8,8] - sciana rury 8x8, symetryczna.
-
-        szer 0  K K K K K K K K
-        szer 1  K K K K K K K K
-        szer 2  K K . . . . K K
-        szer 3  K K . . . . K K
-        szer 4  K K . . . . K K
-        szer 5  K K . . . . K K
-        szer 6  K K K K K K K K
-        szer 7  K K K K K K K K
-
-    Okno 4x4 wysrodkowane, opaska 2 px z kazdej strony.
-    Symetria: kol(i)<->kol(7-i), wiersz(i)<->wiersz(7-i).
-    """
-    SIZE = 8
-    BAND = 2                      # grubosc opaski
-    WIN = SIZE - 2 * BAND         # 4 -> okno 4x4
-
-    # 1. baza: cala opaska
-    for y in range(SIZE):
-        for x in range(SIZE):
-            put(x, y, BLACK)
-
-    # 2. okno 4x4 na srodku (przezroczyste)
-    for y in range(BAND, BAND + WIN):
-        for x in range(BAND, BAND + WIN):
-            put(x, y, CLEAR)
-
-    # 3. UWAGA: wersja v4 (autorstwa uzytkownika) NIE ma szarego pasa.
-    #    Rura jest czysta czernia z oknem 4x4 - wyglada jak "szyba".
-    #    Szary GREY zostal zachowany w palecie tylko dla regionu glowicy
-    #    i na wypadek powrotu do poprzedniego wzoru.
-
-
-def build_side_region():
-    """Region B: [8,0 .. 16,8] - BOK rury (wzdluz osi).
-
-    To jest kluczowy region dla ciaglosci! Opaska biegnie TYLKO po bokach
-    (wiersze 0,1,6,7), a okno jest OTWARTE na krawedziach dlugosci
-    (kolumny 8 i 15).
-
-    Dlaczego: boki ramion stykaja sie ze soba na granicy blokow. Gdyby
-    okno bylo zamkniete ramka (jak w regionie A), na kazdym styku
-    powstalby czarny pasek w poprzek rury - widoczny jako "podzial
-    na kwadraty". Otwarte krawedzie daja jedno ciagle okno wzdluz rury.
-
-    Modele uzywaja UV [8,0,12,8] (4 px dlugosci = dlugosc ramienia),
-    wiec mapowanie jest 1:1 i okno zajmuje pelne 4 px.
-
-        szer 0  K K K K
-        szer 1  K K K K
-        szer 2  . . . .     <- otwarte na OBU krawedziach
-        szer 3  . . . .
-        szer 4  . . . .
-        szer 5  . . . .
-        szer 6  K K K K
-        szer 7  K K K K
-    """
-    for y in range(8):
-        for x in range(8, 16):
-            put(x, y, BLACK)
-    # okno otwarte: wiersze 2..5, WSZYSTKIE kolumny regionu B
-    for y in range(2, 6):
-        for x in range(8, 16):
-            put(x, y, CLEAR)
-
-
-def build_head_region():
-    """Region C: [0,8 .. 8,16] - glowica/nozzle 8x8.
-
-    UWAGA: region zostal PRZENIESIONY z [8,0..16,8] na [0,8..8,16],
-    bo stare miejsce zajmuje teraz BOK rury (region B). Bez tego
-    glowica nadpisalaby bok rury i zepsula ciaglosc okna.
-    """
-    ox, oy = 0, 8
+def region_A():
+    """LICO [0,0..8,8]: pelna ramka + okno 4x4 (srodek)."""
     for y in range(8):
         for x in range(8):
-            put(ox + x, oy + y, BLACK)
-    # okno 4x4 na srodku (takie samo jak na licu rury)
-    for y in (2, 3, 4, 5):
-        for x in (2, 3, 4, 5):
-            put(ox + x, oy + y, CLEAR)
+            put(x, y, BLACK)
+    for y in range(2, 6):
+        for x in range(2, 6):
+            put(x, y, CLEAR)
 
 
-build_pipe_region()
-build_side_region()
-build_head_region()
+def region_B1():
+    """BOK east/west [8,0..12,8]: 4 kolumny (Z) x 8 wierszy (Y).
+
+    kolumna 0 (Z=0) = opaska na calej szerokosci -> obejma bloku
+    kolumny 1-3     = okno
+    wiersze 0,1,6,7 = opaska po bokach (biegnie wzdluz rury)
+    """
+    for y in range(8):
+        for x in range(8, 12):
+            put(x, y, BLACK)
+    for y in range(2, 6):
+        for x in range(9, 12):     # kolumna 8 zostaje opaska
+            put(x, y, CLEAR)
+
+
+def region_B2():
+    """BOK up/down [8,8..16,12]: 8 kolumn (X) x 4 wiersze (Z).
+
+    wiersz 0 (Z=0)  = opaska na calej szerokosci -> obejma bloku
+    wiersze 1-3     = okno
+    kolumny 0,1,6,7 = opaska po bokach
+    """
+    for y in range(8, 12):
+        for x in range(8, 16):
+            put(x, y, BLACK)
+    for y in range(9, 12):         # wiersz 8 zostaje opaska
+        for x in range(10, 14):    # srodek szerokosci
+            put(x, y, CLEAR)
+
+
+def region_C():
+    """GLOWICA [0,8..8,16]: ramka + okno 4x4."""
+    for y in range(8, 16):
+        for x in range(0, 8):
+            put(x, y, BLACK)
+    for y in range(10, 14):
+        for x in range(2, 6):
+            put(x, y, CLEAR)
+
+
+region_A()
+region_B1()
+region_B2()
+region_C()
 
 
 def chunk(tag, data):
@@ -137,20 +102,20 @@ for y in range(H):
     for x in range(W):
         raw += bytes(px[y][x])
 
-png = b'\x89PNG\r\n\x1a\n'
-png += chunk(b'IHDR', struct.pack('>IIBBBBB', W, H, 8, 6, 0, 0, 0))
-png += chunk(b'IDAT', zlib.compress(raw, 9))
-png += chunk(b'IEND', b'')
+png = (b'\x89PNG\r\n\x1a\n'
+       + chunk(b'IHDR', struct.pack('>IIBBBBB', W, H, 8, 6, 0, 0, 0))
+       + chunk(b'IDAT', zlib.compress(raw, 9))
+       + chunk(b'IEND', b''))
 
 out = 'assets/craftingveloce/textures/block/veloce_pipe.png'
 with open(out, 'wb') as f:
     f.write(png)
 print(f"zapisano {out} ({len(png)} bajtow)")
 
-print("\nPodglad (K=czarny, G=szary, .=okno):")
+print("\nAtlas (K=czarny, .=okno):")
 for y in range(H):
-    s = ''
-    for x in range(W):
-        c = px[y][x]
-        s += '.' if c[3] == 0 else ('G' if c == GREY else 'K')
-    print(f"  {y:2d} {s}")
+    s = ''.join('.' if px[y][x][3] == 0 else 'K' for x in range(W))
+    note = ''
+    if y == 0: note = '   A=[0,0..8,8] LICO | B1=[8,0..12,8] BOK ew'
+    if y == 8: note = '   C=[0,8..8,16] GLOW | B2=[8,8..16,12] BOK ud'
+    print(f"  {y:2d} {s}{note}")
