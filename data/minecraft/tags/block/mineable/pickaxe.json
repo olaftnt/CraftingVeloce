@@ -3,13 +3,17 @@
   "values": [
     "craftingveloce:electric_furnace",
     "craftingveloce:threshold_sensor",
-    "craftingveloce:veloce_combiner_module",
+    "craftingveloce:veloce_alchemistry_combiner_module",
+    "craftingveloce:veloce_alchemistry_compactor_module",
+    "craftingveloce:veloce_alchemistry_fission_module",
+    "craftingveloce:veloce_alchemistry_fusion_module",
     "craftingveloce:veloce_controller",
-    "craftingveloce:veloce_crusher_module",
-    "craftingveloce:veloce_enrichment_module",
     "craftingveloce:veloce_extractor",
+    "craftingveloce:veloce_mekanism_combiner_module",
+    "craftingveloce:veloce_mekanism_crusher_module",
+    "craftingveloce:veloce_mekanism_enrichment_module",
+    "craftingveloce:veloce_mekanism_sawmill_module",
     "craftingveloce:veloce_pipe",
-    "craftingveloce:veloce_sawmill_module",
     "craftingveloce:velocity_furnace"
   ]
 }

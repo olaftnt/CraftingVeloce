@@ -54,6 +54,10 @@ public class CraftingVeloceMod {
                             com.craftingveloce.compat.mekanism.MekanismCompat
                                     .addCreativeItems(output);
                         }
+                        if (com.craftingveloce.compat.alchemistry.AlchemistryCompat.isPresent()) {
+                            com.craftingveloce.compat.alchemistry.AlchemistryCompat
+                                    .addCreativeItems(output);
+                        }
                     })
                     .build()
     );

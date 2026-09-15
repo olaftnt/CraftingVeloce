@@ -36,31 +36,31 @@ public final class MekanismBlocks {
 
     /** Kruszarka: receptury {@code mekanism:crushing}. */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_CRUSHER_MODULE =
-            BLOCKS.register("veloce_crusher_module",
+            BLOCKS.register("veloce_mekanism_crusher_module",
                     () -> block(MekanismFeModules.CRUSHER));
     public static final DeferredItem<BlockItem> VELOCE_CRUSHER_MODULE_ITEM =
-            ITEMS.registerSimpleBlockItem("veloce_crusher_module", VELOCE_CRUSHER_MODULE);
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_crusher_module", VELOCE_CRUSHER_MODULE);
 
     /** Wzbogacanie: receptury {@code mekanism:enriching}. */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_ENRICHMENT_MODULE =
-            BLOCKS.register("veloce_enrichment_module",
+            BLOCKS.register("veloce_mekanism_enrichment_module",
                     () -> block(MekanismFeModules.ENRICHMENT));
     public static final DeferredItem<BlockItem> VELOCE_ENRICHMENT_MODULE_ITEM =
-            ITEMS.registerSimpleBlockItem("veloce_enrichment_module", VELOCE_ENRICHMENT_MODULE);
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_enrichment_module", VELOCE_ENRICHMENT_MODULE);
 
     /** Laczenie: receptury {@code mekanism:combining} (dwa wejscia). */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_COMBINER_MODULE =
-            BLOCKS.register("veloce_combiner_module",
+            BLOCKS.register("veloce_mekanism_combiner_module",
                     () -> block(MekanismFeModules.COMBINER));
     public static final DeferredItem<BlockItem> VELOCE_COMBINER_MODULE_ITEM =
-            ITEMS.registerSimpleBlockItem("veloce_combiner_module", VELOCE_COMBINER_MODULE);
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_combiner_module", VELOCE_COMBINER_MODULE);
 
     /** Pilowanie: receptury {@code mekanism:sawing} (wynik losowy). */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_SAWMILL_MODULE =
-            BLOCKS.register("veloce_sawmill_module",
+            BLOCKS.register("veloce_mekanism_sawmill_module",
                     () -> block(MekanismFeModules.SAWMILL));
     public static final DeferredItem<BlockItem> VELOCE_SAWMILL_MODULE_ITEM =
-            ITEMS.registerSimpleBlockItem("veloce_sawmill_module", VELOCE_SAWMILL_MODULE);
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_sawmill_module", VELOCE_SAWMILL_MODULE);
 
     /** Jedna linia na maszyne: blok rdzenia + fabryka BE z tego modulu. */
     private static VeloceFeModuleBlock block(FeModule module) {

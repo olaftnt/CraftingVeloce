@@ -59,9 +59,13 @@
   "item.craftingveloce.wrench": "Veloce Wrench",
   "gui.craftingveloce.controller.prefer.crafting": "Preference: Crafting",
   "gui.craftingveloce.controller.prefer.furnace": "Preference: Furnace",
-  "block.craftingveloce.veloce_crusher_module": "Veloce Crusher Module",
   "gui.craftingveloce.module.energy": "Energy: %s / %s FE (%s / %s operations)",
-  "block.craftingveloce.veloce_enrichment_module": "Veloce Enrichment Module",
-  "block.craftingveloce.veloce_combiner_module": "Veloce Combiner Module",
-  "block.craftingveloce.veloce_sawmill_module": "Veloce Sawmill Module"
+  "block.craftingveloce.veloce_mekanism_crusher_module": "Veloce Crusher Module",
+  "block.craftingveloce.veloce_mekanism_enrichment_module": "Veloce Enrichment Module",
+  "block.craftingveloce.veloce_mekanism_combiner_module": "Veloce Combiner Module",
+  "block.craftingveloce.veloce_mekanism_sawmill_module": "Veloce Sawmill Module",
+  "block.craftingveloce.veloce_alchemistry_compactor_module": "Veloce Alchemistry Compactor Module",
+  "block.craftingveloce.veloce_alchemistry_combiner_module": "Veloce Alchemistry Combiner Module",
+  "block.craftingveloce.veloce_alchemistry_fission_module": "Veloce Alchemistry Fission Module",
+  "block.craftingveloce.veloce_alchemistry_fusion_module": "Veloce Alchemistry Fusion Module"
 }

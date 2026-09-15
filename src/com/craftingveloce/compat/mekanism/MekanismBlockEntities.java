@@ -29,25 +29,25 @@ public final class MekanismBlockEntities {
 
     public static final DeferredHolder<BlockEntityType<?>,
             BlockEntityType<VeloceFeModuleBlockEntity>> CRUSHER_MODULE =
-            TYPES.register("veloce_crusher_module", () -> BlockEntityType.Builder.of(
+            TYPES.register("veloce_mekanism_crusher_module", () -> BlockEntityType.Builder.of(
                     (pos, state) -> factory(MekanismFeModules.CRUSHER).create(pos, state),
                     MekanismBlocks.VELOCE_CRUSHER_MODULE.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>,
             BlockEntityType<VeloceFeModuleBlockEntity>> ENRICHMENT_MODULE =
-            TYPES.register("veloce_enrichment_module", () -> BlockEntityType.Builder.of(
+            TYPES.register("veloce_mekanism_enrichment_module", () -> BlockEntityType.Builder.of(
                     (pos, state) -> factory(MekanismFeModules.ENRICHMENT).create(pos, state),
                     MekanismBlocks.VELOCE_ENRICHMENT_MODULE.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>,
             BlockEntityType<VeloceFeModuleBlockEntity>> COMBINER_MODULE =
-            TYPES.register("veloce_combiner_module", () -> BlockEntityType.Builder.of(
+            TYPES.register("veloce_mekanism_combiner_module", () -> BlockEntityType.Builder.of(
                     (pos, state) -> factory(MekanismFeModules.COMBINER).create(pos, state),
                     MekanismBlocks.VELOCE_COMBINER_MODULE.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>,
             BlockEntityType<VeloceFeModuleBlockEntity>> SAWMILL_MODULE =
-            TYPES.register("veloce_sawmill_module", () -> BlockEntityType.Builder.of(
+            TYPES.register("veloce_mekanism_sawmill_module", () -> BlockEntityType.Builder.of(
                     (pos, state) -> factory(MekanismFeModules.SAWMILL).create(pos, state),
                     MekanismBlocks.VELOCE_SAWMILL_MODULE.get()).build(null));
 

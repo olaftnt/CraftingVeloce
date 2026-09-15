@@ -1,0 +1,8 @@
+{
+    "parent": "block/orientable",
+    "textures": {
+        "top": "craftingveloce:block/veloce_module_top",
+        "front": "craftingveloce:block/veloce_module_front",
+        "side": "craftingveloce:block/veloce_module_side"
+    }
+}

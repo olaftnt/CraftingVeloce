@@ -45,14 +45,34 @@ public final class AlchemistryRecipeFamily {
         });
     }
 
+    /** Compactor: 1 item (x count) -> 1 item. */
+    public static RecipeType<?> compactor() {
+        return RecipeRegistry.COMPACTOR_TYPE.get();
+    }
+
+    /** Combiner: N itemow (kazdy z count) -> 1 item. */
+    public static RecipeType<?> combiner() {
+        return RecipeRegistry.COMBINER_TYPE.get();
+    }
+
+    /** Fission: 1 item -> 2 itemy (deterministyczne). */
+    public static RecipeType<?> fission() {
+        return RecipeRegistry.FISSION_TYPE.get();
+    }
+
+    /** Fusion: 2 itemy -> 1 item (deterministyczne). */
+    public static RecipeType<?> fusion() {
+        return RecipeRegistry.FUSION_TYPE.get();
+    }
+
     /** Typy receptur Alchemistry. Wolno wolac tylko gdy mod jest obecny. */
     public static Set<RecipeType<?>> types() {
         if (resolved == null) {
             Set<RecipeType<?>> out = new LinkedHashSet<>();
-            out.add(RecipeRegistry.COMPACTOR_TYPE.get());
-            out.add(RecipeRegistry.COMBINER_TYPE.get());
-            out.add(RecipeRegistry.FISSION_TYPE.get());
-            out.add(RecipeRegistry.FUSION_TYPE.get());
+            out.add(compactor());
+            out.add(combiner());
+            out.add(fission());
+            out.add(fusion());
             resolved = Set.copyOf(out);
         }
         return resolved;

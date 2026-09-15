@@ -271,21 +271,31 @@ DeferredHoldery obcego moda są wiązane dopiero po rejestracji.
 
 ### Moduły maszyn (bloki z `compat/*`)
 
-Zaimplementowany moduł: **Mekanism** (`compat/mekanism`) — cztery maszyny
-itemowe, wszystkie na jednym bloku i jednym block entity (`FeModule` to cała
-ich różnica):
+Zaimplementowane moduły: **Mekanism** i **Alchemistry**. Wszystkie maszyny
+itemowe dzielą jeden blok rdzenia (`VeloceFeModuleBlock`) i jeden block entity
+(`VeloceFeModuleBlockEntity`) — różni je wyłącznie opis `FeModule` (typ
+receptury, koszt FE, etykieta).
 
 | Blok | Rodzina receptur | Koszt |
 |------|------------------|-------|
-| `veloce_crusher_module` | `mekanism:crushing` | 4000 FE/operację |
-| `veloce_enrichment_module` | `mekanism:enriching` | 4000 FE/operację |
-| `veloce_combiner_module` | `mekanism:combining` (2 wejścia) | 4000 FE/operację |
-| `veloce_sawmill_module` | `mekanism:sawing` (wynik losowy) | 4000 FE/operację |
+| `veloce_mekanism_crusher_module` | `mekanism:crushing` | 4000 FE/operację |
+| `veloce_mekanism_enrichment_module` | `mekanism:enriching` | 4000 FE/operację |
+| `veloce_mekanism_combiner_module` | `mekanism:combining` (2 wejścia) | 4000 FE/operację |
+| `veloce_mekanism_sawmill_module` | `mekanism:sawing` (wynik losowy) | 4000 FE/operację |
+| `veloce_alchemistry_compactor_module` | `alchemistry:compactor` | 2500 FE/operację |
+| `veloce_alchemistry_combiner_module` | `alchemistry:combiner` (N składników) | 10 000 FE/operację |
+| `veloce_alchemistry_fission_module` | `alchemistry:fission` (1 → 2 wyniki) | 15 000 FE/operację |
+| `veloce_alchemistry_fusion_module` | `alchemistry:fusion` (2 → 1) | 15 000 FE/operację |
 
-Koszt jest ten sam, co w maszynie Mekanism (20 FE/t × 200 t), bufor 40 000 FE.
-Maszyna stoi w sieci jak każda inna, przyjmuje FE kablem (capability
-`EnergyStorage`), a kliknięcie pokazuje stan akumulatora na pasku akcji.
-Sawmill planuje tylko wynik główny, a dodatkowy dorzuca po rzucie kością.
+Koszty są przepisane z oryginalnych maszyn (Mekanism: 20 FE/t × 200 t;
+Alchemistry: `energyPerTick` × `ticksPerOperation`), bufory odpowiednio
+40 000 FE i 100 000 FE. Każda maszyna stoi w sieci jak każda inna, przyjmuje FE
+kablem (capability `EnergyStorage`), a kliknięcie pokazuje stan akumulatora na
+pasku akcji. Sawmill planuje tylko wynik główny, a dodatkowy dorzuca po rzucie
+kością; fission planuje oba wyniki, bo oba są gwarantowane.
+
+Dissolver (probabilistyczny `ProbabilitySet`) i maszyny na płynach/chemikaliach
+czekają na osobną politykę probabilistyki i warstwę płynów.
 
 Jak dołożyć kolejny moduł — cała procedura:
 

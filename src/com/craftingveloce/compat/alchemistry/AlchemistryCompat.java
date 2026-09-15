@@ -23,6 +23,20 @@ public final class AlchemistryCompat {
 
     /** Rejestruje integracje. Wolno wolac WYLACZNIE gdy {@link #isPresent()}. */
     public static void register(IEventBus modEventBus) {
+        AlchemistryBlocks.register(modEventBus);
+        AlchemistryBlockEntities.register(modEventBus);
+        AlchemistryCapabilities.register(modEventBus);
         AlchemistryRecipeFamily.register(modEventBus);
+        AlchemistryModule.register(modEventBus);
+    }
+
+    /**
+     * Pozycje modulu do zakladki kreatywnej.
+     *
+     * <p>Zakladka buduje sie ZAWSZE (takze bez Alchemistry), wiec to wywolanie
+     * jest warunkowane obecnoscia moda w {@code CraftingVeloceMod}.
+     */
+    public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
+        AlchemistryBlocks.addCreativeItems(output);
     }
 }

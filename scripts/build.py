@@ -904,6 +904,32 @@ def validate_isolation_runtime(cp, toms, rs):
     print("    OK (L1: bramki laduja sie bez obcych modow i mowia 'brak')")
 
 
+def validate_module_block_ids():
+    """
+    Id bloku modulu musi zaczynac sie od {@code veloce_<mod>_}.
+
+    Bez tego dwa moduly moga niezaleznie wybrac te sama nazwe (np. "combiner"
+    istnieje i w Mekanism, i w Alchemistry) i jeden blok nadpisze drugi -
+    a blad wyjdzie dopiero u gracza, ktory ma oba mody. Prefiks moda rozwiazuje
+    to raz na zawsze i mowi od razu, z ktorej integracji pochodzi blok.
+    """
+    problems = []
+    checked = 0
+    for path in sorted(glob.glob("src/com/craftingveloce/compat/*/*Blocks.java")):
+        rel = path.replace(os.sep, "/")
+        mod = rel.split("/compat/", 1)[1].split("/", 1)[0]
+        text = open(path, encoding="utf-8").read()
+        for block_id in re.findall(r'BLOCKS\.register\(\s*"([a-z0-9_]+)"', text):
+            checked += 1
+            expected = f"veloce_{mod}_"
+            if not block_id.startswith(expected):
+                problems.append(f"{rel}: '{block_id}' nie zaczyna sie od '{expected}'")
+    if problems:
+        fail("nazwy blokow modulow:\n  " + "\n  ".join(problems))
+    if checked:
+        print(f"    OK ({checked} blokow modulow: nazwy z prefiksem moda)")
+
+
 def game_running():
     """
     Czy Minecraft z tego profilu wlasnie dziala?
@@ -1080,6 +1106,7 @@ def main():
     validate_sensor_row()
     validate_node_blocks()
     validate_recipe_model()
+    validate_module_block_ids()
     validate_core_isolation()
     validate_compat_gates(z)
     validate_jar_isolation(z)
