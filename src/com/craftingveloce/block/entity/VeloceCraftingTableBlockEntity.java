@@ -14,6 +14,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -154,8 +155,18 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
     }
 
     public void syncToPlayer(ServerPlayer player) {
+        // Wysylamy tez zawartosc bufora - gracz przeglada go w zakladce
+        // "Survival Inventory" i moze z niego wyciagac (ale nie wkladac).
+        java.util.List<ItemStack> contents = new java.util.ArrayList<>();
+        for (int i = 0; i < buffer.getContainerSize(); i++) {
+            ItemStack st = buffer.getItem(i);
+            if (!st.isEmpty()) {
+                contents.add(st.copy());
+            }
+        }
         PacketDistributor.sendToPlayer(player, new OpenCraftingTableScreenPKT(
-                this.getBlockPos(), new HashSet<>(disabledItems), new HashMap<>(preferredRecipes)));
+                this.getBlockPos(), new HashSet<>(disabledItems),
+                new HashMap<>(preferredRecipes), contents));
     }
 
     public void syncToWatchers(ServerLevel level) {

@@ -50,11 +50,13 @@ public class ClientTerminalHelper {
     }
 
     public static void openCraftingTableScreen(BlockPos pos, java.util.Set<Item> enabledItems,
-                                               java.util.Map<Item, net.minecraft.resources.ResourceLocation> preferredRecipes) {
+                                               java.util.Map<Item, net.minecraft.resources.ResourceLocation> preferredRecipes,
+                                               java.util.List<net.minecraft.world.item.ItemStack> bufferContents) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             mc.setScreen(new com.craftingveloce.client.gui.VeloceCraftingTableScreen(
-                    mc.player, mc.player.connection.enabledFeatures(), true, pos, enabledItems, preferredRecipes));
+                    mc.player, mc.player.connection.enabledFeatures(), true, pos,
+                    enabledItems, preferredRecipes, bufferContents));
         }
     }
 

@@ -7,6 +7,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.HashMap;
@@ -25,16 +26,17 @@ import java.util.Set;
  * </ul>
  */
 public record OpenCraftingTableScreenPKT(BlockPos pos, Set<Item> enabledItems,
-                                         Map<Item, ResourceLocation> preferredRecipes)
+                                         Map<Item, ResourceLocation> preferredRecipes,
+                                         java.util.List<ItemStack> bufferContents)
         implements CustomPacketPayload {
 
     public static final Type<OpenCraftingTableScreenPKT> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath("craftingveloce", "open_crafting_table_screen"));
 
-    public static final StreamCodec<FriendlyByteBuf, OpenCraftingTableScreenPKT> STREAM_CODEC =
+    public static final StreamCodec<net.minecraft.network.RegistryFriendlyByteBuf, OpenCraftingTableScreenPKT> STREAM_CODEC =
             StreamCodec.of(OpenCraftingTableScreenPKT::encode, OpenCraftingTableScreenPKT::decode);
 
-    private static void encode(FriendlyByteBuf buf, OpenCraftingTableScreenPKT pkt) {
+    private static void encode(net.minecraft.network.RegistryFriendlyByteBuf buf, OpenCraftingTableScreenPKT pkt) {
         buf.writeBlockPos(pkt.pos);
         buf.writeInt(pkt.enabledItems.size());
         for (Item item : pkt.enabledItems) {
@@ -45,9 +47,14 @@ public record OpenCraftingTableScreenPKT(BlockPos pos, Set<Item> enabledItems,
             buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(e.getKey()));
             buf.writeResourceLocation(e.getValue());
         }
+        // Zawartosc bufora (pamiec podreczna produkcji) - pokazywana w GUI.
+        buf.writeInt(pkt.bufferContents.size());
+        for (ItemStack st : pkt.bufferContents) {
+            ItemStack.OPTIONAL_STREAM_CODEC.encode(buf, st);
+        }
     }
 
-    private static OpenCraftingTableScreenPKT decode(FriendlyByteBuf buf) {
+    private static OpenCraftingTableScreenPKT decode(net.minecraft.network.RegistryFriendlyByteBuf buf) {
         BlockPos pos = buf.readBlockPos();
         int count = buf.readInt();
         Set<Item> items = new HashSet<>();
@@ -68,7 +75,12 @@ public record OpenCraftingTableScreenPKT(BlockPos pos, Set<Item> enabledItems,
                 prefs.put(item, recipeId);
             }
         }
-        return new OpenCraftingTableScreenPKT(pos, items, prefs);
+        int bufCount = buf.readInt();
+        java.util.List<ItemStack> buffer = new java.util.ArrayList<>(bufCount);
+        for (int i = 0; i < bufCount; i++) {
+            buffer.add(ItemStack.OPTIONAL_STREAM_CODEC.decode(buf));
+        }
+        return new OpenCraftingTableScreenPKT(pos, items, prefs, buffer);
     }
 
     @Override
@@ -78,6 +90,7 @@ public record OpenCraftingTableScreenPKT(BlockPos pos, Set<Item> enabledItems,
 
     public static void handle(OpenCraftingTableScreenPKT pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> com.craftingveloce.client.ClientTerminalHelper
-                .openCraftingTableScreen(pkt.pos(), pkt.enabledItems(), pkt.preferredRecipes()));
+                .openCraftingTableScreen(pkt.pos(), pkt.enabledItems(), pkt.preferredRecipes(),
+                        pkt.bufferContents()));
     }
 }

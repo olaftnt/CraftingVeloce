@@ -54,6 +54,12 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     /** Cache: item -> lista receptur (id + wynik + skladniki). */
     private Map<Item, List<ClientRecipe>> craftableItems = null;
 
+    /**
+     * Zawartosc bufora craftera - pokazywana w zakladce "Survival Inventory"
+     * zamiast zwyklego ekwipunku. Mozna z niej wyciagac, ale nie wkladac.
+     */
+    private List<ItemStack> bufferContents;
+
     /** Receptura widziana po stronie klienta (do tooltipow i cyklowania). */
     private record ClientRecipe(ResourceLocation id, ItemStack result, List<List<ItemStack>> options) {
         int resultCount() {
@@ -64,11 +70,22 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     public VeloceCraftingTableScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                      boolean displayOperatorCreativeTab, BlockPos tablePos,
                                      Set<Item> disabledItems,
-                                     Map<Item, ResourceLocation> preferredRecipes) {
+                                     Map<Item, ResourceLocation> preferredRecipes,
+                                     List<ItemStack> bufferContents) {
         super(player, enabledFeatures, displayOperatorCreativeTab);
         this.tablePos = tablePos;
         this.disabledItems = new HashSet<>(disabledItems);
         this.preferredRecipes = new HashMap<>(preferredRecipes);
+        this.bufferContents = new ArrayList<>(bufferContents);
+    }
+
+    /** Aktualizuje zawartosc bufora (po wyciagnieciu itemu). */
+    public void updateBuffer(List<ItemStack> contents) {
+        this.bufferContents = new ArrayList<>(contents);
+    }
+
+    public List<ItemStack> getBufferContents() {
+        return bufferContents;
     }
 
     public void updateEnabledItems(Set<Item> items, Map<Item, ResourceLocation> prefs) {
@@ -205,10 +222,85 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // Przed rysowaniem: jesli gracz wybral zakladke ekwipunku, pokaz tam bufor.
+        applyBufferToInventoryTab();
         super.render(graphics, mouseX, mouseY, partialTick);
         drawHotbarCover(graphics, 0xFFC6C6C6);
         renderRecipeTooltip(graphics, mouseX, mouseY);
         renderTabTooltip(graphics, mouseX, mouseY);
+    }
+
+    // ------------------------------------------------------------------
+    // Zakladka "Survival Inventory" = bufor craftera
+    // ------------------------------------------------------------------
+
+    /**
+     * Czy aktualnie wybrana jest zakladka ekwipunku (Survival Inventory).
+     *
+     * <p>Vanilla rozpoznaje ja po {@code CreativeModeTab.Type.INVENTORY} i przy
+     * jej wyborze podmienia sloty na zwykly ekwipunek gracza (armor, offhand,
+     * crafting 2x2). My chcemy tam pokazac bufor craftera zamiast tego.
+     */
+    private boolean isInventoryTabSelected() {
+        try {
+            var f = net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen.class
+                    .getDeclaredField("selectedTab");
+            f.setAccessible(true);
+            Object tab = f.get(null);
+            if (tab instanceof CreativeModeTab cmt) {
+                return cmt.getType() == CreativeModeTab.Type.INVENTORY;
+            }
+        } catch (Throwable ignored) {
+        }
+        return false;
+    }
+
+    /** Czy slot nalezy do zwyklego ekwipunku gracza (a nie do siatki creative). */
+    private boolean isVanillaInventorySlot(Slot slot) {
+        if (slot == null || this.minecraft == null || this.minecraft.player == null) {
+            return false;
+        }
+        for (Slot s : this.minecraft.player.inventoryMenu.slots) {
+            if (s == slot) {
+                return true;
+            }
+        }
+        return slot.container == this.minecraft.player.getInventory();
+    }
+
+    /**
+     * Podmienia sloty ekwipunku na sloty bufora craftera.
+     *
+     * <p>Vanilla przy wyborze zakladki INVENTORY kopiuje do menu sloty z
+     * {@code player.inventoryMenu}. My nadpisujemy ich zawartosc zawartoscia
+     * bufora, a sloty bez odpowiednika w buforze zostaja puste.
+     *
+     * <p>Wkładanie jest zablokowane - {@link #slotClicked} obsluguje tylko
+     * wyciaganie. Bufor ma byc pamiecia produkcji, nie kolejna skrzynia.
+     */
+    private void applyBufferToInventoryTab() {
+        if (this.menu == null || this.minecraft == null || this.minecraft.player == null) {
+            return;
+        }
+        if (!isInventoryTabSelected()) {
+            return;
+        }
+        // Gdy widoczna jest siatka creative, nie ruszamy slotow.
+        if (this.menu.slots.size() < 9) {
+            return;
+        }
+        int shown = 0;
+        for (Slot slot : this.menu.slots) {
+            if (!isVanillaInventorySlot(slot)) {
+                continue;
+            }
+            if (shown < bufferContents.size()) {
+                slot.set(bufferContents.get(shown));
+                shown++;
+            } else {
+                slot.set(ItemStack.EMPTY);
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -329,6 +421,24 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         if (this.minecraft == null || this.minecraft.player == null) return;
+
+        // W zakladce ekwipunku pokazujemy bufor craftera - klikniecie wyciaga
+        // item do gracza. Wkładanie jest zablokowane, wiec nie przekazujemy
+        // zdarzenia dalej do vanilla (inaczej graliby na prawdziwym EQ).
+        if (isInventoryTabSelected() && slot != null && isVanillaInventorySlot(slot)) {
+            ItemStack inSlot = slot.getItem();
+            if (inSlot.isEmpty()) {
+                return;
+            }
+            int count = (clickType == ClickType.QUICK_MOVE || mouseButton == 1)
+                    ? inSlot.getMaxStackSize()
+                    : inSlot.getCount();
+            PacketDistributor.sendToServer(
+                    new com.craftingveloce.network.BufferPullItemPKT(
+                            tablePos, inSlot, count));
+            return;
+        }
+
         if (slot == null || isPlayerInventorySlot(slot) || isTrashSlot(slot)) return;
 
         ItemStack item = slot.getItem();
