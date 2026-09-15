@@ -98,6 +98,17 @@ public final class VeloceCraftingCache {
     /** Czy minol okres karencji po starcie swiata. */
     private boolean startupGracePassed = false;
 
+    /**
+     * Tick, w ktorym ta sesja po raz pierwszy dotknela cache.
+     *
+     * <p>UWAGA: {@code level.getGameTime()} po wczytaniu save'a ma juz tysiace
+     * tickow (swiat istnieje od dawna), wiec nie da sie na nim opierac karencji
+     * startowej - warunek "gameTime < 200" jest od razu falszywy i karencja
+     * nigdy nie dziala. Poprzednia wersja miala dokladnie ten blad.
+     * Mierzymy wiec czas od pierwszego ticku tej sesji.
+     */
+    private long firstSeenTick = -1;
+
     /** Ostatni pelny skan stocku (gameTime). */
     private long lastFullStockScan = Long.MIN_VALUE;
 
@@ -187,12 +198,19 @@ public final class VeloceCraftingCache {
         // 0. Karencja startowa. Ladowanie save'a to najgorszy moment na
         //    jakakolwiek prace - czekamy, az serwer sie ustabilizuje.
         if (!startupGracePassed) {
-            if (level.getGameTime() < STARTUP_GRACE_TICKS) {
+            if (firstSeenTick < 0) {
+                firstSeenTick = level.getGameTime();
+                VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                        "crafting cache: first tick seen (gameTime=%d), waiting %d ticks",
+                        firstSeenTick, STARTUP_GRACE_TICKS);
+            }
+            if (level.getGameTime() - firstSeenTick < STARTUP_GRACE_TICKS) {
                 return;
             }
             startupGracePassed = true;
             VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                    "crafting cache: startup grace passed, beginning background scan");
+                    "crafting cache: startup grace passed after %d ticks, beginning scan",
+                    level.getGameTime() - firstSeenTick);
         }
 
         // 1. Rzadki pelny skan stocku - wylapuje zmiany, ktorych nie zgloszono
@@ -304,37 +322,29 @@ public final class VeloceCraftingCache {
                 changed.size(), affected.size(), added);
     }
 
-    /** Kolejkuje wstepny skan: najpierw itemy obecne w sieci, potem resztę. */
+    /**
+     * Kolejkuje wstepny skan: TYLKO itemy obecne w sieci.
+     *
+     * <p>Reszta nie jest potrzebna od razu - gracz widzi w GUI to, co ma.
+     * Dobijanie kolejki do limitu (poprzednia wersja wpychala 2000 itemow)
+     * znaczylo 2000 rekurencyjnych symulacji bez powodu, i to podczas startu.
+     * Pozostale itemy dolacza sie pozniej, leniwie, gdy siec sie rozrosnie.
+     */
     private void queueInitialScan(Set<Item> enabled) {
-        // Priorytet 1: itemy, ktore faktycznie sa w sieci - to one sa widoczne
-        // w GUI i to dla nich liczby maja sens od razu.
-        int n = 0;
+        int fromStock = 0;
         for (var e : lastStock.entrySet()) {
-            if (e.getValue() <= 0) {
+            if (e.getValue() <= 0 || fromStock >= MAX_FULL_SCAN) {
                 continue;
-            }
-            if (n++ >= MAX_FULL_SCAN) {
-                break;
             }
             if (queued.add(e.getKey())) {
                 pending.add(e.getKey());
-            }
-        }
-        int fromStock = n;
-
-        // Priorytet 2: reszta wlaczonych itemow, w ramach limitu kolejki.
-        for (Item it : enabled) {
-            if (pending.size() >= MAX_QUEUE) {
-                break;
-            }
-            if (queued.add(it)) {
-                pending.add(it);
+                fromStock++;
             }
         }
 
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "crafting cache: initial scan queued %d item(s) (%d from stock, cap %d)",
-                pending.size(), fromStock, MAX_QUEUE);
+                "crafting cache: initial scan queued %d item(s) (from stock, cap %d)",
+                pending.size(), MAX_FULL_SCAN);
     }
 
     // ------------------------------------------------------------------

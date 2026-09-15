@@ -40,8 +40,36 @@ import java.util.Set;
  */
 public final class VeloceAutoCrafter {
 
-    private static final int MAX_DEPTH = 24;
-    private static final int MAX_PLAN_STEPS = 8192;
+    /**
+     * Glebokosc rekurencji przy PRAWDZIWYM craftowaniu.
+     *
+     * <p>Musi byc hojna: gracz moze chciec cos, co wymaga dlugiego lancucha
+     * posrednich craftow. Craftowanie jest wywolywane rzadko (na zadanie
+     * gracza), wiec moze byc drozsze.
+     */
+    private static final int CRAFT_MAX_DEPTH = 24;
+
+    /** Limit krokow planowania przy prawdziwym craftowaniu. */
+    private static final int CRAFT_MAX_STEPS = 8192;
+
+    /**
+     * Glebokosc rekurencji przy SZACOWANIU (countCraftableNow).
+     *
+     * <p>Musi byc maly: szacowanie leci w tle dla wielu itemow, a przy 5033
+     * recepturach gleboka rekursja trwa setki milisekund na jeden item.
+     * Szacunek nie musi byc dokladny dla lancuchow dluzszych niz kilka
+     * poziomow - sluzy tylko do wyswietlenia liczby w GUI.
+     */
+    private static final int ESTIMATE_MAX_DEPTH = 8;
+
+    /**
+     * Twardy limit operacji w JEDNYM szacowaniu.
+     *
+     * <p>Budzet czasowy w cache jest sprawdzany miedzy itemami, wiec nie chroni
+     * przed pojedynczym drogim itemem. Ten licznik jest sprawdzany w trakcie
+     * rekursji i przerywa ja, gdy przekroczy limit.
+     */
+    private static final int MAX_ESTIMATE_OPS = 2000;
 
     private VeloceAutoCrafter() {
     }
@@ -160,6 +188,27 @@ public final class VeloceAutoCrafter {
         return CraftResult.ok(count);
     }
 
+
+    /**
+     * Licznik operacji biezacego szacowania.
+     *
+     * <p>ThreadLocal, bo szacowanie moze byc wolane z roznych watkow (choc
+     * normalnie tylko z watku serwera), a nie chcemy zmieniac sygnatur
+     * wszystkich metod rekurencyjnych.
+     */
+    private static final ThreadLocal<int[]> ESTIMATE_OPS =
+            ThreadLocal.withInitial(() -> new int[]{0});
+
+    /** Resetuje licznik operacji przed szacowaniem. */
+    private static void resetEstimateOps() {
+        ESTIMATE_OPS.get()[0] = 0;
+    }
+
+    /** Czy szacowanie przekroczylo limit operacji. */
+    private static boolean estimateBudgetExceeded() {
+        return ESTIMATE_OPS.get()[0]++ > MAX_ESTIMATE_OPS;
+    }
+
     /**
      * Ile sztuk danego itemu da sie <b>dorobic</b> auto-craftingiem ponad to,
      * co juz jest w sieci.
@@ -179,6 +228,7 @@ public final class VeloceAutoCrafter {
         }
         Map<Item, Long> stock = new HashMap<>(network.getAllItemCounts(level));
         long onStock = stock.getOrDefault(item, 0L);
+        resetEstimateOps();
         long total = maxCraftable(level, item, stock, enabledItems, new HashSet<>(), 0);
         // Zwracamy tylko nadwyzke ponad stock - inaczej licznik pokazywalby
         // przedmioty, ktore juz leza w sieci, jako "do zrobienia".
@@ -239,7 +289,7 @@ public final class VeloceAutoCrafter {
         if (amount <= 0) {
             return true;
         }
-        if (depth > MAX_DEPTH || plan.runs.size() > MAX_PLAN_STEPS) {
+        if (depth > CRAFT_MAX_DEPTH || plan.runs.size() > CRAFT_MAX_STEPS) {
             return false;
         }
         if (!visiting.add(item)) {
@@ -296,7 +346,7 @@ public final class VeloceAutoCrafter {
                                       Set<Item> visiting, int depth) {
         long perCraft = Math.max(1, recipe.result().getCount());
         long times = (amount + perCraft - 1) / perCraft;
-        if (times <= 0 || times > MAX_PLAN_STEPS) {
+        if (times <= 0 || times > CRAFT_MAX_STEPS) {
             return false;
         }
 
@@ -354,7 +404,7 @@ public final class VeloceAutoCrafter {
      */
     private static long maxCraftable(ServerLevel level, Item item, Map<Item, Long> stock,
                                      Set<Item> enabled, Set<Item> visiting, int depth) {
-        if (depth > MAX_DEPTH || !visiting.add(item)) {
+        if (depth > ESTIMATE_MAX_DEPTH || !visiting.add(item) || estimateBudgetExceeded()) {
             return 0L;
         }
         try {
@@ -406,7 +456,7 @@ public final class VeloceAutoCrafter {
                 Item optItem = opt.getItem();
                 long avail = stock.getOrDefault(optItem, 0L);
                 long total = avail;
-                if (enabled.contains(optItem) && depth < MAX_DEPTH
+                if (enabled.contains(optItem) && depth < ESTIMATE_MAX_DEPTH
                         && !visiting.contains(optItem)) {
                     Map<Item, Long> copy = new HashMap<>(stock);
                     long withCrafting = maxCraftable(level, optItem, copy, enabled,
@@ -434,7 +484,7 @@ public final class VeloceAutoCrafter {
         for (Map.Entry<Item, Long> e : needPerCraft.entrySet()) {
             long avail = stock.getOrDefault(e.getKey(), 0L);
             long totalForItem = avail;
-            if (enabled.contains(e.getKey()) && depth < MAX_DEPTH
+            if (enabled.contains(e.getKey()) && depth < ESTIMATE_MAX_DEPTH
                     && !visiting.contains(e.getKey())) {
                 Map<Item, Long> copy = new HashMap<>(stock);
                 long withCrafting = maxCraftable(level, e.getKey(), copy, enabled,
