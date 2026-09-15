@@ -40,15 +40,42 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
 
     private static void encode(FriendlyByteBuf buf, RequestCraftableCountsPKT pkt) {
         buf.writeBlockPos(pkt.pos);
+        // Nigdy nie wysylamy wiecej, niz druga strona przyjmie - inaczej
+        // nasze wlasne zadanie zostanie odrzucone jako bledne.
+        if (pkt.items.size() > MAX_ITEMS) {
+            throw new IllegalArgumentException(
+                    "RequestCraftableCountsPKT: too many items (" + pkt.items.size() + ")");
+        }
         buf.writeInt(pkt.items.size());
         for (Item item : pkt.items) {
             buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(item));
         }
     }
 
+    /**
+     * Gorny limit liczby itemow w jednym zadaniu.
+     *
+     * <p><b>Bezpieczenstwo.</b> {@code n} przychodzi OD KLIENTA i przed tą
+     * zmiana bylo uzywane bez zadnego ograniczenia: {@code new ArrayList<>(n)}
+     * z ogromnym {@code n} to natychmiastowa proba alokacji (OutOfMemoryError),
+     * a petla czytajaca potrafila ciagnac dalej, az do bledu bufora. Zlosliwy
+     * albo po prostu popsuty klient mogl wiec polozyc serwer jednym pakietem.
+     *
+     * <p>Limit jest hojny - terminal widzi najwyzej kilkadziesiat pozycji na
+     * strone, wiec setka z zapasem wystarcza.
+     */
+    public static final int MAX_ITEMS = 256;
+
     private static RequestCraftableCountsPKT decode(FriendlyByteBuf buf) {
         BlockPos pos = buf.readBlockPos();
         int n = buf.readInt();
+        // Odrzucamy zadania spoza sensownego zakresu, zamiast probowac je
+        // zaalokowac. Wartosc ujemna tez jest tu bledem, nie "zero itemow".
+        if (n < 0 || n > MAX_ITEMS) {
+            throw new io.netty.handler.codec.DecoderException(
+                    "RequestCraftableCountsPKT: invalid item count " + n
+                            + " (max " + MAX_ITEMS + ")");
+        }
         List<Item> items = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             Item item = BuiltInRegistries.ITEM.get(buf.readResourceLocation());

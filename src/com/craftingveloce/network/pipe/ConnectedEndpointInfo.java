@@ -1,6 +1,8 @@
 package com.craftingveloce.network.pipe;
 
 import com.craftingveloce.rs.RefinedStorageHelper;
+
+import javax.annotation.Nullable;
 import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -332,11 +334,25 @@ public class ConnectedEndpointInfo {
                     if (inSlot.isEmpty()) {
                         int move = Math.min(max, remaining.getCount());
                         container.setItem(i, remaining.split(move));
+                        container.setChanged();
                     } else if (ItemStack.isSameItemSameComponents(inSlot, remaining)) {
                         int space = max - inSlot.getCount();
                         if (space > 0) {
                             int move = Math.min(space, remaining.getCount());
-                            inSlot.grow(move);
+                            // BUG, ktory tu byl: modyfikowalismy stos ZWRÓCONY
+                            // przez getItem(i) i tylko zmniejszalismy `remaining`.
+                            // Kontener, ktory zwraca KOPIE (a to jest wlasnie ten
+                            // przypadek awaryjny - nie ma tu capability, wiec
+                            // trafilismy na zwykly Container), nigdy nie
+                            // zapisywal tej zmiany. Efekt: `remaining` sie
+                            // zmniejszalo, a przedmiot NIE byl wkladany - czyli
+                            // ciche gubienie itemow.
+                            //
+                            // Dlatego budujemy NOWY stos i zapisujemy go przez
+                            // setItem, zamiast modyfikowac to, co przyszlo.
+                            ItemStack merged = inSlot.copy();
+                            merged.grow(move);
+                            container.setItem(i, merged);
                             remaining.shrink(move);
                             container.setChanged();
                         }
@@ -378,10 +394,44 @@ public class ConnectedEndpointInfo {
         return tag;
     }
 
+    /**
+     * Odtwarza endpoint z NBT.
+     *
+     * <p><b>Nigdy nie rzuca.</b> Ten kod chodzi w trakcie wczytywania zapisanych
+     * danych, a {@code VelocePipeNetworkManager.load} deserializuje WSZYSTKIE
+     * sieci jednym przejsciem. Wyjatek tutaj przerywal wiec caly load - czyli
+     * swiat nie wczytywal sie w ogole z powodu jednego popsutego wpisu.
+     *
+     * <p>Bylo to realne: {@code Direction.values()[side]} rzucalo
+     * ArrayIndexOutOfBoundsException dla strony spoza zakresu (starszy zapis,
+     * inny uklad enumow), a {@code Type.valueOf} rzucalo
+     * IllegalArgumentException dla nieznanej nazwy typu.
+     *
+     * @return odtworzony endpoint albo {@code null}, gdy wpisu nie da sie
+     *         zrozumiec (wolajacy ma go po prostu pominac)
+     */
+    @Nullable
     public static ConnectedEndpointInfo fromNbt(CompoundTag tag) {
         BlockPos pos = BlockPos.of(tag.getLong("Pos"));
-        Direction side = Direction.values()[tag.getInt("Side")];
-        Type type = Type.valueOf(tag.getString("Type"));
+
+        Direction[] sides = Direction.values();
+        int sideIndex = tag.getInt("Side");
+        if (sideIndex < 0 || sideIndex >= sides.length) {
+            VeloceLog.Network.failure(VeloceLog.Side.SERVER,
+                    "endpoint at %s has invalid side %d - entry skipped", pos, sideIndex);
+            return null;
+        }
+        Direction side = sides[sideIndex];
+
+        Type type;
+        String typeName = tag.getString("Type");
+        try {
+            type = Type.valueOf(typeName);
+        } catch (IllegalArgumentException ex) {
+            VeloceLog.Network.failure(VeloceLog.Side.SERVER,
+                    "endpoint at %s has unknown type '%s' - entry skipped", pos, typeName);
+            return null;
+        }
 
         // Bufor craftera ma wlasna implementacje (czyta z bufora bloku,
         // a nie z zasobnika w swiecie) - trzeba ją odtworzyc po restarcie.

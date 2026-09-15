@@ -195,6 +195,13 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                 // Sygnatura: kolejnosc i sklad widocznych itemow.
                 signature = signature * 31 + it.hashCode();
             }
+            // Twardy limit: serwer odrzuca zadania wieksze niz MAX_ITEMS.
+            // Widoczna strona to kilkadziesiat pozycji, ale przy nietypowym
+            // ukladzie slotow moze byc wiecej - wtedy lepiej wyslac obcieta
+            // liste niz doprowadzic do odrzucenia CALEGO zadania.
+            if (visible.size() >= com.craftingveloce.network.RequestCraftableCountsPKT.MAX_ITEMS) {
+                break;
+            }
         }
         if (visible.isEmpty()) {
             return;

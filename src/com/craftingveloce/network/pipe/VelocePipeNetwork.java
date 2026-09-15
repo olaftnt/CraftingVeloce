@@ -279,7 +279,12 @@ public class VelocePipeNetwork {
         ListTag endList = tag.getList("Endpoints", Tag.TAG_COMPOUND);
         for (int j = 0; j < endList.size(); j++) {
             ConnectedEndpointInfo ep = ConnectedEndpointInfo.fromNbt(endList.getCompound(j));
-            net.endpoints.put(ep.getPos(), ep);
+            // null = wpis nieczytelny (zly side albo nieznany typ). POMIJAMY go,
+            // zamiast wywalac wczytywanie calego zapisu swiata - pojedynczy
+            // popsuty endpoint nie moze blokowac wejscia do gry.
+            if (ep != null) {
+                net.endpoints.put(ep.getPos(), ep);
+            }
         }
 
         net.updateTrackedChunks();

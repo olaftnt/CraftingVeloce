@@ -173,11 +173,22 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         java.util.Iterator<VeloceCraftingTableBlockEntity> it = PENDING_SYNC.iterator();
         while (it.hasNext()) {
             VeloceCraftingTableBlockEntity be = it.next();
-            it.remove();
-            if (be.isRemoved()) {
+
+            // BUG, ktory tu byl: `it.remove()` wykonywalo sie PRZED sprawdzeniem
+            // wymiaru, wiec pierwszy tickujacy swiat zjadal (i wyrzucal) wpisy
+            // należace do WSZYSTKICH pozostalych. Przelaczenie receptury w
+            // crafterze stojacym w Netherze (gdy Overworld tika pierwszy) nie
+            // wysylalo wiec SyncCraftingTableStatePKT - GUI pokazywalo stare
+            // wylaczone/wlaczone itemy az do ponownego otwarcia.
+            //
+            // Teraz wpis usuwamy TYLKO wtedy, gdy faktycznie go obsluzymy albo
+            // jest martwy. Wpisy innych wymiarow czekaja na swoj tick.
+            if (be.isRemoved() || be.getLevel() == null) {
+                it.remove();
                 continue;
             }
             if (be.getLevel() == level) {
+                it.remove();
                 be.syncToWatchers(level);
             }
         }

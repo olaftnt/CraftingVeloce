@@ -68,9 +68,40 @@ public class ClientTerminalHelper {
         if (mc.player == null) {
             return;
         }
-        mc.setScreen(new com.craftingveloce.client.gui.VeloceExtractorScreen(
+
+        // KLUCZOWE: bierzemy MENU, ktore serwer naprawde ma otwarte.
+        //
+        // BUG, ktory tu byl: tworzone bylo zupelnie nowe menu z
+        // `inventoryMenu.containerId`, czyli z ID 0. Ale serwer nadal mial
+        // otwarte prawdziwe menu ekstraktora (o ID 1..100) - picker byl
+        // otwierany przez setScreen, wiec zadne zamkniecie kontenera nie
+        // poszlo do serwera.
+        //
+        // Skutek: ID menu klienta (0) nie zgadzalo sie z ID kontenera na
+        // serwerze, wiec KAZDE klikniecie - wyciagniecie z outputu, przenoszenie
+        // w ekwipunku - lecialo z ID 0 i bylo przez serwer ignorowane. Gracz
+        // wracal z wyboru filtra i nie mogl juz wyjac itemow.
+        //
+        // Jesli serwerowe menu ekstraktora dla tego bloku nadal zyje, uzywamy
+        // go (z jego ID). W przeciwnym razie zostaje dotychczasowa sciezka.
+        net.minecraft.world.inventory.AbstractContainerMenu open = mc.player.containerMenu;
+        if (open instanceof com.craftingveloce.inventory.VeloceExtractorMenu existing
+                && existing.getPos().equals(pos)) {
+            mc.setScreen(new com.craftingveloce.client.gui.VeloceExtractorScreen(
+                    existing,
+                    mc.player.getInventory(),
+                    net.minecraft.network.chat.Component.translatable("block.craftingveloce.veloce_extractor")));
+            return;
+        }
+
+        com.craftingveloce.inventory.VeloceExtractorMenu rebuilt =
                 new com.craftingveloce.inventory.VeloceExtractorMenu(
-                        mc.player.inventoryMenu.containerId, mc.player.getInventory(), pos),
+                        mc.player.inventoryMenu.containerId, mc.player.getInventory(), pos);
+        // Przypisujemy je graczowi - bez tego klient i serwer nie zgadzaja sie
+        // co do otwartego kontenera.
+        mc.player.containerMenu = rebuilt;
+        mc.setScreen(new com.craftingveloce.client.gui.VeloceExtractorScreen(
+                rebuilt,
                 mc.player.getInventory(),
                 net.minecraft.network.chat.Component.translatable("block.craftingveloce.veloce_extractor")));
     }

@@ -195,6 +195,20 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     private CreativeModeTab tabBeforeOpen;
     private boolean tabBeforeOpenCaptured;
 
+    /**
+     * Czy zapamietany widok zostal juz zastosowany w tym otwarciu ekranu.
+     *
+     * <p><b>Po co.</b> {@code init()} leci nie tylko przy otwarciu, ale tez przy
+     * kazdym {@code rebuildWidgets()} (np. po kliknieciu filtra w kontrolerze)
+     * i przy zmianie rozmiaru okna. Bez tej blokady kazde takie zdarzenie
+     * PRZYWRACALO widok zapisany przy ostatnim ZAMKNIECIU ekranu.
+     *
+     * <p>Objaw byl konkretny: gracz zmienial zakladke (albo przewijal, albo
+     * wpisywal fraze), klikal przycisk filtra - i widok przeskakiwal z powrotem
+     * do miejsca sprzed zamkniecia. To samo przy kazdym resize okna.
+     */
+    private boolean viewStateApplied;
+
     /** Przywraca zapamietany widok (zakladka, fraza, przewiniecie). */
     private void restoreViewState() {
         Object key = viewStateKey();
@@ -207,6 +221,12 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             tabBeforeOpen = VeloceTerminalViewState.currentTab();
         }
 
+        // Widok stosujemy TYLKO raz na otwarcie ekranu - patrz viewStateApplied.
+        if (viewStateApplied) {
+            return;
+        }
+        viewStateApplied = true;
+
         // Ekran bez wlasnej pamieci (key == null) i jednoczesnie pamietajacy
         // zakladke nic nie zmienia - to zwykly creative, ma zostac jak jest.
         if (key == null && rememberTab()) {
@@ -216,6 +236,17 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         CreativeModeTab tab;
         if (key != null && rememberTab()) {
             tab = VeloceTerminalViewState.findTab(VeloceTerminalViewState.savedTab(key));
+            // Brak zapamietanej zakladki (pierwsze otwarcie) albo zapamietana
+            // juz nie istnieje - schodzimy na domyslna.
+            //
+            // BUG, ktory tu byl: przy braku zapisanej zakladki findTab() zwracalo
+            // null i CALE ustawianie bylo pomijane. Ekran zostawal wiec na
+            // wspolnej, statycznej zakladce vanilla - a jesli byla to INVENTORY
+            // (Survival Inventory), crafter pokazywal zakladke, ktora sam ukrywa
+            // i ktorej nie pozwala kliknac.
+            if (tab == null) {
+                tab = defaultTab() != null ? defaultTab() : firstAcceptedTab();
+            }
         } else {
             // Nie pamietamy - zawsze pierwsza dostepna (lewy gorny rog).
             // To dotyczy takze pickera filtra, ktory nie ma klucza, a ma
