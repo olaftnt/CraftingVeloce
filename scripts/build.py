@@ -967,7 +967,37 @@ def validate_create_kinetics():
         print(f"    OK ({checked} blokow kinetycznych: IBE zapewnia tickowanie BE)")
 
 
+def validate_number_format():
+    """
+    Formatowanie liczb w GUI zyje w JEDNYM miejscu: {@code util/VeloceFormat}.
+
+    Ten projekt ma powtarzalny blad: te sama regule zapisano recznie w kilku
+    miejscach i miejsca sie rozjechaly. Przy liczbach byly TRZY kopie
+    (nakladka slotu, terminal, ekran kontrolera), a gracz zglosil to wprost:
+    "15.0" w tooltipie obok "1K" na ikonie to dwa rozne formaty tej samej
+    liczby.
+
+    Regula: wzorzec {@code %.<cyfry>f} (recznie skladany ulamek) wolno uzyc
+    WYLACZNIE w VeloceFormat. Kto potrzebuje liczby do GUI, wola
+    {@code compact}/{@code rate}/{@code feCompact}.
+    """
+    pattern = re.compile(r"%\.[0-9]+f")
+    allowed = os.path.join("src", "com", "craftingveloce", "util", "VeloceFormat.java")
+    bad = []
+    for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
+        if path == allowed or any(x in path for x in EXCLUDED_SRC):
+            continue
+        if pattern.search(open(path, encoding="utf-8").read()):
+            bad.append(path.replace(os.sep, "/"))
+    if bad:
+        fail("wlasne formatowanie ulamkow poza VeloceFormat:\n  "
+             + "\n  ".join(bad)
+             + "\n  uzyj VeloceFormat.compact/rate/feCompact")
+    print("    OK (formaty liczb tylko w VeloceFormat)")
+
+
 def game_running():
+
 
     """
     Czy Minecraft z tego profilu wlasnie dziala?
@@ -1150,6 +1180,7 @@ def main():
     validate_jar_isolation(z)
     validate_isolation_runtime(cp, toms, rs)
     validate_create_kinetics()
+    validate_number_format()
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "

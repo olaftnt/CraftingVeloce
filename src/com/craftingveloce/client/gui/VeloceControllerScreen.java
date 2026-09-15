@@ -456,21 +456,19 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Liczba ze znakiem, bez jednostki: "+2.00" albo "-19.8".
+     * Liczba ze znakiem, bez jednostki: "+15", "-19.8", "+1.2K".
      *
      * <p>Znak jest CZESCIA NAPISU, nie tylko kolorem - inaczej gracz
      * nierozrozniajacy barw nie wie, czy zapas rosnie, czy spada. Jednostke
      * ("/min", "/h") dodaje klucz jezykowy.
+     *
+     * <p>Format samej liczby zyje w {@link com.craftingveloce.util.VeloceFormat}
+     * (jedno miejsce dla calego moda): bez zbednego ".0", bez wiodacego zera
+     * ponizej jedynki i ze skrotem K/M powyzej tysiaca.
      */
     private static String signed(float rate) {
-        return (rate < 0f ? "-" : "+") + formatRate(Math.abs(rate));
-    }
-
-    /** Tempo z dokladnoscia, ktora ma sens: 2 miejsca ponizej 1/s, inaczej 1. */
-    private static String formatRate(float rate) {
-        return rate < 1f
-                ? String.format(java.util.Locale.ROOT, "%.2f", rate)
-                : String.format(java.util.Locale.ROOT, "%.1f", rate);
+        return (rate < 0f ? "-" : "+")
+                + com.craftingveloce.util.VeloceFormat.rate(Math.abs(rate));
     }
 
     /**

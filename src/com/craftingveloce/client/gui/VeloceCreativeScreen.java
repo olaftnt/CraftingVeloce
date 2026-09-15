@@ -1198,7 +1198,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         com.craftingveloce.util.VeloceLog.Gui.detail(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
                 "sloty siatki NADAL puste: slotow=%d, z itemami=%d, w menu=%d, "
-                        + "przewiniecie=%.2f",
+                        + "przewiniecie=%s",
                 this.menu == null ? -1 : this.menu.slots.size(),
                 countGridSlotsWithItems(),
                 menuItemCount(),

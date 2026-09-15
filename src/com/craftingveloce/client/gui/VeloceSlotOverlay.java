@@ -42,39 +42,14 @@ public final class VeloceSlotOverlay {
     /**
      * Skrocona liczba: 1K, 1.2K, 1M, 1.2M, 1B.
      *
-     * <p>Zasady (ustalone z uzytkownikiem):
-     * <ul>
-     *   <li>ponizej 1000 - dokladna liczba,</li>
-     *   <li>1000 -> "1K", 1200 -> "1.2K" (bez zbednego ".0" przy okraglych),</li>
-     *   <li>999999 -> "1M", a nie "1000K" - zaokraglenie musi przeskoczyc prog,</li>
-     *   <li>tak samo dla M -> B.</li>
-     * </ul>
+     * <p><b>Regula zyje w JEDNYM miejscu</b>
+     * ({@link com.craftingveloce.util.VeloceFormat#compact(long)}) - tutaj
+     * zostaje tylko nazwa uzywana przez GUI. Wczesniej ta metoda miala wlasna
+     * kopie formatowania obok {@code VeloceFormat}, a dwie kopie tej samej
+     * reguly zawsze sie w koncu rozjezdzaja.
      */
     public static String formatCount(long number) {
-        if (number < 0) {
-            return "0";
-        }
-        if (number < 1000) {
-            return Long.toString(number);
-        }
-        // Progi sprawdzamy po ZAOKRAGLENIU, inaczej 999999 dawaloby "1000K"
-        // zamiast "1M".
-        if (number < 999_500L) {
-            return trimZero(number / 1000.0) + "K";
-        }
-        if (number < 999_500_000L) {
-            return trimZero(number / 1_000_000.0) + "M";
-        }
-        return trimZero(number / 1_000_000_000.0) + "B";
-    }
-
-    /** Jedno miejsce po przecinku, ale bez zbednego ".0" przy okraglych. */
-    private static String trimZero(double value) {
-        String s = String.format(java.util.Locale.ROOT, "%.1f", value);
-        if (s.endsWith(".0")) {
-            s = s.substring(0, s.length() - 2);
-        }
-        return s;
+        return com.craftingveloce.util.VeloceFormat.compact(number);
     }
 
     /** Stan magazynu: bialy, prawy dolny rog slotu. Zero nie jest rysowane. */
