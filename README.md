@@ -271,11 +271,21 @@ DeferredHoldery obcego moda są wiązane dopiero po rejestracji.
 
 ### Moduły maszyn (bloki z `compat/*`)
 
-Pierwszy zaimplementowany moduł: **Veloce Crusher Module** (`compat/mekanism`,
-receptury `mekanism:crushing`). Stoi w sieci jak każda maszyna, przyjmuje FE
-kablem (capability `EnergyStorage`), a auto-crafter rozlicza nim operacje:
-**4000 FE za operację** (tyle, ile maszyna Mekanism: 20 FE/t × 200 t), bufor
-40 000 FE. Kliknięcie pokazuje stan akumulatora na pasku akcji.
+Zaimplementowany moduł: **Mekanism** (`compat/mekanism`) — cztery maszyny
+itemowe, wszystkie na jednym bloku i jednym block entity (`FeModule` to cała
+ich różnica):
+
+| Blok | Rodzina receptur | Koszt |
+|------|------------------|-------|
+| `veloce_crusher_module` | `mekanism:crushing` | 4000 FE/operację |
+| `veloce_enrichment_module` | `mekanism:enriching` | 4000 FE/operację |
+| `veloce_combiner_module` | `mekanism:combining` (2 wejścia) | 4000 FE/operację |
+| `veloce_sawmill_module` | `mekanism:sawing` (wynik losowy) | 4000 FE/operację |
+
+Koszt jest ten sam, co w maszynie Mekanism (20 FE/t × 200 t), bufor 40 000 FE.
+Maszyna stoi w sieci jak każda inna, przyjmuje FE kablem (capability
+`EnergyStorage`), a kliknięcie pokazuje stan akumulatora na pasku akcji.
+Sawmill planuje tylko wynik główny, a dodatkowy dorzuca po rzucie kością.
 
 Jak dołożyć kolejny moduł — cała procedura:
 

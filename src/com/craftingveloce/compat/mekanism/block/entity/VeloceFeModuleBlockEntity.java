@@ -1,7 +1,7 @@
 package com.craftingveloce.compat.mekanism.block.entity;
 
 import com.craftingveloce.block.entity.VeloceProcessingSource;
-import com.craftingveloce.compat.mekanism.MekanismRecipeFamily;
+import com.craftingveloce.compat.mekanism.FeModule;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -9,42 +9,53 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.registries.DeferredHolder;
 
 import java.util.Set;
 
 /**
- * Akumulator energii maszyny kruszacej (receptury {@code mekanism:crushing}).
+ * Akumulator energii JEDNEJ maszyny modulu Mekanism.
  *
- * <p><b>Model pracy.</b> Jak Velocity Electric Furnace: maszyna nie ma
- * wlasnego tickera ani postepu. Crafter pyta ja o {@link #availableOperations()}
- * ("ile operacji jeszcze uciagniesz"), zabiera operacje przy wykonaniu receptury
- * ({@link #consumeOperations(long)}) i sam wklada wyniki do sieci. Dzięki temu
- * jedna maszyna obsluguje wiele rownoleglych receptur, a energia jest
- * rozliczana dokladnie raz na operacje.
+ * <p><b>Jedna klasa na cztery maszyny.</b> Maszyny itemowe Mekanism roznia sie
+ * tylko typem receptury i etykieta, wiec nie ma powodu pisac czterech kopii
+ * tej samej logiki energii - rozni je pole {@link FeModule} podane
+ * w konstruktorze.
  *
- * <p><b>Koszt.</b> Mekanism liczy 20 FE/t przez 200 tickow = 4000 FE na
- * operacje. Przyjmujemy ta sama cene, zeby modul nie byl ani okazja, ani
- * pułapka wzgledem maszyn Mekanism. Bufor jest wiekszy niz w oryginale
- * (40 000 FE = 10 operacji) - instant maszyna nie ma wlasnego postepu, wiec
- * kilka operacji zapasu chroni automatyzacje przed przerwami, gdy kabel
- * dostarcza prad z opoznieniem.
+ * <p><b>Model pracy.</b> Jak Velocity Electric Furnace: brak wlasnego tickera
+ * i postepu. Auto-crafter pyta o {@link #availableOperations()} ("ile operacji
+ * jeszcze uciagniesz"), zabiera operacje przy wykonaniu receptury
+ * ({@link #consumeOperations(long)}) i sam wklada wyniki do sieci. Dzieki temu
+ * energia jest rozliczana dokladnie raz na wykonana recepture.
  */
-public class VeloceCrusherModuleBlockEntity extends BlockEntity
+public class VeloceFeModuleBlockEntity extends BlockEntity
         implements VeloceProcessingSource, IEnergyStorage {
 
-    /** Koszt jednej operacji w FE (Mekanism: 20 FE/t * 200 t). */
-    public static final int FE_PER_OPERATION = 4_000;
-
-    /** Pojemnosc akumulatora (10 operacji zapasu). */
-    public static final int ENERGY_CAPACITY = 40_000;
+    private final FeModule module;
+    private final DeferredHolder<BlockEntityType<?>,
+            BlockEntityType<VeloceFeModuleBlockEntity>> typeHolder;
 
     private int energy;
 
-    public VeloceCrusherModuleBlockEntity(BlockPos pos, BlockState state) {
-        super(com.craftingveloce.compat.mekanism.MekanismBlockEntities.CRUSHER_MODULE.get(),
-                pos, state);
+    public VeloceFeModuleBlockEntity(
+            FeModule module,
+            DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceFeModuleBlockEntity>> typeHolder,
+            BlockPos pos, BlockState state) {
+        super(typeHolder.get(), pos, state);
+        this.module = module;
+        this.typeHolder = typeHolder;
+    }
+
+    /** Opis maszyny (typ receptury, koszt, etykieta) - do diagnostyki. */
+    public FeModule module() {
+        return module;
+    }
+
+    /** Typ block entity, do ktorego ta maszyna jest zarejestrowana. */
+    public BlockEntityType<?> registeredType() {
+        return typeHolder.get();
     }
 
     // ------------------------------------------------------------------
@@ -53,17 +64,19 @@ public class VeloceCrusherModuleBlockEntity extends BlockEntity
 
     @Override
     public String moduleId() {
-        return "mekanism:crusher";
+        return module.id();
     }
 
     @Override
     public Set<RecipeType<?>> recipeTypes() {
-        return Set.of(MekanismRecipeFamily.crushing());
+        // Typ receptury rozwiazujemy DOPIERO tutaj (nie przy ladowaniu klasy):
+        // DeferredHolder obcego moda jest wiazany po zdarzeniach rejestracji.
+        return Set.of(module.recipeType().get());
     }
 
     @Override
     public long availableOperations() {
-        return energy / FE_PER_OPERATION;
+        return energy / module.fePerOperation();
     }
 
     @Override
@@ -71,18 +84,18 @@ public class VeloceCrusherModuleBlockEntity extends BlockEntity
         if (operations <= 0) {
             return;
         }
-        energy = (int) Math.max(0L, energy - operations * (long) FE_PER_OPERATION);
+        energy = (int) Math.max(0L, energy - operations * (long) module.fePerOperation());
         setChanged();
     }
 
     @Override
     public boolean isPowered() {
-        return energy >= FE_PER_OPERATION;
+        return energy >= module.fePerOperation();
     }
 
     @Override
     public String sourceName() {
-        return "Veloce Crusher Module";
+        return module.label();
     }
 
     // ------------------------------------------------------------------
@@ -94,7 +107,7 @@ public class VeloceCrusherModuleBlockEntity extends BlockEntity
         if (toReceive <= 0) {
             return 0;
         }
-        int accepted = Math.min(toReceive, ENERGY_CAPACITY - energy);
+        int accepted = Math.min(toReceive, module.capacity() - energy);
         if (!simulate && accepted > 0) {
             energy += accepted;
             setChanged();
@@ -121,7 +134,7 @@ public class VeloceCrusherModuleBlockEntity extends BlockEntity
 
     @Override
     public int getMaxEnergyStored() {
-        return ENERGY_CAPACITY;
+        return module.capacity();
     }
 
     @Override
@@ -135,15 +148,15 @@ public class VeloceCrusherModuleBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // Pomoc dla gracza - ile pradu zostalo (bez GUI)
+    // Pomoc dla gracza - ile pradu zostalo (maszyna nie ma GUI)
     // ------------------------------------------------------------------
 
     /** Wysyla graczowi stan akumulatora na pasek akcji. */
     public void sendStatus(ServerPlayer player) {
         player.displayClientMessage(Component.translatable(
                 "gui.craftingveloce.module.energy",
-                energy, ENERGY_CAPACITY,
-                energy / FE_PER_OPERATION, FE_PER_OPERATION), true);
+                energy, module.capacity(),
+                energy / module.fePerOperation(), module.fePerOperation()), true);
     }
 
     // ------------------------------------------------------------------
@@ -159,6 +172,6 @@ public class VeloceCrusherModuleBlockEntity extends BlockEntity
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        energy = Math.max(0, Math.min(ENERGY_CAPACITY, tag.getInt("Energy")));
+        energy = Math.max(0, Math.min(module.capacity(), tag.getInt("Energy")));
     }
 }

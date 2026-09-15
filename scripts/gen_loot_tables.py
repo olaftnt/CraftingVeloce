@@ -50,7 +50,10 @@ TOOL_BY_BLOCK = {
     "velocity_furnace": "pickaxe",       # jak vanilla furnace
     "electric_furnace": "pickaxe",       # jak vanilla furnace
     "threshold_sensor": "pickaxe",       # jak vanilla observer
-    "veloce_crusher_module": "pickaxe",  # maszyna z modulu Mekanism
+    "veloce_crusher_module": "pickaxe",     # maszyny z modulu Mekanism
+    "veloce_enrichment_module": "pickaxe",
+    "veloce_combiner_module": "pickaxe",
+    "veloce_sawmill_module": "pickaxe",
 }
 DEFAULT_TOOL = "pickaxe"
 

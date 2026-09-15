@@ -1,11 +1,14 @@
 package com.craftingveloce.compat.mekanism.block;
 
-import com.craftingveloce.compat.mekanism.block.entity.VeloceCrusherModuleBlockEntity;
+import com.craftingveloce.compat.mekanism.FeModule;
+import com.craftingveloce.compat.mekanism.block.entity.VeloceFeModuleBlockEntity;
 import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 import com.mojang.serialization.MapCodec;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.BaseEntityBlock;
@@ -14,41 +17,52 @@ import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 
 import javax.annotation.Nullable;
 
 /**
- * Veloce Crusher Module - maszyna Veloce dla receptur {@code mekanism:crushing}.
+ * Maszyna modulu Mekanism zasilana FE - jeden blok dla wszystkich rodzin.
  *
  * <p><b>Czym to jest.</b> Wlasny blok Veloce (nie kopia maszyny Mekanism),
- * ktory stoi w sieci rur, przyjmuje FE kablem i pozwala auto-crafterowi
- * wykonywac receptury kruszenia. Mechanika jest natychmiastowa: operacje
- * rozlicza crafter, maszyna jest akumulatorem energii (jak Velocity Electric
- * Furnace) - dlatego nie ma tu GUI ani tickera z postepem.
+ * ktory stoi w sieci rur, przyjmuje FE kablem (capability {@code EnergyStorage})
+ * i pozwala auto-crafterowi wykonywac receptury swojego typu. Mechanika jest
+ * natychmiastowa - operacje rozlicza crafter, a maszyna jest akumulatorem
+ * energii, dlatego nie ma GUI ani tickera z postepem.
  *
- * <p><b>Izolacja.</b> Ta klasa zyje w {@code compat/mekanism} i laduje sie
- * tylko przy obecnym Mekanism - mimo to nie zawiera ZADNEGO typu Mekanism:
- * maszyna jest w calosci nasza, a Mekanism dostarcza wylacznie receptury
- * (patrz {@code MekanismRecipeHarvest}).
+ * <p><b>Jedna klasa, cztery maszyny.</b> Kruszarka, wzbogacanie, laczenie
+ * i pilowanie roznia sie wylacznie danymi ({@link FeModule}), wiec dziela ten
+ * sam blok i ten sam block entity. Dodanie kolejnej maszyny o tym samym
+ * ksztalcie (1-2 itemy -> item) to jeden wiersz w {@code FeModule.ALL}.
+ *
+ * <p><b>Izolacja.</b> Klasa zyje w {@code compat/mekanism} i laduje sie tylko
+ * przy obecnym Mekanism - mimo to nie zawiera ZADNEGO typu Mekanism: maszyna
+ * jest w calosci nasza, a Mekanism dostarcza wylacznie receptury.
  */
-public class VeloceCrusherModuleBlock extends BaseEntityBlock
+public class VeloceFeModuleBlock extends BaseEntityBlock
         implements EntityBlock, VeloceNetworkNode {
 
-    public static final MapCodec<VeloceCrusherModuleBlock> CODEC =
-            simpleCodec(VeloceCrusherModuleBlock::new);
+    private final FeModule module;
 
-    public VeloceCrusherModuleBlock(BlockBehaviour.Properties properties) {
+    public VeloceFeModuleBlock(FeModule module, BlockBehaviour.Properties properties) {
         super(properties);
+        this.module = module;
+    }
+
+    /** Opis maszyny (typ receptury, koszt FE, etykieta). */
+    public FeModule module() {
+        return module;
     }
 
     @Override
     protected MapCodec<? extends BaseEntityBlock> codec() {
-        return CODEC;
+        return simpleCodec(properties -> new VeloceFeModuleBlock(module, properties));
     }
 
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return new VeloceCrusherModuleBlockEntity(pos, state);
+        return com.craftingveloce.compat.mekanism.MekanismBlockEntities
+                .create(module, pos, state);
     }
 
     @Override
@@ -65,22 +79,19 @@ public class VeloceCrusherModuleBlock extends BaseEntityBlock
     /**
      * Klikniecie pokazuje stan akumulatora na pasku akcji.
      *
-     * <p>Maszyna jest natychmiastowa i nie ma GUI (nie ma postepu ani slotow),
-     * ale gracz musi moc sprawdzic, czy w ogole dochodzi do niej prad - bez
-     * tego jedynym objawem "brak pradu" byloby to, ze automat nic nie robi.
+     * <p>Maszyna jest natychmiastowa i nie ma GUI (brak postepu i slotow), ale
+     * gracz musi moc sprawdzic, czy dochodzi do niej prad - bez tego jedynym
+     * objawem "brak pradu" byloby to, ze automat nic nie robi.
      */
     @Override
-    protected net.minecraft.world.InteractionResult useWithoutItem(
-            BlockState state, Level world, BlockPos pos,
-            net.minecraft.world.entity.player.Player player,
-            net.minecraft.world.phys.BlockHitResult hit) {
+    protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
+                                               Player player, BlockHitResult hit) {
         if (!world.isClientSide
                 && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
-                && world.getBlockEntity(pos)
-                instanceof com.craftingveloce.compat.mekanism.block.entity.VeloceCrusherModuleBlockEntity module) {
-            module.sendStatus(serverPlayer);
+                && world.getBlockEntity(pos) instanceof VeloceFeModuleBlockEntity moduleEntity) {
+            moduleEntity.sendStatus(serverPlayer);
         }
-        return net.minecraft.world.InteractionResult.sidedSuccess(world.isClientSide);
+        return InteractionResult.sidedSuccess(world.isClientSide);
     }
 
     /**

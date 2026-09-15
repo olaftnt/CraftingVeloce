@@ -22,10 +22,15 @@ public final class MekanismCapabilities {
     }
 
     public static void register(IEventBus modEventBus) {
-        modEventBus.addListener(RegisterCapabilitiesEvent.class, event ->
+        modEventBus.addListener(RegisterCapabilitiesEvent.class, event -> {
+            // Jedna petla po wszystkich maszynach: nowa maszyna w FeModule.ALL
+            // dostaje capability sama, bez dopisywania sie tutaj.
+            for (FeModule module : FeModule.ALL) {
                 event.registerBlockEntity(
                         Capabilities.EnergyStorage.BLOCK,
-                        MekanismBlockEntities.CRUSHER_MODULE.get(),
-                        (be, side) -> be));
+                        MekanismBlockEntities.holderFor(module).get(),
+                        (be, side) -> be);
+            }
+        });
     }
 }

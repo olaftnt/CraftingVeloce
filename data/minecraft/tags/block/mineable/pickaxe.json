@@ -3,10 +3,13 @@
   "values": [
     "craftingveloce:electric_furnace",
     "craftingveloce:threshold_sensor",
+    "craftingveloce:veloce_combiner_module",
     "craftingveloce:veloce_controller",
     "craftingveloce:veloce_crusher_module",
+    "craftingveloce:veloce_enrichment_module",
     "craftingveloce:veloce_extractor",
     "craftingveloce:veloce_pipe",
+    "craftingveloce:veloce_sawmill_module",
     "craftingveloce:velocity_furnace"
   ]
 }

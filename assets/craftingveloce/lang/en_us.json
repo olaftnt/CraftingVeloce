@@ -60,5 +60,8 @@
   "gui.craftingveloce.controller.prefer.crafting": "Preference: Crafting",
   "gui.craftingveloce.controller.prefer.furnace": "Preference: Furnace",
   "block.craftingveloce.veloce_crusher_module": "Veloce Crusher Module",
-  "gui.craftingveloce.module.energy": "Energy: %s / %s FE (%s / %s operations)"
+  "gui.craftingveloce.module.energy": "Energy: %s / %s FE (%s / %s operations)",
+  "block.craftingveloce.veloce_enrichment_module": "Veloce Enrichment Module",
+  "block.craftingveloce.veloce_combiner_module": "Veloce Combiner Module",
+  "block.craftingveloce.veloce_sawmill_module": "Veloce Sawmill Module"
 }
