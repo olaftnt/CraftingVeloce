@@ -29,7 +29,54 @@ public class CVDebugCommand {
             Commands.literal("cv")
                 .then(Commands.literal("debug")
                     .executes(CVDebugCommand::executeDebug))
+                .then(Commands.literal("chunkdebug")
+                    .executes(ctx -> setChunkDebug(ctx, null))
+                    .then(Commands.literal("on")
+                        .executes(ctx -> setChunkDebug(ctx, true)))
+                    .then(Commands.literal("off")
+                        .executes(ctx -> setChunkDebug(ctx, false)))
+                    .then(Commands.literal("verbose")
+                        .executes(ctx -> setChunkVerbose(ctx, null))
+                        .then(Commands.literal("on")
+                            .executes(ctx -> setChunkVerbose(ctx, true)))
+                        .then(Commands.literal("off")
+                            .executes(ctx -> setChunkVerbose(ctx, false)))))
         );
+    }
+
+    /**
+     * Wlacza/wylacza debug chunkow na czacie.
+     *
+     * <p>Bez argumentu przelacza stan. To niezalezne od glownego debugowania
+     * w configu - sluzy do testowania zachowania sieci bez ciaglego ladowania
+     * chunkow.
+     */
+    private static int setChunkDebug(CommandContext<CommandSourceStack> context, Boolean value) {
+        boolean target = value == null
+                ? !com.craftingveloce.debug.ChunkDebugNotifier.isEnabled()
+                : value;
+        com.craftingveloce.debug.ChunkDebugNotifier.setEnabled(target);
+
+        String state = target ? "§aON" : "§cOFF";
+        context.getSource().sendSuccess(() -> Component.literal(
+                "§8[§6Veloce§8] chunk debug: " + state), false);
+        if (target) {
+            context.getSource().sendSuccess(() -> Component.literal(
+                    "§7Chunki z elementami sieci beda raportowane na czacie."), false);
+        }
+        return 1;
+    }
+
+    /** Steruje szczegolowoscia raportu (czy listowac bloki). */
+    private static int setChunkVerbose(CommandContext<CommandSourceStack> context, Boolean value) {
+        boolean target = value == null
+                ? !com.craftingveloce.debug.ChunkDebugNotifier.isVerbose()
+                : value;
+        com.craftingveloce.debug.ChunkDebugNotifier.setVerbose(target);
+        String state = target ? "§aON" : "§cOFF";
+        context.getSource().sendSuccess(() -> Component.literal(
+                "§8[§6Veloce§8] chunk debug verbose: " + state), false);
+        return 1;
     }
 
     private static int executeDebug(CommandContext<CommandSourceStack> context) {

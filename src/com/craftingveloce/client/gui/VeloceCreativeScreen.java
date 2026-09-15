@@ -389,6 +389,18 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /** Zastepuje sloty gracza nieaktywnymi slotami poza ekranem. */
+    /**
+     * Czy zostawic hotbar gracza dzialajacy.
+     *
+     * <p>Domyslnie wylaczamy sloty gracza (te GUI sa "fake creative" i nie
+     * sluza do przenoszenia itemow). Terminal tego nie chce - gracz musi moc
+     * korzystac z hotbara, np. odkladac wyciagniete itemy. Podklasy
+     * nadpisuja te metode zwracajac true.
+     */
+    protected boolean keepPlayerHotbar() {
+        return false;
+    }
+
     protected void suppressPlayerSlots() {
         if (this.menu == null || this.minecraft == null || this.minecraft.player == null) {
             return;
@@ -396,6 +408,10 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         for (int i = 0; i < this.menu.slots.size(); i++) {
             Slot s = this.menu.slots.get(i);
             if (isPlayerInventorySlot(s)) {
+                // Hotbar zostawiamy, jesli podklasa tego chce.
+                if (keepPlayerHotbar() && isHotbarSlot(s)) {
+                    continue;
+                }
                 final Slot orig = s;
                 this.menu.slots.set(i, new Slot(orig.container, orig.getContainerSlot(), -10000, -10000) {
                     @Override
@@ -410,6 +426,19 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
                 });
             }
         }
+    }
+
+    /** Czy slot nalezy do paska szybkiego dostepu (9 slotow gracza). */
+    protected boolean isHotbarSlot(Slot slot) {
+        if (slot == null || this.minecraft == null || this.minecraft.player == null) {
+            return false;
+        }
+        var inv = this.minecraft.player.getInventory();
+        if (slot.container == inv) {
+            int idx = slot.getContainerSlot();
+            return idx >= 0 && idx < 9;
+        }
+        return false;
     }
 
     /** Czy to slot kosza (prawy dolny rog creative inventory). */

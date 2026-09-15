@@ -175,6 +175,12 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         return super.getTooltipFromContainerItem(stack);
     }
 
+    /** Terminal zostawia hotbar gracza dzialajacy - mozna z niego korzystac. */
+    @Override
+    protected boolean keepPlayerHotbar() {
+        return true;
+    }
+
     private boolean isPlayerSlot(Slot slot) {
         if (slot == null || this.minecraft == null || this.minecraft.player == null) {
             return false;

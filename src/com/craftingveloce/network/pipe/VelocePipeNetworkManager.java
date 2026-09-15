@@ -115,12 +115,26 @@ public class VelocePipeNetworkManager extends SavedData {
      * <p>Przegladamy tylko sieci, ktore faktycznie dotykaja tego chunka.
      */
     public void onChunkChanged(ServerLevel level, ChunkPos chunkPos, boolean loaded) {
+        java.util.List<String> affectedThings = new java.util.ArrayList<>();
         int affected = 0;
         for (VelocePipeNetwork net : networks.values()) {
             if (!net.getTrackedChunks().contains(chunkPos)) {
                 continue;
             }
             affected++;
+
+            // Zbierz CO dokladnie lezy w tym chunku - do raportu na czacie.
+            for (BlockPos p : net.getTerminals()) {
+                if (new ChunkPos(p).equals(chunkPos)) {
+                    affectedThings.add(describeBlock(level, p));
+                }
+            }
+            for (BlockPos p : net.getEndpoints().keySet()) {
+                if (new ChunkPos(p).equals(chunkPos)) {
+                    affectedThings.add(describeBlock(level, p));
+                }
+            }
+
             com.craftingveloce.crafting.VeloceCraftingCache.get(net)
                     .onEndpointChanged(level);
         }
@@ -129,6 +143,28 @@ public class VelocePipeNetworkManager extends SavedData {
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
                     "chunk %s %s affects %d network(s) - cache invalidated",
                     chunkPos, loaded ? "loaded" : "unloaded", affected);
+
+            // Debug na czacie: pokaz graczom, co zniknelo/pojawilo sie w sieci.
+            com.craftingveloce.debug.ChunkDebugNotifier.notifyChunkChange(
+                    level, chunkPos, loaded, affectedThings);
+        }
+    }
+
+    /** Krotki opis bloku w chunku - do komunikatu debugowego. */
+    private static String describeBlock(ServerLevel level, BlockPos pos) {
+        try {
+            var be = level.getBlockEntity(pos);
+            if (be != null) {
+                String name = be.getClass().getSimpleName();
+                if (name.endsWith("BlockEntity")) {
+                    name = name.substring(0, name.length() - "BlockEntity".length());
+                }
+                return name + " @ " + pos.toShortString();
+            }
+            return level.getBlockState(pos).getBlock().getName().getString()
+                    + " @ " + pos.toShortString();
+        } catch (Throwable t) {
+            return "? @ " + pos.toShortString();
         }
     }
 

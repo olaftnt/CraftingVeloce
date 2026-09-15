@@ -260,21 +260,60 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
      * na slocie glowy i zepsutym ukladem - walczylismy z vanilla. Osobny ekran
      * daje pelna kontrole i nie ma w nim zbednych slotow.
      */
+    /**
+     * Czy ekran magazynu zostal juz poproszony o otwarcie.
+     *
+     * <p>Zabezpieczenie przed wielokrotnym wyslaniem zadania w jednej klatce.
+     */
+    private boolean storageRequested = false;
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // Klikniecie w zakladke ekwipunku -> otworz magazyn.
         if (button == 0 && this.minecraft != null && this.minecraft.player != null) {
             CreativeModeTab tab = tabUnderMouse(mouseX, mouseY);
             if (tab != null && tab.getType() == CreativeModeTab.Type.INVENTORY) {
-                com.craftingveloce.util.VeloceLog.Gui.attempt(
-                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                        "inventory tab clicked - opening crafter storage at %s", tablePos);
-                PacketDistributor.sendToServer(
-                        new com.craftingveloce.network.OpenStorageRequestPKT(tablePos));
+                openStorage();
                 return true;
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    /**
+     * Wykrywa wybor zakladki ekwipunku niezaleznie od klikniecia.
+     *
+     * <p>Poleganie wylacznie na {@code mouseClicked} jest zawodne: vanilla
+     * obsluguje zakladki wlasnym kodem i kolejnosc wywolan moze sie roznic
+     * miedzy wersjami. Sprawdzamy wiec stan zakladki w ticku i jesli gracz
+     * wybral ekwipunek, otwieramy magazyn - niezaleznie od tego, co zrobil
+     * vanilla.
+     */
+    @Override
+    public void containerTick() {
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return;
+        }
+        if (isInventoryTabSelected()) {
+            if (!storageRequested) {
+                openStorage();
+            }
+        } else {
+            storageRequested = false;
+        }
+    }
+
+    /** Wysyla zadanie otwarcia ekranu magazynu. */
+    private void openStorage() {
+        if (storageRequested) {
+            return;
+        }
+        storageRequested = true;
+        com.craftingveloce.util.VeloceLog.Gui.attempt(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "inventory tab selected - opening crafter storage at %s", tablePos);
+        PacketDistributor.sendToServer(
+                new com.craftingveloce.network.OpenStorageRequestPKT(tablePos));
     }
 
     /** Znajduje zakladke pod kursorem. */
