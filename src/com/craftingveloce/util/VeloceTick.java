@@ -71,6 +71,12 @@ public final class VeloceTick {
      * {@code interval} tickow, a nie "czeka do najblizszej pasujacej fazy".
      */
     public static boolean everySpread(long now, long lastRun, long interval, BlockPos pos) {
+        // Zabezpieczenie PRZED `now % interval`: dla odstepu 0 lub mniejszego
+        // to zwykle dzielenie przez zero. `every()` ma taki sam warunek, a ten
+        // wariant wolal modulo WCZESNIEJ, wiec byl od niego mniej odporny.
+        if (interval <= 0) {
+            return true;
+        }
         if (lastRun == Long.MIN_VALUE) {
             // Pierwszy raz: rozkladamy start w czasie, zeby nie wszystkie
             // bloki zrobily prace w jednym ticku.
@@ -88,6 +94,15 @@ public final class VeloceTick {
     private static long phase(BlockPos pos, long interval) {
         int h = pos.getX() * 73856093 ^ pos.getY() * 19349663 ^ pos.getZ() * 83492791;
         // floorMod, a nie %, bo hash moze byc ujemny - a faza musi byc z zakresu.
+        //
+        // RZUTOWANIE NA int MUSI byc sprawdzone: dla odstepu wiekszego niz
+        // Integer.MAX_VALUE daloby 0, a wtedy floorMod rzuca
+        // ArithmeticException (dzielenie przez zero). Wszyscy obecni wolajacy
+        // podaja male stale (20), ale ta metoda jest w gorącej sciezce rur -
+        // wyjatek tutaj zabilby tick serwera, a nie jedna operacje.
+        if (interval <= 0 || interval > Integer.MAX_VALUE) {
+            return 0L;
+        }
         return Math.floorMod(h, (int) interval);
     }
 }
