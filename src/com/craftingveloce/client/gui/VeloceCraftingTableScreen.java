@@ -286,6 +286,34 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
         renderRecipeTooltip(graphics, mouseX, mouseY);
     }
 
+    /**
+     * Nadpisujemy tooltip vanilla, zeby pozbyc sie trzech rzeczy, ktore
+     * pojawiaja sie w creative inventory w zakladkach CATEGORY i SEARCH:
+     *
+     * <ol>
+     *   <li>nazwa kategorii creative (np. "Building Blocks") - niebieska linia</li>
+     *   <li>tagi itemu, czyli surowe id blokow (np. "minecraft:planks") -
+     *       pojawiaja sie tylko gdy wlaczone sa zaawansowane tooltipy</li>
+     *   <li>lista zakladek zawierajacych item - pojawia sie w zakladce lupy (SEARCH)</li>
+     * </ol>
+     *
+     * W tym GUI pokazujemy wlasny, czysty tooltip (patrz renderRecipeTooltip),
+     * wiec zwracamy tylko standardowe linie itemu.
+     */
+    @Override
+    public List<Component> getTooltipFromContainerItem(ItemStack stack) {
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return super.getTooltipFromContainerItem(stack);
+        }
+        return stack.getTooltipLines(
+                net.minecraft.world.item.Item.TooltipContext.of(this.minecraft.level),
+                this.minecraft.player,
+                this.minecraft.options.advancedItemTooltips
+                        ? net.minecraft.world.item.TooltipFlag.Default.ADVANCED
+                        : net.minecraft.world.item.TooltipFlag.Default.NORMAL
+        );
+    }
+
     /** Tooltip: kazda receptura w osobnej linii + ile sztuk da sie zrobic. */
     private void renderRecipeTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         Slot slot = getSlotUnderMouse();
@@ -308,12 +336,18 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
             String color = active ? "§a" : "§7";
             String name = r.result().getHoverName().getString();
             lines.add(Component.literal(color + marker + r.resultCount() + "x " + name));
-            lines.add(Component.literal("§8     " + shortId(r.id())));
+
+            // Skladniki receptury - nazwy itemow, nie surowe id.
+            String ing = describeIngredients(r);
+            if (!ing.isEmpty()) {
+                lines.add(Component.literal("§8     z: §7" + ing));
+            }
         }
 
         lines.add(Component.empty());
         if (recipes.size() > 1) {
-            lines.add(Component.literal("§e" + recipes.size() + " receptury §7- shift+scroll zmienia"));
+            lines.add(Component.literal("§e" + recipes.size() + " receptury"));
+            lines.add(Component.literal("§7Shift + prawy klik §8zmienia recepturę"));
         }
         lines.add(Component.literal("§7Klik: " + (enabledItems.contains(item)
                 ? "§cWYLACZ §7auto-crafting"
@@ -322,9 +356,26 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
     }
 
-    private static String shortId(ResourceLocation id) {
-        String s = id.toString();
-        return s.length() > 40 ? s.substring(0, 37) + "..." : s;
+    /**
+     * Opis skladnikow receptury - nazwy itemow (np. "1x Oak Log, 2x Stick").
+     * Dla skladnikow z wieloma alternatywami pokazuje pierwsza opcje i liczbe
+     * pozostalych w nawiasie.
+     */
+    private static String describeIngredients(ClientRecipe r) {
+        StringBuilder sb = new StringBuilder();
+        for (List<ItemStack> options : r.options()) {
+            if (options.isEmpty()) {
+                continue;
+            }
+            if (sb.length() > 0) {
+                sb.append("§8, §7");
+            }
+            sb.append("1x ").append(options.get(0).getHoverName().getString());
+            if (options.size() > 1) {
+                sb.append("§8(+").append(options.size() - 1).append(")§7");
+            }
+        }
+        return sb.toString();
     }
 
     @Override
@@ -340,6 +391,14 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
         List<ClientRecipe> recipes = getCraftableItems().get(clickedItem);
         if (recipes == null || recipes.isEmpty()) return;
 
+        // Shift + prawy klik = zmiana aktywnej receptury (dla itemow z wieloma).
+        // Uzywamy tego zamiast shift+scroll, bo creative inventory przechwytuje
+        // scroll gdy lista sie przewija (canScroll), wiec scroll jest zawodny.
+        if (mouseButton == 1 && net.minecraft.client.gui.screens.Screen.hasShiftDown()) {
+            cycleRecipe(clickedItem, recipes);
+            return;
+        }
+
         if (enabledItems.contains(clickedItem)) {
             enabledItems.remove(clickedItem);
         } else {
@@ -349,39 +408,45 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Shift+scroll na itemie z wieloma recepturami przelacza aktywna recepture.
-     * Cyklowanie robimy lokalnie (dla natychmiastowego feedbacku) i wysylamy
-     * do serwera, ktory zapisuje preferencje w block entity.
+     * Przelacza aktywna recepture na nastepna i wysyla wybor do serwera.
+     * Cyklowanie robimy lokalnie (natychmiastowy feedback), serwer zapisuje
+     * preferencje w block entity.
+     */
+    private void cycleRecipe(Item item, List<ClientRecipe> recipes) {
+        if (recipes == null || recipes.size() <= 1) {
+            return;
+        }
+        List<ResourceLocation> ids = new ArrayList<>(recipes.size());
+        for (ClientRecipe r : recipes) {
+            ids.add(r.id());
+        }
+        ResourceLocation current = preferredRecipes.get(item);
+        int idx = current == null ? -1 : ids.indexOf(current);
+        int next = (int) (((idx + 1) % ids.size() + ids.size()) % ids.size());
+        ResourceLocation chosen = ids.get(next);
+        preferredRecipes.put(item, chosen);
+        PacketDistributor.sendToServer(
+                new CraftingTableCycleRecipePKT(tablePos, item, chosen));
+    }
+
+    /**
+     * Shift+scroll - dodatkowy sposob zmiany receptury.
+     *
+     * <p>Uwaga: w creative inventory scroll jest przechwytywany przez vanilla,
+     * gdy lista sie przewija, wiec ten gest bywa zawodny. Podstawowa metoda
+     * jest {@code shift + prawy klik} (patrz slotClicked).
      */
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
-        if (this.minecraft != null && this.minecraft.player != null && scrollY != 0) {
-            boolean shift = net.minecraft.client.gui.screens.Screen.hasShiftDown();
-            if (shift) {
-                Slot slot = getSlotUnderMouse();
-                if (slot != null && !isPlayerInventorySlot(slot) && slot.hasItem()) {
-                    Item item = slot.getItem().getItem();
-                    List<ClientRecipe> recipes = getCraftableItems().get(item);
-                    if (recipes != null && recipes.size() > 1) {
-                        List<ResourceLocation> ids = new ArrayList<>(recipes.size());
-                        for (ClientRecipe r : recipes) {
-                            ids.add(r.id());
-                        }
-                        ResourceLocation current = preferredRecipes.get(item);
-                        int idx = current == null ? -1 : ids.indexOf(current);
-                        int next = (int) (((idx + 1) % ids.size() + ids.size()) % ids.size());
-                        if (scrollY < 0) {
-                            next = (int) (((idx + 1) % ids.size() + ids.size()) % ids.size());
-                        } else {
-                            next = (int) (((idx - 1) % ids.size() + ids.size()) % ids.size());
-                        }
-                        ResourceLocation chosen = ids.get(next);
-                        preferredRecipes.put(item, chosen);
-                        lastScrolledItem = item;
-                        PacketDistributor.sendToServer(
-                                new CraftingTableCycleRecipePKT(tablePos, item, chosen));
-                        return true;
-                    }
+        if (scrollY != 0 && net.minecraft.client.gui.screens.Screen.hasShiftDown()
+                && this.minecraft != null && this.minecraft.player != null) {
+            Slot slot = getSlotUnderMouse();
+            if (slot != null && !isPlayerInventorySlot(slot) && slot.hasItem()) {
+                Item item = slot.getItem().getItem();
+                List<ClientRecipe> recipes = getCraftableItems().get(item);
+                if (recipes != null && recipes.size() > 1) {
+                    cycleRecipe(item, recipes);
+                    return true;
                 }
             }
         }
