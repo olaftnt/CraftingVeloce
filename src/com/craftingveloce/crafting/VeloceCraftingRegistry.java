@@ -67,14 +67,35 @@ public final class VeloceCraftingRegistry {
     }
 
     /** Zbior itemow, dla ktorych auto-crafting jest wlaczony w calej sieci. */
+    /**
+     * Itemy, ktore auto-craftery w tej sieci faktycznie potrafia zrobic.
+     *
+     * <p>UWAGA na semantyke: crafter dziala w modelu opt-out (domyslnie wszystko
+     * wlaczone, gracz zapisuje tylko wyjatki). Ta metoda musi wiec zwrocic
+     * roznice: wszystkie craftowalne itemy MINUS te, ktore gracz wylaczyl
+     * w ktorymkolwiek crafterze.
+     *
+     * <p>Zwracanie samych wyjatkow byloby bledem - silnik dostalby liste
+     * itemow, ktore wolno craftowac, a zamiast tego dostalby liste
+     * wylaczonych, czyli dokladna odwrotnosc.
+     */
     public static java.util.Set<Item> getAllEnabledItems(ServerLevel level, VelocePipeNetwork network) {
-        java.util.Set<Item> out = new java.util.HashSet<>();
+        java.util.Set<Item> craftable = VeloceRecipeRegistry.getAllCraftableItems(level);
+        if (craftable.isEmpty()) {
+            return java.util.Set.of();
+        }
+        java.util.Set<Item> disabled = new java.util.HashSet<>();
         for (BlockPos pos : network.getTerminals()) {
             BlockEntity be = level.getBlockEntity(pos);
             if (be instanceof VeloceCraftingTableBlockEntity crafter) {
-                out.addAll(crafter.getEnabledItems());
+                disabled.addAll(crafter.getDisabledItems());
             }
         }
+        if (disabled.isEmpty()) {
+            return craftable;
+        }
+        java.util.Set<Item> out = new java.util.HashSet<>(craftable);
+        out.removeAll(disabled);
         return out;
     }
 

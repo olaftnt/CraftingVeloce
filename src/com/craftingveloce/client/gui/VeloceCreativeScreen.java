@@ -164,10 +164,44 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             for (int i = 0; i < total; i++) {
                 items.set(i, i < kept.size() ? kept.get(i) : ItemStack.EMPTY);
             }
+            // Wazne: sloty czytaja z CONTAINER, a nie z tej listy. Przepisuje je
+            // dopiero ItemPickerMenu.scrollTo. Bez tego zmiana bylaby widoczna
+            // dopiero po ruszeniu scrollem.
+            refreshSlotsFromItems();
         } catch (Throwable ignored) {
             // Refleksja moze sie nie udac przy zmianie wersji - wtedy po prostu
             // nie filtrujemy, GUI dalej dziala (z dziurami).
         }
+    }
+
+    /**
+     * Przepisuje liste itemow do slotow menu.
+     *
+     * <p>Vanilla robi to samo w {@code ItemPickerMenu.scrollTo(float)}, wiec
+     * wywolujemy te metode z biezaca pozycja przewijania.
+     */
+    private void refreshSlotsFromItems() {
+        try {
+            java.lang.reflect.Method scrollTo = this.menu.getClass()
+                    .getMethod("scrollTo", float.class);
+            scrollTo.setAccessible(true);
+            scrollTo.invoke(this.menu, currentScrollOffset());
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** Biezaca pozycja przewijania listy (pole 'scrollOffs' w vanilla). */
+    private float currentScrollOffset() {
+        try {
+            Field f = CreativeModeInventoryScreen.class.getDeclaredField("scrollOffs");
+            f.setAccessible(true);
+            Object v = f.get(this);
+            if (v instanceof Float fl) {
+                return fl;
+            }
+        } catch (Throwable ignored) {
+        }
+        return 0.0f;
     }
 
     /**

@@ -47,7 +47,8 @@ import java.util.Set;
 public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
 
     private final BlockPos tablePos;
-    private Set<Item> enabledItems;
+    /** Itemy WYLACZONE (model opt-out - domyslnie wszystko wlaczone). */
+    private Set<Item> disabledItems;
     private Map<Item, ResourceLocation> preferredRecipes;
 
     /** Cache: item -> lista receptur (id + wynik + skladniki). */
@@ -62,16 +63,16 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
 
     public VeloceCraftingTableScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                      boolean displayOperatorCreativeTab, BlockPos tablePos,
-                                     Set<Item> enabledItems,
+                                     Set<Item> disabledItems,
                                      Map<Item, ResourceLocation> preferredRecipes) {
         super(player, enabledFeatures, displayOperatorCreativeTab);
         this.tablePos = tablePos;
-        this.enabledItems = new HashSet<>(enabledItems);
+        this.disabledItems = new HashSet<>(disabledItems);
         this.preferredRecipes = new HashMap<>(preferredRecipes);
     }
 
     public void updateEnabledItems(Set<Item> items, Map<Item, ResourceLocation> prefs) {
-        this.enabledItems = new HashSet<>(items);
+        this.disabledItems = new HashSet<>(items);
         this.preferredRecipes = new HashMap<>(prefs);
     }
 
@@ -187,7 +188,7 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
             // Czarne tlo = item, ktorego crafter nie zrobi.
             // (acceptItem i tak je usuwa, ale gdyby sie pojawilo - jest czytelne.)
             overlayColor = 0xAA000000;
-        } else if (enabledItems.contains(item)) {
+        } else if (!disabledItems.contains(item)) {
             overlayColor = 0x7700AA00;   // zielony: auto-crafting ON
         } else {
             overlayColor = 0x77AA0000;   // czerwony: receptura jest, ale OFF
@@ -266,9 +267,9 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         if (recipes.size() > 1) {
             lines.add(Component.literal("§7Prawy klik §8zmienia recepturę"));
         }
-        lines.add(Component.literal("§7Lewy klik: " + (enabledItems.contains(item)
-                ? "§cWYŁĄCZ §7auto-crafting"
-                : "§aWŁĄCZ §7auto-crafting")));
+        lines.add(Component.literal("§7Lewy klik: " + (disabledItems.contains(item)
+                ? "§aWŁĄCZ §7auto-crafting"
+                : "§cWYŁĄCZ §7auto-crafting")));
         lines.add(Component.literal("§8Prawy klik na ikonce kategorii: cała kategoria"));
 
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
@@ -308,15 +309,15 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
 
     @Override
     protected boolean isToggledOn(Item item) {
-        return enabledItems.contains(item);
+        return !disabledItems.contains(item);
     }
 
     @Override
     protected void applyToggle(Item item) {
-        if (enabledItems.contains(item)) {
-            enabledItems.remove(item);
+        if (disabledItems.contains(item)) {
+            disabledItems.remove(item);
         } else {
-            enabledItems.add(item);
+            disabledItems.add(item);
         }
         PacketDistributor.sendToServer(new CraftingTableToggleItemPKT(tablePos, item));
     }
@@ -344,10 +345,10 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         }
 
         // Lewy klik = wlacz/wylacz auto-crafting.
-        if (enabledItems.contains(clickedItem)) {
-            enabledItems.remove(clickedItem);
+        if (disabledItems.contains(clickedItem)) {
+            disabledItems.remove(clickedItem);
         } else {
-            enabledItems.add(clickedItem);
+            disabledItems.add(clickedItem);
         }
         PacketDistributor.sendToServer(new CraftingTableToggleItemPKT(tablePos, clickedItem));
     }

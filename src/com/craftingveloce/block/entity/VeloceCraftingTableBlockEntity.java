@@ -41,7 +41,22 @@ import java.util.Set;
  */
 public class VeloceCraftingTableBlockEntity extends BlockEntity {
 
-    private Set<Item> enabledItems = new HashSet<>();
+    /**
+     * Itemy, dla ktorych auto-crafting jest <b>wylaczony</b>.
+     *
+     * <p>Model jest opt-out: nowo postawiony crafter ma wlaczone wszystko,
+     * a gracz swiadomie wylacza to, czego nie chce. Dzieki temu nie trzeba
+     * klikac setek itemow, zeby crafter zaczal dzialac, a lista wyjatkow
+     * jest krotka i miesci sie w NBT.
+     *
+     * <p>Uwaga na puapke: swiezo wczytany blok bez zapisanych wyjatkow
+     * znaczy "wszystko wlaczone". Gdyby kiedys zmienic domyslna wartosc na
+     * "wszystko wylaczone", stare swiaty nagle przestalyby craftowac.
+     */
+    private Set<Item> disabledItems = new HashSet<>();
+
+    /** Znacznik, czy blok byl juz kiedys zapisany (patrz {@link #loadAdditional}). */
+    private boolean loadedFromSave = false;
 
     /** Item -> id receptury, ktora ma priorytet przy auto-craftowaniu. */
     private Map<Item, ResourceLocation> preferredRecipes = new HashMap<>();
@@ -67,13 +82,17 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         super(VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(), pos, state);
     }
 
-    public Set<Item> getEnabledItems() {
-        return enabledItems;
+    /** Itemy wylaczone (wyjatki od reguly "wszystko wlaczone"). */
+    public Set<Item> getDisabledItems() {
+        return disabledItems;
     }
 
-    /** Czy auto-crafting dla tego itemu jest wlaczony. */
+    /**
+     * Czy auto-crafting dla tego itemu jest wlaczony.
+     * Domyslnie TAK - wylaczone sa tylko jawne wyjatki.
+     */
     public boolean isEnabled(Item item) {
-        return enabledItems.contains(item);
+        return !disabledItems.contains(item);
     }
 
     public Map<Item, ResourceLocation> getPreferredRecipes() {
@@ -91,11 +110,11 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
      * zeby nie zostawac ze stanem po itemie, ktory nie jest juz craftowany.
      */
     public void toggleItem(Item item) {
-        if (enabledItems.contains(item)) {
-            enabledItems.remove(item);
-            preferredRecipes.remove(item);
+        if (disabledItems.contains(item)) {
+            disabledItems.remove(item);
         } else {
-            enabledItems.add(item);
+            disabledItems.add(item);
+            preferredRecipes.remove(item);
         }
         setChanged();
         markUpdated();
@@ -136,12 +155,12 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
 
     public void syncToPlayer(ServerPlayer player) {
         PacketDistributor.sendToPlayer(player, new OpenCraftingTableScreenPKT(
-                this.getBlockPos(), new HashSet<>(enabledItems), new HashMap<>(preferredRecipes)));
+                this.getBlockPos(), new HashSet<>(disabledItems), new HashMap<>(preferredRecipes)));
     }
 
     public void syncToWatchers(ServerLevel level) {
         SyncCraftingTableStatePKT pkt = new SyncCraftingTableStatePKT(
-                this.getBlockPos(), new HashSet<>(enabledItems), new HashMap<>(preferredRecipes));
+                this.getBlockPos(), new HashSet<>(disabledItems), new HashMap<>(preferredRecipes));
         for (ServerPlayer player : level.players()) {
             PacketDistributor.sendToPlayer(player, pkt);
         }
@@ -151,13 +170,13 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         ListTag list = new ListTag();
-        for (Item item : enabledItems) {
+        for (Item item : disabledItems) {
             ResourceLocation rl = BuiltInRegistries.ITEM.getKey(item);
             if (rl != null) {
                 list.add(StringTag.valueOf(rl.toString()));
             }
         }
-        tag.put("EnabledItems", list);
+        tag.put("DisabledItems", list);
 
         // Preferowane receptury: item -> recipe id
         CompoundTag prefs = new CompoundTag();
@@ -176,18 +195,42 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
     @Override
     public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        enabledItems = new HashSet<>();
-        ListTag list = tag.getList("EnabledItems", Tag.TAG_STRING);
-        for (int i = 0; i < list.size(); i++) {
-            String s = list.getString(i);
-            ResourceLocation rl = ResourceLocation.tryParse(s);
-            if (rl != null) {
-                Item item = BuiltInRegistries.ITEM.get(rl);
-                if (item != null) {
-                    enabledItems.add(item);
+        disabledItems = new HashSet<>();
+        if (tag.contains("DisabledItems")) {
+            ListTag list = tag.getList("DisabledItems", Tag.TAG_STRING);
+            for (int i = 0; i < list.size(); i++) {
+                String s = list.getString(i);
+                ResourceLocation rl = ResourceLocation.tryParse(s);
+                if (rl != null) {
+                    Item item = BuiltInRegistries.ITEM.get(rl);
+                    if (item != null) {
+                        disabledItems.add(item);
+                    }
+                }
+            }
+        } else if (tag.contains("EnabledItems")) {
+            // Migracja ze starego formatu (opt-in). Wtedy wlaczone bylo tylko to,
+            // co na liscie, wiec wyliczamy wyjatki jako "wszystko poza lista".
+            // Bez tego stare swiaty nagle wlaczylyby wszystko.
+            Set<Item> wasEnabled = new HashSet<>();
+            ListTag list = tag.getList("EnabledItems", Tag.TAG_STRING);
+            for (int i = 0; i < list.size(); i++) {
+                ResourceLocation rl = ResourceLocation.tryParse(list.getString(i));
+                if (rl != null) {
+                    Item item = BuiltInRegistries.ITEM.get(rl);
+                    if (item != null) {
+                        wasEnabled.add(item);
+                    }
+                }
+            }
+            for (Item candidate : com.craftingveloce.crafting.VeloceRecipeRegistry
+                    .getAllCraftableItems(level instanceof ServerLevel sl2 ? sl2 : null)) {
+                if (!wasEnabled.contains(candidate)) {
+                    disabledItems.add(candidate);
                 }
             }
         }
+        loadedFromSave = true;
 
         preferredRecipes = new HashMap<>();
         CompoundTag prefs = tag.getCompound("PreferredRecipes");
