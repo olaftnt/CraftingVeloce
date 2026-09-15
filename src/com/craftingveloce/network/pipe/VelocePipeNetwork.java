@@ -2,11 +2,15 @@ package com.craftingveloce.network.pipe;
 
 import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 
@@ -22,6 +26,39 @@ public class VelocePipeNetwork {
     private final Set<BlockPos> pipes = new HashSet<>();
     private final Set<BlockPos> terminals = new HashSet<>();
     private final Map<BlockPos, ConnectedEndpointInfo> endpoints = new HashMap<>();
+
+    /**
+     * Itemy, dla ktorych gracz woli PRZEPALANIE od craftingu.
+     *
+     * <p><b>To PREFERENCJA, nie filtr.</b> Mowi tylko, ktora droga jest
+     * pierwsza w kolejnosci - druga nadal zostaje dostepna, gdyby pierwszej
+     * zabraklo (brak skladnikow albo brak ciepla).
+     *
+     * <p>Trzymamy to na SIECI, a nie na pojedynczym piecu czy crafterze:
+     * gracz wybiera "crafting albo furnace", a nie "ten konkretny piec".
+     * Przy okazji siec jest jedynym miejscem, ktore autokrafter ma zawsze
+     * pod reka, wiec planer nie musi niczego dodatkowo wyszukiwac.
+     */
+    private final Set<Item> preferFurnace = new HashSet<>();
+
+    /** Czy dla tego itemu przepalanie ma byc probowane PRZED craftingiem. */
+    public boolean prefersFurnace(Item item) {
+        return preferFurnace.contains(item);
+    }
+
+    /** Ustawia preferencje dla itemu (true = piec pierwszy). */
+    public void setPrefersFurnace(Item item, boolean value) {
+        if (value) {
+            preferFurnace.add(item);
+        } else {
+            preferFurnace.remove(item);
+        }
+    }
+
+    /** Kopia zbioru - dla GUI (zeby nikt nie pisal po zywej mapie). */
+    public Set<Item> getFurnacePreferred() {
+        return Set.copyOf(preferFurnace);
+    }
     private final Set<ChunkPos> trackedChunks = new HashSet<>();
 
     /**
@@ -316,6 +353,17 @@ public class VelocePipeNetwork {
         }
         tag.put("Endpoints", endList);
 
+        // Preferencja "piec czy crafting" musi przetrwac restart swiata -
+        // inaczej gracz ustawialby ja po kazdym wejsciu.
+        ListTag prefList = new ListTag();
+        for (Item it : preferFurnace) {
+            ResourceLocation rl = BuiltInRegistries.ITEM.getKey(it);
+            if (rl != null) {
+                prefList.add(StringTag.valueOf(rl.toString()));
+            }
+        }
+        tag.put("PreferFurnace", prefList);
+
         return tag;
     }
 
@@ -334,6 +382,18 @@ public class VelocePipeNetwork {
         }
 
         ListTag endList = tag.getList("Endpoints", Tag.TAG_COMPOUND);
+
+        // Preferencje: nazwy itemow po identyfikatorach rejestru.
+        for (Tag el : tag.getList("PreferFurnace", Tag.TAG_STRING)) {
+            ResourceLocation rl = ResourceLocation.tryParse(el.getAsString());
+            if (rl == null) {
+                continue;
+            }
+            Item resolved = BuiltInRegistries.ITEM.get(rl);
+            if (resolved != null && resolved != Items.AIR) {
+                net.preferFurnace.add(resolved);
+            }
+        }
         for (int j = 0; j < endList.size(); j++) {
             ConnectedEndpointInfo ep = ConnectedEndpointInfo.fromNbt(endList.getCompound(j));
             // null = wpis nieczytelny (zly side albo nieznany typ). POMIJAMY go,

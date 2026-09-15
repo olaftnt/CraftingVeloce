@@ -9,6 +9,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -74,7 +75,15 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     private final boolean furnaceInNetwork;
     /** Czy ktorys piec jest zasilony - tylko wtedy receptury pieca sa realne. */
     private final boolean furnacePowered;
-    private final Map<Item, Integer> hotbar;
+    /**
+     * Itemy, dla ktorych gracz woli PRZEPALANIE od craftingu.
+     *
+     * <p>Trzymane po stronie sieci (patrz ControllerPreferKindPKT), tutaj kopia
+     * do rysowania podpowiedzi. Zmiana idzie od razu lokalnie (zeby klik
+     * odpowiadal natychmiast), a serwer jest jedynym zrodlem prawdy przy
+     * kolejnym otwarciu GUI.
+     */
+    private final Set<Item> furnacePreferred = new HashSet<>();
 
     private Filter filter = Filter.ALL;
 
@@ -104,7 +113,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
                                   Map<Item, Long> stock, Set<Item> craftable,
                                   Set<Item> craftingEnabled, Set<Item> furnaceCraftable,
                                   boolean furnaceInNetwork, boolean furnacePowered,
-                                  Map<Item, Integer> hotbar) {
+                                  Set<Item> furnacePreferred) {
         super(player, enabledFeatures, displayOperatorCreativeTab);
         this.controllerPos = controllerPos;
         this.stock = new HashMap<>(stock);
@@ -113,7 +122,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         this.furnaceCraftable = new HashSet<>(furnaceCraftable);
         this.furnaceInNetwork = furnaceInNetwork;
         this.furnacePowered = furnacePowered;
-        this.hotbar = new HashMap<>(hotbar);
+        this.furnacePreferred.addAll(furnacePreferred);
     }
 
     // ---------- klasyfikacja itemu ----------
@@ -172,9 +181,8 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     /** Kolor tla ikony wg stanu dostepnosci. */
     private int colorFor(Item item) {
-        if (hotbar.containsKey(item)) {
-            return 0x7700AA00;  // zielony: w hotbarze
-        }
+        // Kolor "in hotbar" usuniety razem z informacja o hotbarze - gracz
+        // nie chcial, zeby kontroler pokazywal, co ma pod reka.
         if (hasStock(item)) {
             return 0x770000AA;  // niebieski: na stocku
         }
@@ -365,6 +373,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         addFlowLines(lines, item);
         addCraftingLines(lines, item);
         addFurnaceLines(lines, item);
+        addPreferenceLines(lines, item);
         addUnavailableHint(lines, item);
 
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
@@ -418,26 +427,10 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         }
         lines.add(Component.translatable(windowKey, value).withStyle(color));
 
-        // Okno krotsze od nominalnego (serwer stoi od kilku minut) - mowimy
-        // o tym wprost. Inaczej "1 hour: +2/s" z trzech minut danych byloby
-        // liczba prawdziwa, ale przedstawiona tak, jakby obejmowala godzine.
-        if (coveredSeconds >= 1f && coveredSeconds < fullWindowSeconds * 0.95f) {
-            lines.add(Component.translatable("gui.craftingveloce.controller.flow.partial",
-                            formatSpan(coveredSeconds))
-                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
-        }
+        // UWAGA: nie pokazujemy juz "5 min of data so far" - gracz tego nie
+        // chcial, a sama liczba tempa jest prawdziwa dla okna, ktore minelo.
     }
 
-    /** "45 s" / "12 min" / "1.5 h" - najkrotsza czytelna forma. */
-    private static String formatSpan(float seconds) {
-        if (seconds < 90f) {
-            return Math.round(seconds) + " s";
-        }
-        if (seconds < 5400f) {
-            return Math.round(seconds / 60f) + " min";
-        }
-        return String.format(java.util.Locale.ROOT, "%.1f h", seconds / 3600f);
-    }
 
     /** Tempo z dokladnoscia, ktora ma sens: 2 miejsca ponizej 1/s, inaczej 1. */
     private static String formatRate(float rate) {
@@ -446,19 +439,19 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
                 : String.format(java.util.Locale.ROOT, "%.1f", rate);
     }
 
-    /** Stock w sieci + ewentualna informacja, ze item jest w hotbarze. */
+    /**
+     * Stock w sieci - ZAWSZE jako liczba.
+     *
+     * <p>Gracz chcial konkretna liczbe takze przy zerze ("0", a nie "none"):
+     * "brak" i "0" to dla niego to samo, a liczba jest jednoznaczna.
+     * Informacja "in hotbar" zostala usunieta - nie byla potrzebna.
+     */
     private void addStockLines(List<Component> lines, Item item) {
         long n = stock.getOrDefault(item, 0L);
-        lines.add(n > 0
-                ? Component.translatable("gui.craftingveloce.controller.stock", n)
-                        .withStyle(net.minecraft.ChatFormatting.AQUA)
-                : Component.translatable("gui.craftingveloce.controller.stock.none")
-                        .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
-
-        if (hotbar.containsKey(item)) {
-            lines.add(Component.translatable("gui.craftingveloce.controller.inHotbar", hotbar.get(item))
-                    .withStyle(net.minecraft.ChatFormatting.GREEN));
-        }
+        lines.add(Component.translatable("gui.craftingveloce.controller.stock", n)
+                .withStyle(n > 0
+                        ? net.minecraft.ChatFormatting.AQUA
+                        : net.minecraft.ChatFormatting.DARK_GRAY));
     }
 
     /**
@@ -506,6 +499,27 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         }
     }
 
+    /**
+     * Preferencja "crafting czy piec" - tylko dla itemow, ktore MOZNA przepalic.
+     *
+     * <p>Pokazujemy ja wprost ("Preference: Crafting" / "Preference: Furnace"),
+     * bo item moze miec obie drogi naraz i gracz musi widziec, ktora jest
+     * pierwsza. Prawy klik przelacza.
+     */
+    private void addPreferenceLines(List<Component> lines, Item item) {
+        if (!furnaceCraftable.contains(item)) {
+            return;   // nie ma czego preferowac - jest tylko crafting
+        }
+        boolean furnace = furnacePreferred.contains(item);
+        lines.add(Component.translatable(furnace
+                        ? "gui.craftingveloce.controller.prefer.furnace"
+                        : "gui.craftingveloce.controller.prefer.crafting")
+                .withStyle(furnace ? net.minecraft.ChatFormatting.GOLD
+                        : net.minecraft.ChatFormatting.YELLOW));
+        lines.add(Component.translatable("gui.craftingveloce.controller.prefer.hint")
+                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+    }
+
     private void addUnavailableHint(List<Component> lines, Item item) {
         if (isAvailable(item)) {
             return;
@@ -531,6 +545,32 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         // Controller jest tylko do odczytu - nie przenosimy itemow.
+        // PRAWY klawisz przelacza natomiast PREFERENCJE "crafting czy piec",
+        // tak samo jak prawy klik w crafterze wybiera recepture.
+        if (mouseButton != 1 || slot == null || !slot.hasItem()) {
+            return;
+        }
+        if (isPlayerInventorySlot(slot)) {
+            return;
+        }
+        Item item = slot.getItem().getItem();
+        if (!furnaceCraftable.contains(item)) {
+            // Tylko crafting - nie ma miedzy czym wybierac.
+            return;
+        }
+        boolean preferFurnace = !furnacePreferred.contains(item);
+        if (preferFurnace) {
+            furnacePreferred.add(item);
+        } else {
+            furnacePreferred.remove(item);
+        }
+        PacketDistributor.sendToServer(
+                new com.craftingveloce.network.ControllerPreferKindPKT(
+                        controllerPos, item, preferFurnace));
+        com.craftingveloce.util.VeloceLog.Gui.success(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "preferencja dla %s: %s", item,
+                preferFurnace ? "FURNACE pierwszy" : "CRAFTING pierwszy");
     }
 
     @Override

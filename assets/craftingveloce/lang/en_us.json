@@ -28,15 +28,12 @@
   "gui.craftingveloce.controller.flow.gathering": "gathering data...",
   "gui.craftingveloce.controller.flow.hour": "1 hour: %s",
   "gui.craftingveloce.controller.flow.minute": "1 min: %s",
-  "gui.craftingveloce.controller.flow.partial": "(only %s of data so far)",
   "gui.craftingveloce.controller.flow.steady": "no change",
-  "gui.craftingveloce.controller.inHotbar": "In hotbar: %s",
   "gui.craftingveloce.controller.notCraftable": "Crafter cannot make this",
   "gui.craftingveloce.controller.smeltingNoFuel": "Furnace recipe - but the furnace has no fuel",
   "gui.craftingveloce.controller.smeltingNoFurnace": "Furnace recipe - connect a powered furnace",
   "gui.craftingveloce.controller.smeltingOn": "Smelting ENABLED (furnace is powered)",
   "gui.craftingveloce.controller.stock": "Stock: %s",
-  "gui.craftingveloce.controller.stock.none": "Stock: none",
   "gui.craftingveloce.crafter.ingredients": "from: %s",
   "gui.craftingveloce.crafter.recipe.cycle": "Right-click to change recipe",
   "gui.craftingveloce.crafter.toggle.off": "Left-click: DISABLE auto-crafting",
@@ -76,5 +73,8 @@
   "item.craftingveloce.veloce_pipe": "Veloce Pipe",
   "item.craftingveloce.veloce_tom_terminal": "Veloce Storage Terminal",
   "item.craftingveloce.wrench": "Veloce Wrench",
-  "gui.craftingveloce.electric.batterySlot": "Put a charged FE item here (battery, energy cube, flux tablet)"
+  "gui.craftingveloce.electric.batterySlot": "Put a charged FE item here (battery, energy cube, flux tablet)",
+  "gui.craftingveloce.controller.prefer.crafting": "Preference: Crafting",
+  "gui.craftingveloce.controller.prefer.furnace": "Preference: Furnace",
+  "gui.craftingveloce.controller.prefer.hint": "Right-click to switch (both still work)"
 }

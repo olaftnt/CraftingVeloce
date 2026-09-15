@@ -246,6 +246,7 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `OpenTerminalScreenPKT` | S→C | `BlockPos terminalPos` |
 | `RequestCraftableCountsPKT` | C→S | `BlockPos pos, List<Item> items` |
 | `SensorConfigPKT` | C→S | `BlockPos pos, long threshold, boolean highMode` |
+| `ControllerPreferKindPKT` | C→S | `BlockPos pos, Item item, boolean preferFurnace` |
 | `SetFilterPKT` | C→S | `BlockPos pos, int filterIndex, ItemStack filterItem` |
 | `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Float> perMinute, Map<Item, Float> perHour, float coveredMinute, float coveredHour` |
 | `SyncCraftableCountsPKT` | S→C | `BlockPos pos, Map<Item, Long> counts, boolean complete` |

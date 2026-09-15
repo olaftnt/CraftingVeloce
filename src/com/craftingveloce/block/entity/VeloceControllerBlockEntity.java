@@ -177,18 +177,14 @@ public class VeloceControllerBlockEntity extends BlockEntity
         boolean furnaceInNetwork = net != null && VeloceHeatSources.hasAnyHeatSource(sl, net);
         boolean furnacePowered = net != null && VeloceHeatSources.hasPower(sl, net);
 
-        // Hotbar gracza - ktore itemy ma pod reka (kolorowanie ikon).
-        Map<Item, Integer> hotbar = new HashMap<>();
-        for (int slot = 0; slot < 9; slot++) {
-            ItemStack st = player.getInventory().getItem(slot);
-            if (!st.isEmpty()) {
-                hotbar.merge(st.getItem(), st.getCount(), Integer::sum);
-            }
-        }
+        // Preferencja "crafting czy piec" - z sieci, wiec widzi ja cala siec,
+        // a nie jeden kontroler. Zamiast hotbara (usuniety na zyczenie):
+        // gracz nie chcial informacji "in hotbar" na ikonach.
+        Set<Item> furnacePreferred = net == null ? Set.of() : net.getFurnacePreferred();
 
         PacketDistributor.sendToPlayer(player, new OpenControllerScreenPKT(
                 this.getBlockPos(), stock, craftable, craftingEnabled,
-                furnaceCraftable, furnaceInNetwork, furnacePowered, hotbar));
+                furnaceCraftable, furnaceInNetwork, furnacePowered, furnacePreferred));
 
         // Tempo przeplywu idzie osobnym, lekkim pakietem. Wysylamy je od razu,
         // zeby gracz nie czekal sekundy na pierwsze liczby - a potem klient

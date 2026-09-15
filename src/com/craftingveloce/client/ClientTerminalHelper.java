@@ -180,19 +180,19 @@ public class ClientTerminalHelper {
                                             java.util.Set<Item> furnaceCraftable,
                                             boolean furnaceInNetwork,
                                             boolean furnacePowered,
-                                            java.util.Map<Item, Integer> hotbar) {
+                                            java.util.Set<Item> furnacePreferred) {
         Minecraft mc = Minecraft.getInstance();
         com.craftingveloce.util.VeloceLog.Gui.attempt(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
                 "opening controller screen at %s (stock=%d, craftable=%d, enabled=%d, "
-                        + "furnace=%d inNetwork=%s powered=%s, hotbar=%d)",
+                        + "furnace=%d inNetwork=%s powered=%s, preferFurnace=%d)",
                 pos, stock.size(), craftable.size(), craftingEnabled.size(),
-                furnaceCraftable.size(), furnaceInNetwork, furnacePowered, hotbar.size());
+                furnaceCraftable.size(), furnaceInNetwork, furnacePowered, furnacePreferred.size());
         if (mc.player != null) {
             mc.setScreen(new com.craftingveloce.client.gui.VeloceControllerScreen(
                     mc.player, mc.player.connection.enabledFeatures(), true,
                     pos, stock, craftable, craftingEnabled,
-                    furnaceCraftable, furnaceInNetwork, furnacePowered, hotbar));
+                    furnaceCraftable, furnaceInNetwork, furnacePowered, furnacePreferred));
             com.craftingveloce.util.VeloceLog.Gui.success(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,
                     "controller screen opened");

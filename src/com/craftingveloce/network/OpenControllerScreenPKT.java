@@ -29,7 +29,7 @@ import java.util.Set;
  *   <li>{@code furnaceInNetwork} / {@code furnacePowered} - czy w sieci stoi
  *       jakikolwiek piec i czy ktorys jest zasilony. Trzy stany daja trzy
  *       rozne komunikaty: brak pieca, piec bez paliwa, piec gotowy</li>
- *   <li>{@code hotbar} - zawartosc hotbara gracza (do kolorow ikon)</li>
+ *   <li>{@code furnacePreferred} - itemy, dla ktorych gracz woli PRZEPALANIE</li>
  * </ul>
  */
 public record OpenControllerScreenPKT(BlockPos pos,
@@ -39,7 +39,7 @@ public record OpenControllerScreenPKT(BlockPos pos,
                                       Set<Item> furnaceCraftable,
                                       boolean furnaceInNetwork,
                                       boolean furnacePowered,
-                                      Map<Item, Integer> hotbar)
+                                      Set<Item> furnacePreferred)
         implements CustomPacketPayload {
 
     public static final Type<OpenControllerScreenPKT> TYPE =
@@ -67,10 +67,9 @@ public record OpenControllerScreenPKT(BlockPos pos,
         buf.writeBoolean(pkt.furnaceInNetwork);
         buf.writeBoolean(pkt.furnacePowered);
 
-        buf.writeInt(pkt.hotbar.size());
-        for (Map.Entry<Item, Integer> e : pkt.hotbar.entrySet()) {
-            buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(e.getKey()));
-            buf.writeVarInt(e.getValue());
+        buf.writeInt(pkt.furnacePreferred.size());
+        for (Item it : pkt.furnacePreferred) {
+            buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(it));
         }
     }
 
@@ -94,18 +93,17 @@ public record OpenControllerScreenPKT(BlockPos pos,
         boolean furnaceInNetwork = buf.readBoolean();
         boolean furnacePowered = buf.readBoolean();
 
-        int hotbarSize = buf.readInt();
-        Map<Item, Integer> hotbar = new HashMap<>();
-        for (int i = 0; i < hotbarSize; i++) {
+        int preferredSize = buf.readInt();
+        Set<Item> furnacePreferred = new HashSet<>();
+        for (int i = 0; i < preferredSize; i++) {
             Item item = BuiltInRegistries.ITEM.get(buf.readResourceLocation());
-            int n = buf.readVarInt();
             if (item != null) {
-                hotbar.put(item, n);
+                furnacePreferred.add(item);
             }
         }
 
         return new OpenControllerScreenPKT(pos, stock, craftable, craftingEnabled,
-                furnaceCraftable, furnaceInNetwork, furnacePowered, hotbar);
+                furnaceCraftable, furnaceInNetwork, furnacePowered, furnacePreferred);
     }
 
     private static void writeItems(FriendlyByteBuf buf, Set<Item> items) {
@@ -136,6 +134,6 @@ public record OpenControllerScreenPKT(BlockPos pos,
         ctx.enqueueWork(() -> com.craftingveloce.client.ClientTerminalHelper
                 .openControllerScreen(pkt.pos(), pkt.stock(), pkt.craftable(),
                         pkt.craftingEnabled(), pkt.furnaceCraftable(),
-                        pkt.furnaceInNetwork(), pkt.furnacePowered(), pkt.hotbar()));
+                        pkt.furnaceInNetwork(), pkt.furnacePowered(), pkt.furnacePreferred()));
     }
 }
