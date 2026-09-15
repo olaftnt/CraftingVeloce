@@ -276,7 +276,8 @@ public final class VeloceCraftingCache {
         }
 
         // 1b. Utrzymuj chunki z blokami sieci (rzadko - co sekunde).
-        if (now % 20 == 0) {
+        //     NIE robimy tego przy zamykaniu serwera - inaczej blokujemy zapis.
+        if (!shuttingDown && now % 20 == 0) {
             maintainForcedChunks(level);
         }
 
@@ -450,6 +451,9 @@ public final class VeloceCraftingCache {
      * <p>Chunki sa zwalniane, gdy siec przestaje istniec (patrz {@link #release}).
      */
     private void maintainForcedChunks(ServerLevel level) {
+        if (shuttingDown) {
+            return;
+        }
         Set<BlockPos> toLoad = new HashSet<>();
 
         // Priorytet: wezly sieci (terminal, crafter, extractor).
@@ -495,6 +499,32 @@ public final class VeloceCraftingCache {
             VeloceLog.Network.detail(VeloceLog.Side.SERVER,
                     "force-loaded %d more chunk(s), total %d", added, forcedChunks.size());
         }
+    }
+
+    /**
+     * Czy serwer sie zamyka.
+     *
+     * <p>KLUCZOWE dla zapisu swiata. Gdy serwer sie zamyka, Minecraft probuje
+     * rozladowac chunki. Jesli nasze force-loady dalej dzialaja, chunk wraca,
+     * jest znowu rozladowywany i tak w kolko - zapis swiata sie zawiesza.
+     *
+     * <p>Dlatego przy zamknieciu: przestajemy wymuszac I zwalniamy wszystko,
+     * co trzymalismy.
+     */
+    private static volatile boolean shuttingDown = false;
+
+    /** Zwalnia force-loady wszystkich sieci. Wolane przy zamykaniu serwera. */
+    public static void releaseAll(ServerLevel level) {
+        shuttingDown = true;
+        int released = 0;
+        for (VeloceCraftingCache cache : CACHES.values()) {
+            released += cache.forcedChunks.size();
+            cache.release(level);
+        }
+        VeloceLog.Network.success(VeloceLog.Side.SERVER,
+                "server stopping: released %d forced chunk(s) across %d network(s)",
+                released, CACHES.size());
+        CACHES.clear();
     }
 
     /** Zwalnia wszystkie chunki trzymane przez te siec. */

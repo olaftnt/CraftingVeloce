@@ -129,6 +129,26 @@ public class CraftingVeloceMod {
         // momencie (gracz podchodzi, odchodzi, chunk zostaje wyciagniety przez
         // inny mod). Stock sieci zmienia sie wtedy gwaltownie, wiec cache
         // craftowalnosci musi o tym wiedziec - inaczej GUI pokazuje stare liczby.
+        // Dodatkowe zabezpieczenie: zwolnij force-loady przy rozladowaniu
+        // wymiaru (zmiana swiata, powrot do menu glownego).
+        NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.event.level.LevelEvent.Unload.class, event -> {
+                    if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
+                        com.craftingveloce.crafting.VeloceCraftingCache.releaseAll(sl);
+                    }
+                });
+
+        // Zwalniamy force-loady chunkow PRZED zapisem swiata.
+        // Bez tego Minecraft probuje rozladowac chunki, ktore my trzymamy,
+        // w kolko - i zapis sie zawiesza.
+        NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.event.server.ServerStoppingEvent.class, event -> {
+                    var server = event.getServer();
+                    for (var level : server.getAllLevels()) {
+                        com.craftingveloce.crafting.VeloceCraftingCache.releaseAll(level);
+                    }
+                });
+
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.ChunkEvent.Load.class, event -> {
             if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                 com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
