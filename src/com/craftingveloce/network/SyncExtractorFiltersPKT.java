@@ -13,13 +13,21 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.List;
 
-public record SyncExtractorFiltersPKT(BlockPos pos, List<ItemStack> filters) implements CustomPacketPayload {
+/**
+ * S→C: filtry ekstraktora wraz z flagami auto-craftingu.
+ *
+ * <p>{@code allowCrafting} jest per slot: false = ten slot dostaje tylko to,
+ * co juz lezy w sieci, bez zamawiania craftu.
+ */
+public record SyncExtractorFiltersPKT(BlockPos pos, List<ItemStack> filters,
+                                      List<Boolean> allowCrafting) implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<SyncExtractorFiltersPKT> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(CraftingVeloceMod.MODID, "sync_extractor_filters"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, SyncExtractorFiltersPKT> STREAM_CODEC = StreamCodec.composite(
             BlockPos.STREAM_CODEC, SyncExtractorFiltersPKT::pos,
             ItemStack.OPTIONAL_LIST_STREAM_CODEC, SyncExtractorFiltersPKT::filters,
+            ByteBufCodecs.BOOL.apply(ByteBufCodecs.list()), SyncExtractorFiltersPKT::allowCrafting,
             SyncExtractorFiltersPKT::new
     );
 
@@ -30,7 +38,8 @@ public record SyncExtractorFiltersPKT(BlockPos pos, List<ItemStack> filters) imp
 
     public static void handle(SyncExtractorFiltersPKT pkt, IPayloadContext context) {
         context.enqueueWork(() -> {
-            ClientTerminalHelper.handleSyncExtractorFilters(pkt.pos(), pkt.filters());
+            ClientTerminalHelper.handleSyncExtractorFilters(
+                    pkt.pos(), pkt.filters(), pkt.allowCrafting());
         });
     }
 }

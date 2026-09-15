@@ -44,6 +44,34 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
 
     private int tickCounter = 0;
 
+    /**
+     * Czy dany slot filtra moze korzystac z auto-craftingu.
+     *
+     * <p>Domyslnie true (extractor sam dorabia brakujacy item, jesli jakis
+     * crafter w sieci ma go wlaczonego). Prawy klik na zajetym slocie to
+     * przelacza: wylaczony slot dostaje TYLKO to, co juz jest w sieci.
+     */
+    private final boolean[] allowCrafting = new boolean[]{true, true, true, true, true, true, true, true, true};
+
+    public boolean isCraftingAllowed(int index) {
+        return index >= 0 && index < 9 && allowCrafting[index];
+    }
+
+    public void setCraftingAllowed(int index, boolean allowed) {
+        if (index >= 0 && index < 9) {
+            allowCrafting[index] = allowed;
+            setChanged();
+            syncFiltersToWatchers();
+        }
+    }
+
+    /** Przelacza auto-crafting dla slotu i zwraca nowy stan. */
+    public boolean toggleCraftingAllowed(int index) {
+        boolean next = !isCraftingAllowed(index);
+        setCraftingAllowed(index, next);
+        return next;
+    }
+
     public VeloceExtractorBlockEntity(BlockPos pos, BlockState state) {
         super(VeloceRegistry.VELOCE_EXTRACTOR_BE.get(), pos, state);
         outputInventory.addListener(c -> setChanged());
@@ -80,8 +108,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
 
     public void syncFiltersToWatchers() {
         if (level != null && !level.isClientSide && level instanceof ServerLevel sl) {
-            List<ItemStack> filters = new ArrayList<>(filterSlots);
-            SyncExtractorFiltersPKT pkt = new SyncExtractorFiltersPKT(worldPosition, filters);
+            SyncExtractorFiltersPKT pkt = buildFilterPacket();
             for (ServerPlayer player : sl.players()) {
                 if (player.containerMenu instanceof VeloceExtractorMenu menu && menu.getPos().equals(worldPosition)) {
                     PacketDistributor.sendToPlayer(player, pkt);
@@ -92,8 +119,17 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
 
     public void syncFiltersToPlayer(ServerPlayer player) {
         if (level != null && !level.isClientSide) {
-            PacketDistributor.sendToPlayer(player, new SyncExtractorFiltersPKT(worldPosition, new ArrayList<>(filterSlots)));
+            PacketDistributor.sendToPlayer(player, buildFilterPacket());
         }
+    }
+
+    /** Filtry + flagi auto-craftingu w jednym pakiecie. */
+    private SyncExtractorFiltersPKT buildFilterPacket() {
+        List<Boolean> flags = new ArrayList<>(9);
+        for (int i = 0; i < 9; i++) {
+            flags.add(allowCrafting[i]);
+        }
+        return new SyncExtractorFiltersPKT(worldPosition, new ArrayList<>(filterSlots), flags);
     }
 
     public void serverTick() {
@@ -149,6 +185,9 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
         long deadline = System.nanoTime() + PULL_CRAFT_BUDGET_NS;
         for (int i = 0; i < 9; i++) {
             if (!needsCraft[i]) continue;
+            // Slot z wylaczonym auto-craftingiem dostaje wylacznie to, co juz
+            // jest w sieci - nigdy nie zamawiamy dla niego craftu.
+            if (!allowCrafting[i]) continue;
             if (System.nanoTime() > deadline) {
                 break;   // reszta w nastepnym cyklu
             }
@@ -283,6 +322,16 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
         }
         tag.put("Filters", filterList);
 
+        // Flagi auto-craftingu per slot. Zapisujemy liste indeksow WYLACZONYCH,
+        // zeby stare swiaty (bez tego tagu) dostawaly domyslne "wlaczone".
+        ListTag noCraft = new ListTag();
+        for (int i = 0; i < 9; i++) {
+            if (!allowCrafting[i]) {
+                noCraft.add(net.minecraft.nbt.IntTag.valueOf(i));
+            }
+        }
+        tag.put("NoCraft", noCraft);
+
         ListTag outputList = new ListTag();
         for (int i = 0; i < outputInventory.getContainerSize(); i++) {
             ItemStack stack = outputInventory.getItem(i);
@@ -306,6 +355,15 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
             int slot = itemTag.getByte("Slot") & 255;
             if (slot < 9) {
                 ItemStack.parse(registries, itemTag).ifPresent(s -> filterSlots.set(slot, s));
+            }
+        }
+
+        java.util.Arrays.fill(allowCrafting, true);
+        ListTag noCraft = tag.getList("NoCraft", Tag.TAG_INT);
+        for (int i = 0; i < noCraft.size(); i++) {
+            int slot = noCraft.getInt(i);
+            if (slot >= 0 && slot < 9) {
+                allowCrafting[slot] = false;
             }
         }
 

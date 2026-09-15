@@ -39,5 +39,9 @@
     "craftingveloce.craft.error.tooComplex": "recipe tree too complex",
     "craftingveloce.message.terminalNotFound": "Terminal block not found!",
     "craftingveloce.message.itemNotInNetwork": "Item not in network: %s",
-    "craftingveloce.message.inventoryFull": "Inventory full!"
+    "craftingveloce.message.inventoryFull": "Inventory full!",
+    "gui.craftingveloce.extractor.craftingOn": "Auto-crafting: ON",
+    "gui.craftingveloce.extractor.craftingOff": "Auto-crafting: OFF (network stock only)",
+    "gui.craftingveloce.extractor.filterHelp": "Left-click: clear / choose item. Right-click: toggle auto-crafting.",
+    "gui.craftingveloce.extractor.emptySlot": "Empty filter (left-click to choose an item)"
 }

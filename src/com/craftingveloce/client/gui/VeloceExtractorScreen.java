@@ -4,6 +4,7 @@ import com.craftingveloce.CraftingVeloceMod;
 import com.craftingveloce.inventory.VeloceExtractorMenu;
 import com.craftingveloce.network.ExtractorOpenFilterPKT;
 import com.craftingveloce.network.ExtractorSetFilterPKT;
+import com.craftingveloce.network.ExtractorToggleCraftingPKT;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -25,6 +26,10 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
 
     private final NonNullList<ItemStack> clientFilters = NonNullList.withSize(9, ItemStack.EMPTY);
 
+    /** Lustrzane odbicie flag auto-craftingu z serwera (per slot filtra). */
+    private final java.util.List<Boolean> clientAllowCrafting =
+            new java.util.ArrayList<>(java.util.Collections.nCopies(9, Boolean.TRUE));
+
     public VeloceExtractorScreen(VeloceExtractorMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
         this.imageWidth = 212;
@@ -40,9 +45,14 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
         }
     }
 
-    public void updateFilters(List<ItemStack> filters) {
+    public void updateFilters(List<ItemStack> filters, List<Boolean> allowCrafting) {
         for (int i = 0; i < Math.min(9, filters.size()); i++) {
             clientFilters.set(i, filters.get(i));
+        }
+        if (allowCrafting != null) {
+            for (int i = 0; i < Math.min(9, allowCrafting.size()); i++) {
+                clientAllowCrafting.set(i, allowCrafting.get(i));
+            }
         }
     }
 
@@ -69,20 +79,39 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
                 int slotY = top + 18 + row * 18;
 
                 if (!filterItem.isEmpty()) {
-                    // Draw semi-transparent / ghost item
                     graphics.renderFakeItem(filterItem, slotX, slotY);
-                    // Draw a subtle translucent overlay to emphasize it's a filter
+
+                    // Kolor mowi, czy extractor moze dla tego itemu zamawiac
+                    // craft: zielony = tak, czerwony = tylko to, co jest w sieci.
+                    // Bez tego prawy klik przelaczal cos, czego nie bylo widac.
+                    boolean canCraft = clientAllowCrafting.get(index);
+                    int overlay = canCraft ? 0x5500AA00 : 0x55AA0000;
                     RenderSystem.disableDepthTest();
-                    graphics.fillGradient(slotX, slotY, slotX + 16, slotY + 16, 0x44AA00FF, 0x44AA00FF);
+                    graphics.fillGradient(slotX, slotY, slotX + 16, slotY + 16, overlay, overlay);
                     RenderSystem.enableDepthTest();
                 }
 
                 // If hovered, render slot highlight or tooltip
                 if (isHovering(26 + col * 18, 18 + row * 18, 16, 16, mouseX, mouseY)) {
                     if (!filterItem.isEmpty()) {
-                        graphics.renderTooltip(this.font, filterItem, mouseX, mouseY);
+                        boolean canCraft = clientAllowCrafting.get(index);
+                        java.util.List<Component> lines = new java.util.ArrayList<>();
+                        lines.add(filterItem.getHoverName());
+                        lines.add(Component.translatable(canCraft
+                                        ? "gui.craftingveloce.extractor.craftingOn"
+                                        : "gui.craftingveloce.extractor.craftingOff")
+                                .withStyle(canCraft
+                                        ? net.minecraft.ChatFormatting.GREEN
+                                        : net.minecraft.ChatFormatting.RED));
+                        lines.add(Component.translatable("gui.craftingveloce.extractor.filterHelp")
+                                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+                        graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
                     } else {
-                        graphics.renderTooltip(this.font, Component.literal("Filter Slot " + (index + 1)), mouseX, mouseY);
+                        graphics.renderComponentTooltip(this.font, java.util.List.of(
+                                Component.translatable("gui.craftingveloce.extractor.emptySlot"),
+                                Component.translatable("gui.craftingveloce.extractor.filterHelp")
+                                        .withStyle(net.minecraft.ChatFormatting.DARK_GRAY)),
+                                mouseX, mouseY);
                     }
                 }
             }
@@ -91,31 +120,57 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
         this.renderTooltip(graphics, mouseX, mouseY);
     }
 
+    /**
+     * Obsluga klikniec w 9 slotow filtra.
+     *
+     * <p>Ustalone zachowanie:
+     * <ul>
+     *   <li><b>Prawy klik na ZAJETYM slocie</b> - przelacza auto-crafting dla
+     *       tego itemu (czy extractor ma zamawiac craft, czy brac tylko to, co
+     *       juz jest w sieci). Sam wybor itemu zostaje bez zmian.</li>
+     *   <li><b>Lewy klik na ZAJETYM slocie</b> - kasuje filtr.</li>
+     *   <li><b>Lewy klik na PUSTYM slocie</b> - otwiera wybor itemu.</li>
+     *   <li><b>Klik z itemem na kursorze</b> - od razu ustawia ten item jako
+     *       filtr (bez zuzywania go z kursora).</li>
+     * </ul>
+     */
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         if (slot != null && slot.index < 9 && slot.container != this.minecraft.player.getInventory()) {
-            // It is one of our 9 filter slots!
             int filterIndex = slot.index;
             ItemStack carried = this.menu.getCarried();
+            boolean occupied = !clientFilters.get(filterIndex).isEmpty();
 
-            if (mouseButton == 1 && carried.isEmpty()) {
-                // Right-click with empty cursor clears filter
-                clientFilters.set(filterIndex, ItemStack.EMPTY);
-                PacketDistributor.sendToServer(new ExtractorSetFilterPKT(this.menu.getPos(), filterIndex, ItemStack.EMPTY));
-                return;
-            }
-
+            // Kursor z itemem ma zawsze priorytet: przestaw filtr na ten item.
             if (!carried.isEmpty()) {
-                // Left or right click with item on cursor sets filter to carried item WITHOUT consuming carried item!
                 ItemStack single = carried.copy();
                 single.setCount(1);
                 clientFilters.set(filterIndex, single);
-                PacketDistributor.sendToServer(new ExtractorSetFilterPKT(this.menu.getPos(), filterIndex, single));
+                PacketDistributor.sendToServer(
+                        new ExtractorSetFilterPKT(this.menu.getPos(), filterIndex, single));
                 return;
             }
 
-            // Clicked with empty hand: open the terminal/creative filter picker screen!
-            PacketDistributor.sendToServer(new ExtractorOpenFilterPKT(this.menu.getPos(), filterIndex));
+            if (occupied) {
+                if (mouseButton == 1) {
+                    // Prawy klik na zajetym = przelacz auto-crafting.
+                    clientAllowCrafting.set(filterIndex, !clientAllowCrafting.get(filterIndex));
+                    PacketDistributor.sendToServer(
+                            new ExtractorToggleCraftingPKT(this.menu.getPos(), filterIndex));
+                } else {
+                    // Lewy klik na zajetym = skasuj filtr.
+                    clientFilters.set(filterIndex, ItemStack.EMPTY);
+                    PacketDistributor.sendToServer(
+                            new ExtractorSetFilterPKT(this.menu.getPos(), filterIndex, ItemStack.EMPTY));
+                }
+                return;
+            }
+
+            // Pusty slot + lewy klik = wybor itemu.
+            if (mouseButton == 0) {
+                PacketDistributor.sendToServer(
+                        new ExtractorOpenFilterPKT(this.menu.getPos(), filterIndex));
+            }
             return;
         }
 

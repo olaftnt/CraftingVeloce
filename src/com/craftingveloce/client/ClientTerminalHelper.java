@@ -41,10 +41,35 @@ public class ClientTerminalHelper {
         }
     }
 
-    public static void handleSyncExtractorFilters(BlockPos pos, java.util.List<net.minecraft.world.item.ItemStack> filters) {
+    /**
+     * Wraca z wyboru filtra do GUI ekstraktora.
+     *
+     * <p><b>Po co osobna metoda.</b> Picker konczyl sie {@code onClose()}, ktore
+     * zamyka ekran DO GRY - gracz wybieral item i ladowal z powrotem w swiecie,
+     * zamiast wrocic do ekstraktora. Ekstraktor ma normalne menu, wiec wystarczy
+     * je otworzyc z powrotem (tak samo, jak robi to otwarcie pickera).
+     *
+     * <p>Trace droge robimy przez zwykle menu gracza, a nie przez {@code onClose()},
+     * zeby nie odpalac logiki zamykania pickera (przywracania trybu gry itd.).
+     */
+    public static void reopenExtractorScreen(BlockPos pos) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) {
+            return;
+        }
+        mc.setScreen(new com.craftingveloce.client.gui.VeloceExtractorScreen(
+                new com.craftingveloce.inventory.VeloceExtractorMenu(
+                        mc.player.inventoryMenu.containerId, mc.player.getInventory(), pos),
+                mc.player.getInventory(),
+                net.minecraft.network.chat.Component.translatable("block.craftingveloce.veloce_extractor")));
+    }
+
+    public static void handleSyncExtractorFilters(BlockPos pos,
+                                                  java.util.List<net.minecraft.world.item.ItemStack> filters,
+                                                  java.util.List<Boolean> allowCrafting) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof com.craftingveloce.client.gui.VeloceExtractorScreen screen) {
-            screen.updateFilters(filters);
+            screen.updateFilters(filters, allowCrafting);
         }
     }
 

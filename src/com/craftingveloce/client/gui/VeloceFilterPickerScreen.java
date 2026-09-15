@@ -173,8 +173,11 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
             filterItem.setCount(1);
             PacketDistributor.sendToServer(new ExtractorSetFilterPKT(extractorPos, filterIndex, filterItem));
 
-            // Close filter screen and return to extractor screen
-            this.onClose();
+            // WROC DO EKSTRAKTORA, a nie do gry.
+            //
+            // Bylo tu this.onClose(), ktore zamyka ekran calkowicie - gracz
+            // wybieral item i ladowal w swiecie zamiast wrocic do klocka.
+            com.craftingveloce.client.ClientTerminalHelper.reopenExtractorScreen(extractorPos);
         }
     }
 
