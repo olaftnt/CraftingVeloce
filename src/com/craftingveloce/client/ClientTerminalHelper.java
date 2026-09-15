@@ -52,29 +52,37 @@ public class ClientTerminalHelper {
         return Minecraft.getInstance().hitResult;
     }
 
-    public static void openCraftingTableScreen(BlockPos pos, java.util.Set<Item> enabledItems,
+    /**
+     * @param disabledItems itemy z WYLACZONYM auto-craftingiem. Model jest
+     *                      opt-out, wiec to jest zbior wyjatkow - wczesniej
+     *                      parametr nazywal sie {@code enabledItems} i log
+     *                      wypisywal "enabled=0" przy zerze WYLACZONYCH, co
+     *                      czytalo sie dokladnie odwrotnie niz bylo.
+     */
+    public static void openCraftingTableScreen(BlockPos pos, java.util.Set<Item> disabledItems,
                                                java.util.Map<Item, net.minecraft.resources.ResourceLocation> preferredRecipes,
                                                java.util.List<net.minecraft.world.item.ItemStack> bufferContents) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             com.craftingveloce.util.VeloceLog.Gui.attempt(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                    "opening crafter screen at %s (enabled=%d, buffer=%d stacks)",
-                    pos, enabledItems.size(), bufferContents.size());
+                    "opening crafter screen at %s (disabled=%d, buffer=%d stacks)",
+                    pos, disabledItems.size(), bufferContents.size());
             mc.setScreen(new com.craftingveloce.client.gui.VeloceCraftingTableScreen(
                     mc.player, mc.player.connection.enabledFeatures(), true, pos,
-                    enabledItems, preferredRecipes, bufferContents));
+                    disabledItems, preferredRecipes, bufferContents));
             com.craftingveloce.util.VeloceLog.Gui.success(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,
                     "crafter screen opened");
         }
     }
 
-    public static void updateCraftingTableState(BlockPos pos, java.util.Set<Item> enabledItems,
+    /** @param disabledItems itemy z wylaczonym auto-craftingiem (model opt-out). */
+    public static void updateCraftingTableState(BlockPos pos, java.util.Set<Item> disabledItems,
                                                 java.util.Map<Item, net.minecraft.resources.ResourceLocation> preferredRecipes) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof com.craftingveloce.client.gui.VeloceCraftingTableScreen screen) {
-            screen.updateEnabledItems(enabledItems, preferredRecipes);
+            screen.updateDisabledItems(disabledItems, preferredRecipes);
         }
     }
 

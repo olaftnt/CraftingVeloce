@@ -101,7 +101,14 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         return bufferContents;
     }
 
-    public void updateEnabledItems(Set<Item> items, Map<Item, ResourceLocation> prefs) {
+    /**
+     * Podmienia zbior itemow z wylaczonym auto-craftingiem (model opt-out).
+     *
+     * <p>Nazwa mowi co przekazujesz. Wczesniej metoda nazywala sie
+     * {@code updateEnabledItems}, a przypisywala do {@code disabledItems} -
+     * proszenie sie o odwrotna semantyke przy nastepnej zmianie.
+     */
+    public void updateDisabledItems(Set<Item> items, Map<Item, ResourceLocation> prefs) {
         this.disabledItems = new HashSet<>(items);
         this.preferredRecipes = new HashMap<>(prefs);
     }
