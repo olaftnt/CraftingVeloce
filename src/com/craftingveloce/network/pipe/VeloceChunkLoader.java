@@ -263,6 +263,61 @@ public final class VeloceChunkLoader {
         }
     }
 
+    /**
+     * Wykrywa CYKL: chunk rozladowany i zaraz znowu wczytany.
+     *
+     * <p><b>Po co trzeci licznik.</b> Mielismy juz licznik wymuszen
+     * ({@code setChunkForced}) i licznik wczytan "na czas operacji"
+     * ({@code getChunk(..., true)}). A prawdziwa petla load/unload przeszla
+     * przez oba niezauwazona, bo powstawala z czegos trzeciego: ze zwyklego
+     * ODCZYTU bloku w niezaladowanym chunku ({@code getBlockEntity} /
+     * {@code getBlockState} na serwerze sam wczytuje chunk).
+     *
+     * <p>Ten licznik nie pyta "kto wczytal", tylko "czy to juz cykl": jesli
+     * ten sam chunk wraca w ciagu kilku tickow po rozladowaniu, to znaczy,
+     * ze ktos go wczytuje w kolko. Wtedy logujemy to RAZEM ZE STOSEM
+     * WYWOLAN - bo w stosie widac dokladnie te metode, ktora go wczytala
+     * (wczytanie jest synchroniczne, wiec nasza ramka jest na stosie).
+     *
+     * <p>Bez tego trzeba bylo czytac logi i zgadywac - tak jak przy dwoch
+     * poprzednich podejsciach do tego samego objawu.
+     */
+    public static void noteChunkEvent(ServerLevel level, long chunkKey, boolean loaded) {
+        long now = level.getGameTime();
+        Map<Long, Long> unloaded = RECENT_UNLOAD.computeIfAbsent(level, k -> new HashMap<>());
+        if (!loaded) {
+            unloaded.put(chunkKey, now);
+            return;
+        }
+        Long lastUnload = unloaded.remove(chunkKey);
+        if (lastUnload == null || now < lastUnload || now - lastUnload > RELOAD_SUSPICION_TICKS) {
+            return;   // normalne wczytanie, nie cykl
+        }
+        if (isHeld(level, chunkKey)) {
+            return;   // nasz wlasny force-load - to normalne
+        }
+        Map<Long, ForceWatch> watch = RELOAD_WATCH.computeIfAbsent(level, k -> new HashMap<>());
+        ForceWatch w = watch.get(chunkKey);
+        if (w == null || now < w.windowStart || now - w.windowStart > FORCE_THROTTLE_WINDOW_TICKS) {
+            w = new ForceWatch();
+            w.windowStart = now;
+            watch.put(chunkKey, w);
+        }
+        w.count++;
+        if (w.count == 3) {
+            VeloceLog.Network.error(VeloceLog.Side.SERVER,
+                    new Throwable("petla load/unload"),
+                    "chunk %s wrocil %d tickow po rozladowaniu (%d raz w oknie %d tickow) BEZ"
+                            + " force-loadu - to petla load/unload. W stosie ponizej widac,"
+                            + " KTO go wczytuje (szukaj ramki com.craftingveloce):",
+                    new ChunkPos(chunkKey), now - lastUnload, w.count,
+                    FORCE_THROTTLE_WINDOW_TICKS);
+        }
+    }
+
+    /** Ile tickow po rozladowaniu uznajemy wczytanie za podejrzane. */
+    private static final long RELOAD_SUSPICION_TICKS = 10L;
+
     /** Okno, w ktorym liczymy wymuszenia tego samego chunku. */
     private static final long FORCE_THROTTLE_WINDOW_TICKS = 200L;
 
@@ -284,6 +339,12 @@ public final class VeloceChunkLoader {
      * w {@link #pruneTrackingMaps}, zeby dluga sesja nie rosla w pamieci.
      */
     private static final Map<ServerLevel, Map<Long, ForceWatch>> OP_LOAD_WATCH = new WeakHashMap<>();
+
+    /** Tick ostatniego rozladowania chunku - do wykrywania cyklu. */
+    private static final Map<ServerLevel, Map<Long, Long>> RECENT_UNLOAD = new WeakHashMap<>();
+
+    /** Licznik podejrzanych powrotow chunku, per chunk. */
+    private static final Map<ServerLevel, Map<Long, ForceWatch>> RELOAD_WATCH = new WeakHashMap<>();
 
     /**
      * Zwalnia bilet jednego wlasciciela.
@@ -491,6 +552,22 @@ public final class VeloceChunkLoader {
                 FORCE_WATCH.remove(level);
             }
         }
+        Map<Long, Long> recentUnload = RECENT_UNLOAD.get(level);
+        if (recentUnload != null) {
+            recentUnload.entrySet().removeIf(e -> now < e.getValue()
+                    || now - e.getValue() > FORCE_THROTTLE_WINDOW_TICKS);
+            if (recentUnload.isEmpty()) {
+                RECENT_UNLOAD.remove(level);
+            }
+        }
+        Map<Long, ForceWatch> reloads = RELOAD_WATCH.get(level);
+        if (reloads != null) {
+            reloads.entrySet().removeIf(e -> now < e.getValue().windowStart
+                    || now - e.getValue().windowStart > FORCE_THROTTLE_WINDOW_TICKS);
+            if (reloads.isEmpty()) {
+                RELOAD_WATCH.remove(level);
+            }
+        }
         // Ten sam sposob przycinania dla licznika wczytan bez wymuszenia -
         // bez tego dluga sesja trzymalaby wpis po kazdym dotknietym chunku.
         Map<Long, ForceWatch> opLoads = OP_LOAD_WATCH.get(level);
@@ -512,6 +589,7 @@ public final class VeloceChunkLoader {
         return "hits=" + (windows == null ? 0 : windows.size())
                 + ", forceWatch=" + (watch == null ? 0 : watch.size())
                 + ", opLoadWatch=" + (opLoads == null ? 0 : opLoads.size())
+                + ", reloadWatch=" + (RELOAD_WATCH.get(level) == null ? 0 : RELOAD_WATCH.get(level).size())
                 + ", refs=" + (refs == null ? 0 : refs.size());
     }
 

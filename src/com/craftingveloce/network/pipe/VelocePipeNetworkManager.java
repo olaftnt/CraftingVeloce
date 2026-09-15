@@ -1039,6 +1039,10 @@ public class VelocePipeNetworkManager extends SavedData {
      * <p>Przegladamy tylko sieci, ktore faktycznie dotykaja tego chunka.
      */
     public void onChunkChanged(ServerLevel level, ChunkPos chunkPos, boolean loaded) {
+        // Wykrywacz petli: jesli ten chunk wroci w ciagu kilku tickow po
+        // rozladowaniu, to ktos go wczytuje w kolko. Wypisujemy wtedy STOS
+        // WYWOLAN, zeby od razu bylo widac winowajce.
+        VeloceChunkLoader.noteChunkEvent(level, ChunkPos.asLong(chunkPos.x, chunkPos.z), loaded);
         // Przy zamykaniu/zapisie swiata nic nie robimy - i tak zaraz koniec.
         // Bez tego kazdy cykl load/unload chunka produkowal wpis do loga;
         // w jednym zamknieciu swiata naliczylo sie 8000+ linii, co samo w sobie
@@ -1079,7 +1083,12 @@ public class VelocePipeNetworkManager extends SavedData {
             if (isInChunk(p, chunkPos)) {
                 affected++;
                 if (wantDetails) {
-                    affectedThings.add(describeBlock(level, p));
+                    // Przy UNLOAD nie czytamy swiata - czytanie bloku
+                    // w rozladowanym chunku wczytaloby go z powrotem
+                    // (patrz describeBlock). Opis bierzemy z tego, co wiemy.
+                    affectedThings.add(loaded
+                            ? describeBlock(level, p)
+                            : "(wlasnie rozladowany) @ " + p.toShortString());
                 }
             }
         }
@@ -1087,7 +1096,12 @@ public class VelocePipeNetworkManager extends SavedData {
             if (isInChunk(p, chunkPos)) {
                 affected++;
                 if (wantDetails) {
-                    affectedThings.add(describeBlock(level, p));
+                    // Przy UNLOAD nie czytamy swiata - czytanie bloku
+                    // w rozladowanym chunku wczytaloby go z powrotem
+                    // (patrz describeBlock). Opis bierzemy z tego, co wiemy.
+                    affectedThings.add(loaded
+                            ? describeBlock(level, p)
+                            : "(wlasnie rozladowany) @ " + p.toShortString());
                 }
             }
         }
@@ -1123,6 +1137,30 @@ public class VelocePipeNetworkManager extends SavedData {
     }
 
     private static String describeBlock(ServerLevel level, BlockPos pos) {
+        // NIGDY nie czytamy swiata dla niezaladowanego chunku.
+        //
+        // ================================================================
+        // BUG, ktory to naprawia (PRAWDZIWA petla load/unload).
+        //
+        // Ta metoda jest wolana takze przy zdarzeniu UNLOAD - opisujemy
+        // wtedy bloki lezace w chunku, ktory WLASNIE sie rozladowal. A na
+        // serwerze `Level.getBlockEntity(pos)` NIE zwraca null dla
+        // niezaladowanego chunku: on go WCZYTUJE (idzie przez
+        // getChunk(x, z) -> ChunkStatus.FULL, requireChunk = true).
+        //
+        // Skutek byl dokladnie taki, jaki zglosil uzytkownik: chunk sie
+        // rozladowywal, nasz wlasny komunikat diagnostyczny wczytywal go
+        // z powrotem, ten znowu sie rozladowywal, i tak w kolko - 10 razy
+        // na sekunde, bez konca. Monitor chunkow powodowal wiec dokladnie
+        // to, co mial tylko obserwowac.
+        //
+        // Nie widzial tego ani licznik wymuszen (to nie force-load), ani
+        // licznik wczytan "na czas operacji" (to nie nasze getChunk).
+        // Dlatego oslona jest tutaj, u zrodla.
+        // ================================================================
+        if (!level.isLoaded(pos)) {
+            return "(niezaladowany) @ " + pos.toShortString();
+        }
         try {
             var be = level.getBlockEntity(pos);
             if (be != null) {
