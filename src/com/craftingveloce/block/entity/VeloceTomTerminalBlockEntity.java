@@ -116,8 +116,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
      * partie z jednym wspoldzielonym budzetem czasowym (25 ms), wiec ~45
      * widocznych itemow oblicza sie w kilka milisekund.
      *
-     * <p>To NIE jest to samo co tlo: tlo systematycznie przelicza cala siec,
-     * a to odpowiada na konkretne zapytanie widoczne na ekranie.
+     * <p>To jedyne miejsce, w ktorym te liczby powstaja. Proba utrzymywania
+     * ich "na zapas" dla calej sieci zadlawila kiedys serwer i zostala
+     * usunieta - dlatego liczymy wylacznie to, o co pyta ekran.
      */
     @Override
     public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult computeCraftableCounts(Collection<Item> items) {
