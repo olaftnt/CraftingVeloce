@@ -108,6 +108,35 @@ public class VelocePipeNetwork {
     }
 
     /**
+     * Wklada item do pierwszego magazynu sieci, ktory go przyjmie.
+     *
+     * <p><b>Pomija bufory crafterow.</b> Bufor to pamiec robocza na wyniki
+     * posrednie auto-craftingu, a nie magazyn gracza - wrzucenie tam itemu
+     * mieszaloby planowanie (planer widzi bufor jako czesc stocku, wiec
+     * item gracza udawalby material wyprodukowany przez crafter).
+     *
+     * <p>Ekstraktory nie sa endpointami sieci, wiec nie trzeba ich osobno
+     * wykluczac - one tylko wydaja.
+     *
+     * @return to, czego NIE udalo sie wlozic (EMPTY gdy wszystko przyjete)
+     */
+    public ItemStack insertIntoStorage(ServerLevel level, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack remaining = stack.copy();
+        for (ConnectedEndpointInfo endpoint : endpoints.values()) {
+            if (endpoint.getType() == ConnectedEndpointInfo.Type.CRAFTING_BUFFER) {
+                continue;   // bufor craftera to nie magazyn
+            }
+            if (endpoint.insertItem(level, remaining)) {
+                return ItemStack.EMPTY;
+            }
+        }
+        return remaining;
+    }
+
+    /**
      * Suma zawartosci sieci, odswiezana z throttlingiem (raz na
      * {@link ConnectedEndpointInfo#SCAN_INTERVAL_TICKS} tickow na inwentarz).
      *

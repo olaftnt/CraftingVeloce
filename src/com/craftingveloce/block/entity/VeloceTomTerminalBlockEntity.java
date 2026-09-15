@@ -482,6 +482,46 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
     }
 
     /**
+     * Wklada item gracza do sieci (slot "strzalki" w GUI terminala).
+     *
+     * <p><b>To nie kasuje itemu.</b> Vanilla na tym miejscu niszczy przedmiot;
+     * u nas trafia on do pierwszego magazynu, ktory go przyjmie. Jesli nic go
+     * nie przyjmie, zostaje u gracza - nigdy nie znika.
+     *
+     * <p><b>Czego NIE ruszamy:</b>
+     * <ul>
+     *   <li>bufory crafterow - to pamiec robocza na wyniki posrednie, nie
+     *       magazyn; wrzucenie tam itemu gracza mieszaloby planowanie,</li>
+     *   <li>ekstraktory - one tylko wydaja, nie przyjmuja.</li>
+     * </ul>
+     * Na szczescie ekstraktor w ogole nie jest endpointem sieci, a crafter ma
+     * wlasny typ endpointu (CRAFTING_BUFFER), wiec wystarczy go pominac.
+     *
+     * @param wholeStack true = cala zawartosc kursora, false = jedna sztuka
+     */
+    public void storeFromPlayer(ServerPlayer player, ItemStack stack, boolean wholeStack) {
+        if (stack.isEmpty() || !(level instanceof ServerLevel sl)) {
+            return;
+        }
+        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                .getNetworkForTerminal(sl, worldPosition);
+        if (net == null) {
+            return;
+        }
+
+        ItemStack toStore = wholeStack ? stack.copy() : stack.copyWithCount(1);
+        ItemStack leftover = net.insertIntoStorage(sl, toStore);
+
+        // Cokolwiek sie nie zmiescilo, wraca graczowi - zadne cudo nie ginie.
+        if (!leftover.isEmpty()) {
+            if (!player.getInventory().add(leftover)) {
+                player.drop(leftover, false);
+            }
+        }
+        syncCountsToAllWatchers();
+    }
+
+    /**
      * Probuje auto-wycraftowac item i natychmiast go oddac.
      *
      * <p>Warunki:

@@ -21,6 +21,7 @@ import javax.annotation.Nullable;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -212,8 +213,37 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     }
 
 
+    /**
+     * Rysuje strzalke na slocie odkladania.
+     *
+     * <p>Vanilla na tym miejscu nie rysuje zadnej ikonki - krzyzyk, ktory tam
+     * widac, jest wypalony w teksturze GUI creative. Skoro nasz slot nie
+     * niszczy itemu, tylko go ODKLADA, krzyzyk jest mylacy. Rysujemy wiec
+     * wlasna strzalke "do sieci" i zaslaniamy nia stara grafike.
+     */
+    private void drawStoreArrow(GuiGraphics graphics, Slot slot) {
+        // Zaslaniamy krzyzyk z tekstury tlem slotu.
+        int x = this.leftPos + slot.x;
+        int y = this.topPos + slot.y;
+        graphics.fill(x, y, x + 16, y + 16, 0xFFC6C6C6);
+
+        // Strzalka w prawo: dwa skosy + trzon.
+        int cx = x + 3;
+        int cy = y + 7;
+        int color = 0xFF3B6E3B;
+        for (int i = 0; i < 5; i++) {
+            graphics.fill(cx + i, cy + i, cx + i + 1, cy + i + 1, color);
+            graphics.fill(cx + i, cy + 8 - i, cx + i + 1, cy + 9 - i, color);
+        }
+        graphics.fill(cx + 5, cy + 4, cx + 11, cy + 5, color);
+    }
+
     @Override
     protected void renderSlot(GuiGraphics graphics, Slot slot) {
+        if (isStoreSlot(slot)) {
+            drawStoreArrow(graphics, slot);
+            return;
+        }
         super.renderSlot(graphics, slot);
 
         if (isShopSlot(slot) && slot.hasItem()) {
@@ -328,9 +358,44 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         RenderSystem.enableDepthTest();
     }
 
+    /**
+     * Tooltip slotu magazynu.
+     *
+     * <p>Vanilla dla slotu na tym miejscu wypisuje "Destroy Item" - u nas ten
+     * slot NIE niszczy, tylko oddaje item do sieci. Podmieniamy wiec tekst na
+     * "usage" i dodajemy podpowiedz, jak dziala shift.
+     *
+     * <p>Dla zwyklych itemow zostawiamy czysty tooltip (bez linii kategorii
+     * i tagow, ktore creative inventory dokleja w zakladkach CATEGORY/SEARCH).
+     */
     @Override
     public List<Component> getTooltipFromContainerItem(ItemStack stack) {
-        return super.getTooltipFromContainerItem(stack);
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return super.getTooltipFromContainerItem(stack);
+        }
+        Slot hovered = getSlotUnderMouse();
+        if (hovered != null && isStoreSlot(hovered)) {
+            List<Component> lines = new ArrayList<>();
+            lines.add(Component.translatable("gui.craftingveloce.terminal.storeSlot")
+                    .withStyle(net.minecraft.ChatFormatting.WHITE));
+            lines.add(Component.translatable("gui.craftingveloce.terminal.storeHint")
+                    .withStyle(net.minecraft.ChatFormatting.GRAY));
+            lines.add(Component.translatable("gui.craftingveloce.terminal.storeHintShift")
+                    .withStyle(net.minecraft.ChatFormatting.GRAY));
+            return lines;
+        }
+        return stack.getTooltipLines(
+                net.minecraft.world.item.Item.TooltipContext.of(this.minecraft.level),
+                this.minecraft.player,
+                this.minecraft.options.advancedItemTooltips
+                        ? net.minecraft.world.item.TooltipFlag.Default.ADVANCED
+                        : net.minecraft.world.item.TooltipFlag.Default.NORMAL
+        );
+    }
+
+    /** Czy to slot "strzalki" (odkladanie do sieci) - ten na 173, 112. */
+    private boolean isStoreSlot(Slot slot) {
+        return slot != null && slot.x == 173 && slot.y == 112;
     }
 
     /** Terminal zostawia hotbar gracza dzialajacy - mozna z niego korzystac. */
@@ -355,6 +420,58 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         }
         // Trash / sell slot
         return slot.x != 173 || slot.y != 112;
+    }
+
+    /**
+     * Odklada itemy gracza do sieci.
+     *
+     * <p>Trzy warianty, jak w vanilla creative inventory:
+     * <ul>
+     *   <li>zwykly klik - to, co trzymasz na kursorze,</li>
+     *   <li>shift + klik - caly ekwipunek OPROCZ hotbara,</li>
+     *   <li>shift + prawy klik - doslownie wszystko, hotbar tez.</li>
+     * </ul>
+     *
+     * <p>Nic nie jest kasowane: serwer wklada item do pierwszego magazynu,
+     * ktory go przyjmie, a reszte oddaje z powrotem.
+     */
+    private void handleStoreClick(int mouseButton, ClickType clickType) {
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return;
+        }
+        LocalPlayer player = this.minecraft.player;
+
+        boolean shift = clickType == ClickType.QUICK_MOVE;
+        boolean rightClick = mouseButton == 1;
+
+        if (shift) {
+            boolean includeHotbar = rightClick;
+            for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+                // Hotbar to sloty 0..8 - shift+lewy je pomija.
+                if (!includeHotbar && i < 9) {
+                    continue;
+                }
+                ItemStack st = player.getInventory().getItem(i);
+                if (st.isEmpty()) {
+                    continue;
+                }
+                PacketDistributor.sendToServer(new com.craftingveloce.network.TerminalStoreItemPKT(
+                        terminalPos, st.copy(), true));
+                player.getInventory().setItem(i, ItemStack.EMPTY);
+            }
+            return;
+        }
+
+        // Zwykly klik: to, co na kursorze.
+        ItemStack carried = this.menu == null ? ItemStack.EMPTY : this.menu.getCarried();
+        if (carried.isEmpty()) {
+            return;
+        }
+        PacketDistributor.sendToServer(new com.craftingveloce.network.TerminalStoreItemPKT(
+                terminalPos, carried.copy(), true));
+        if (this.menu != null) {
+            this.menu.setCarried(ItemStack.EMPTY);
+        }
     }
 
     private void clickViaInventoryMenu(Slot slot, int slotId, int mouseButton, ClickType clickType) {
@@ -443,7 +560,19 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             return;
         }
 
-        // 2) Shop grid slots
+        // 2) Slot "strzalki" - odkladanie do sieci (NIE kasowanie).
+        //
+        // Zachowanie jak w vanilla creative inventory, ale zamiast niszczyc
+        // item oddajemy go do pierwszego magazynu sieci:
+        //   - zwykly klik          -> cala zawartosc kursora
+        //   - shift + klik         -> wszystko OPROCZ hotbara
+        //   - shift + prawy klik   -> doslownie wszystko (takze hotbar)
+        if (mouseButton >= 0 && isStoreSlot(slot)) {
+            handleStoreClick(mouseButton, clickType);
+            return;
+        }
+
+        // 3) Shop grid slots
         if (!this.isShopSlot(slot)) {
             return;
         }
