@@ -10,6 +10,9 @@ import java.util.Map;
 public class ClientTerminalHelper {
 
     public static void openTerminalScreen(BlockPos pos) {
+        com.craftingveloce.util.VeloceLog.Gui.attempt(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "opening terminal screen at %s", pos);
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             mc.setScreen(new VeloceTerminalScreen(mc.player, mc.player.connection.enabledFeatures(), true, pos));
@@ -54,9 +57,16 @@ public class ClientTerminalHelper {
                                                java.util.List<net.minecraft.world.item.ItemStack> bufferContents) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
+            com.craftingveloce.util.VeloceLog.Gui.attempt(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "opening crafter screen at %s (enabled=%d, buffer=%d stacks)",
+                    pos, enabledItems.size(), bufferContents.size());
             mc.setScreen(new com.craftingveloce.client.gui.VeloceCraftingTableScreen(
                     mc.player, mc.player.connection.enabledFeatures(), true, pos,
                     enabledItems, preferredRecipes, bufferContents));
+            com.craftingveloce.util.VeloceLog.Gui.success(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "crafter screen opened");
         }
     }
 
@@ -75,10 +85,17 @@ public class ClientTerminalHelper {
                                             java.util.Set<Item> craftingEnabled,
                                             java.util.Map<Item, Integer> hotbar) {
         Minecraft mc = Minecraft.getInstance();
+        com.craftingveloce.util.VeloceLog.Gui.attempt(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "opening controller screen at %s (stock=%d, craftable=%d, enabled=%d, hotbar=%d)",
+                pos, stock.size(), craftable.size(), craftingEnabled.size(), hotbar.size());
         if (mc.player != null) {
             mc.setScreen(new com.craftingveloce.client.gui.VeloceControllerScreen(
                     mc.player, mc.player.connection.enabledFeatures(), true,
                     pos, stock, craftable, craftingEnabled, hotbar));
+            com.craftingveloce.util.VeloceLog.Gui.success(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "controller screen opened");
         }
     }
 }

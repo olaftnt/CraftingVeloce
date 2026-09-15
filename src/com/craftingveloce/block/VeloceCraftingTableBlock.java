@@ -57,6 +57,10 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityB
 
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos, Player player, BlockHitResult hit) {
+        com.craftingveloce.util.VeloceLog.Block.attempt(
+                com.craftingveloce.util.VeloceLog.Side.SERVER,
+                "auto-crafter right-clicked at %s by %s (client=%s)",
+                pos, player.getName().getString(), world.isClientSide);
         if (!world.isClientSide && player instanceof ServerPlayer serverPlayer) {
             BlockEntity be = world.getBlockEntity(pos);
             if (be instanceof VeloceCraftingTableBlockEntity ctBE) {
