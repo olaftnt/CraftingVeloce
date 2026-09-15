@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.CreativeModeTab;
+import net.neoforged.neoforge.client.gui.CreativeTabsScreenPage;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 
@@ -267,6 +268,9 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         // Zakladki, ktorych u nas nie ma (np. ukryte), nie przywracamy.
         if (tab != null && acceptTab(tab)) {
             VeloceTerminalViewState.applyTab(this, tab);
+            // ...i przewin na STRONE, na ktorej ta zakladka lezy - inaczej
+            // przy duzej liczbie zakladek wybrana jest niewidoczna.
+            restoreTabPage(tab);
         }
 
         // Fraza i przewiniecie tylko dla ekranow z wlasnym kluczem.
@@ -306,6 +310,96 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             return;
         }
         VeloceTerminalViewState.applyTab(this, tabBeforeOpen);
+        restoreTabPage(tabBeforeOpen);
+    }
+
+    /**
+     * Ustawia STRONE zakladek tak, zeby zawierala podana zakladke.
+     *
+     * <p><b>Problem.</b> Gdy zakladek jest duzo, NeoForge dzieli je na strony
+     * z przyciskami &lt; &gt;. Strona jest wybierana TYLKO w {@code init()},
+     * i to na podstawie zakladki, ktora byla wybrana W TYM MOMENCIE:
+     * <pre>
+     *   this.currentPage = pages.stream()
+     *           .filter(page -&gt; page.getVisibleTabs().contains(selectedTab))
+     *           .findFirst().orElse(this.currentPage);
+     * </pre>
+     * (odczytane z bajtkodu patchowanej klasy NeoForge).
+     *
+     * <p>A nasze {@code restoreViewState()} przywraca zapamietana zakladke
+     * przez {@code selectTab} DOPIERO PO {@code super.init()} - a
+     * {@code selectTab} strony NIE zmienia. Efekt: {@code currentPage}
+     * zostawala na stronie starej zakladki, wiec przywrocona zakladka byla
+     * na innej stronie i nie bylo jej widac. Uzytkownik widzial poprawnie
+     * zapamietana zakladke, ale nie widzial jej na ekranie.
+     *
+     * <p><b>Rozwiazanie.</b> Po wyborze zakladki odtwarzamy te sama logike,
+     * ktorej uzywa NeoForge: znajdujemy strone zawierajaca te zakladke
+     * i ustawiamy ja jako biezaca. Nie zapisujemy numeru strony osobno, bo
+     * numer strony nie jest stabilny (zmienia sie, gdy dojdzie mod z nowymi
+     * zakladkami) - a zakladka jest. Dzieki temu zawsze trafiamy na te sama
+     * strone co przed zamknieciem, i zawsze widac wybrana zakladke.
+     */
+    protected void restoreTabPage(CreativeModeTab tab) {
+        if (tab == null) {
+            return;
+        }
+        try {
+            for (CreativeTabsScreenPage page : tabPages()) {
+                if (page.getVisibleTabs().contains(tab)) {
+                    if (getCurrentPage() != page) {
+                        setCurrentPage(page);
+                    }
+                    return;
+                }
+            }
+        } catch (Throwable t) {
+            if (!tabPageFailureLogged) {
+                tabPageFailureLogged = true;
+                com.craftingveloce.util.VeloceLog.Gui.failure(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "nie moge ustawic strony zakladek: %s", t);
+            }
+        }
+    }
+
+    /** Czy juz logowalismy awarie obslugi stron zakladek. */
+    private boolean tabPageFailureLogged;
+
+    /**
+     * Lista stron zakladek.
+     *
+     * <p>Pole jest prywatne i NeoForge nie daje publicznego dostepu do CALEJ
+     * listy (tylko {@code getCurrentPage()}), wiec czytamy je refleksja.
+     * Sam typ strony jest dostepny w kompilacji, wiec dalej pracujemy na nim
+     * normalnie, bez refleksji.
+     */
+    private static java.lang.reflect.Field tabPagesField;
+    private static boolean tabPagesResolveTried;
+
+    @SuppressWarnings("unchecked")
+    private java.util.List<CreativeTabsScreenPage> tabPages() {
+        if (!tabPagesResolveTried) {
+            tabPagesResolveTried = true;
+            try {
+                tabPagesField = CreativeModeInventoryScreen.class.getDeclaredField("pages");
+                tabPagesField.setAccessible(true);
+            } catch (Throwable t) {
+                tabPagesField = null;
+            }
+        }
+        if (tabPagesField == null) {
+            return java.util.List.of();
+        }
+        Object raw = null;
+        try {
+            raw = tabPagesField.get(this);
+        } catch (Throwable ignored) {
+            return java.util.List.of();
+        }
+        return raw instanceof java.util.List<?> list
+                ? (java.util.List<CreativeTabsScreenPage>) list
+                : java.util.List.of();
     }
 
     /** Pierwsza zakladka, ktora u nas przechodzi filtr (lewy gorny rog). */
