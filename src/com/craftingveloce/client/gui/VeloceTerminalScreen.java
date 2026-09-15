@@ -243,6 +243,14 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      *   <li>tak samo dla M -> B.</li>
      * </ul>
      */
+    /**
+     * Ile znakow miesci sie w nakladce na slocie.
+     *
+     * <p>Uzywane przy decyzji, czy dopisac "+" przed liczba: plus ma sens
+     * tylko wtedy, gdy calosc nadal sie miesci.
+     */
+    private static final int MAX_OVERLAY_CHARS = 5;
+
     public static String formatCount(long number) {
         if (number < 0) {
             return "0";
@@ -298,7 +306,16 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         float scaleFactor = 0.6f;
         RenderSystem.disableDepthTest();
         RenderSystem.disableBlend();
-        String text = "+" + formatCount(craftable);
+
+        // Plus tylko wtedy, gdy zmiesci sie w 5 znakach RAZEM z liczba.
+        //
+        // Slot ma miejsce na 5 znakow. "+1234" to 5 znakow - wchodzi.
+        // "+12.3K" to 6 - nie wchodzi, wiec pokazujemy samo "12.3K".
+        // Dzieki temu liczba nigdy nie wychodzi poza ikonke, a plus nadal
+        // odroznia "da sie dorobic" od zwyklego stanu, dopoki jest miejsce.
+        String number = formatCount(craftable);
+        String text = (number.length() + 1 <= MAX_OVERLAY_CHARS) ? "+" + number : number;
+
         graphics.pose().pushPose();
         graphics.pose().scale(scaleFactor, scaleFactor, scaleFactor);
         graphics.pose().translate(0, 0, 450);
