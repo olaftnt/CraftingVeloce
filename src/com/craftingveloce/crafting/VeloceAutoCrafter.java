@@ -296,18 +296,44 @@ public final class VeloceAutoCrafter {
      *
      * @return mapa item -> ile da sie dorobic (tylko wartosci > 0)
      */
+    /**
+     * Wynik obliczenia partii.
+     *
+     * @param counts   ile da sie dorobic (tylko wartosci > 0)
+     * @param complete czy przeliczono WSZYSTKIE zadane itemy
+     */
+    public record BatchResult(Map<Item, Long> counts, boolean complete) {
+    }
+
     public static Map<Item, Long> countCraftableBatch(
+            ServerLevel level, VelocePipeNetwork network,
+            java.util.Collection<Item> items, Set<Item> enabledItems,
+            Map<Item, ResourceLocation> preferred, long budgetNanos) {
+        return countCraftableBatchResult(level, network, items, enabledItems,
+                preferred, budgetNanos).counts();
+    }
+
+    /**
+     * Jak {@link #countCraftableBatch}, ale mowi tez czy partia zostala
+     * przeliczona w calosci.
+     *
+     * <p>To wazne dla GUI: gdy budzet sie skonczyl i czesc itemow zostala
+     * pominięta, klient NIE moze uznac braku wpisu za "nie da sie zrobic" -
+     * inaczej liczby znikaly i nie wracaly.
+     */
+    public static BatchResult countCraftableBatchResult(
             ServerLevel level, VelocePipeNetwork network,
             java.util.Collection<Item> items, Set<Item> enabledItems,
             Map<Item, ResourceLocation> preferred, long budgetNanos) {
         Map<Item, Long> out = new HashMap<>();
         if (items == null || items.isEmpty()) {
-            return out;
+            return new BatchResult(out, true);
         }
 
         // Jednorazowy odczyt stocku dla calej partii.
         Map<Item, Long> stockSnapshot = network.getAllItemCounts(level);
         long deadline = budgetNanos > 0 ? System.nanoTime() + budgetNanos : 0L;
+        boolean complete = true;
 
         for (Item item : items) {
             if (!enabledItems.contains(item)) {
@@ -315,6 +341,7 @@ public final class VeloceAutoCrafter {
             }
             // Przerwij, gdy minie budzet - reszta przy nastepnym zadaniu.
             if (deadline != 0L && System.nanoTime() > deadline) {
+                complete = false;
                 break;
             }
             Map<Item, Long> stock = new HashMap<>(stockSnapshot);
@@ -327,7 +354,7 @@ public final class VeloceAutoCrafter {
                 out.put(item, surplus);
             }
         }
-        return out;
+        return new BatchResult(out, complete);
     }
 
     /**

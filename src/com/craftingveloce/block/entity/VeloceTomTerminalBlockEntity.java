@@ -124,33 +124,38 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
      * <p>To NIE jest to samo co tlo: tlo systematycznie przelicza cala siec,
      * a to odpowiada na konkretne zapytanie widoczne na ekranie.
      */
-    public Map<Item, Long> computeCraftableCounts(Collection<Item> items) {
+    public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult
+            computeCraftableCounts(Collection<Item> items) {
         if (!(level instanceof ServerLevel sl) || items == null || items.isEmpty()) {
-            return Map.of();
+            return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), true);
         }
         VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
                 .getNetworkForTerminal(sl, worldPosition);
         if (net == null) {
-            return Map.of();
+            // Siec jeszcze nie gotowa - NIE mowimy "nic sie nie da zrobic",
+            // bo klient skasowalby wtedy poprawne liczby.
+            return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), false);
         }
         Set<Item> enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getAllEnabledItems(sl, net);
         if (enabled.isEmpty()) {
-            return Map.of();
+            // Brak craftera w sieci = faktycznie nic nie da sie zrobic.
+            return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), true);
         }
         Map<Item, ResourceLocation> preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getPreferredRecipes(sl, net);
 
         long start = System.nanoTime();
-        Map<Item, Long> out = com.craftingveloce.crafting.VeloceAutoCrafter
-                .countCraftableBatch(sl, net, items, enabled, preferred,
+        var result = com.craftingveloce.crafting.VeloceAutoCrafter
+                .countCraftableBatchResult(sl, net, items, enabled, preferred,
                         com.craftingveloce.crafting.VeloceAutoCrafter.DEFAULT_ESTIMATE_BUDGET_NS);
 
         com.craftingveloce.util.VeloceLog.Craft.detail(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
-                "instant craftable count for %d item(s) -> %d result(s) in %d ms",
-                items.size(), out.size(), (System.nanoTime() - start) / 1_000_000L);
-        return out;
+                "instant craftable count for %d item(s) -> %d result(s) in %d ms (complete=%s)",
+                items.size(), result.counts().size(),
+                (System.nanoTime() - start) / 1_000_000L, result.complete());
+        return result;
     }
 
     /**

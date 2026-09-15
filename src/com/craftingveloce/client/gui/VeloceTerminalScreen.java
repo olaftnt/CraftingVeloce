@@ -71,7 +71,15 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
 
     public void updateNetworkCounts(Map<Item, Long> counts, Map<Item, Long> craftable) {
         this.networkCounts = new HashMap<>(counts);
-        this.craftableCounts = new HashMap<>(craftable);
+        // NIE nadpisujemy calej mapy craftowalnosci.
+        //
+        // Tlo (cache) wysyla swoja migawke, ktora podczas ponownego skanu jest
+        // pusta albo niepelna. Nadpisanie kasowalo wtedy liczby dostarczone
+        // przez natychmiastowa odpowiedz - i nie wracaly. Dokladamy wiec tylko
+        // to, co przyszlo; precyzyjne czyszczenie robi natychmiastowa sciezka.
+        if (craftable != null && !craftable.isEmpty()) {
+            this.craftableCounts.putAll(craftable);
+        }
     }
 
     /**
@@ -85,16 +93,26 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      * bo odpowiedz zawiera tylko wartosci > 0. Bez tego item, ktorego juz
      * nie da sie zrobic, zachowalby stara liczbe.
      */
-    public void updateCraftableCounts(Map<Item, Long> craftable) {
+    public void updateCraftableCounts(Map<Item, Long> craftable, boolean complete) {
         com.craftingveloce.util.VeloceLog.Gui.detail(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                "received instant counts for %d item(s)", craftable.size());
-        // Wyczysc stare wartosci dla pytanych itemow...
-        for (Item it : lastRequestedItems) {
-            this.craftableCounts.remove(it);
+                "received instant counts for %d item(s) (complete=%s)",
+                craftable.size(), complete);
+
+        if (complete) {
+            // Serwer przezyl wszystkie zadane itemy, wiec brak wpisu oznacza
+            // faktycznie "nie da sie zrobic" - mozna wyczyscic stare wartosci.
+            for (Item it : lastRequestedItems) {
+                this.craftableCounts.remove(it);
+            }
+            this.craftableCounts.putAll(craftable);
+        } else {
+            // Serwer nie przezyl wszystkiego (siec jeszcze nie gotowa albo
+            // budzet sie skonczyl). Tylko dokladamy to, co przyszlo - NIE
+            // kasujemy poprzednich wartosci. Bez tego liczby znikaly i nie
+            // wracaly.
+            this.craftableCounts.putAll(craftable);
         }
-        // ...i wstaw swieze.
-        this.craftableCounts.putAll(craftable);
     }
 
     /** Itemy z ostatniego zadania - zeby wiedziec, ktore wpisy odswiezyc. */

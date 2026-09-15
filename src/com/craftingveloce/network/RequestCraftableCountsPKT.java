@@ -73,9 +73,9 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             if (!(be instanceof VeloceTomTerminalBlockEntity terminal)) {
                 return;
             }
-            Map<Item, Long> counts = terminal.computeCraftableCounts(pkt.items());
+            var result = terminal.computeCraftableCounts(pkt.items());
             PacketDistributor.sendToPlayer(player,
-                    new SyncCraftableCountsPKT(pkt.pos(), counts));
+                    new SyncCraftableCountsPKT(pkt.pos(), result.counts(), result.complete()));
         });
     }
 }

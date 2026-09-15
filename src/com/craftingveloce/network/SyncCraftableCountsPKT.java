@@ -18,8 +18,13 @@ import java.util.Map;
  *
  * <p>Wysylane tylko w odpowiedzi na {@link RequestCraftableCountsPKT},
  * czyli dla itemow aktualnie widocznych w terminalu.
+ *
+ * <p>Pole {@code complete} mowi, czy serwer FAKTYCZNIE przezyl wszystkie
+ * zadane itemy. Gdy siec nie jest jeszcze gotowa (brak craftera, brak sieci,
+ * przerwany budzet), odpowiedz ma {@code complete = false} i klient NIE
+ * kasuje poprzednich wartosci - inaczej liczby znikaly i nie wracaly.
  */
-public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts)
+public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts, boolean complete)
         implements CustomPacketPayload {
 
     public static final Type<SyncCraftableCountsPKT> TYPE =
@@ -31,6 +36,7 @@ public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts)
 
     private static void encode(FriendlyByteBuf buf, SyncCraftableCountsPKT pkt) {
         buf.writeBlockPos(pkt.pos);
+        buf.writeBoolean(pkt.complete);
         buf.writeInt(pkt.counts.size());
         for (Map.Entry<Item, Long> e : pkt.counts.entrySet()) {
             buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(e.getKey()));
@@ -40,6 +46,7 @@ public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts)
 
     private static SyncCraftableCountsPKT decode(FriendlyByteBuf buf) {
         BlockPos pos = buf.readBlockPos();
+        boolean complete = buf.readBoolean();
         int n = buf.readInt();
         Map<Item, Long> counts = new HashMap<>(n);
         for (int i = 0; i < n; i++) {
@@ -49,7 +56,7 @@ public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts)
                 counts.put(item, v);
             }
         }
-        return new SyncCraftableCountsPKT(pos, counts);
+        return new SyncCraftableCountsPKT(pos, counts, complete);
     }
 
     @Override
@@ -59,6 +66,6 @@ public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts)
 
     public static void handle(SyncCraftableCountsPKT pkt, IPayloadContext context) {
         context.enqueueWork(() -> com.craftingveloce.client.ClientTerminalHelper
-                .handleCraftableCounts(pkt.counts()));
+                .handleCraftableCounts(pkt.counts(), pkt.complete()));
     }
 }

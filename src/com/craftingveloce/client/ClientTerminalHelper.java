@@ -79,10 +79,10 @@ public class ClientTerminalHelper {
     }
 
     /** Odpowiedz serwera z liczbami "ile da sie dorobic". */
-    public static void handleCraftableCounts(Map<Item, Long> counts) {
+    public static void handleCraftableCounts(Map<Item, Long> counts, boolean complete) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof VeloceTerminalScreen screen) {
-            screen.updateCraftableCounts(counts);
+            screen.updateCraftableCounts(counts, complete);
         }
     }
 
