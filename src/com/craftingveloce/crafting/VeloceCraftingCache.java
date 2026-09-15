@@ -675,10 +675,15 @@ public final class VeloceCraftingCache {
             wanted.add(ChunkPos.asLong(p.getX() >> 4, p.getZ() >> 4));
         }
 
-        // Zwalniamy to, czego juz nie chcemy. Przez globalny loader - inaczej
-        // zabralibysmy chunk innej sieci, ktora nadal go potrzebuje.
+        // Zwalniamy to, czego juz nie chcemy ALBO czego loader juz nie trzyma.
+        //
+        // Drugi warunek jest istotny: po rozladowaniu swiata loader zwalnia
+        // swoje chunki, a cache nadal ma je w ksiegowosci. Bez tego sprawdzenia
+        // uznalby, ze juz je trzyma, i NIGDY nie wymusilby ich ponownie.
+        // release() na nieistniejaca referencje jest bezpiecznym no-opem.
         for (long key : new HashSet<>(forcedChunks)) {
-            if (!wanted.contains(key)) {
+            if (!wanted.contains(key)
+                    || !com.craftingveloce.network.pipe.VeloceChunkLoader.isHeld(level, key)) {
                 com.craftingveloce.network.pipe.VeloceChunkLoader.release(level, key);
                 forcedChunks.remove(key);
             }
@@ -686,8 +691,9 @@ public final class VeloceCraftingCache {
         // Ladujemy to, czego brakuje.
         int added = 0;
         for (long key : wanted) {
-            if (forcedChunks.add(key)) {
+            if (!forcedChunks.contains(key)) {
                 com.craftingveloce.network.pipe.VeloceChunkLoader.retain(level, key);
+                forcedChunks.add(key);
                 added++;
             }
         }
@@ -743,13 +749,21 @@ public final class VeloceCraftingCache {
      * by ich nie wymusil z powrotem.
      */
     public static void onLevelUnloaded(ServerLevel level) {
-        for (VeloceCraftingCache cache : CACHES.values()) {
-            cache.forcedChunks.clear();
-        }
+        // NIE czyscimy tu forcedChunks zadnego cache'u.
+        //
+        // VeloceChunkLoader.releaseAll() zwalnia chunki TYLKO tego jednego
+        // swiata, a CACHES sa wspolne dla wszystkich wymiarow. Wyczyszczenie
+        // ksiegowosci wszystkim cache'om oznaczalo, ze cache'e z INNYCH
+        // wymiarow tracily informacje o trzymanych chunkach, ktore loader
+        // nadal trzymal - a przy nastepnym maintainForcedChunks doliczaly
+        // druga referencje. Licznik rosl bez konca, a raz zwolniony chunk
+        // zostawal wymuszony na zawsze.
+        //
+        // Uzgodnienie robi teraz sam maintainForcedChunks przez isHeld().
         int released = com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(level);
         com.craftingveloce.network.pipe.VeloceChunkLoader.releaseAll(level);
         VeloceLog.Network.detail(VeloceLog.Side.SERVER,
-                "level unloaded: released %d forced chunk(s), caches kept", released);
+                "level unloaded: released %d forced chunk(s), caches reconciled later", released);
     }
 
     /** Zwalnia force-loady wszystkich sieci. Wolane przy zamykaniu serwera. */

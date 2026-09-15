@@ -144,6 +144,19 @@ public final class VeloceChunkLoader {
         }
     }
 
+    /**
+     * Czy ten chunk jest przez nas realnie wymuszony na tym swiecie.
+     *
+     * <p>Potrzebne do uzgodnienia ksiegowosci: cache moze myslec, ze trzyma
+     * chunk, ktory loader zdazyl juz zwolnic (np. przy rozladowaniu swiata).
+     * Bez tego sprawdzenia albo nie wymusilbysmy go ponownie, albo - gorzej -
+     * doliczylibysmy druga referencje do chunku, ktora nigdy nie zniknie.
+     */
+    public static boolean isHeld(ServerLevel level, long chunkKey) {
+        Map<Long, Integer> refs = REFS.get(level);
+        return refs != null && refs.containsKey(chunkKey);
+    }
+
     /** Diagnostyka: ile chunkow realnie trzymamy na tym swiecie. */
     public static int appliedCount(ServerLevel level) {
         Set<Long> applied = APPLIED.get(level);
