@@ -237,19 +237,46 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
                 return;
             }
             scrollToMethod.invoke(this.menu, currentScrollOffset());
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            // NIE po cichu. Cicha awaria w tym miejscu kosztowala nas juz raz
+            // dluga diagnoze: filtr "wracal" po przewinieciu, a w logu nie bylo
+            // ani sladu, ze scrollTo w ogole sie nie wykonuje.
+            if (!slotRefreshFailed) {
+                slotRefreshFailed = true;
+                com.craftingveloce.util.VeloceLog.Gui.failure(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "could not refresh item slots after filtering - list will look "
+                                + "unfiltered until scrolled: %s", t);
+            }
         }
     }
+
+    /** Czy blad odswiezania slotow zostal juz zaraportowany (raz wystarczy). */
+    private static boolean slotRefreshFailed;
 
     /** Rozwiazuje refleksje raz na proces, nie raz na tick. */
     private void resolveReflection() {
         reflectionResolved = true;
+        // scrollTo ZYJE W ItemPickerMenu, NIE w CreativeModeInventoryScreen.
+        //
+        // TO BYL PRAWDZIWY POWOD, dlaczego filtr "wracal" po przewinieciu.
+        // Wczesniej szukalismy metody na klasie ekranu:
+        //     CreativeModeInventoryScreen.class.getMethod("scrollTo", float.class)
+        // a tam jej NIE MA - jest w zagnieżdżonej klasie ItemPickerMenu.
+        // getMethod rzucal wiec NoSuchMethodException, scrollToMethod zostawalo
+        // null, a refreshSlotsFromItems() po cichu nic nie robilo. Lista byla
+        // filtrowana, ale sloty czytaly z CONTAINER, ktory nikt nie odswiezal -
+        // az do momentu, gdy gracz ruszył scrollem (scroll sam wola scrollTo).
+        //
+        // Szukamy wiec po KLASIE MENU (this.menu), a nie po klasie ekranu.
         try {
-            scrollToMethod = CreativeModeInventoryScreen.class
-                    .getMethod("scrollTo", float.class);
+            scrollToMethod = this.menu.getClass().getMethod("scrollTo", float.class);
             scrollToMethod.setAccessible(true);
         } catch (Throwable t) {
             scrollToMethod = null;
+            com.craftingveloce.util.VeloceLog.Gui.failure(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "ItemPickerMenu.scrollTo not found - item filter cannot refresh slots: %s", t);
         }
         try {
             scrollOffsFieldRef = CreativeModeInventoryScreen.class
