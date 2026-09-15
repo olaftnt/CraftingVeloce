@@ -1066,23 +1066,36 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         boolean typing = isTypingInTextField();
 
-        // GRACZ PISZE W WYSZUKIWARCE - klawisze naleza do pola.
+        // GRACZ PISZE W WYSZUKIWARCE - klawisze naleza do POLA, a nie do ekranu.
         //
-        // BUG: "E" zamykalo okno bezwarunkowo, wiec wpisanie litery "e"
-        // w pole wyszukiwania (zakladka SEARCH) wyrzucalo gracza z GUI.
-        // Podobnie Esc wychodzil z okna zamiast z samego pola.
+        // BUG, ktory to naprawia (zgloszenie gracza): "E" (klawisz ekwipunku)
+        // zamykalo GUI w trakcie pisania. Wersja posrednia zdejmowala fokus,
+        // wiec pierwsze E cicho przerywalo pisanie, a drugie zamykalo okno -
+        // gracz widzial dokladnie to samo: "pisze i E zamyka inventory".
+        //
+        // Vanilla creative robi to tak (bajtkod CreativeModeInventoryScreen):
+        //     if (searchBox.keyPressed(...)) { ...; return true; }
+        //     if (searchBox.isFocused() && searchBox.isVisible() && key != ESC)
+        //         return true;
+        // czyli: pole obsluguje to, co chce, a CALA reszta (w tym E) jest
+        // pochlaniana bez zamykania okna. Fokus zostaje, wiec pisanie trwa,
+        // a litera "e" trafia do pola przez charTyped - tak jak w wanilii.
         if (typing) {
-            boolean isEscape = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
-            boolean isInventoryKey = this.minecraft != null && this.minecraft.options != null
-                    && this.minecraft.options.keyInventory != null
-                    && this.minecraft.options.keyInventory.matches(keyCode, scanCode);
-            if (isEscape || isInventoryKey) {
-                // Esc najpierw zdejmuje fokus z pola; dopiero kolejne Esc
-                // zamyka okno. Tak dziala vanilla i tego oczekuje gracz.
+            // 1) Pole tekstowe samo wie, co zrobic z backspace, strzalkami,
+            //    Ctrl+A czy wklejaniem. NIE wolamy super.keyPressed - tam
+            //    wlasnie siedzi obsluga "E zamyka ekran".
+            net.minecraft.client.gui.components.events.GuiEventListener focused = this.getFocused();
+            if (focused != null && focused.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+            // 2) Esc wychodzi z pola; kolejne Esc (bez fokusu) zamyka okno.
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
                 this.setFocused(null);
                 return true;
             }
-            return super.keyPressed(keyCode, scanCode, modifiers);
+            // 3) Reszta - w tym klawisz ekwipunku - jest pochlaniana, zeby nie
+            //    zamknela okna.
+            return true;
         }
 
         // Esc zamyka (gdy nie piszemy).

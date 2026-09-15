@@ -361,13 +361,31 @@ public class VeloceThresholdSensorScreen
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        boolean fieldFocused = this.thresholdField != null && this.thresholdField.isFocused();
+
         // Enter zatwierdza prog.
-        if (this.thresholdField != null && this.thresholdField.isFocused()
-                && (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER
+        if (fieldFocused && (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER
                     || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER)) {
             sendConfig();
             this.thresholdField.setFocused(false);
             return true;
+        }
+
+        // POLE AKTYWNE: klawisze naleza do POLA, a nie do ekranu.
+        //
+        // Bez tego "E" (klawisz ekwipunku) zamykalo GUI w trakcie wpisywania
+        // liczby - dokladnie ten sam blad, ktory gracz zglosil dla
+        // wyszukiwarek w ekranach creative. Pole obsluguje to, co chce
+        // (cyfry, backspace, strzalki), a reszta jest pochlaniana.
+        if (fieldFocused) {
+            if (this.thresholdField.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+                this.thresholdField.setFocused(false);   // Esc wychodzi z pola
+                return true;
+            }
+            return true;   // w tym E - nie zamyka okna
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
