@@ -184,12 +184,25 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
      * dotkniete lancuchy. Dzieki temu liczby sa gotowe zanim gracz otworzy GUI.
      */
     private void tickCraftingCache(ServerLevel sl, VelocePipeNetwork net) {
+        var cache = com.craftingveloce.crafting.VeloceCraftingCache.get(net);
+
+        // Najpierw sprawdzamy, czy jest dla kogo liczyc. Przygotowanie
+        // argumentow nie jest darmowe: getAllEnabledItems kopiuje zbior
+        // wszystkich craftowalnych itemow (tysiace wpisow), a to leci co
+        // 5 tickow na kazdy terminal - takze gdy nikt nie patrzy, a cache
+        // i tak wychodzi od razu.
+        if (cache.isIdle(sl)) {
+            // Nikt nie patrzy - zostaje samo utrzymanie chunkow, zeby
+            // ekstraktory pracowaly dalej.
+            cache.tickIdle(sl);
+            return;
+        }
+
         var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getAllEnabledItems(sl, net);
         var preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getPreferredRecipes(sl, net);
-        com.craftingveloce.crafting.VeloceCraftingCache.get(net)
-                .tick(sl, enabled, preferred);
+        cache.tick(sl, enabled, preferred);
     }
 
     /**

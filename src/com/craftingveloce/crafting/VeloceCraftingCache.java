@@ -272,6 +272,42 @@ public final class VeloceCraftingCache {
     // ------------------------------------------------------------------
 
     /**
+     * Krok pracy, gdy nikt nie patrzy.
+     *
+     * <p>Robimy wtedy DOKLADNIE jedna rzecz: utrzymujemy force-loady chunkow
+     * z blokami sieci. To musi dzialac zawsze, bo bez tego ekstraktory i
+     * craftery przestaja pracowac, gdy gracz odejdzie.
+     *
+     * <p>Po co osobna metoda: dzieki niej wolajacy nie musi przygotowywac
+     * argumentow ({@code getAllEnabledItems} kopiuje zbior wszystkich
+     * craftowalnych itemow, {@code getPreferredRecipes} buduje mape) tylko po
+     * to, zeby {@code tick} wyszedl w pierwszej instrukcji.
+     */
+    public void tickIdle(ServerLevel level) {
+        long start = System.nanoTime();
+        phaseScanNanos = 0L;
+        phaseChunksNanos = 0L;
+        phaseItemsNanos = 0L;
+        lastBatchSize = 0;
+
+        if (!startupGracePassed) {
+            if (firstSeenTick < 0) {
+                firstSeenTick = level.getGameTime();
+            }
+            if (level.getGameTime() - firstSeenTick < STARTUP_GRACE_TICKS) {
+                return;
+            }
+            startupGracePassed = true;
+        }
+
+        long now = level.getGameTime();
+        if (!shuttingDown && now % 20 == 0) {
+            maintainForcedChunks(level);
+        }
+        lastTickNanos = System.nanoTime() - start;
+    }
+
+    /**
      * Jeden krok pracy. Wolane z ticku, ale robi co najwyzej
      * {@link #TICK_BUDGET_NS} nanosekund roboty.
      */
@@ -696,6 +732,19 @@ public final class VeloceCraftingCache {
      */
     public void markBusy(ServerLevel level) {
         busyUntil = level.getGameTime() + 40;   // 2 s przyspieszonego skanowania
+    }
+
+    /**
+     * Czy ktos w ogole patrzy (czy jest dla kogo liczyc).
+     *
+     * <p>Wolajacy powinien sprawdzic to PRZED przygotowaniem argumentow dla
+     * {@link #tick}. Przygotowanie ich kosztuje: {@code getAllEnabledItems}
+     * kopiuje wtedy zbior wszystkich craftowalnych itemow (tysiace wpisow),
+     * a {@code getPreferredRecipes} buduje mape - i to wszystko tylko po to,
+     * zeby {@code tick} wyszedl w pierwszej instrukcji, gdy nikt nie patrzy.
+     */
+    public boolean isIdle(ServerLevel level) {
+        return level.getGameTime() >= busyUntil;
     }
 
     /** Item zmienil sie lokalnie (np. po craftowaniu). */
