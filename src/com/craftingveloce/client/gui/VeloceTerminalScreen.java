@@ -68,22 +68,25 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     }
 
     public void updateNetworkCounts(Map<Item, Long> counts, Map<Item, Long> craftable) {
+        Map<Item, Long> previous = this.networkCounts;
         this.networkCounts = new HashMap<>(counts);
 
-        // Stock sie zmienil - czyli cos wyciagnieto albo skraftowano. Liczby
-        // "ile da sie jeszcze zrobic" sa teraz NIEAKTUALNE i trzeba o nie
-        // zapytac ponownie.
+        // Pytamy ponownie TYLKO gdy stock naprawde sie zmienil.
         //
-        // BUG, ktory tu byl: liczenie w terminalu nie przeliczalo sie po
-        // skraftowaniu itemu. Serwer po udanym crafcie wolal tylko
-        // syncCountsToAllWatchers(), ktore wysyla sam STOCK - bez przeliczonych
-        // liczb craftowalnosci. Klient odswiezal zielone liczby, ale zolte "+N"
-        // zostawaly stare, bo zapytanie o nie leci dopiero przy zmianie
-        // sygnatury widocznej strony - a skraftowanie itemu tej sygnatury nie
-        // zmienia (te same itemy, ta sama kolejnosc).
+        // BUG, ktory tu byl: wolalismy requestVisibleCounts(true) bezwarunkowo.
+        // A serwer wysyla ten pakiet co sekunde (syncCountsToAllWatchers),
+        // wiec powstawala PETLA:
+        //     updateNetworkCounts -> requestVisibleCounts -> serwer liczy
+        //     -> SyncCraftableCounts -> (nastepna sekunda) updateNetworkCounts
+        // Klient wysylal wiec zadanie co sekunde bez konca, a gracz czul to
+        // jako "lag zanim pokaza sie liczby" - GUI czekalo na round-trip.
         //
-        // force=true, bo sygnatura strony sie nie zmienila i bez tego
-        // requestVisibleCounts() wyszloby od razu.
+        // Teraz porownujemy stock z poprzednim pakietem: jesli sie nie zmienil,
+        // nie ma po co pytac. Po skraftowaniu/wyciagnieciu rozni sie, wiec
+        // liczby "+N" odswiezaja sie tak, jak powinny.
+        if (previous != null && previous.equals(this.networkCounts)) {
+            return;
+        }
         requestVisibleCounts(true);
         // NIE nadpisujemy calej mapy craftowalnosci.
         //
