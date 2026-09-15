@@ -388,11 +388,12 @@ public class VeloceThresholdSensorScreen
                         "pole progu aktywne: E zostaje w polu (okno sie nie zamyka)");
                 this.minecraft.options.keyInventory.consumeClick();
             }
-            if (this.thresholdField.keyPressed(keyCode, scanCode, modifiers)) {
+            // Esc ZAWSZE zamyka - takze gdy pole jest aktywne (tak dziala gra).
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+                this.onClose();
                 return true;
             }
-            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
-                this.thresholdField.setFocused(false);   // Esc wychodzi z pola
+            if (this.thresholdField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
             return true;   // w tym E - nie zamyka okna

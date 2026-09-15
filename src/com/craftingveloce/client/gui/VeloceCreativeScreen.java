@@ -1085,6 +1085,20 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             boolean isInventoryKey = this.minecraft != null && this.minecraft.options != null
                     && this.minecraft.options.keyInventory != null
                     && this.minecraft.options.keyInventory.matches(keyCode, scanCode);
+
+            // ESC ZAWSZE ZAMYKA - takze gdy pole tekstowe jest aktywne.
+            //
+            // Tak robi wanilia: w jej galezi dla wyszukiwarki kazdy klawisz jest
+            // pochlaniany POZA Escape (`... && keyCode != 256`), wiec Esc leci
+            // do bazy i zamyka ekran. Wczesniej nasza galaz "pisze" zdejmowala
+            // tylko fokus, wiec gracz musial nacisnac Esc dwa razy - a po
+            // naprawie wykrywania pisania (searchBox.isFocused) Esc przestal
+            // zamykac ZUPELNIE, bo do tej galezi trafial czesciej. Blokujemy
+            // wiec wylacznie klawisz ekwipunku (E), a Esc zostaje wyjsciem.
+            if (isEscape) {
+                this.onClose();
+                return true;
+            }
             if (isEscape || isInventoryKey) {
                 // Log dokladnie tego przypadku: bez niego nie da sie odroznic
                 // "poprawka nie dziala" od "gracz testuje stary JAR".
@@ -1115,16 +1129,8 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             if (box != null && box.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
-            // 2) Esc wychodzi z pola; kolejne Esc (bez fokusu) zamyka okno.
-            if (isEscape) {
-                if (box != null) {
-                    box.setFocused(false);
-                }
-                this.setFocused(null);
-                return true;
-            }
-            // 3) Reszta - w tym klawisz ekwipunku - jest pochlaniana, zeby nie
-            //    zamknela okna.
+            // 2) Reszta - w tym klawisz ekwipunku - jest pochlaniana, zeby nie
+            //    zamknela okna. (Esc obslugujemy wyzej.)
             return true;
         }
 
