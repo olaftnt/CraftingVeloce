@@ -192,7 +192,7 @@ public class VelocePipeNetworkManager extends SavedData {
      * @param pipeSide kierunek OD rury DO wezla (czyli {@code dir.getOpposite()}
      *                 przy iterowaniu kierunkow z pozycji wezla)
      */
-    private static boolean nodeConnectsToPipe(ServerLevel level, BlockPos nodePos, Direction pipeSide) {
+    public static boolean nodeConnectsToPipe(ServerLevel level, BlockPos nodePos, Direction pipeSide) {
         BlockState state = level.getBlockState(nodePos);
         Block block = state.getBlock();
         if (block instanceof VeloceTomTerminalBlock terminalBlock) {
@@ -425,6 +425,21 @@ public class VelocePipeNetworkManager extends SavedData {
         for (Direction d : Direction.values()) {
             BlockPos np = pipePos.relative(d);
             if (!level.isLoaded(np)) {
+                // MAGAZYN W NIEZALADOWANYM CHUNKU.
+                //
+                // BUG, ktory tu byl: `continue` pomijal go calkowicie, wiec
+                // taka beczka NIE trafiala do sieci. Skutek: net.extractItem()
+                // nie widzial jej zawartosci, zwracal EMPTY - i w logu nie bylo
+                // ani "took", ani bledu, tylko cisza po "requested".
+                //
+                // Nie mozemy odczytac jej ze swiata (chunk nie jest symulowany),
+                // ale ZNAMY ja z wczesniejszego przebiegu albo z NBT. Skoro chunk
+                // jest rozladowany, nikt tych itemow nie ruszyl - wiec zapamietana
+                // zawartosc jest nadal prawdziwa.
+                ConnectedEndpointInfo known = knownEndpoints.get(np);
+                if (known != null) {
+                    net.getEndpoints().put(np, known);
+                }
                 continue;
             }
             BlockState ns = level.getBlockState(np);
@@ -515,7 +530,7 @@ public class VelocePipeNetworkManager extends SavedData {
         // w ogole mozliwe (terminal ma przod, ktory sie nie laczy).
         for (Direction d : Direction.values()) {
             BlockPos pipePos = terminalPos.relative(d);
-            if (!nodeConnectsToPipe(level, terminalPos, d.getOpposite())) {
+            if (!nodeConnectsToPipe(level, terminalPos, d)) {
                 continue;
             }
             // Rura moze byc w niezaladowanym chunku - wtedy synchronizujemy
@@ -734,7 +749,7 @@ public class VelocePipeNetworkManager extends SavedData {
             }
             // Kierunek musi byc taki sam jak w scanAndBuildNetwork - inaczej
             // wezel trafial do sieci, z ktora nie jest polaczony.
-            if (!nodeConnectsToPipe(level, terminalPos, d.getOpposite())) {
+            if (!nodeConnectsToPipe(level, terminalPos, d)) {
                 continue;
             }
             VelocePipeNetwork net = networks.get(netId);
@@ -1123,6 +1138,14 @@ public class VelocePipeNetworkManager extends SavedData {
                 world.addPipe(pipe);
             }
         }
+        // Rejestr znanych magazynow: z NBT wiemy o nich razem z zawartoscia,
+        // wiec po restarcie swiata od razu widzimy magazyny w niezaladowanych
+        // chunkach - bez czekania, az gracz do nich podejdzie.
+        knownEndpoints.clear();
+        for (VelocePipeNetwork net : networks.values()) {
+            knownEndpoints.putAll(net.getEndpoints());
+        }
+
         // Druga faza: polaczenia. Rura laczy sie z sasiadem, jesli obie sa
         // w tym samym zbiorze i stykaja sie sciana.
         for (VelocePipeNetwork net : networks.values()) {

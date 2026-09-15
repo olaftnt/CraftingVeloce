@@ -112,23 +112,39 @@ public final class VelocePipeWorld {
     // Budowa struktury
     // ------------------------------------------------------------------
 
-    /** Dodaje rure. Bez polaczen - te ustala {@link #setNeighbours}. */
+    /**
+     * Dodaje rure. Bez polaczen - te ustala {@link #setNeighbours}.
+     *
+     * <p>UWAGA: brudzi cache komponentow TYLKO gdy rura naprawde doszla.
+     * Wolane jest to przy kazdej synchronizacji, takze dla rur juz znanych.
+     */
     public void addPipe(BlockPos pos) {
         if (allPipes.add(pos.immutable())) {
             componentsDirty = true;
         }
     }
 
-    /** Usuwa rure wraz ze wszystkimi jej polaczeniami. */
+    /**
+     * Usuwa rure wraz ze wszystkimi jej polaczeniami.
+     *
+     * <p>Brudzi cache TYLKO gdy rura naprawde byla - inaczej kazde sprawdzenie
+     * pustego sasiada (a {@code syncAround} sprawdza ich szesc) kasowaloby
+     * wszystkie policzone komponenty, mimo ze uklad sie nie zmienil.
+     */
     public void removePipe(BlockPos pos) {
-        allPipes.remove(pos);
-        links.remove(pos);
+        boolean had = allPipes.remove(pos);
+        boolean hadLinks = links.remove(pos) != null;
         // Usuwamy tez odwolania z sasiadow - inaczej zostalyby "wiszace"
         // krawedzie do rury, ktorej juz nie ma.
+        boolean removedFromOthers = false;
         for (Set<BlockPos> neighbours : links.values()) {
-            neighbours.remove(pos);
+            if (neighbours.remove(pos)) {
+                removedFromOthers = true;
+            }
         }
-        componentsDirty = true;
+        if (had || hadLinks || removedFromOthers) {
+            componentsDirty = true;
+        }
     }
 
     /** Czy ta rura jest znana strukturze. */

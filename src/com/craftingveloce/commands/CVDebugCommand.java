@@ -10,6 +10,7 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import com.craftingveloce.block.VelocePipeBlock;
+import com.craftingveloce.block.VeloceTomTerminalBlock;
 import com.craftingveloce.network.pipe.VelocePipeWorld;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -351,12 +352,33 @@ public class CVDebugCommand {
         // najszybszy sposob, zeby zobaczyc, gdzie siec sie urwala.
         for (Direction d : Direction.values()) {
             BlockPos np = pipePos.relative(d);
+            // UWAGA: neighbours() zawiera TYLKO rury. Dla wezlow i magazynow
+            // trzeba pytac ich wlasnym canConnectFrom - inaczej raport
+            // pokazywalby "[-]" przy poprawnie podlaczonym terminalu (i mylil
+            // przy diagnozie, bo wygladalo to jak rozcieta siec).
             boolean linked = neighbours.contains(np);
+            boolean isNode = false;
+            if (!linked && sl.isLoaded(np)) {
+                var st = sl.getBlockState(np);
+                var b = st.getBlock();
+                if (b instanceof VeloceTomTerminalBlock
+                        || b instanceof com.craftingveloce.block.VeloceExtractorBlock
+                        || b instanceof com.craftingveloce.block.VeloceCraftingTableBlock
+                        || b instanceof com.craftingveloce.block.VeloceControllerBlock) {
+                    isNode = true;
+                    linked = VelocePipeNetworkManager.nodeConnectsToPipe(
+                            sl, np, d.getOpposite());
+                } else if (VelocePipeBlock.canConnectToInventory(sl, np, d.getOpposite())) {
+                    linked = true;   // magazyn laczy sie zawsze
+                }
+            }
             String what = describeAt(sl, world, np);
+            String note = linked
+                    ? (isNode ? " §8(wezel podlaczony)" : "")
+                    : " §8(nie podlaczone)";
             player.sendSystemMessage(Component.literal(
                     "  " + (linked ? "§a[+] " : "§8[-] ") + "§7" + d.name().toLowerCase()
-                            + " -> " + what
-                            + (linked ? "" : " §8(rozciete albo nic tam nie ma)")));
+                            + " -> " + what + note));
         }
 
         // --- 2. CALY KOMPONENT (przejscie po polaczeniach) ---
