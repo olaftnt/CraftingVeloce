@@ -52,6 +52,36 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
 ### 5. Veloce Wrench (`wrench`)
 - Narzędzie do konfiguracji połączeń rury
 - Prawy klik na `VelocePipeBlock` wywołuje `onWrenchClicked`
+- Cykl trybów strony rury: **Push/Pull → Pull → Disconnected**
+  - `Pull` = z tego magazynu wolno tylko zabierać (wstawianie zablokowane)
+  - `Disconnected` = brak połączenia (magazyn wypada z sieci)
+  - flaga łącza rura↔rura ma **jednego właściciela** (mniejsza pozycja), więc
+    przełączanie działa z obu stron; szczegóły w komentarzu `togglePipeLink`
+
+### 6. Velocity Furnace (`velocity_furnace`)
+- Źródło ciepła dla auto-craftera; pali się **bez przerwy**, też na bezczynności
+- 6 slotów filtra paliwa (wybór jak w ekstraktorze) + slot paliwa; z pustymi
+  filtrami przyjmuje **każde** paliwo
+- Wyjście: jedna OPERACJA = jedno instant przepalenie
+  (`burnTicksRemaining / SMELT_HEAT_COST`)
+- Po zjedzeniu ciepla piec **natychmiast** dobiera paliwo z sieci
+  (`wantImmediatePull`), zamiast czekać do końca `PULL_INTERVAL_TICKS`
+
+### 7. Velocity Electric Furnace (`electric_furnace`)
+- Akumulator FE (25 000 000 FE, 200 000 FE na przepalenie); ładują go kable
+  z innych modów przez capability — mod nie ma własnego ładowania
+- **Priorytet 0** — crafter bierze najpierw z niego, a paliwowy (priorytet 1)
+  jest fallbackiem, także w trakcie: brak prądu na 5 przepaleń to 3 z prądu
+  i 2 z paliwa
+
+### 8. Veloce Threshold Sensor (`threshold_sensor`)
+- Jeden slot filtra + pole na liczbę + trzy guziki (tryb, `-`, `+`)
+- Patrzy, ile **fizycznie** jest filtrowanego itemu w sieci, i wystawia redstone
+- Tryby: `When below` (prad, gdy mniej niż próg) i `When at least` (odwrotny)
+- Wynik trzymany w **stanie bloku** (`POWERED`), bo to zmiana stanu rozglaszana
+  sąsiadom uruchamia maszyny; moc **mocna** (`getSignal` + `getDirectSignal`)
+- Sprawdza sieć raz na sekundę (`CHECK_INTERVAL_TICKS = 20`), bo skan magazynów
+  jest drogi, a sensor służy do uruchamiania fabryki, nie do taktowania
 
 ---
 
