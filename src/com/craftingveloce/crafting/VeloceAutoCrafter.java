@@ -53,13 +53,6 @@ public final class VeloceAutoCrafter {
     private static final int CRAFT_MAX_STEPS = 8192;
 
     /**
-     * Glebokosc rekurencji przy SZACOWANIU (countCraftableNow).
-     *
-     * <p>16 jest bezpieczne dla realnych lancuchow (np. plotek = deski =
-     * kloda to 3 poziomy), a jednoczesnie chroni przed zapetleniem na
-     * patologicznym grafie receptur.
-     */
-    private static final int ESTIMATE_MAX_DEPTH = 16;
 
     /**
      * Awaryjny limit operacji w jednym szacowaniu.
@@ -182,9 +175,12 @@ public final class VeloceAutoCrafter {
         }
 
         // Faza 1: planowanie (symulacja na liczbach).
+        // Zerujemy budzet: prawdziwe craftowanie nie moze zostac przerwane
+        // przez termin pozostawiony po szacowaniu w tle.
+        startEstimate(0L);
         Map<Item, Long> stock = snapshotStock(ctx);
         Plan plan = new Plan();
-        if (!plan(level, ctx, item, missing, stock, plan, new HashSet<>(), 0)) {
+        if (!plan(level, ctx.enabledItems, ctx.preferred, item, missing, stock, plan, new HashSet<>(), 0)) {
         logPlanFailure(level, ctx, item, missing, stock);
             return CraftResult.fail("craftingveloce.craft.error.noBase");
         }
@@ -281,7 +277,7 @@ public final class VeloceAutoCrafter {
         Map<Item, Long> stock = new HashMap<>(network.getAllItemCounts(level));
         long onStock = stock.getOrDefault(item, 0L);
         startEstimate(budgetNanos);
-        long total = maxCraftable(level, item, stock, enabledItems, new HashSet<>(), 0);
+        long total = maxCraftable(level, item, stock, enabledItems, preferred);
         // Zwracamy tylko nadwyzke ponad stock - inaczej licznik pokazywalby
         // przedmioty, ktore juz leza w sieci, jako "do zrobienia".
         return Math.max(0L, total - onStock);
@@ -348,7 +344,7 @@ public final class VeloceAutoCrafter {
             long onStock = stock.getOrDefault(item, 0L);
             startEstimate(deadline == 0L ? 0L
                     : Math.max(1_000_000L, deadline - System.nanoTime()));
-            long total = maxCraftable(level, item, stock, enabledItems, new HashSet<>(), 0);
+            long total = maxCraftable(level, item, stock, enabledItems, preferred);
             long surplus = Math.max(0L, total - onStock);
             if (surplus > 0) {
                 out.put(item, surplus);
@@ -406,12 +402,20 @@ public final class VeloceAutoCrafter {
      * Planuje uzyskanie {@code amount} sztuk {@code item}.
      * Modyfikuje {@code stock} (symulacja zuzycia). Nie rusza swiata.
      */
-    private static boolean plan(ServerLevel level, Context ctx, Item item, long amount,
+    private static boolean plan(ServerLevel level, Set<Item> enabled,
+                                Map<Item, ResourceLocation> preferred,
+                                Item item, long amount,
                                 Map<Item, Long> stock, Plan plan, Set<Item> visiting, int depth) {
         if (amount <= 0) {
             return true;
         }
         if (depth > CRAFT_MAX_DEPTH || plan.runs.size() > CRAFT_MAX_STEPS) {
+        // Budzet czasowy dziala takze tu: szacowanie uzywa planowania jako
+        // testu wykonalnosci, wiec bez tego nie mialoby throttlingu.
+        // Przy prawdziwym craftowaniu termin nie jest ustawiony (0).
+        if (estimateBudgetExceeded()) {
+            return false;
+        }
             return false;
         }
         if (!visiting.add(item)) {
@@ -428,12 +432,12 @@ public final class VeloceAutoCrafter {
             }
 
             // Rekursja tylko dla wlaczonych itemow.
-            if (!ctx.isEnabled(item)) {
+            if (!enabled.contains(item)) {
                 return false;
             }
 
             List<VeloceRecipeRegistry.CraftingEntry> recipes =
-                    orderRecipes(level, item, ctx.preferred);
+                    orderRecipes(level, item, preferred);
             if (recipes.isEmpty()) {
                 return false;
             }
@@ -442,7 +446,7 @@ public final class VeloceAutoCrafter {
             for (VeloceRecipeRegistry.CraftingEntry recipe : recipes) {
                 Map<Item, Long> snapshot = new HashMap<>(stock);
                 int planMark = plan.runs.size();
-                if (planRecipe(level, ctx, recipe, remaining, stock, plan, visiting, depth)) {
+                if (planRecipe(level, enabled, preferred, recipe, remaining, stock, plan, visiting, depth)) {
                     return true;
                 }
                 // Receptura nie wyszla - cofnij symulacje.
@@ -462,7 +466,8 @@ public final class VeloceAutoCrafter {
      * Planuje wykonanie jednej receptury tyle razy, by uzyskac {@code amount}.
      * Dla kazdego skladnika wybiera JEDNA opcje i zapewnia jej pelna ilosc.
      */
-    private static boolean planRecipe(ServerLevel level, Context ctx,
+    private static boolean planRecipe(ServerLevel level, Set<Item> enabled,
+                                      Map<Item, ResourceLocation> preferred,
                                       VeloceRecipeRegistry.CraftingEntry recipe, long amount,
                                       Map<Item, Long> stock, Plan plan,
                                       Set<Item> visiting, int depth) {
@@ -496,7 +501,7 @@ public final class VeloceAutoCrafter {
                 Map<Item, Long> snap2 = new HashMap<>(stock);
                 int mark2 = plan.runs.size();
                 stock.put(optItem, 0L);
-                if (plan(level, ctx, optItem, lacking, stock, plan, visiting, depth + 1)) {
+                if (plan(level, enabled, preferred, optItem, lacking, stock, plan, visiting, depth + 1)) {
                     supplied = true;
                     break;
                 }
@@ -534,102 +539,80 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Maksymalna liczba sztuk itemu mozliwa do uzyskania z danego stanu
-     * (symulacja, bez wykonywania). Uwzglednia rekursje dla wlaczonych itemow.
+     * Ile sztuk danego itemu mozna realnie uzyskac z tego stocku.
+     *
+     * <p><b>Dlaczego nie wzorem.</b> Poprzednia wersja liczyla limit osobno dla
+     * kazdego skladnika, biorac dla kazdego PELNY zapas bazowy. Przy plotku
+     * (4 deski + 2 patyki) deski liczylo z 7 klod i patyki tez z tych samych
+     * 7 klod - mimo ze patyki robi sie Z desek, wiec oba ciagnely z jednego
+     * zrodla. Wynik byl zawyzony i nie zgadzal sie z rzeczywistoscia.
+     *
+     * <p>Teraz sprawdzamy wykonalnosc PRAWDZIWYM planowaniem (ktore poprawnie
+     * zuzywa skladniki i zalicza wyniki posrednie) i szukamy najwiekszej
+     * mozliwej liczby bisekcja. Liczba jest prawdziwa, bo pochodzi z tego
+     * samego kodu, ktory potem faktycznie craftuje.
+     *
+     * <p>Koszt: log2(N) planowan na jeden item. Planowanie jest tanie, bo
+     * operuje na liczbach, bez ruszania swiata.
+     *
+     * @return laczna liczba sztuk dostepnych (stock + to, co da sie dorobic)
      */
     private static long maxCraftable(ServerLevel level, Item item, Map<Item, Long> stock,
-                                     Set<Item> enabled, Set<Item> visiting, int depth) {
-        if (depth > ESTIMATE_MAX_DEPTH || !visiting.add(item) || estimateBudgetExceeded()) {
-            return 0L;
+                                     Set<Item> enabled,
+                                     Map<Item, ResourceLocation> preferred) {
+        long fromStock = stock.getOrDefault(item, 0L);
+        if (!enabled.contains(item)) {
+            return fromStock;
         }
-        try {
-            long fromStock = stock.getOrDefault(item, 0L);
-            if (!enabled.contains(item)) {
-                return fromStock;
-            }
-            var recipes = VeloceRecipeRegistry.getRecipesFor(level, item);
-            if (recipes.isEmpty()) {
-                return fromStock;
-            }
-            long best = fromStock;
-            for (var recipe : recipes) {
-                long runs = maxRuns(level, recipe, stock, enabled, visiting, depth);
-                if (runs > 0) {
-                    long produced = fromStock + runs * Math.max(1, recipe.result().getCount());
-                    best = Math.max(best, produced);
-                }
-            }
-            return best;
-        } finally {
-            visiting.remove(item);
+        var recipes = VeloceRecipeRegistry.getRecipesFor(level, item);
+        if (recipes.isEmpty()) {
+            return fromStock;
         }
+
+        // Gorna granica: nie da sie zrobic wiecej sztuk niz jest WSZYSTKICH
+        // itemow w stocku (kazdy craft zuzywa co najmniej jeden).
+        long totalItems = 0;
+        for (long v : stock.values()) {
+            totalItems += v;
+        }
+        long hi = Math.min(totalItems, MAX_ESTIMATE_RESULT);
+        if (hi <= 0) {
+            return fromStock;
+        }
+
+        // Bisekcja: znajdz najwieksze N, dla ktorego planowanie sie udaje.
+        long lo = 0;
+        while (lo < hi) {
+            long mid = (lo + hi + 1) >>> 1;
+            if (canCraftAmount(level, item, mid, stock, enabled, preferred)) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return fromStock + lo;
     }
 
+    /** Limit wyniku szacowania - chroni przed absurdalna bisekcja. */
+    private static final long MAX_ESTIMATE_RESULT = 100_000L;
+
     /**
-     * Ile razy da sie wykonac recepture, majac dany stan (z rekursja).
+     * Czy da sie wytworzyc {@code amount} sztuk itemu z danego stocku.
      *
-     * <p><b>Wazne:</b> ten sam skladnik moze wystapic w recepturze wielokrotnie
-     * (np. plotek to 4 deski i 2 patyki - deski zajmuja 4 sloty siatki). Trzeba
-     * wiec liczyc zapotrzebowanie NA JEDNA recepture i podzielic przez nie
-     * dostepna ilosc. Bez tego wynik byl zawyzony: 10 desek i 5 patykow
-     * dawaloby 5 plotkow zamiast 2.
+     * <p>Uzywa prawdziwego planowania na KOPII stocku, wiec nie rusza niczego
+     * na zewnatrz i nie zanieczyszcza stanu miedzy sprawdzeniami.
      */
-    private static long maxRuns(ServerLevel level, VeloceRecipeRegistry.CraftingEntry recipe,
-                                Map<Item, Long> stock, Set<Item> enabled,
-                                Set<Item> visiting, int depth) {
-        // Ile sztuk kazdego itemu zuzywa JEDNO wykonanie receptury.
-        Map<Item, Long> needPerCraft = new HashMap<>();
-        for (Ingredient ing : recipe.ingredients()) {
-            List<ItemStack> options = nonEmpty(ing);
-            if (options.isEmpty()) {
-                continue;
-            }
-            // Wybierz opcje, ktorej mamy najwiecej (lub da sie ja najtaniej uzyskac).
-            Item bestOpt = null;
-            long bestTotal = -1;
-            for (ItemStack opt : options) {
-                Item optItem = opt.getItem();
-                long avail = stock.getOrDefault(optItem, 0L);
-                long total = avail;
-                if (enabled.contains(optItem) && depth < ESTIMATE_MAX_DEPTH
-                        && !visiting.contains(optItem)) {
-                    Map<Item, Long> copy = new HashMap<>(stock);
-                    long withCrafting = maxCraftable(level, optItem, copy, enabled,
-                            visiting, depth + 1);
-                    // Nadwyzka ponad to, co juz na stocku - reszta jest juz w avail.
-                    total = avail + Math.max(0L, withCrafting - avail);
-                }
-                if (total > bestTotal) {
-                    bestTotal = total;
-                    bestOpt = optItem;
-                }
-            }
-            if (bestOpt == null || bestTotal <= 0) {
-                return 0L;
-            }
-            needPerCraft.merge(bestOpt, 1L, Long::sum);
+    private static boolean canCraftAmount(ServerLevel level, Item item, long amount,
+                                          Map<Item, Long> stock,
+                                          Set<Item> enabled,
+                                          Map<Item, ResourceLocation> preferred) {
+        if (amount <= 0) {
+            return true;
         }
-
-        if (needPerCraft.isEmpty()) {
-            return 0L;
-        }
-
-        // Ogranicznikiem jest najbardziej deficytowy skladnik.
-        long limit = Long.MAX_VALUE;
-        for (Map.Entry<Item, Long> e : needPerCraft.entrySet()) {
-            long avail = stock.getOrDefault(e.getKey(), 0L);
-            long totalForItem = avail;
-            if (enabled.contains(e.getKey()) && depth < ESTIMATE_MAX_DEPTH
-                    && !visiting.contains(e.getKey())) {
-                Map<Item, Long> copy = new HashMap<>(stock);
-                long withCrafting = maxCraftable(level, e.getKey(), copy, enabled,
-                        visiting, depth + 1);
-                totalForItem = avail + Math.max(0L, withCrafting - avail);
-            }
-            long runs = totalForItem / e.getValue();
-            limit = Math.min(limit, runs);
-        }
-        return limit == Long.MAX_VALUE ? 0L : limit;
+        Map<Item, Long> copy = new HashMap<>(stock);
+        Plan plan = new Plan();
+        return plan(level, enabled, preferred, item, amount, copy, plan,
+                new HashSet<>(), 0);
     }
 
     // ------------------------------------------------------------------
