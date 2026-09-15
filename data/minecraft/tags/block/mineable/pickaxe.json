@@ -1,0 +1,11 @@
+{
+  "replace": false,
+  "values": [
+    "craftingveloce:electric_furnace",
+    "craftingveloce:threshold_sensor",
+    "craftingveloce:veloce_controller",
+    "craftingveloce:veloce_extractor",
+    "craftingveloce:veloce_pipe",
+    "craftingveloce:velocity_furnace"
+  ]
+}

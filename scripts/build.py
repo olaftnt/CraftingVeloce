@@ -45,6 +45,35 @@ EXCLUDED_SRC = ("eatawesome", "moze_intel")
 # Smieci systemowe, ktore nie moga trafic do JARa.
 JUNK = (".DS_Store", "__MACOSX", ".git")
 
+# Lista blokow pochodzi z generatora danych, a NIE z drugiej, recznej listy.
+# Ten projekt czterokrotnie ugryzl juz wlasnie taki rozjazd dwoch spisow.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gen_loot_tables import registered_block_ids  # noqa: E402
+
+
+def validate_block_data(jar_names):
+    """
+    Kazdy zarejestrowany blok musi miec w JARze komplet danych.
+
+    Sprawdzamy trzy rzeczy, ktorych brak jest widoczny dopiero w grze:
+      * loot table    - bez niej blok NIE WYPADA po zniszczeniu,
+      * blockstate    - bez niego blok sie nie renderuje,
+      * model itemu   - bez niego blok nie ma ikony w ekwipunku i kreatywnym.
+    """
+    names = set(jar_names)
+    missing = []
+    for block_id in registered_block_ids():
+        for opis, sciezka in (
+            ("loot table", f"data/craftingveloce/loot_table/blocks/{block_id}.json"),
+            ("blockstate", f"assets/craftingveloce/blockstates/{block_id}.json"),
+            ("model itemu", f"assets/craftingveloce/models/item/{block_id}.json"),
+        ):
+            if sciezka not in names:
+                missing.append(f"{block_id}: brak {opis} ({sciezka})")
+    if missing:
+        fail("bloki bez kompletu danych:\n  " + "\n  ".join(missing))
+    print(f"    OK (dane {len(registered_block_ids())} blokow kompletne)")
+
 
 def game_running():
     """
@@ -196,6 +225,14 @@ def main():
     junk = [n for n in names if any(j in n for j in JUNK)]
     if junk:
         fail(f"smieci systemowe w JARze: {junk}")
+
+    # KAZDY zarejestrowany blok MUSI miec komplet danych.
+    #
+    # Bez loot table blok nie wypada po zniszczeniu (w creative tego nie widac,
+    # wiec latwo przeoczyc), a brakiem modelu/blockstate blok jest niewidzialny.
+    # Liste blokow bierzemy z TEGO SAMEGO miejsca co generator danych - patrz
+    # scripts/gen_loot_tables.py - zeby nie powstal drugi, recznie pisany spis.
+    validate_block_data(names)
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "

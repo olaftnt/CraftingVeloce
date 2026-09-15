@@ -1,6 +1,7 @@
 {
-    "replace": false,
-    "values": [
-        "craftingveloce:veloce_tom_terminal"
-    ]
+  "replace": false,
+  "values": [
+    "craftingveloce:veloce_crafting_table",
+    "craftingveloce:veloce_tom_terminal"
+  ]
 }

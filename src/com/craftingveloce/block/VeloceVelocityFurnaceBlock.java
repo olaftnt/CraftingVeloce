@@ -104,6 +104,22 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock implements Entit
     @Override
     public void destroy(net.minecraft.world.level.LevelAccessor world, BlockPos pos,
                         BlockState state) {
+        // Paliwo lezace w piecu to PRAWDZIWE przedmioty (piec sam je dociaga
+        // z sieci), wiec musza wypasc - inaczej zburzenie pieca je gubi.
+        //
+        // Uwaga: filtry paliwa sa WIDMOWE (klikniecie tylko kopiuje item do
+        // filtra, nie zabiera go graczowi). Ich oddanie tworzyloby przedmioty
+        // z niczego, wiec oddajemy WYLACZNIE realny slot paliwa.
+        if (world instanceof net.minecraft.server.level.ServerLevel sl
+                && sl.getBlockEntity(pos) instanceof com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity be) {
+            net.minecraft.world.Container fuel = be.getFuelSlot();
+            net.minecraft.world.item.ItemStack inFuel = fuel.getItem(0);
+            if (!inFuel.isEmpty()) {
+                net.minecraft.world.Containers.dropItemStack(sl,
+                        pos.getX(), pos.getY(), pos.getZ(), inFuel.copy());
+                fuel.setItem(0, net.minecraft.world.item.ItemStack.EMPTY);
+            }
+        }
         super.destroy(world, pos, state);
         if (world instanceof net.minecraft.server.level.ServerLevel l) {
             com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
