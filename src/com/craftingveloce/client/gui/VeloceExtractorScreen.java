@@ -97,20 +97,27 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
                         boolean canCraft = clientAllowCrafting.get(index);
                         java.util.List<Component> lines = new java.util.ArrayList<>();
                         lines.add(filterItem.getHoverName());
+                        // Sam stan: ON albo OFF. Gracz nie chcial dopisku
+                        // "(network stock only)" - kolor ikony i tak mowi, ze
+                        // przy OFF extractor bierze tylko to, co jest w sieci.
                         lines.add(Component.translatable(canCraft
                                         ? "gui.craftingveloce.extractor.craftingOn"
                                         : "gui.craftingveloce.extractor.craftingOff")
                                 .withStyle(canCraft
                                         ? net.minecraft.ChatFormatting.GREEN
                                         : net.minecraft.ChatFormatting.RED));
-                        lines.add(Component.translatable("gui.craftingveloce.extractor.filterHelp")
+                        // Instrukcja w DWÓCH linijkach: lewy i prawy klik robia
+                        // dwie rozne rzeczy, a zlepione w jedno zdanie czytaly
+                        // sie jak sciana tekstu.
+                        lines.add(Component.translatable("gui.craftingveloce.extractor.leftClick")
+                                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+                        lines.add(Component.translatable("gui.craftingveloce.extractor.rightClick")
                                 .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
                         graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
                     } else {
+                        // Pusty filtr to tylko "Empty filter" - bez instrukcji.
                         graphics.renderComponentTooltip(this.font, java.util.List.of(
-                                Component.translatable("gui.craftingveloce.extractor.emptySlot"),
-                                Component.translatable("gui.craftingveloce.extractor.filterHelp")
-                                        .withStyle(net.minecraft.ChatFormatting.DARK_GRAY)),
+                                Component.translatable("gui.craftingveloce.extractor.filterEmpty")),
                                 mouseX, mouseY);
                     }
                 }

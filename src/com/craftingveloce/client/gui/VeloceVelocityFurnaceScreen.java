@@ -198,8 +198,9 @@ public class VeloceVelocityFurnaceScreen
             ItemStack filter = clientFilters.get(i);
             List<Component> lines = new ArrayList<>();
             if (filter.isEmpty()) {
-                // Numer slotu, jak w ekstraktorze - gracz wie, ktory filtr ustawia.
-                lines.add(Component.translatable("gui.craftingveloce.furnace.filterEmpty", i + 1));
+                // Bez numeru slotu ("Slot 1/2/3/4"): gracz ma wiedziec, ze slot
+                // jest PUSTY i ze moze go kliknac, a nie liczyc, ktory to.
+                lines.add(Component.translatable("gui.craftingveloce.furnace.filterEmpty"));
             } else {
                 lines.add(filter.getHoverName());
                 lines.add(Component.translatable("gui.craftingveloce.furnace.filterClear")
