@@ -17,7 +17,6 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
-import java.lang.reflect.Constructor;
 import java.util.Set;
 
 public class VeloceRegistry {
@@ -133,32 +132,16 @@ public class VeloceRegistry {
         T create(net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state);
     }
 
-    @SuppressWarnings("unchecked")
     private static <T extends BlockEntity> BlockEntityType<T> createBEType(BlockEntityFactory<T> factory, Block block) {
-        try {
-            Constructor<?>[] constructors = BlockEntityType.class.getDeclaredConstructors();
-            for (Constructor<?> c : constructors) {
-                if (c.getParameterCount() == 3) {
-                    c.setAccessible(true);
-                    Object supplier = java.lang.reflect.Proxy.newProxyInstance(
-                            BlockEntityType.class.getClassLoader(),
-                            new Class<?>[]{Class.forName("net.minecraft.world.level.block.entity.BlockEntityType$BlockEntitySupplier")},
-                            (proxy, method, args) -> factory.create(
-                                    (net.minecraft.core.BlockPos) args[0],
-                                    (net.minecraft.world.level.block.state.BlockState) args[1]
-                            )
-                    );
-                    return (BlockEntityType<T>) c.newInstance(
-                            supplier,
-                            Set.of(block),
-                            null
-                    );
-                }
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create BlockEntityType", e);
-        }
-        throw new IllegalStateException("Could not find BlockEntityType constructor");
+        // Standardowe API NeoForge, zamiast refleksji.
+        //
+        // Wczesniej szukalismy tu konstruktora BlockEntityType przez refleksje
+        // i bralismy PIERWSZY trójargumentowy, a kolejnosc zwracana przez
+        // getDeclaredConstructors() nie jest gwarantowana przez specyfikacje.
+        // Do tego dochodzil dynamiczny Proxy. To dzialalo przypadkiem i moglo
+        // peknac przy kazdej aktualizacji Minecrafta/NeoForge - a wtedy mod
+        // nie wstaje wcale. Builder.of() jest publicznym API i robi to samo.
+        return BlockEntityType.Builder.of(factory::create, block).build(null);
     }
 
     public static void register(IEventBus modEventBus) {
