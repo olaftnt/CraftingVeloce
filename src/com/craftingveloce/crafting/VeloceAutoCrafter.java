@@ -547,11 +547,26 @@ public final class VeloceAutoCrafter {
         long deadline = budgetNanos > 0 ? System.nanoTime() + budgetNanos : 0L;
         boolean complete = true;
 
-        for (Item item : items) {
+        // KOLEJNOSC: startujemy tam, gdzie skonczyla sie poprzednia partia.
+        //
+        // BUG, ktory to naprawia: lista itemow przychodzi w tej samej
+        // kolejnosci (widoczne sloty), a budzet konczy sie po kilku pozycjach -
+        // wiec za kazdym razem liczone byly TE SAME pierwsze itemy, a ogon
+        // listy NIGDY. Trzymal wiec stare liczby z poczatku sesji. Kursor
+        // przesuwa sie o tyle, ile udalo sie przeliczyc, wiec kazde zadanie
+        // bierze inny fragment listy i po kilku zadaniach wszystko jest swieze.
+        List<Item> ordered = new ArrayList<>(items);
+        int size = ordered.size();
+        int start = size == 0 ? 0 : Math.floorMod(batchCursor.get(), size);
+        int processed = 0;
+
+        for (int i = 0; i < size; i++) {
+            Item item = ordered.get(start + i >= size ? start + i - size : start + i);
             if (!enabledItems.contains(item)) {
                 // Wpis "nie da sie zrobic" jest POPRAWNY i musi trafic do
                 // wyniku - inaczej GUI zachowaloby stara, zawyzona liczbe.
                 out.put(item, 0L);
+                processed++;
                 continue;
             }
             // Przerwij, gdy minie budzet - reszta przy nastepnym zadaniu.
@@ -574,7 +589,9 @@ public final class VeloceAutoCrafter {
             // od "nie policzono tego itemu" i klient zachowywal stara, zawyzona
             // liczbe. Zero to konkretna, poprawna odpowiedz.
             out.put(item, Math.max(0L, total));
+            processed++;
         }
+        batchCursor.set(start + processed);
         return new BatchResult(out, complete);
     }
 
@@ -934,7 +951,11 @@ public final class VeloceAutoCrafter {
                                      Item item, Map<Item, Long> stock,
                                      Set<Item> enabled,
                                      Map<Item, ResourceLocation> preferred,
-                                     long heatOps) {
+                                     long realHeatOps) {
+        // SZACOWANIE liczy "ile moge MIEC", a nie "ile piec ugnie w tej
+        // sekundzie" - patrz estimateHeatOps(). Plan WYKONANIA nadal dostaje
+        // prawdziwy budzet (Context.heatOps() -> consumeFrom).
+        long heatOps = estimateHeatOps(realHeatOps);
         long fromStock = stock.getOrDefault(item, 0L);
         if (!enabled.contains(item)) {
             return fromStock;
@@ -983,6 +1004,48 @@ public final class VeloceAutoCrafter {
 
     /** Limit wyniku szacowania - chroni przed absurdalna bisekcja. */
     private static final long MAX_ESTIMATE_RESULT = 100_000L;
+
+    /**
+     * Cieplo dla SZACOWANIA - czyli dla liczby, ktora widzi gracz.
+     *
+     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> Szacowanie dostawalo
+     * ten sam budzet ciepla, co plan wykonania, wiec liczba przy itemie z
+     * receptura pieca byla obcinana do tego, ILE PIEC MA TERAZ W BUFORZE.
+     * Przy piecu z 25 przepaleniami bufora terminal pokazywal 25 szkla
+     * niezaleznie od tego, czy w skrzynce lezy 32 czy 64 piasku ("wyjme
+     * polowe, dalej pokazuje 25"). Liczba ma odpowiadac na pytanie "ile moge
+     * miec z tego, co jest w sieci", a nie "ile piec ugnie w tej sekundzie".
+     *
+     * <p>Rozroznienie jest takie samo jak przy {@code isPowered()}: zero
+     * ciepla = receptury pieca wylaczone (nie ma czym palic), jakakolwiek
+     * ilosc = receptury dzialaja, a liczba idzie za surowcem. Piec paliwowy
+     * dociaga paliwo z sieci sam, wiec jego bufor nie jest limitem tego, ile
+     * da sie zrobic - limitem jest surowiec (i paliwo w sieci). Piec
+     * elektryczny ma zasob, ktory trzeba uzupelniac, ale i tak odpowiada na
+     * inne pytanie: liczba mowi "ile MOGE miec z tego, co lezy w sieci", a
+     * nie "na ile starczy jednego ladowania".
+     *
+     * <p>Wartosc jest wieksza od {@link #MAX_ESTIMATE_RESULT}, wiec nigdy nie
+     * obetnie wyniku; jest zas malenka, zeby nie kusilo liczenia "w
+     * nieskonczonosc" i nie ryzykowac przepelnienia.
+     */
+    private static final long ESTIMATE_HEAT_OPS = 1_000_000L;
+
+    /**
+     * Od ktorej pozycji zaczac nastepna partie liczenia.
+     *
+     * <p>Statyczny, bo to tylko "ziarno" rotacji - nie niesie zadnego stanu
+     * gracza ani sieci. Chodzi o to, zeby przy kazdym zadaniu inny fragment
+     * listy zdazyl sie policzyc w budzecie (patrz petla w
+     * {@link #countCraftableBatchResult}).
+     */
+    private static final java.util.concurrent.atomic.AtomicInteger batchCursor =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    /** Budzet ciepla dla szacowania: "jest czym palic" albo "nie ma". */
+    private static long estimateHeatOps(long realHeatOps) {
+        return realHeatOps > 0 ? ESTIMATE_HEAT_OPS : 0L;
+    }
 
     /**
      * Bezpieczne ZAWYZENIE liczby sztuk, ktore mozna zrobic z danego stocku.

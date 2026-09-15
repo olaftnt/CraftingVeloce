@@ -312,6 +312,21 @@ została w tyle, tak jak wcześniej lista pakietów i sekcja GUI):
 - `openCraftingTableScreen(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents)`
 - `updateCraftingTableState(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes)`
 - `handleCraftableCounts(BlockPos pos, Map<Item, Long> counts, boolean complete)` — odpowiedź serwera z liczbami "ile da się dorobić"
+
+> **Liczby "ile da się dorobić" — dwie różne rzeczy, dwie różne miary.**
+> Liczba przy itemie odpowiada na pytanie „ile tego **mogę mieć** z tego, co
+> leży w sieci", więc dla receptur pieca liczy się **surowiec**, a nie to, ile
+> piec ma teraz w buforze: brak zasilanego pieca = receptury pieca wyłączone,
+> jakikolwiek zapas ciepła = receptury działają, a liczba idzie za piaskiem
+> (64 piasku → 64 szkła). Plan **wykonania** nadal używa prawdziwego budżetu
+> ciepła (`VeloceHeatSources.totalOperations` + `consumeFrom`) — inaczej
+> obiecywałby przepalenia, których piec nie ugnie w jednym planie.
+>
+> Partia liczenia ma wspólny budżet czasu (25 ms) i bywa przerywana
+> (`complete=false` w logu). Dlatego serwer startuje kolejną partię tam, gdzie
+> skończył poprzednią (rotacja — inaczej ogon listy nigdy nie doczekałby się
+> przeliczenia i trzymał stare liczby), a klient ponawia zapytanie, dopóki
+> odpowiedź nie jest pełna.
 - `openControllerScreen(BlockPos pos, Map<Item, Long> stock, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnacePowered, Set<Item> furnacePreferred)`
 
 > Uwaga na `disabledItems`: crafter działa w modelu **opt-out**, więc to zbiór

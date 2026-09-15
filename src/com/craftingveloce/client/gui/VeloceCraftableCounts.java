@@ -48,6 +48,23 @@ public final class VeloceCraftableCounts {
     /** Czy juz zamowiono liczby po otwarciu ekranu. */
     private boolean initialRequestSent;
 
+    /**
+     * Czy ostatnia odpowiedz byla NIEPELNA.
+     *
+     * <p>Serwer liczy partie we wspolnym budzecie czasu i przerywa, gdy sie
+     * skonczy - w logu widac to jako "45 item(s) -> 3 result(s) (complete=false)".
+     * Przy takiej odpowiedzi czesc itemow nie dostala nowej liczby i trzymala
+     * stara. Bez ponowienia dzialo sie to Az DO ZMIANY WIDOKU, bo zapytanie
+     * wychodzi tylko przy zmianie sygnatury - czyli liczba mogla zostac
+     * zamrozona na wartosci z poczatku sesji (zgloszenie gracza: "wyjme
+     * polowe piasku, a dalej pokazuje 25").
+     */
+    private boolean partial;
+
+    /** Co ile tickow ponawiac, gdy odpowiedz byla niepelna. */
+    private static final int RETRY_INTERVAL_TICKS = 10;
+    private int retryCooldown;
+
     /** Liczba do dorobienia dla tego itemu; 0 gdy brak wpisu. */
     public long get(Item item) {
         return counts.getOrDefault(item, 0L);
@@ -99,9 +116,14 @@ public final class VeloceCraftableCounts {
         if (visible.isEmpty()) {
             return;
         }
-        if (!force && initialRequestSent && signature == lastSignature) {
+        // Ponawiamy, dopoki poprzednia odpowiedz byla niepelna - inaczej itemy
+        // z ogona listy nigdy nie doczekalyby sie przeliczenia. Z throttlem,
+        // bo kazde zadanie kosztuje serwer do 25 ms.
+        boolean retry = this.partial && --this.retryCooldown <= 0;
+        if (!force && !retry && initialRequestSent && signature == lastSignature) {
             return;
         }
+        this.retryCooldown = RETRY_INTERVAL_TICKS;
         lastSignature = signature;
         initialRequestSent = true;
         lastRequested.clear();
@@ -113,6 +135,8 @@ public final class VeloceCraftableCounts {
     /** Po otwarciu ekranu sygnatura startuje od nowa. */
     public void resetRequestState() {
         initialRequestSent = false;
+        partial = false;
+        retryCooldown = 0;
     }
 
     /**
@@ -128,6 +152,8 @@ public final class VeloceCraftableCounts {
      * odpowiedzi bez tych zer.
      */
     public void update(Map<Item, Long> craftable, boolean complete) {
+        // Niepelna odpowiedz = trzeba dopytac (patrz pole partial).
+        this.partial = !complete;
         if (complete) {
             for (Item it : lastRequested) {
                 counts.remove(it);
