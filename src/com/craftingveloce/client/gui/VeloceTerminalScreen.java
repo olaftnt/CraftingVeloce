@@ -161,14 +161,17 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         if (this.minecraft == null || this.minecraft.player == null || this.menu == null) {
             return;
         }
+        // HashSet zamiast listy: to leci co tick, a visible.contains() na
+        // ArrayList to skan O(n) przy kazdym slocie - czyli O(n^2) na tick.
         java.util.List<Item> visible = new java.util.ArrayList<>();
+        java.util.Set<Item> seen = new java.util.HashSet<>();
         int signature = 1;
         for (Slot slot : this.menu.slots) {
             if (slot == null || !slot.hasItem() || isPlayerSlot(slot)) {
                 continue;
             }
             Item it = slot.getItem().getItem();
-            if (!visible.contains(it)) {
+            if (seen.add(it)) {
                 visible.add(it);
                 // Sygnatura: kolejnosc i sklad widocznych itemow.
                 signature = signature * 31 + it.hashCode();
