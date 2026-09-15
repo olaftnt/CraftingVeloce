@@ -151,9 +151,11 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
 
         com.craftingveloce.util.VeloceLog.Craft.detail(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
-                "instant craftable count for %d item(s) -> %d result(s) in %d ms (complete=%s)",
+                "instant craftable count for %d item(s) -> %d result(s) in %d ms "
+                        + "(complete=%s, heat=%s)",
                 items.size(), result.counts().size(),
-                (System.nanoTime() - start) / 1_000_000L, result.complete());
+                (System.nanoTime() - start) / 1_000_000L, result.complete(),
+                result.heatAvailable() ? "piec w sieci" : "brak pieca");
         return result;
     }
 

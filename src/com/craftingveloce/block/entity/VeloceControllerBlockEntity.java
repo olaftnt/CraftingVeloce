@@ -130,9 +130,11 @@ public class VeloceControllerBlockEntity extends BlockEntity
         // kontroler w ogole dostal liczby (a gracz wlasnie to zglosil).
         com.craftingveloce.util.VeloceLog.Craft.detail(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
-                "controller craftable count for %d item(s) -> %d result(s) in %d ms (complete=%s)",
+                "controller craftable count for %d item(s) -> %d result(s) in %d ms "
+                        + "(complete=%s, heat=%s)",
                 items.size(), result.counts().size(),
-                (System.nanoTime() - start) / 1_000_000L, result.complete());
+                (System.nanoTime() - start) / 1_000_000L, result.complete(),
+                result.heatAvailable() ? "piec w sieci" : "brak pieca");
         return result;
     }
 

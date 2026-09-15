@@ -502,8 +502,16 @@ public final class VeloceAutoCrafter {
      *
      * @param counts   ile da sie dorobic (tylko wartosci > 0)
      * @param complete czy przeliczono WSZYSTKIE zadane itemy
+     * @param heatAvailable czy w sieci stoi JAKIEKOLWIEK zrodlo ciepla (piec).
+     *        Do logu: bez tego nie da sie odroznic "nie ma pieca" od "piec
+     *        wlasnie dopala paliwo" - a to dwa zupelnie rozne stany.
      */
-    public record BatchResult(Map<Item, Long> counts, boolean complete) {
+    public record BatchResult(Map<Item, Long> counts, boolean complete,
+                              boolean heatAvailable) {
+        /** Wariant bez informacji o cieple - dla wczesnych wyjsc (brak sieci itp.). */
+        public BatchResult(Map<Item, Long> counts, boolean complete) {
+            this(counts, complete, false);
+        }
     }
 
 /**
@@ -537,13 +545,36 @@ public final class VeloceAutoCrafter {
             Map<Item, ResourceLocation> preferred, long budgetNanos) {
         Map<Item, Long> out = new HashMap<>();
         if (items == null || items.isEmpty()) {
-            return new BatchResult(out, true);
+            return new BatchResult(out, true, false);
         }
 
         // Jednorazowy odczyt stocku dla calej partii.
         Map<Item, Long> stockSnapshot = network.getAllItemCounts(level);
-        // Cieplo liczymy RAZ dla calej partii - tak samo jak stock.
-        long heatOps = VeloceHeatSources.totalOperations(level, network);
+
+        // Cieplo dla LICZB: "czy w sieci stoi piec", a nie "ile ma TERAZ
+        // w buforze".
+        //
+        // BUG, ktory to naprawia (zgloszenie gracza: "liczby sie nie laduja"):
+        // bralismy totalOperations(), czyli biezacy bufor paliwa. Piec paliwowy
+        // dopala paliwo i DOKLADA je sobie z sieci, wiec bufor cyklicznie
+        // spada do zera - w tym oknie receptury pieca byly wylaczone, liczba
+        // dla szkla wychodzila 0 i taka zostawala w GUI (zero sie nie rysuje),
+        // a po skasowaniu tekstu w wyszukiwarce nowe zadanie trafialo na
+        // moment z paliwem i liczba sie pojawiala. Liczba ma odpowiadac na
+        // pytanie "ile moge miec z tego, co jest w sieci", a nie "na ile
+        // starczy paliwa w tej sekundzie" (patrz estimateHeatOps).
+        boolean heatAnywhere = VeloceHeatSources.hasAnyHeatSource(level, network);
+        long heatOps = heatAnywhere ? ESTIMATE_HEAT_OPS : 0L;
+
+        // Skoro liczymy "ile MOGE miec", to przy postawionym piecu itemy
+        // z receptura pieca sa liczalne nawet w oknie bez paliwa - inaczej
+        // wypadaly z `enabled` i dostawaly zero (patrz komentarz wyzej).
+        Set<Item> countable = enabledItems;
+        if (heatAnywhere && !VeloceRecipeRegistry.getAllFurnaceCraftableItems(level).isEmpty()) {
+            Set<Item> merged = new HashSet<>(enabledItems);
+            merged.addAll(VeloceRecipeRegistry.getAllFurnaceCraftableItems(level));
+            countable = merged;
+        }
         long deadline = budgetNanos > 0 ? System.nanoTime() + budgetNanos : 0L;
         boolean complete = true;
 
@@ -561,7 +592,7 @@ public final class VeloceAutoCrafter {
 
         for (int i = 0; i < size; i++) {
             Item item = queue.get(i);
-            if (!enabledItems.contains(item)) {
+            if (!countable.contains(item)) {
                 // Wpis "nie da sie zrobic" jest POPRAWNY i musi trafic do
                 // wyniku - inaczej GUI zachowaloby stara, zawyzona liczbe.
                 out.put(item, 0L);
@@ -588,7 +619,7 @@ public final class VeloceAutoCrafter {
                 slice = Math.max(MIN_ITEM_BUDGET_NS, left / Math.max(1, size - i));
             }
             startEstimate(slice);
-            long total = craftableFromRaw(level, network, item, stock, enabledItems, preferred, heatOps);
+            long total = craftableFromRaw(level, network, item, stock, countable, preferred, heatOps);
             // (indeks `i` sluzy tylko do rownego podzialu budzetu wyzej)
             if (total == UNKNOWN_COUNT) {
                 // TEN item nie zmiescil sie w budzecie - pomijamy GO, ale NIE
@@ -613,7 +644,7 @@ public final class VeloceAutoCrafter {
             // liczbe. Zero to konkretna, poprawna odpowiedz.
             out.put(item, Math.max(0L, total));
         }
-        return new BatchResult(out, complete);
+        return new BatchResult(out, complete, heatAnywhere);
     }
 
     /**
