@@ -67,5 +67,9 @@
   "block.craftingveloce.veloce_alchemistry_compactor_module": "Veloce Alchemistry Compactor Module",
   "block.craftingveloce.veloce_alchemistry_combiner_module": "Veloce Alchemistry Combiner Module",
   "block.craftingveloce.veloce_alchemistry_fission_module": "Veloce Alchemistry Fission Module",
-  "block.craftingveloce.veloce_alchemistry_fusion_module": "Veloce Alchemistry Fusion Module"
+  "block.craftingveloce.veloce_alchemistry_fusion_module": "Veloce Alchemistry Fusion Module",
+  "block.craftingveloce.veloce_create_millstone_module": "Veloce Millstone Module",
+  "block.craftingveloce.veloce_create_saw_module": "Veloce Saw Module",
+  "block.craftingveloce.veloce_create_crushing_module": "Veloce Crushing Module",
+  "block.craftingveloce.veloce_create_mechanical_crafter_module": "Veloce Mechanical Crafter Module"
 }

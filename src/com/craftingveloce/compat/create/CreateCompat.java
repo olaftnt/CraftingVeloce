@@ -30,6 +30,22 @@ public final class CreateCompat {
      * Rejestruje integracje. Wolno wolac WYLACZNIE gdy {@link #isPresent()}.
      */
     public static void register(IEventBus modEventBus) {
+        CreateBlocks.register(modEventBus);
+        CreateBlockEntities.register(modEventBus);
         CreateRecipeFamily.register(modEventBus);
+        CreateModule.register(modEventBus);
+        // Stresu NIE rejestrujemy: CStress.setImpact rzuca wyjatek dla blokow
+        // spoza Create, a nasza maszyna liczy stale SU sama
+        // (VeloceKineticModuleBlockEntity.calculateStressApplied).
+    }
+
+    /**
+     * Pozycje modulu do zakladki kreatywnej.
+     *
+     * <p>Zakladka buduje sie ZAWSZE (takze bez Create), wiec to wywolanie jest
+     * warunkowane obecnoscia moda w {@code CraftingVeloceMod}.
+     */
+    public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
+        CreateBlocks.addCreativeItems(output);
     }
 }

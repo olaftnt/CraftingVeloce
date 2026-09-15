@@ -58,6 +58,10 @@ TOOL_BY_BLOCK = {
     "veloce_alchemistry_combiner_module": "pickaxe",
     "veloce_alchemistry_fission_module": "pickaxe",
     "veloce_alchemistry_fusion_module": "pickaxe",
+    "veloce_create_millstone_module": "pickaxe",       # maszyny z modulu Create
+    "veloce_create_saw_module": "pickaxe",
+    "veloce_create_crushing_module": "pickaxe",
+    "veloce_create_mechanical_crafter_module": "pickaxe",
 }
 DEFAULT_TOOL = "pickaxe"
 

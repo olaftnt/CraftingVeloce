@@ -23,30 +23,15 @@ import java.util.Set;
  * "holder not bound" - dlatego rejestrujemy rodzine w zdarzeniu, ktore leci
  * PO rejestracji.
  *
- * <p><b>Zakres v1.</b> Maszyny itemowe (mlyn, piła, prasa, basen, kruszarka)
- * plus mechanical crafting. Pomiary i plyny (spout, fany) oraz sekwencyjny
- * montaz dochodza pozniej - patrz specyfikacja integracji.
+ * <p><b>Zakres v1.</b> Cztery rodziny item -> item: milling, cutting, crushing
+ * i mechanical crafting. Prasa, mixer i basin pracuja na zawartosci Basenu
+ * (a nie na wlasnym wejsciu), a spout i fany na plynnym - oba wymagaja
+ * osobnego modelu, wiec dochodza w dalszych etapach.
  */
 public final class CreateRecipeFamily {
 
     /** Identyfikator rodziny w {@link VeloceRecipeFamilies}. */
     public static final String ID = "create";
-
-    /**
-     * Typy Create obslugiwane przez Veloce (v1, itemowe).
-     *
-     * <p>Kolejnosc jest stala, bo sluzy tez diagnostyce (log przy starcie).
-     */
-    private static final AllRecipeTypes[] ITEM_TYPES = {
-            AllRecipeTypes.CRUSHING,
-            AllRecipeTypes.MILLING,
-            AllRecipeTypes.CUTTING,
-            AllRecipeTypes.PRESSING,
-            AllRecipeTypes.MIXING,
-            AllRecipeTypes.COMPACTING,
-            AllRecipeTypes.BASIN,
-            AllRecipeTypes.MECHANICAL_CRAFTING,
-    };
 
     private static Set<RecipeType<?>> resolved;
 
@@ -64,18 +49,39 @@ public final class CreateRecipeFamily {
         });
     }
 
+    /** Mlyn: receptury {@code create:milling}. */
+    public static RecipeType<?> milling() {
+        return AllRecipeTypes.MILLING.getType();
+    }
+
+    /** Piła: receptury {@code create:cutting}. */
+    public static RecipeType<?> cutting() {
+        return AllRecipeTypes.CUTTING.getType();
+    }
+
+    /** Kruszarka: receptury {@code create:crushing} (wyniki losowe). */
+    public static RecipeType<?> crushing() {
+        return AllRecipeTypes.CRUSHING.getType();
+    }
+
+    /** Mechanical crafter: receptury {@code create:mechanical_crafting}. */
+    public static RecipeType<?> mechanicalCrafting() {
+        return AllRecipeTypes.MECHANICAL_CRAFTING.getType();
+    }
+
     /**
-     * Typy receptur Create, rozwiazywane leniwie i raz na proces.
+     * Typy receptur Create obslugiwane w v1.
      *
-     * <p>Wolno wolac tylko gdy Create jest obecne - metoda dotyka typu obcego
-     * moda.
+     * <p>Wolno wolac tylko gdy Create jest obecne - metoda dotyka typow obcego
+     * moda. Wynik jest liczony raz i zapamietany.
      */
     public static Set<RecipeType<?>> types() {
         if (resolved == null) {
             Set<RecipeType<?>> out = new LinkedHashSet<>();
-            for (AllRecipeTypes type : ITEM_TYPES) {
-                out.add(type.getType());
-            }
+            out.add(milling());
+            out.add(cutting());
+            out.add(crushing());
+            out.add(mechanicalCrafting());
             resolved = Set.copyOf(out);
         }
         return resolved;

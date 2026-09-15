@@ -286,6 +286,10 @@ receptury, koszt FE, etykieta).
 | `veloce_alchemistry_combiner_module` | `alchemistry:combiner` (N składników) | 10 000 FE/operację |
 | `veloce_alchemistry_fission_module` | `alchemistry:fission` (1 → 2 wyniki) | 15 000 FE/operację |
 | `veloce_alchemistry_fusion_module` | `alchemistry:fusion` (2 → 1) | 15 000 FE/operację |
+| `veloce_create_millstone_module` | `create:milling` | kinetyka |
+| `veloce_create_saw_module` | `create:cutting` | kinetyka |
+| `veloce_create_crushing_module` | `create:crushing` (wyniki losowe) | kinetyka |
+| `veloce_create_mechanical_crafter_module` | `create:mechanical_crafting` (siatki > 3×3) | kinetyka |
 
 Koszty są przepisane z oryginalnych maszyn (Mekanism: 20 FE/t × 200 t;
 Alchemistry: `energyPerTick` × `ticksPerOperation`), bufory odpowiednio
@@ -294,8 +298,17 @@ kablem (capability `EnergyStorage`), a kliknięcie pokazuje stan akumulatora na
 pasku akcji. Sawmill planuje tylko wynik główny, a dodatkowy dorzuca po rzucie
 kością; fission planuje oba wyniki, bo oba są gwarantowane.
 
-Dissolver (probabilistyczny `ProbabilitySet`) i maszyny na płynach/chemikaliach
-czekają na osobną politykę probabilistyki i warstwę płynów.
+Maszyny Create są **kinetyczne**, nie na FE: wał napędowy wchodzi od dołu
+(os obrotu Y), a „zasilenie" to `getSpeed() != 0` (Create sam zwraca 0 przy
+overstress i zatrzymanej sieci). Pobór SU jest **stały** niezależnie od RPM —
+`calculateStressApplied()` dzieli stałą przez prędkość, bo `CStress.setImpact`
+rzuca wyjątek dla bloków spoza Create. Rury Veloce łączą się z każdej strony,
+niezależnie od napędu. Receptury z płynami i wymagające ciepła (blaze burner)
+są w v1 pomijane — nie mamy czym ich „opłacić".
+
+Dissolver (probabilistyczny `ProbabilitySet`), press/mixer/basin Create (pracują
+na zawartości Basenu) oraz maszyny na płynach/chemikaliach czekają na osobną
+politykę probabilistyki i warstwę płynów.
 
 Jak dołożyć kolejny moduł — cała procedura:
 

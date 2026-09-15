@@ -526,14 +526,24 @@ def validate_node_blocks():
     wystawione sieci jako zwykly magazyn. Oba bledy sa niewidoczne dla
     kompilatora - dlatego pilnuje ich build.
     """
-    block_dir = "src/com/craftingveloce/block"
-    if not os.path.isdir(block_dir):
+    # Bloki rdzenia ORAZ bloki modulow: maszyna z compat/ tez jest wezlem sieci
+    # (inaczej crafter by jej nie widzial), a latwo o tym zapomniec wlasnie
+    # w module, ktory dopiero powstaje.
+    block_dirs = ["src/com/craftingveloce/block"]
+    block_dirs += sorted(glob.glob("src/com/craftingveloce/compat/*/block"))
+    files = []
+    for block_dir in block_dirs:
+        if not os.path.isdir(block_dir):
+            continue
+        files += [os.path.join(block_dir, name)
+                  for name in sorted(os.listdir(block_dir))
+                  if name.endswith(".java")]
+    if not files:
         return
     nodes, hooked = [], []
-    for name in sorted(os.listdir(block_dir)):
-        if not name.endswith(".java"):
-            continue
-        text = open(os.path.join(block_dir, name), encoding="utf-8").read()
+    for path in files:
+        name = os.path.relpath(path, "src/com/craftingveloce")
+        text = open(path, encoding="utf-8").read()
         is_interface = re.search(r"class\s+\w+[^{]*\bimplements\b[^{]*\bVeloceNetworkNode\b",
                                  text) is not None
         has_hook = "VeloceNodeBlocks.onNodePlaced(" in text
