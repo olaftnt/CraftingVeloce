@@ -164,8 +164,20 @@ public class CraftingVeloceMod {
                     // Powrot do swiata po wyjsciu do menu. releaseAll() ustawia
                     // flage "serwer sie zamyka" i ktos musi ja zdjac - inaczej
                     // force-loading chunkow zostaje wylaczony do konca sesji.
-                    if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel) {
+                    if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                         com.craftingveloce.crafting.VeloceCraftingCache.onLevelLoaded();
+                        // Sprzatanie sierocych force-loadow po starszej wersji
+                        // kodu. Minecraft zapisuje setChunkForced TRWALE, wiec
+                        // bez tego chunki zostawaly zaladowane na zawsze, mimo
+                        // ze nasz raport pokazywal zero.
+                        int orphans = com.craftingveloce.network.pipe.VelocePipeNetworkManager
+                                .get(sl).releaseOrphanForceLoads(sl);
+                        if (orphans > 0) {
+                            com.craftingveloce.util.VeloceLog.Network.success(
+                                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                                    "usunieto %d sierocych force-loadow przy wejsciu do swiata",
+                                    orphans);
+                        }
                     }
                 });
 

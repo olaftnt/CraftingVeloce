@@ -52,7 +52,12 @@ public class CVDebugCommand {
                     .then(Commands.literal("off")
                         .executes(ctx -> toggleChunkMonitor(ctx, false)))
                     .then(Commands.literal("status")
-                        .executes(CVDebugCommand::executeChunkStatus)))
+                        .executes(CVDebugCommand::executeChunkStatus))
+                    // Recznie: zwolnij sieroce force-loady. Minecraft zapisuje
+                    // setChunkForced TRWALE, wiec chunki wymuszone przez starsza
+                    // wersje kodu zostaly zaladowane na zawsze.
+                    .then(Commands.literal("cleanup")
+                        .executes(CVDebugCommand::cleanupOrphans)))
         );
     }
 
@@ -136,6 +141,26 @@ public class CVDebugCommand {
         return 1;
     }
 
+    /**
+     * Recznie zwalnia sieroce force-loady.
+     *
+     * <p>Minecraft zapisuje {@code setChunkForced} TRWALE w danych swiata,
+     * a nasza ksiegowosc zyje tylko w pamieci - wiec chunki wymuszone przez
+     * starsza wersje kodu zostaly zaladowane na zawsze, mimo ze nasz raport
+     * pokazywal zero. Ta komenda je sprzata.
+     */
+    private static int cleanupOrphans(CommandContext<CommandSourceStack> context) {
+        ServerLevel sl = context.getSource().getLevel();
+        int before = com.craftingveloce.network.pipe.VeloceChunkLoader.gameForcedCount(sl);
+        int orphans = VelocePipeNetworkManager.get(sl).releaseOrphanForceLoads(sl);
+        int after = com.craftingveloce.network.pipe.VeloceChunkLoader.gameForcedCount(sl);
+        context.getSource().sendSuccess(() -> Component.literal(
+                "§8[§6Veloce§8] sprzatanie: gra trzymala §f" + before
+                        + " §7wymuszonych, zwolniono sierot: §f" + orphans
+                        + "§7, zostalo: §f" + after), false);
+        return 1;
+    }
+
     /** Krotki status: czy monitor dziala i ile chunkow trzymamy. */
     private static int executeChunkStatus(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
@@ -185,6 +210,16 @@ public class CVDebugCommand {
                         + " §7| zcache'owanych opisow: §f" + world.cachedComponentCount()
                         + " §7| wymuszonych chunkow: §f"
                         + com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(sl)), false);
+        // ROZJAZD: gra moze trzymac wiecej, niz my wiemy - Minecraft zapisuje
+        // setChunkForced TRWALE, a nasza ksiegowosc tylko w pamieci.
+        int gameForced = com.craftingveloce.network.pipe.VeloceChunkLoader.gameForcedCount(sl);
+        int oursForced = com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(sl);
+        if (gameForced != oursForced) {
+            source.sendSuccess(() -> Component.literal(
+                    "§c§lUWAGA: §cgra trzyma §f" + gameForced
+                            + " §cwymuszonych chunkow, a my tylko §f" + oursForced
+                            + "§c. Napraw: §f/cv chunk cleanup"), false);
+        }
 
         if (world.pipeCount() == 0) {
             source.sendSuccess(() -> Component.literal(

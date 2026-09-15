@@ -375,6 +375,68 @@ public final class VeloceChunkLoader {
         return applied == null ? 0 : applied.size();
     }
 
+    /**
+     * Zwalnia "sieroty": chunki wymuszone, ktorych nikt juz nie pilnuje.
+     *
+     * <p><b>Skad sie biara.</b> {@code ServerLevel.setChunkForced()} jest
+     * zapisywany przez Minecraft TRWALE, w danych swiata. Nasza ksiegowosc
+     * ({@code APPLIED}, {@code REFS}) zyje tylko w pamieci i resetuje sie przy
+     * restarcie. Jesli wiec kiedykolwiek wymusilismy chunk i swiat zostal
+     * zapisany, a potem stracilismy o nim wiedze, taki chunk zostaje
+     * wymuszony NA ZAWSZE.
+     *
+     * <p>Dokladnie to sie stalo: starsza wersja kodu wymuszala chunk KAZDEJ
+     * rury. Po restarcie widzielismy "wymuszonych chunkow: 0", a gra trzymala
+     * kilkadziesiat chunkow wzdloz calej sieci - i nic nie moglo ich zwolnic,
+     * bo nie byly niczyje.
+     *
+     * <p><b>Jak je rozpoznajemy.</b> Bierzemy liste chunkow, ktore NAPRAWDE
+     * wymusil swiat ({@code level.getForcedChunks()}), odejmujemy te, ktore
+     * mamy w swojej ksiegowosci, i zostawiamy tylko te, ktore leza w obrebie
+     * naszej sieci. Chunk wymuszony poza nasza siecia mogl zostac ustawiony
+     * przez {@code /forceload} gracza - tego NIE ruszamy.
+     *
+     * @param candidateChunks chunki nalezace do naszych sieci
+     * @return ile sierot zwolniono
+     */
+    public static int releaseOrphans(ServerLevel level, Set<Long> candidateChunks) {
+        if (frozen) {
+            return 0;
+        }
+        Set<Long> applied = APPLIED.get(level);
+        List<Long> orphans = new ArrayList<>();
+        for (long key : level.getForcedChunks()) {
+            if (applied != null && applied.contains(key)) {
+                continue;   // nasz, swiadomie trzymany
+            }
+            if (!candidateChunks.contains(key)) {
+                continue;   // poza nasza siecia - mogl byc /forceload gracza
+            }
+            orphans.add(key);
+        }
+        for (long key : orphans) {
+            level.setChunkForced(ChunkPos.getX(key), ChunkPos.getZ(key), false);
+            VeloceLog.Network.success(VeloceLog.Side.SERVER,
+                    "zwolniono SIEROTE: chunk[%d, %d] byl wymuszony bez wlasciciela "
+                            + "(pozostalosc po starszej wersji)",
+                    ChunkPos.getX(key), ChunkPos.getZ(key));
+        }
+        if (!orphans.isEmpty()) {
+            VeloceLog.Network.success(VeloceLog.Side.SERVER,
+                    "sprzatnieto %d sierocych force-loadow", orphans.size());
+        }
+        return orphans.size();
+    }
+
+    /** Ile chunkow jest wymuszonych w tym swiecie (stan gry, nie nasz). */
+    public static int gameForcedCount(ServerLevel level) {
+        int n = 0;
+        for (long ignored : level.getForcedChunks()) {
+            n++;
+        }
+        return n;
+    }
+
     /** Zwalnia wszystko, co kiedykolwiek wymusilismy na tym swiecie. */
     public static void releaseAll(ServerLevel level) {
         Set<Long> applied = APPLIED.get(level);

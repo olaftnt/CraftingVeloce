@@ -475,6 +475,26 @@ public class VelocePipeNetworkManager extends SavedData {
         }
     }
 
+    /**
+     * Zwalnia sieroce force-loady: chunki wymuszone, ktorych nikt nie pilnuje.
+     *
+     * <p>Minecraft zapisuje {@code setChunkForced} TRWALE w danych swiata,
+     * a nasza ksiegowosc zyje tylko w pamieci. Starsza wersja kodu wymuszala
+     * chunk kazdej rury - po restarcie zostaly wiec chunki trzymane na zawsze,
+     * choc nasz raport pokazywal zero.
+     *
+     * @return ile sierot zwolniono
+     */
+    public int releaseOrphanForceLoads(ServerLevel level) {
+        Set<Long> tracked = new HashSet<>();
+        for (VelocePipeNetwork net : networks.values()) {
+            for (var cp : net.getTrackedChunks()) {
+                tracked.add(ChunkPos.asLong(cp.x, cp.z));
+            }
+        }
+        return VeloceChunkLoader.releaseOrphans(level, tracked);
+    }
+
     /** Zwalnia kolejke przy zamykaniu/rozladowaniu swiata. */
     public void clearPendingRebuilds() {
         pendingRebuilds.clear();
