@@ -320,9 +320,31 @@ public final class VeloceRecipeRegistry {
         long start = System.nanoTime();
         Map<Item, List<CraftingEntry>> built = buildIndex(manager, level, FURNACE_TYPES);
         FURNACE_CACHE.put(manager, built);
-        VeloceLog.Craft.success(VeloceLog.Side.SERVER,
-                "furnace recipe index built: %d item(s), %d ms",
-                built.size(), (System.nanoTime() - start) / 1_000_000L);
+
+        // SAMOKONTROLA (po to, zeby ten blad nie wrocil po cichu).
+        //
+        // Pusty indeks przy niepustej liczbie receptur pieca w menedzerze to
+        // NASZ blad filtrowania, a nie "modpack nie ma przepalania". Wlasnie
+        // tak bylo: brama w addHolder sprawdzala liste typow craftingowych,
+        // wiec odrzucala KAZDA recepture pieca i log mowil spokojnie
+        // "0 item(s)" - a gracz nie mial ani jednej receptury przepalania.
+        int inManager = 0;
+        for (RecipeHolder<?> h : manager.getRecipes()) {
+            if (FURNACE_TYPES.contains(h.value().getType())) {
+                inManager++;
+            }
+        }
+        if (built.isEmpty() && inManager > 0) {
+            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                    "furnace index jest PUSTY, choc menedzer receptur ma %d receptur pieca"
+                            + " - to blad naszego filtrowania, nie brak przepalania."
+                            + " Przepalanie (np. charcoal z logow) NIE bedzie craftowalne.",
+                    inManager);
+        } else {
+            VeloceLog.Craft.success(VeloceLog.Side.SERVER,
+                    "furnace recipe index built: %d item(s) z %d recipe(s), %d ms",
+                    built.size(), inManager, (System.nanoTime() - start) / 1_000_000L);
+        }
         return built;
     }
 
@@ -359,7 +381,7 @@ public final class VeloceRecipeRegistry {
         // i to na watku serwera, przy pierwszym uzyciu indeksu.
         for (RecipeHolder<?> holder : manager.getRecipes()) {
             if (types.contains(holder.value().getType())) {
-                addHolder(holder, registries, index, false);
+                addHolder(holder, registries, index, false, types);
             }
         }
 
@@ -370,7 +392,7 @@ public final class VeloceRecipeRegistry {
                 if (!TRUSTED_MOD_NAMESPACES.contains(id.getNamespace())) {
                     continue;
                 }
-                addHolder(holder, registries, index, /* trusted */ true);
+                addHolder(holder, registries, index, /* trusted */ true, types);
             }
         }
 
@@ -384,11 +406,27 @@ public final class VeloceRecipeRegistry {
         return result;
     }
 
+    /**
+     * Dodaje recepture do indeksu, jesli jej typ jest na podanej liscie.
+     *
+     * <p><b>BUG, ktory to naprawia (brak recept pieca).</b> Brama byla zaszyta
+     * na {@code FREE_TYPES} (typy craftingowe) zamiast uzywac listy, ktora
+     * przekazal wolajacy. Efekt: przy budowie indeksu PIECA kazda receptura
+     * smelting/blasting/smoking byla odrzucana przez te sama brame, ktora
+     * miala przepuscic tylko typy pieca - indeks wychodzil PUSTY
+     * ("furnace recipe index built: 0 item(s)"), wiec gracz nie widzial ani
+     * jednej receptury przepalania (np. charcoal z logow) i auto-crafter nie
+     * mial czego zaplanowac.
+     *
+     * <p>Teraz brama to dokladnie ten sam zbior, ktorym wolajacy filtrowal
+     * receptury - jedno zrodlo, wiec nie moze sie to rozjesc.
+     */
     private static void addHolder(RecipeHolder<?> holder, HolderLookup.Provider registries,
-                                  Map<Item, List<CraftingEntry>> index, boolean trusted) {
+                                  Map<Item, List<CraftingEntry>> index, boolean trusted,
+                                  Set<RecipeType<?>> allowedTypes) {
         var recipe = holder.value();
 
-        if (!trusted && !isFreeType(recipe.getType())) {
+        if (!trusted && !allowedTypes.contains(recipe.getType())) {
             return;
         }
         // Receptury "special" (np. dye armor, map cloning) nie maja sensownego
@@ -429,14 +467,6 @@ public final class VeloceRecipeRegistry {
                 recipe.getType()
         );
         index.computeIfAbsent(out, k -> new ArrayList<>()).add(entry);
-    }
-
-    private static boolean isFreeType(RecipeType<?> type) {
-        if (FREE_TYPES.contains(type)) {
-            return true;
-        }
-        ResourceLocation key = BuiltInRegistries.RECIPE_TYPE.getKey(type);
-        return key != null && TRUSTED_MOD_NAMESPACES.contains(key.getNamespace());
     }
 
     /** Czysci cache - wywolywane przy zmianie swiata/serwera. */
