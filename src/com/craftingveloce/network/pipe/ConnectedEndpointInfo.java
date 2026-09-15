@@ -95,7 +95,12 @@ public class ConnectedEndpointInfo {
      * a oszczedza skanowanie calej sieci kilka razy na sekunde.
      */
     public void refreshIfLoadedThrottled(ServerLevel level, long gameTime) {
-        if (lastScanTick != Long.MIN_VALUE && gameTime - lastScanTick < SCAN_INTERVAL_TICKS) {
+        // `gameTime >= lastScanTick` nie jest zbedne: gdyby czas swiata cofnal sie
+        // (wczytanie starszego save'a), roznica bylaby UJEMNA, a wiec mniejsza
+        // od interwalu - i skan bylby pomijany bez konca.
+        if (lastScanTick != Long.MIN_VALUE
+                && gameTime >= lastScanTick
+                && gameTime - lastScanTick < SCAN_INTERVAL_TICKS) {
             return;
         }
         lastScanTick = gameTime;

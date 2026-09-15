@@ -641,6 +641,14 @@ public final class VeloceCraftingCache {
         if (shuttingDown) {
             return;
         }
+        // Podwojne zabezpieczenie. Gdyby shuttingDown i frozen kiedys sie
+        // rozjechaly, VeloceChunkLoader.retain() nie zabraloby referencji,
+        // ale petla ponizej i tak dopisalaby chunk do forcedChunks - a
+        // pozniejszy release() zdjalby wtedy referencje NALEZACA KOMUS INNEMU.
+        // Warunek lokalny jest tanszy niz ta klasa bledow.
+        if (com.craftingveloce.network.pipe.VeloceChunkLoader.isFrozen()) {
+            return;
+        }
         Set<BlockPos> toLoad = new HashSet<>();
 
         // Priorytet: wezly sieci (terminal, crafter, extractor).
