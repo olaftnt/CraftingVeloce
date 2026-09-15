@@ -283,33 +283,76 @@ węzeł), więc wspólny warunek dostępu musi być identyczny — inaczej jedna
 komenda mogłaby po cichu decydować o dostępie do wszystkich.
 
 ### ClientTerminalHelper
-Centralny dispatcher dla client-side packet handlerów:
-- `openTerminalScreen(BlockPos)` — otwiera VeloceTerminalScreen
-- `handleSyncCounts(Map<Item,Long>)` — routuje do aktywnego ekranu (terminal lub filter picker)
-- `openFilterPickerScreen(BlockPos, int)` — otwiera VeloceFilterPickerScreen
-- `handleSyncExtractorFilters(BlockPos, List<ItemStack>)` — update slotów w extractorze
-- `openCraftingTableScreen(BlockPos, Set<Item>)` — otwiera VeloceCraftingTableScreen
-- `updateCraftingTableState(BlockPos, Set<Item>)` — live update crafting table GUI
+
+Jedyne miejsce, w którym client-side handlery pakietów dotykają ekranów.
+Wcześniej każdy pakiet sam szukał swojego ekranu (`instanceof` w kilku
+miejscach), więc dodanie ekranu wymagało pamiętania o wszystkich.
+
+Wszystkie metody publiczne (stan na teraz — pilnuj, żeby ta lista nie
+została w tyle, tak jak wcześniej lista pakietów i sekcja GUI):
+
+- `openTerminalScreen(BlockPos pos)`
+- `clearSavedTerminalViews()` — czyści zapamiętane widoki terminali (wyjście ze świata)
+- `handleSyncCounts(Map<Item, Long> itemCounts)` / `handleSyncCounts(itemCounts, craftableCounts)`
+- `openFilterPickerScreen(BlockPos pos, int filterIndex)`
+- `reopenFilterHostScreen(BlockPos pos)` — powrót z pickera do GUI bloku,
+  z którego go otwarto (pyta żywe menu gracza, więc obsługuje każdy blok z filtrami)
+- `handleSyncExtractorFilters(BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting)`
+- `getClientHitResult()` — co gracz widzi pod kursorem (klient)
+- `openCraftingTableScreen(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents)`
+- `updateCraftingTableState(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes)`
+- `handleCraftableCounts(BlockPos pos, Map<Item, Long> counts, boolean complete)` — odpowiedź serwera z liczbami "ile da się dorobić"
+- `openControllerScreen(BlockPos pos, Map<Item, Long> stock, Set<Item> craftable, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnaceInNetwork, boolean furnacePowered, Map<Item, Integer> hotbar)`
+
+> Uwaga na `disabledItems`: crafter działa w modelu **opt-out**, więc to zbiór
+> WYJĄTKÓW (wyłączonych), a nie lista włączonych. Odwrócenie tego znaczenia było
+> już raz źródłem błędu.
 
 ---
 
 ## 📊 VelocePipeNetworkManager
 
-`SavedData` przechowywany w `ServerLevel`. Skanuje i buduje grafy sieci rur.
+`SavedData` trzymany w `ServerLevel` (`level.getDataStorage()`), więc każdy
+wymiar ma własną instancję i nie ma tu żadnego stanu statycznego.
 
-**Typy węzłów:**
-- **Terminal** (`VeloceTomTerminalBlock`, `VeloceExtractorBlock`, `VeloceCraftingTableBlock`) — dostęp do pełnej sieci
-- **Endpoint** — zwykłe inventory (skrzynia, piec), Refined Storage network
+**Płaska struktura, nie obiekty sieci.**
+Źródłem prawdy o połączeniach jest `VelocePipeWorld`: mapa „pozycja rury ->
+realne sąsiedztwo". Obiekty `VelocePipeNetwork` są tylko WYNIKIEM zapytania o
+komponent tej struktury — nie ma już scalania ani rozdzielania sieci.
+Dzięki temu rozcięcie sieci nie wymaga zgadywania podziału: komponenty
+rozdzielają się same, bo wynikają wprost z połączeń.
+
+Są DWIE ścieżki budowy sieci i **obie muszą respektować te same reguły**:
+`scanAndBuildNetwork()` (skan świata) oraz `toNetwork()` (odbudowa z
+zapamiętanego komponentu — ta działa w praktyce). Rozjazd między nimi był już
+kilka razy źródłem błędów, dlatego reguły (tryb Pull, strony rozłączone,
+rodzaje węzłów) siedzą we wspólnych helperach, a nie w obu pętlach osobno.
+
+**Typy węzłów — jedyne źródło prawdy to `VeloceNodeBlocks.isNode()`.**
+Nie wypisuj tej listy po raz drugi (właśnie tak powstały dwie nieaktualne
+kopie w `/cv debug`):
+`VeloceTomTerminalBlock`, `VeloceControllerBlock`, `VeloceCraftingTableBlock`,
+`VeloceExtractorBlock`, `VeloceVelocityFurnaceBlock`,
+`VeloceElectricFurnaceBlock`, `VeloceThresholdSensorBlock`.
+
+**Endpoint** to zwykły magazyn podłączony do rury: skrzynia / inventory
+NeoForge, sieć Refined Storage albo bufor craftera. Endpointy pamiętają
+ostatnio znaną zawartość, żeby terminal widział skrzynię także wtedy, gdy jej
+chunk nie jest w symulacji.
 
 **Kluczowe metody:**
-- `get(ServerLevel)` — pobiera singleton dla danego wymiaru
+- `get(ServerLevel)` — instancja dla wymiaru
 - `getNetworkForTerminal(ServerLevel, BlockPos)` — sieć dla terminala
-- `onTerminalPlaced/Removed(ServerLevel, BlockPos)` — update przy zmianie świata
-- `onPipeBroken(ServerLevel, BlockPos)` — rebuild sieci po zniszczeniu rury
+- `onTerminalPlaced/Removed(ServerLevel, BlockPos)` — węzeł dołączony/odłączony
+- `onPipeBroken(ServerLevel, BlockPos)` — kolejka przebudowy (NIE robi BFS od razu)
+- `refreshInsertModes(ServerLevel, net, pipes)` — jedna wspólna reguła trybów
+  wstawiania dla obu ścieżek budowy
 
 **VelocePipeNetwork:**
-- `getAllItemCounts(ServerLevel)` → `Map<Item, Long>` — agreguje wszystkie inventory w sieci
-- `extractItem(ServerLevel, Item, int)` — wyciąga item z dowolnego inventory w sieci
+- `getAllItemCounts(ServerLevel)` → `Map<Item, Long>` — agregat z cache (TTL 10 ticków)
+- `capacityFor(ServerLevel, Item)` — ile jeszcze wejdzie (0 = dowód, że nie wejdzie;
+  `-1` = nie wiemy — tych dwóch NIE wolno traktować zamiennie)
+- `extractItem(ServerLevel, Item, int)` — wyciąga item z pierwszego magazynu, który go ma
 
 ---
 
