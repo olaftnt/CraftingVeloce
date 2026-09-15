@@ -50,6 +50,11 @@ public record CraftingTableCycleRecipePKT(BlockPos pos, Item item, ResourceLocat
     public static void handle(CraftingTableCycleRecipePKT pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (ctx.player() instanceof ServerPlayer sp) {
+                // Bezpiecznik odleglosci - spojnie z pozostalymi pakietami.
+                if (sp.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
+                        pkt.pos().getZ() + 0.5) > 64.0) {
+                    return;
+                }
                 ServerLevel level = sp.serverLevel();
                 BlockEntity be = level.getBlockEntity(pkt.pos());
                 if (be instanceof VeloceCraftingTableBlockEntity ctBE) {

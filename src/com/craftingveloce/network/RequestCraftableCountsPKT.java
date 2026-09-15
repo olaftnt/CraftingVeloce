@@ -69,6 +69,14 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             if (!(context.player() instanceof ServerPlayer player)) {
                 return;
             }
+            // Nie liczymy liczb dla terminala na drugim koncu swiata.
+            // Kazdy inny nasz pakiet po stronie serwera ma taki bezpiecznik -
+            // ten go nie mial, a jako jedyny zleca serwerowi realna prace
+            // (planowanie drzewa receptur dla widocznej strony).
+            if (player.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
+                    pkt.pos().getZ() + 0.5) > 64.0) {
+                return;
+            }
             BlockEntity be = player.level().getBlockEntity(pkt.pos());
             if (!(be instanceof VeloceTomTerminalBlockEntity terminal)) {
                 return;
