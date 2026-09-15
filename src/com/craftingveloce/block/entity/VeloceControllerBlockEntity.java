@@ -1,6 +1,7 @@
 package com.craftingveloce.block.entity;
 
 import com.craftingveloce.crafting.VeloceCraftingRegistry;
+import com.craftingveloce.crafting.VeloceHeatSources;
 import com.craftingveloce.crafting.VeloceRecipeRegistry;
 import com.craftingveloce.init.VeloceRegistry;
 import com.craftingveloce.network.OpenControllerScreenPKT;
@@ -71,6 +72,15 @@ public class VeloceControllerBlockEntity extends BlockEntity {
                 ? Set.of()
                 : VeloceCraftingRegistry.getAllEnabledItems(sl, net);
 
+        // PIEC: receptury pieca sa uzywalne TYLKO gdy w sieci stoi ZASILONY piec.
+        // Rozrozniamy trzy stany, bo kazdy znaczy dla gracza cos innego:
+        //   brak pieca      -> "tego nie da sie przepalic"
+        //   piec bez paliwa -> "receptura jest, ale piec stoi" (podpowiedz!)
+        //   piec zasilony   -> "mozna przepalac"
+        Set<Item> furnaceCraftable = VeloceRecipeRegistry.getAllFurnaceCraftableItems(sl);
+        boolean furnaceInNetwork = net != null && VeloceHeatSources.hasAnyHeatSource(sl, net);
+        boolean furnacePowered = net != null && VeloceHeatSources.hasPower(sl, net);
+
         // Hotbar gracza - ktore itemy ma pod reka (kolorowanie ikon).
         Map<Item, Integer> hotbar = new HashMap<>();
         for (int slot = 0; slot < 9; slot++) {
@@ -81,7 +91,8 @@ public class VeloceControllerBlockEntity extends BlockEntity {
         }
 
         PacketDistributor.sendToPlayer(player, new OpenControllerScreenPKT(
-                this.getBlockPos(), stock, craftable, craftingEnabled, hotbar));
+                this.getBlockPos(), stock, craftable, craftingEnabled,
+                furnaceCraftable, furnaceInNetwork, furnacePowered, hotbar));
     }
 
     @Override

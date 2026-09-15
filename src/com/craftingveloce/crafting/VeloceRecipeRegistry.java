@@ -188,6 +188,25 @@ public final class VeloceRecipeRegistry {
         return getIndex(serverLevel).keySet();
     }
 
+    /**
+     * Itemy, ktore da sie uzyskac w PIECU (smelting / blasting / smoking).
+     *
+     * <p>To osobny zbior niz {@link #getAllCraftableItems} i celowo nie jest
+     * z nim mieszany: receptura pieca wymaga ZASILONEGO pieca w sieci, a
+     * receptura craftingu nie. Kontroler musi wiec umiec powiedziec "ten item
+     * ma recepture pieca, ale piec stoi" - a do tego potrzebuje tej listy
+     * niezaleznie od tego, czy piec jest w sieci.
+     *
+     * <p><b>Uwaga:</b> ta metoda NIE sprawdza, czy jakikolwiek piec istnieje.
+     * To pytanie nalezy do {@link VeloceHeatSources}.
+     */
+    public static Set<Item> getAllFurnaceCraftableItems(Level level) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return Set.of();
+        }
+        return getFurnaceIndex(serverLevel).keySet();
+    }
+
     /** Receptury dla itemu, posortowane tak, by pierwsza byla "domyslna". */
     public static List<CraftingEntry> getOrdered(Level level, Item item, @Nullable ResourceLocation preferred) {
         List<CraftingEntry> all = getRecipesFor(level, item);

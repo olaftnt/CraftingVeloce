@@ -20,8 +20,15 @@ import java.util.Set;
  * <p>Niesie:
  * <ul>
  *   <li>{@code stock} - ile sztuk kazdego itemu jest fizycznie w sieci</li>
- *   <li>{@code craftable} - itemy z receptura wykonywalna bez energii</li>
- *   <li>{@code craftingEnabled} - itemy, ktore crafter potrafi zrobic (wlaczone)</li>
+ *   <li>{@code craftable} - itemy z receptura wykonywalna bez energii
+ *       (crafting / stonecutting / smithing)</li>
+ *   <li>{@code craftingEnabled} - itemy, ktore crafter realnie potrafi zrobic
+ *       (wlaczone; model opt-out, wiec to jest "wszystko oprocz wylaczonych")</li>
+ *   <li>{@code furnaceCraftable} - itemy z receptura PIECA (smelting /
+ *       blasting / smoking); niezaleznie od tego, czy piec jest w sieci</li>
+ *   <li>{@code furnaceInNetwork} / {@code furnacePowered} - czy w sieci stoi
+ *       jakikolwiek piec i czy ktorys jest zasilony. Trzy stany daja trzy
+ *       rozne komunikaty: brak pieca, piec bez paliwa, piec gotowy</li>
  *   <li>{@code hotbar} - zawartosc hotbara gracza (do kolorow ikon)</li>
  * </ul>
  */
@@ -29,6 +36,9 @@ public record OpenControllerScreenPKT(BlockPos pos,
                                       Map<Item, Long> stock,
                                       Set<Item> craftable,
                                       Set<Item> craftingEnabled,
+                                      Set<Item> furnaceCraftable,
+                                      boolean furnaceInNetwork,
+                                      boolean furnacePowered,
                                       Map<Item, Integer> hotbar)
         implements CustomPacketPayload {
 
@@ -47,15 +57,15 @@ public record OpenControllerScreenPKT(BlockPos pos,
             buf.writeVarLong(e.getValue());
         }
 
-        buf.writeInt(pkt.craftable.size());
-        for (Item i : pkt.craftable) {
-            buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(i));
-        }
+        // Trzy zbiory itemow kodujemy tym samym kodem - wczesniej bylo to
+        // trzy razy przeklejone, wiec kazda zmiana formatu wymagala trzech
+        // zgodnych poprawek.
+        writeItems(buf, pkt.craftable);
+        writeItems(buf, pkt.craftingEnabled);
+        writeItems(buf, pkt.furnaceCraftable);
 
-        buf.writeInt(pkt.craftingEnabled.size());
-        for (Item i : pkt.craftingEnabled) {
-            buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(i));
-        }
+        buf.writeBoolean(pkt.furnaceInNetwork);
+        buf.writeBoolean(pkt.furnacePowered);
 
         buf.writeInt(pkt.hotbar.size());
         for (Map.Entry<Item, Integer> e : pkt.hotbar.entrySet()) {
@@ -77,23 +87,12 @@ public record OpenControllerScreenPKT(BlockPos pos,
             }
         }
 
-        int craftableSize = buf.readInt();
-        Set<Item> craftable = new HashSet<>();
-        for (int i = 0; i < craftableSize; i++) {
-            Item item = BuiltInRegistries.ITEM.get(buf.readResourceLocation());
-            if (item != null) {
-                craftable.add(item);
-            }
-        }
+        Set<Item> craftable = readItems(buf);
+        Set<Item> craftingEnabled = readItems(buf);
+        Set<Item> furnaceCraftable = readItems(buf);
 
-        int enabledSize = buf.readInt();
-        Set<Item> craftingEnabled = new HashSet<>();
-        for (int i = 0; i < enabledSize; i++) {
-            Item item = BuiltInRegistries.ITEM.get(buf.readResourceLocation());
-            if (item != null) {
-                craftingEnabled.add(item);
-            }
-        }
+        boolean furnaceInNetwork = buf.readBoolean();
+        boolean furnacePowered = buf.readBoolean();
 
         int hotbarSize = buf.readInt();
         Map<Item, Integer> hotbar = new HashMap<>();
@@ -105,7 +104,27 @@ public record OpenControllerScreenPKT(BlockPos pos,
             }
         }
 
-        return new OpenControllerScreenPKT(pos, stock, craftable, craftingEnabled, hotbar);
+        return new OpenControllerScreenPKT(pos, stock, craftable, craftingEnabled,
+                furnaceCraftable, furnaceInNetwork, furnacePowered, hotbar);
+    }
+
+    private static void writeItems(FriendlyByteBuf buf, Set<Item> items) {
+        buf.writeInt(items.size());
+        for (Item i : items) {
+            buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(i));
+        }
+    }
+
+    private static Set<Item> readItems(FriendlyByteBuf buf) {
+        int size = buf.readInt();
+        Set<Item> out = new HashSet<>();
+        for (int i = 0; i < size; i++) {
+            Item item = BuiltInRegistries.ITEM.get(buf.readResourceLocation());
+            if (item != null) {
+                out.add(item);
+            }
+        }
+        return out;
     }
 
     @Override
@@ -116,6 +135,7 @@ public record OpenControllerScreenPKT(BlockPos pos,
     public static void handle(OpenControllerScreenPKT pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> com.craftingveloce.client.ClientTerminalHelper
                 .openControllerScreen(pkt.pos(), pkt.stock(), pkt.craftable(),
-                        pkt.craftingEnabled(), pkt.hotbar()));
+                        pkt.craftingEnabled(), pkt.furnaceCraftable(),
+                        pkt.furnaceInNetwork(), pkt.furnacePowered(), pkt.hotbar()));
     }
 }

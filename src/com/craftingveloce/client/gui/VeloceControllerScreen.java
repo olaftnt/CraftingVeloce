@@ -47,14 +47,21 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      * byla z jezyka gry, a nie zaszyta w kodzie.
      */
     public enum Filter {
-        ALL("gui.craftingveloce.controller.filter.all"),
-        AVAILABLE("gui.craftingveloce.controller.filter.available"),
-        NOT_AVAILABLE("gui.craftingveloce.controller.filter.notAvailable");
+        ALL("gui.craftingveloce.controller.filter.all",
+                "gui.craftingveloce.controller.filter.all.tip"),
+        AVAILABLE("gui.craftingveloce.controller.filter.available",
+                "gui.craftingveloce.controller.filter.available.tip"),
+        NOT_AVAILABLE("gui.craftingveloce.controller.filter.notAvailable",
+                "gui.craftingveloce.controller.filter.notAvailable.tip");
 
+        /** Krotka etykieta na przycisku (musi sie zmiescic w 52 px). */
         final String key;
+        /** Pelne znaczenie filtra - pokazywane w tooltipie przycisku. */
+        final String tooltipKey;
 
-        Filter(String key) {
+        Filter(String key, String tooltipKey) {
             this.key = key;
+            this.tooltipKey = tooltipKey;
         }
     }
 
@@ -62,6 +69,12 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     private final Map<Item, Long> stock;
     private final Set<Item> craftable;
     private final Set<Item> craftingEnabled;
+    /** Itemy z receptura PIECA (smelting / blasting / smoking). */
+    private final Set<Item> furnaceCraftable;
+    /** Czy w sieci stoi jakikolwiek piec (nawet bez paliwa). */
+    private final boolean furnaceInNetwork;
+    /** Czy ktorys piec jest zasilony - tylko wtedy receptury pieca sa realne. */
+    private final boolean furnacePowered;
     private final Map<Item, Integer> hotbar;
 
     private Filter filter = Filter.ALL;
@@ -71,12 +84,17 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     public VeloceControllerScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                   boolean displayOperatorCreativeTab, BlockPos controllerPos,
                                   Map<Item, Long> stock, Set<Item> craftable,
-                                  Set<Item> craftingEnabled, Map<Item, Integer> hotbar) {
+                                  Set<Item> craftingEnabled, Set<Item> furnaceCraftable,
+                                  boolean furnaceInNetwork, boolean furnacePowered,
+                                  Map<Item, Integer> hotbar) {
         super(player, enabledFeatures, displayOperatorCreativeTab);
         this.controllerPos = controllerPos;
         this.stock = new HashMap<>(stock);
         this.craftable = new HashSet<>(craftable);
         this.craftingEnabled = new HashSet<>(craftingEnabled);
+        this.furnaceCraftable = new HashSet<>(furnaceCraftable);
+        this.furnaceInNetwork = furnaceInNetwork;
+        this.furnacePowered = furnacePowered;
         this.hotbar = new HashMap<>(hotbar);
     }
 
@@ -90,12 +108,23 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         return craftingEnabled.contains(item);
     }
 
+    /**
+     * Czy item da sie uzyskac w PIECU.
+     *
+     * <p>Wymagamy DWOCH rzeczy: receptury pieca ORAZ zasilonego pieca w sieci.
+     * Samo istnienie receptury nie wystarcza - bez paliwa nic sie nie przepali.
+     */
+    private boolean canFurnaceMake(Item item) {
+        return furnacePowered && furnaceCraftable.contains(item);
+    }
+
     private boolean isAvailable(Item item) {
-        // Dostepne = jest na stocku ALBO crafter potrafi to zrobic.
+        // Dostepne = jest na stocku ALBO crafter potrafi to zrobic ALBO piec
+        // jest zasilony i ma na to recepture.
         // (Item moze byc craftowalny w ogole, ale jesli auto-crafting jest
         //  wylaczony, to realnie nie jest dostepny - dlatego sprawdzamy
         //  craftingEnabled, a nie samo craftable.)
-        return hasStock(item) || canCrafterMake(item);
+        return hasStock(item) || canCrafterMake(item) || canFurnaceMake(item);
     }
 
     private boolean passesFilter(Item item) {
@@ -134,6 +163,9 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         if (canCrafterMake(item)) {
             return 0x77AAAA00;  // zolty: crafter to zrobi
         }
+        if (canFurnaceMake(item)) {
+            return 0x77AA5500;  // pomaranczowy: piec to przepali
+        }
         return 0x77AA0000;      // czerwony: niedostepne
     }
 
@@ -145,7 +177,16 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         buildFilterButtons();
     }
 
-    /** Przyciski filtrow umieszczone w pasku hotbara (ktory i tak jest pusty). */
+    /**
+     * Przyciski filtrow umieszczone w pasku hotbara (ktory i tak jest pusty).
+     *
+     * <p><b>Dlaczego etykiety sa KROTKIE.</b> Przycisk ma 52 px szerokosci, a
+     * poprzednie napisy ("Show all", "Not available") sie w nim nie miescily -
+     * "Not available" to ~78 px, wiec tekst wychodzil za przycisk i nachodzil
+     * na sasiedni. Dlatego etykieta jest jednym slowem, a PELNE znaczenie
+     * przeniosl sie do tooltipa - nic nie zginelo, tylko przestalo sie
+     * rozlewac. Same OPCJE (co filtruja) zostaja bez zmian.
+     */
     private void buildFilterButtons() {
         filterButtons.clear();
         int y = this.topPos + 112;
@@ -161,7 +202,10 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
                             .append(Component.translatable(f.key)), btn -> {
                 this.filter = target;
                 rebuildWidgets();
-            }).bounds(startX + i * (w + gap), y, w, 18).build();
+            }).bounds(startX + i * (w + gap), y, w, 18)
+                    .tooltip(net.minecraft.client.gui.components.Tooltip.create(
+                            Component.translatable(f.tooltipKey)))
+                    .build();
             filterButtons.add(b);
             addRenderableWidget(b);
             i++;
@@ -258,7 +302,16 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
         List<Component> lines = new ArrayList<>();
         lines.add(slot.getItem().getHoverName());
+        addStockLines(lines, item);
+        addCraftingLines(lines, item);
+        addFurnaceLines(lines, item);
+        addUnavailableHint(lines, item);
 
+        graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
+    }
+
+    /** Stock w sieci + ewentualna informacja, ze item jest w hotbarze. */
+    private void addStockLines(List<Component> lines, Item item) {
         long n = stock.getOrDefault(item, 0L);
         lines.add(n > 0
                 ? Component.translatable("gui.craftingveloce.controller.stock", n)
@@ -270,6 +323,13 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
             lines.add(Component.translatable("gui.craftingveloce.controller.inHotbar", hotbar.get(item))
                     .withStyle(net.minecraft.ChatFormatting.GREEN));
         }
+    }
+
+    /**
+     * Trzy stany auto-craftingu: wlaczony / crafter potrafi ale wylaczony /
+     * crafter w ogole nie potrafi.
+     */
+    private void addCraftingLines(List<Component> lines, Item item) {
         if (craftingEnabled.contains(item)) {
             lines.add(Component.translatable("gui.craftingveloce.controller.craftingOn")
                     .withStyle(net.minecraft.ChatFormatting.YELLOW));
@@ -280,16 +340,45 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
             lines.add(Component.translatable("gui.craftingveloce.controller.notCraftable")
                     .withStyle(net.minecraft.ChatFormatting.RED));
         }
+    }
 
-        if (!isAvailable(item)) {
-            lines.add(Component.empty());
-            lines.add(Component.translatable("gui.craftingveloce.controller.buildMachine")
-                    .withStyle(net.minecraft.ChatFormatting.GRAY));
-            lines.add(Component.translatable("gui.craftingveloce.controller.buildMachine2")
-                    .withStyle(net.minecraft.ChatFormatting.GRAY));
+    /**
+     * Informacja o piecu - tylko dla itemow, ktore maja recepture pieca.
+     *
+     * <p>Trzy rozne komunikaty, bo trzy rozne sytuacje:
+     * <ul>
+     *   <li>piec zasilony -> "mozna przepalic" (to jest realna dostepnosc),</li>
+     *   <li>piec jest, ale stoi -> "receptura jest, brak paliwa" - to jest
+     *       podpowiedz, co zrobic, a nie "niedostepne",</li>
+     *   <li>pieca nie ma w sieci -> "potrzebny piec" - podpowiedz, ze trzeba
+     *       go postawic i podlaczyc.</li>
+     * </ul>
+     */
+    private void addFurnaceLines(List<Component> lines, Item item) {
+        if (!furnaceCraftable.contains(item)) {
+            return;
         }
+        if (furnacePowered) {
+            lines.add(Component.translatable("gui.craftingveloce.controller.smeltingOn")
+                    .withStyle(net.minecraft.ChatFormatting.GOLD));
+        } else if (furnaceInNetwork) {
+            lines.add(Component.translatable("gui.craftingveloce.controller.smeltingNoFuel")
+                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        } else {
+            lines.add(Component.translatable("gui.craftingveloce.controller.smeltingNoFurnace")
+                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        }
+    }
 
-        graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
+    private void addUnavailableHint(List<Component> lines, Item item) {
+        if (isAvailable(item)) {
+            return;
+        }
+        lines.add(Component.empty());
+        lines.add(Component.translatable("gui.craftingveloce.controller.buildMachine")
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
+        lines.add(Component.translatable("gui.craftingveloce.controller.buildMachine2")
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
     }
 
     /**
