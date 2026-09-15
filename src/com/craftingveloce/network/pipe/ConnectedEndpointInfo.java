@@ -288,6 +288,42 @@ public class ConnectedEndpointInfo {
     /** Czy juz logowalismy, ze endpointu nie da sie odczytac. */
     private boolean notReadableLogged = false;
 
+    /** Wynik odczytu jednego pojemnika: liczby, wolne sloty, miejsce w czesciowych stosach. */
+    private record SlotScan(Map<Item, Long> counts, int freeSlots, Map<Item, Integer> partialSpace) {
+    }
+
+    /**
+     * JEDNA regula czytania pojemnika - dla kazdego rodzaju magazynu.
+     *
+     * <p><b>Po co wydzielone.</b> Ta sama petla byla skopiowana w dwoch galeziach
+     * (NeoForge ItemHandler i waniliowy Container) linia w linie. To dokladnie
+     * ten wzorzec, ktory w tym projekcie juz kilka razy sie rozjechal: poprawka
+     * "pojemnosc liczymy per item, a nie po pustych slotach" musiala trafic do
+     * OBU kopii, a przy trzecim rodzaju magazynu trzeba by ja bylo powtorzyc
+     * jeszcze raz. Teraz regula jest w jednym miejscu.
+     *
+     * @param slots   ile slotow ma pojemnik
+     * @param getSlot skad wziac stos z danego slotu
+     */
+    private static SlotScan scanSlots(int slots, java.util.function.IntFunction<ItemStack> getSlot) {
+        Map<Item, Long> counts = new HashMap<>();
+        Map<Item, Integer> partialSpace = new HashMap<>();
+        int freeSlots = 0;
+        for (int i = 0; i < slots; i++) {
+            ItemStack stack = getSlot.apply(i);
+            if (stack.isEmpty()) {
+                freeSlots++;
+                continue;
+            }
+            counts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
+            int room = stack.getMaxStackSize() - stack.getCount();
+            if (room > 0) {
+                partialSpace.merge(stack.getItem(), room, Integer::sum);
+            }
+        }
+        return new SlotScan(counts, freeSlots, partialSpace);
+    }
+
     public void refreshIfLoaded(ServerLevel level) {
         if (!level.isLoaded(pos)) {
             return;
@@ -334,32 +370,16 @@ public class ConnectedEndpointInfo {
             Map<Item, Integer> partialSpace = new HashMap<>();
             if (handler != null) {
                 sawContainer = true;
-                for (int i = 0; i < handler.getSlots(); i++) {
-                    ItemStack stack = handler.getStackInSlot(i);
-                    if (stack.isEmpty()) {
-                        freeSlots++;
-                    } else {
-                        newCounts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
-                        int room = stack.getMaxStackSize() - stack.getCount();
-                        if (room > 0) {
-                            partialSpace.merge(stack.getItem(), room, Integer::sum);
-                        }
-                    }
-                }
+                SlotScan scan = scanSlots(handler.getSlots(), handler::getStackInSlot);
+                newCounts.putAll(scan.counts());
+                freeSlots = scan.freeSlots();
+                partialSpace = scan.partialSpace();
             } else if (be instanceof Container container) {
                 sawContainer = true;
-                for (int i = 0; i < container.getContainerSize(); i++) {
-                    ItemStack stack = container.getItem(i);
-                    if (stack.isEmpty()) {
-                        freeSlots++;
-                    } else {
-                        newCounts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
-                        int room = stack.getMaxStackSize() - stack.getCount();
-                        if (room > 0) {
-                            partialSpace.merge(stack.getItem(), room, Integer::sum);
-                        }
-                    }
-                }
+                SlotScan scan = scanSlots(container.getContainerSize(), container::getItem);
+                newCounts.putAll(scan.counts());
+                freeSlots = scan.freeSlots();
+                partialSpace = scan.partialSpace();
             }
 
             if (!sawContainer) {
