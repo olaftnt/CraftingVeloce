@@ -89,6 +89,30 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
      *
      * <p>Teraz liczymy tylko to, o co poprosi klient, i tylko na zadanie.
      */
+    /** Gotowe liczby craftowalnosci z cache sieci (bez liczenia). */
+    private Map<Item, Long> craftableSnapshot() {
+        if (!(level instanceof ServerLevel sl)) {
+            return Map.of();
+        }
+        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                .getNetworkForTerminal(sl, worldPosition);
+        if (net == null) {
+            return Map.of();
+        }
+        return com.craftingveloce.crafting.VeloceCraftingCache.get(net).snapshot();
+    }
+
+    /**
+     * Zwraca gotowe liczby "ile da sie dorobic" z cache sieci.
+     *
+     * <p><b>Nic tu nie liczymy.</b> Cache jest utrzymywany w tle przez
+     * {@link com.craftingveloce.crafting.VeloceCraftingCache}, wiec odczyt jest
+     * natychmiastowy. Wczesniej liczenie tu, na zadanie, dla wszystkich itemow,
+     * zadlawialo serwer przy duzej liczbie receptur.
+     *
+     * <p>Jesli czegos nie ma w cache (nowy item, trwa jeszcze pierwszy skan),
+     * po prostu nie ma go w wyniku - GUI pokaze zero zamiast czekac.
+     */
     public Map<Item, Long> computeCraftableCounts(Collection<Item> items) {
         if (!(level instanceof ServerLevel sl) || items == null || items.isEmpty()) {
             return Map.of();
@@ -98,26 +122,23 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         if (net == null) {
             return Map.of();
         }
-        Set<Item> enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
-                .getAllEnabledItems(sl, net);
-        if (enabled.isEmpty()) {
-            return Map.of();
-        }
-        Map<Item, ResourceLocation> preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
-                .getPreferredRecipes(sl, net);
+        return com.craftingveloce.crafting.VeloceCraftingCache.get(net)
+                .lookup(new java.util.HashSet<>(items));
+    }
 
-        Map<Item, Long> out = new HashMap<>();
-        for (Item item : items) {
-            if (!enabled.contains(item)) {
-                continue;
-            }
-            long n = com.craftingveloce.crafting.VeloceAutoCrafter
-                    .countCraftableNow(sl, net, item, enabled, preferred);
-            if (n > 0) {
-                out.put(item, n);
-            }
-        }
-        return out;
+    /**
+     * Napędza tło cache craftowalnosci dla tej sieci.
+     *
+     * <p>Wolane z ticku: cache sam wykrywa zmiany stocku i przelicza tylko
+     * dotkniete lancuchy. Dzieki temu liczby sa gotowe zanim gracz otworzy GUI.
+     */
+    private void tickCraftingCache(ServerLevel sl, VelocePipeNetwork net) {
+        var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getAllEnabledItems(sl, net);
+        var preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getPreferredRecipes(sl, net);
+        com.craftingveloce.crafting.VeloceCraftingCache.get(net)
+                .tick(sl, enabled, preferred);
     }
 
     /**
@@ -139,13 +160,16 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         // zadlawialo serwer (patrz computeCraftableCounts). Zolta liczba "+N"
         // jest doliczana osobno, na zadanie, tylko dla widocznych itemow.
         Map<Item, Long> counts = getAllStoredItemCounts();
+        // Dokladamy gotowe liczby craftowalnosci z cache - sa juz przeliczone
+        // w tle, wiec GUI dostaje je od razu przy otwarciu, bez czekania.
+        Map<Item, Long> craftable = craftableSnapshot();
         Iterator<WeakReference<ServerPlayer>> it = activeWatchingPlayers.iterator();
         while (it.hasNext()) {
             ServerPlayer sp = it.next().get();
             if (sp == null || sp.hasDisconnected() || sp.distanceToSqr(worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5) > 64.0) {
                 it.remove();
             } else {
-                PacketDistributor.sendToPlayer(sp, new SyncTerminalCountsPKT(counts, Map.of()));
+                PacketDistributor.sendToPlayer(sp, new SyncTerminalCountsPKT(counts, craftable));
             }
         }
     }
@@ -222,6 +246,16 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         // Keep the item cache alive and actively polling network
         getStacks();
         super.updateServer();
+
+        // Cache craftowalnosci pracuje w tle: wykrywa zmiany stocku i przelicza
+        // tylko dotkniete lancuchy. Otwarcie GUI nie czeka na liczenie.
+        if (level instanceof ServerLevel sl && level.getGameTime() % 5 == 0) {
+            VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                    .getNetworkForTerminal(sl, worldPosition);
+            if (net != null) {
+                tickCraftingCache(sl, net);
+            }
+        }
 
         // Periodically refresh active viewers
         if (level != null && !activeWatchingPlayers.isEmpty() && level.getGameTime() % 20 == 0) {
@@ -339,6 +373,10 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
             if (allowCrafting) {
                 ItemStack crafted = craftItemFromNetwork(sl, net, requested, count);
                 if (!crafted.isEmpty()) {
+                    // Craftowanie zmienilo stock: przelicz TYLKO lancuch
+                    // dotknietych itemow, nie wszystko.
+                    com.craftingveloce.crafting.VeloceCraftingCache.get(net)
+                            .invalidateChain(sl, java.util.Set.of(requested.getItem()));
                     syncCountsToAllWatchers();
                     return crafted;
                 }

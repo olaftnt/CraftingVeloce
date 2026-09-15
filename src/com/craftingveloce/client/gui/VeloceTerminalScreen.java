@@ -82,44 +82,16 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         this.craftableCounts = new HashMap<>(craftable);
     }
 
-    private int craftableRefreshTimer = 0;
-
     /**
-     * Prosi serwer o policzenie "ile da sie dorobic" TYLKO dla widocznych itemow.
+     * Liczby craftowalnosci przychodza w pakiecie sync razem ze stockiem.
      *
-     * <p>Wczesniej serwer liczyl to dla wszystkich ~850 craftowalnych itemow co
-     * sekunde i sie zadlawial. Teraz liczy na zadanie, dla ok. 45 slotow.
+     * <p>Serwer utrzymuje je w cache w tle (patrz VeloceCraftingCache) i wysyla
+     * gotowe. Klient NIE pyta o nic i nie liczy nic sam, wiec otwarcie GUI jest
+     * natychmiastowe i nie zalezy od liczby receptur w paczce modow.
      */
-    public void requestCraftableCountsForVisible() {
-        if (this.minecraft == null || this.minecraft.player == null || this.menu == null) {
-            return;
-        }
-        java.util.List<Item> visible = new java.util.ArrayList<>();
-        for (Slot slot : this.menu.slots) {
-            if (slot != null && slot.hasItem() && !isPlayerSlot(slot)) {
-                Item it = slot.getItem().getItem();
-                if (!visible.contains(it)) {
-                    visible.add(it);
-                }
-            }
-        }
-        if (visible.isEmpty()) {
-            return;
-        }
-        com.craftingveloce.util.VeloceLog.Gui.detail(
-                com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                "requesting craftable counts for %d visible item(s)", visible.size());
-        PacketDistributor.sendToServer(
-                new com.craftingveloce.network.RequestCraftableCountsPKT(terminalPos, visible));
-    }
-
     @Override
     public void containerTick() {
-        // Odswiezamy zolte liczby co ~2 s, tylko dla widocznych itemow.
-        if (++craftableRefreshTimer >= 40) {
-            craftableRefreshTimer = 0;
-            requestCraftableCountsForVisible();
-        }
+        // Nic nie robimy - liczby przychodza z serwera.
     }
 
 
