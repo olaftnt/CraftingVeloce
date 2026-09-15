@@ -534,17 +534,60 @@ public final class VeloceAutoCrafter {
     }
 
     /** Pobiera jedna sztuke pasujaca do skladnika. Priorytet: ekwipunek -> siec. */
+    /**
+     * Pobiera jedna sztuke pasujaca do skladnika.
+     *
+     * <p><b>Kolejnosc jest krytyczna i musi byc symetryczna do
+     * {@link #deposit}.</b> deposit wklada wyniki NAJPIERW do buforow
+     * crafterow, wiec takeOne musi ich tam szukac PRZED siecia. Bez tego
+     * wieloetapowe craftowanie (deski -> plotek) padalo: plan wiedzial, ze
+     * deski beda, bo deposit je tam wklada, ale takeOne ich nie znajdowal
+     * i zwracal EMPTY. Objaw w logu: "ingredients vanished mid-craft",
+     * a w grze - materialy zostawaly niezuzyte.
+     *
+     * <p>Kolejnosc: ekwipunek gracza -> bufory crafterow -> siec.
+     */
     private static ItemStack takeOne(ServerLevel level, Context ctx, Ingredient ing) {
         for (ItemStack opt : nonEmpty(ing)) {
+            Item item = opt.getItem();
+
+            // 1. Ekwipunek gracza ma priorytet.
             if (ctx.inventory != null) {
-                ItemStack fromInv = ctx.inventory.extract(opt.getItem(), 1);
+                ItemStack fromInv = ctx.inventory.extract(item, 1);
                 if (!fromInv.isEmpty()) {
                     return fromInv;
                 }
             }
-            ItemStack fromNet = ctx.network.extractItem(level, opt.getItem(), 1);
+
+            // 2. Bufory crafterow - tu deposit wklada wyniki posrednie.
+            if (ctx.buffers != null) {
+                for (var buf : ctx.buffers) {
+                    ItemStack fromBuf = extractOneFromBuffer(buf, item);
+                    if (!fromBuf.isEmpty()) {
+                        return fromBuf;
+                    }
+                }
+            }
+
+            // 3. Zwykle endpointy sieci (skrzynie, RS).
+            ItemStack fromNet = ctx.network.extractItem(level, item, 1);
             if (!fromNet.isEmpty()) {
                 return fromNet;
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /** Wyciaga jedna sztuke itemu z bufora craftera. */
+    private static ItemStack extractOneFromBuffer(
+            com.craftingveloce.inventory.VeloceCraftingBuffer buf, Item item) {
+        for (int slot = 0; slot < buf.getContainerSize(); slot++) {
+            ItemStack inSlot = buf.getItem(slot);
+            if (!inSlot.isEmpty() && inSlot.getItem() == item) {
+                ItemStack taken = buf.removeItem(slot, 1);
+                if (!taken.isEmpty()) {
+                    return taken;
+                }
             }
         }
         return ItemStack.EMPTY;
@@ -620,11 +663,33 @@ public final class VeloceAutoCrafter {
     }
 
     /** Migawka stanu sieci + ekwipunku do symulacji. */
+    /**
+     * Migawka wszystkiego, co jest dostepne do craftowania.
+     *
+     * <p><b>Musi byc symetryczna z {@link #deposit}.</b> deposit wklada wyniki
+     * najpierw do buforow crafterow, wiec jesli plan ich nie widzi, uznaje ze
+     * skladnika nie ma - mimo ze deposit wlasnie go tam polozyl. To bylo
+     * zrodlem bledu "ingredients vanished mid-craft" przy wieloetapowym
+     * craftowaniu (deski -> plotek).
+     *
+     * <p>Kolejnosc zrodel: siec + ekwipunek + bufory crafterow.
+     */
     private static Map<Item, Long> snapshotStock(Context ctx) {
         Map<Item, Long> stock = new HashMap<>(ctx.network.getAllItemCounts(ctx.level));
         if (ctx.inventory != null) {
             for (Item it : ctx.inventory.allItems()) {
                 stock.merge(it, (long) ctx.inventory.count(it), Long::sum);
+            }
+        }
+        // Bufory crafterow: to tam trafiaja wyniki posrednie.
+        if (ctx.buffers != null) {
+            for (var buf : ctx.buffers) {
+                for (int slot = 0; slot < buf.getContainerSize(); slot++) {
+                    ItemStack st = buf.getItem(slot);
+                    if (!st.isEmpty()) {
+                        stock.merge(st.getItem(), (long) st.getCount(), Long::sum);
+                    }
+                }
             }
         }
         return stock;
