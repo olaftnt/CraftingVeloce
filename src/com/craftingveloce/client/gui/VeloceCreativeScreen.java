@@ -141,12 +141,25 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         applyItemFilter();
     }
 
+    /**
+     * Nakłada nasz filtr na liste itemow menu.
+     *
+     * <p><b>Dlaczego tak, a nie przez nadpisanie metod vanilla.</b>
+     * {@code CreativeModeInventoryScreen.refreshSearchResults()} i
+     * {@code refreshCurrentTabContents()} sa PRYWATNE, wiec nie da sie ich
+     * przechwycic dziedziczeniem. A to wlasnie one robia
+     * {@code menu.items.clear()} i wypelniaja liste SUROWYMI
+     * {@code getDisplayItems()}, kasujac wszystko, co odfiltrowalismy - przy
+     * zmianie zakladki, przy wpisywaniu w wyszukiwarke i z {@code containerTick}.
+     *
+     * <p>Dlatego filtr jest nakladany z {@code containerTick} (wołanym co tick,
+     * publicznym) i opiera sie na POROWNANIU ZE STANEM LISTY: jesli vanilla
+     * wlasnie ja przebudowala, lista sie rozni od naszej wersji i filtr leci
+     * od nowa. Dzieki temu dziala niezaleznie od tego, KTO i KIEDY ja nadpisal.
+     */
     @Override
     public void containerTick() {
-        // Wolamy co tick, bo vanilla przebudowuje liste itemow przy zmianie
-        // zakladki BEZ wolania init() - gdybysmy polegali na wlasnej fladze,
-        // filtr przestalby sie kiedys stosowac. Sam applyItemFilter() wychodzi
-        // natychmiast, gdy wynik jest taki sam jak ostatnio.
+        super.containerTick();
         applyItemFilter();
     }
 
@@ -178,32 +191,30 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             @SuppressWarnings("unchecked")
             NonNullList<ItemStack> items = (NonNullList<ItemStack>) list;
 
-            // Szybkie wyjscie. Porownujemy to, co REALNIE lezy w liscie menu,
-            // z tym czego chcemy - a nie z wlasnym poprzednim wynikiem.
+            // NIE ma tu "szybkiego wyjscia" i to jest celowe.
             //
-            // Roznica jest istotna: vanilla przebudowuje liste przy zmianie
-            // zakladki, czesto wstawiajac TE SAME instancje ItemStack. Porownanie
-            // z wlasnym wynikiem uznaloby wiec "nic sie nie zmienilo" i filtr
-            // przestalby sie stosowac. Porownanie ze stanem listy dziala zawsze:
-            // jesli vanilla ja przebudowala, lista sie rozni i filtrujemy znowu.
-            boolean alreadyFiltered = true;
-            for (int i = 0; i < total; i++) {
-                ItemStack want = i < kept.size() ? kept.get(i) : ItemStack.EMPTY;
-                if (items.get(i) != want) {
-                    alreadyFiltered = false;
-                    break;
-                }
-            }
-            if (alreadyFiltered) {
-                return;   // lista juz jest taka, jaka ma byc
-            }
-
+            // BUG, ktory tu byl: porownywalismy zawartosc listy z pozadanym
+            // wynikiem i wychodzilismy, gdy byly identyczne. Problem w tym, ze
+            // vanilla (refreshSearchResults / refreshCurrentTabContents)
+            // wypelnia liste SUROWYMI getDisplayItems() - a to sa TE SAME
+            // instancje ItemStack, ktore same przechodza nasz filtr. Gdy zadna
+            // z nich nie jest odfiltrowana, lista po przebudowie wyglada
+            // IDENTYCZNIE jak przed nia, wiec uznawalismy "nic sie nie zmienilo"
+            // i POMIJALISMY scrollTo.
+            //
+            // A to scrollTo przepisuje liste do CONTAINER, z ktorego czytaja
+            // sloty. Bez niego CONTAINER zostawal z danymi z POPRZEDNIEGO
+            // przefiltrowania - czyli dokladnie objaw zglaszany przez
+            // uzytkownika: GUI pokazuje nieodfiltrowana liste, dopoki nie
+            // ruszy sie scrollem (scroll wywoluje scrollTo sam).
+            //
+            // Wiec: zawsze przepisujemy liste i zawsze odswiezamy sloty.
+            // Koszt jest znikomy (jedno przejscie po ~1.5 tys. wpisow), a to
+            // jedyny sposob, zeby dzialalo niezaleznie od tego, co vanilla
+            // zrobila z lista miedzy tickami.
             for (int i = 0; i < total; i++) {
                 items.set(i, i < kept.size() ? kept.get(i) : ItemStack.EMPTY);
             }
-            // Wazne: sloty czytaja z CONTAINER, a nie z tej listy. Przepisuje je
-            // dopiero ItemPickerMenu.scrollTo. Bez tego zmiana bylaby widoczna
-            // dopiero po ruszeniu scrollem.
             refreshSlotsFromItems();
         } catch (Throwable ignored) {
             // Refleksja moze sie nie udac przy zmianie wersji - wtedy po prostu
