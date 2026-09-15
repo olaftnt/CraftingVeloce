@@ -155,9 +155,7 @@ public class VeloceControllerBlockEntity extends BlockEntity
             }
         }
         PacketDistributor.sendToPlayer(player, new com.craftingveloce.network.SyncControllerFlowPKT(
-                worldPosition, stock,
-                flow.movements(VeloceFlowTracker.Window.MINUTE),
-                flow.movements(VeloceFlowTracker.Window.HOUR)));
+                worldPosition, stock, flow.steadyRates()));
     }
 
     /** Zbiera aktualny stan sieci i wysyla GUI graczowi. */

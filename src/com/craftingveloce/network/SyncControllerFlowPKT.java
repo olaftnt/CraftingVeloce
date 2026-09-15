@@ -20,6 +20,11 @@ import java.util.Map;
  * ktory REALNIE sie rusza, netto oraz osobno ile przyszlo i ile ubylo.
  * Brak wpisu = stoi, wiec nie wysylamy setek zer.
  *
+ * <p><b>Tylko STAŁY trend.</b> Serwer odsyla wylacznie itemy, ktore maja
+ * jednokierunkowy przyrost/ubytek ({@link VeloceFlowTracker#steadyRates()}) -
+ * brak wpisu znaczy "stoi albo sie szarpie" i w tooltipie nie ma wtedy zadnej
+ * linii tempa.
+ *
  * <p><b>Stock jedzie tym samym pakietem.</b> Wczesniej kontroler dostawal
  * pelny obraz sieci TYLKO przy otwarciu, wiec wyjecie itemu ze skrzynki przy
  * otwartym GUI nie zmienialo ani liczby, ani koloru ikony - trzeba bylo
@@ -34,8 +39,7 @@ import java.util.Map;
  */
 public record SyncControllerFlowPKT(BlockPos pos,
                                     Map<Item, Long> stock,
-                                    Map<Item, VeloceFlowTracker.Movement> perMinute,
-                                    Map<Item, VeloceFlowTracker.Movement> perHour)
+                                    Map<Item, Float> rates)
         implements CustomPacketPayload {
 
     public static final Type<SyncControllerFlowPKT> TYPE =
@@ -52,16 +56,14 @@ public record SyncControllerFlowPKT(BlockPos pos,
     private static void encode(FriendlyByteBuf buf, SyncControllerFlowPKT pkt) {
         buf.writeBlockPos(pkt.pos);
         writeStock(buf, pkt.stock);
-        writeMovements(buf, pkt.perMinute);
-        writeMovements(buf, pkt.perHour);
+        writeRates(buf, pkt.rates);
     }
 
     private static SyncControllerFlowPKT decode(FriendlyByteBuf buf) {
         BlockPos pos = buf.readBlockPos();
         Map<Item, Long> stock = readStock(buf);
-        Map<Item, VeloceFlowTracker.Movement> perMinute = readMovements(buf);
-        Map<Item, VeloceFlowTracker.Movement> perHour = readMovements(buf);
-        return new SyncControllerFlowPKT(pos, stock, perMinute, perHour);
+        Map<Item, Float> rates = readRates(buf);
+        return new SyncControllerFlowPKT(pos, stock, rates);
     }
 
     /** Stock: ten sam format co w SyncTerminalCountsPKT (id itemu + varint dlugi). */
@@ -86,27 +88,21 @@ public record SyncControllerFlowPKT(BlockPos pos,
         return out;
     }
 
-    private static void writeMovements(FriendlyByteBuf buf,
-                                       Map<Item, VeloceFlowTracker.Movement> movements) {
-        buf.writeInt(movements.size());
-        for (Map.Entry<Item, VeloceFlowTracker.Movement> e : movements.entrySet()) {
-            VeloceFlowTracker.Movement m = e.getValue();
+    /** Tempo: id itemu + setne czesci sztuki na sekunde. */
+    private static void writeRates(FriendlyByteBuf buf, Map<Item, Float> rates) {
+        buf.writeInt(rates.size());
+        for (Map.Entry<Item, Float> e : rates.entrySet()) {
             buf.writeVarInt(BuiltInRegistries.ITEM.getId(e.getKey()));
-            buf.writeVarInt(Math.round(m.net() * RATE_SCALE));
-            buf.writeVarInt(Math.round(m.gain() * RATE_SCALE));
-            buf.writeVarInt(Math.round(m.loss() * RATE_SCALE));
+            buf.writeVarInt(Math.round(e.getValue() * RATE_SCALE));
         }
     }
 
-    private static Map<Item, VeloceFlowTracker.Movement> readMovements(FriendlyByteBuf buf) {
+    private static Map<Item, Float> readRates(FriendlyByteBuf buf) {
         int size = buf.readInt();
-        Map<Item, VeloceFlowTracker.Movement> out = new HashMap<>(Math.max(4, size));
+        Map<Item, Float> out = new HashMap<>(Math.max(4, size));
         for (int i = 0; i < size; i++) {
             Item item = BuiltInRegistries.ITEM.byId(buf.readVarInt());
-            float net = buf.readVarInt() / RATE_SCALE;
-            float gain = buf.readVarInt() / RATE_SCALE;
-            float loss = buf.readVarInt() / RATE_SCALE;
-            out.put(item, new VeloceFlowTracker.Movement(net, gain, loss));
+            out.put(item, buf.readVarInt() / RATE_SCALE);
         }
         return out;
     }
@@ -120,7 +116,7 @@ public record SyncControllerFlowPKT(BlockPos pos,
         ctx.enqueueWork(() -> {
             if (net.minecraft.client.Minecraft.getInstance().screen
                     instanceof com.craftingveloce.client.gui.VeloceControllerScreen screen) {
-                screen.updateFlow(pkt.pos(), pkt.stock(), pkt.perMinute(), pkt.perHour());
+                screen.updateFlow(pkt.pos(), pkt.stock(), pkt.rates());
             }
         });
     }

@@ -89,34 +89,24 @@ public final class VeloceFlowTracker {
     /** Tickow na sekunde - do zamiany roznicy tickow na sekundy. */
     private static final float TICKS_PER_SECOND = 20f;
 
-    /** Okna, o ktore mozna pytac. */
-    public enum Window {
-        MINUTE,
-        HOUR
-    }
+    /**
+     * Minimalny udzial netto w calym ruchu, zeby uznac trend za JEDNOKIERUNKOWY.
+     *
+     * <p>0.8 = "co najmniej 80% ruchu idzie w jedna strone". Dzieki temu item
+     * wkladany i wyciagany na przemian (netto zero, brutto duze) NIE jest
+     * pokazywany jako trend - gracz nie chce widziec szarpania, tylko produkcje.
+     */
+    private static final float STEADY_SHARE = 0.8f;
+
+    /**
+     * Ile odstepow musialo sie ruszyc, zeby to byl TREND, a nie jednorazowy skok.
+     *
+     * <p>Dwa, bo jedno wlozenie itemu do skrzynki to nie "staly przyrost".
+     */
+    private static final int STEADY_MIN_STEPS = 2;
 
     /** Tempo ponizej tej wartosci uznajemy za zero - nie pokazujemy szumu. */
     private static final float EPSILON = 0.01f;
-
-    /**
-     * Ruch jednego itemu w oknie, wszystko w sztukach na sekunde.
-     *
-     * @param net  roznica koncow: dodatnie = przybywa, ujemne = ubywa
-     * @param gain ile sztuk DOSZLO na sekunde (zawsze &gt;= 0)
-     * @param loss ile sztuk UBYLO na sekunde (zawsze &gt;= 0)
-     */
-    public record Movement(float net, float gain, float loss) {
-
-        /**
-         * Czy w oknie dzieje sie COKOLWIEK.
-         *
-         * <p>Sprawdzamy brutto, nie netto: item wkładany i wyciagany na
-         * przemian ma netto zero, a jednak sie rusza i gracz ma to widziec.
-         */
-        public boolean isMoving() {
-            return gain + loss >= EPSILON;
-        }
-    }
 
     /** Historia jednego itemu: oba pierscienie i liczniki wlasnych zapisow. */
     private static final class Series {
@@ -218,103 +208,107 @@ public final class VeloceFlowTracker {
     }
 
     /**
-     * Ruch jednego itemu w oknie.
+     * Tempo itemow o STAŁYM trendzie - w sztukach na SEKUNDE.
      *
-     * @return {@code null}, gdy nie ma z czego liczyc - item ma mniej niz dwie
-     *         probki (albo okno nie objelo jeszcze sekundy)
+     * <p>Jedna liczba: klient przelicza ja na minute i godzine i pokazuje
+     * w jednej linii ("+2.0/min, +120/h"). Item, ktory stoi albo sie szarpie,
+     * NIE trafia do mapy - i wtedy w tooltipie nie ma o nim zadnej linii.
      */
-    public Movement movement(Item item, Window window) {
+    public Map<Item, Float> steadyRates() {
+        Map<Item, Float> out = new HashMap<>();
+        for (Item item : series.keySet()) {
+            float rate = steadyRate(item);
+            if (!Float.isNaN(rate)) {
+                out.put(item, rate);
+            }
+        }
+        return out;
+    }
+
+    /** @return netto (szt./s) gdy trend jest jednokierunkowy, inaczej {@code NaN} */
+    private float steadyRate(Item item) {
         Series s = series.get(item);
         if (s == null) {
-            return null;
+            return Float.NaN;
         }
-        if (window == Window.MINUTE) {
+        // TRYB WCZESNY: dopoki okno godzinowe ma mniej niz 3 probki (pierwsze
+        // ~2 minuty po zaladowaniu kontrolera), trend oceniamy na oknie MINUTY -
+        // probki co 5 s, wiec linia pojawia sie po kilkunastu sekundach, a nie
+        // po dwoch minutach. Potem ocene przejmuje okno godzinowe, odporne na
+        // chwilowe szarpniecia.
+        long now = currentValue(s);
+        if (s.hourWrites < 3) {
             int valid = Math.min(s.minuteWrites, SHORT_SLOTS);
-            if (valid < 2) {
-                return null;
-            }
-            // Okno minuty jest zamkniete: ostatnia probka JEST teraz.
-            return rate(s.minute, minuteTicks, minuteCursor, valid, false, s);
+            return valid < 3 ? Float.NaN
+                    : steadyRate(s.minute, minuteTicks, minuteCursor, valid, now);
         }
         int valid = Math.min(s.hourWrites, HOUR_SLOTS);
-        if (valid >= 1) {
-            return rate(s.hour, hourTicks, hourCursor, valid, true, s);
-        }
-        // Item pojawil sie PO ostatniej probce godzinowej. Zamiast milczec przez
-        // cala minute, kotwiczymy na jego pierwszej probce minutowej - to jest
-        // dokladnie moment, w ktorym item pojawil sie w sieci.
-        int minuteValid = Math.min(s.minuteWrites, SHORT_SLOTS);
-        if (minuteValid < 2) {
-            return null;
-        }
-        return rate(s.minute, minuteTicks, minuteCursor, minuteValid, true, s);
+        return steadyRate(s.hour, hourTicks, hourCursor, valid, now);
     }
 
     /**
-     * Tempo od NAJSTARSZEJ zapamietanej probki pierscienia do konca okna.
+     * Trend z pierscienia probek: tempo netto albo {@code NaN}.
      *
-     * <p>Idziemy parami po KOLEJNYCH probkach, a nie tylko po skrajnych:
-     * tylko tak widac, ile sztuk przeszlo w kazda strone. Skrajne daja
-     * wylacznie netto.
-     *
-     * <p>Czas okna bierzemy z PIERSciENIA TICKOW, a nie z liczby probek:
-     * trzynascie probek to 60 s tylko wtedy, gdy zadnej nie wypadlo. Nie
-     * zgadujemy i nie sciskamy czasu do okna - liczymy tempo z tylu sekund,
-     * ile REALNIE obejmuja zapamietane probki. Przerwy wieksze niz
-     * {@link #GAP_RESET_TICKS} i tak kasuja historie, wiec okno nie rozjedzie
-     * sie daleko od swojej nazwy.
-     *
-     * @param live czy koncem okna jest BIEZACY stock; okno godzinowe musi
-     *             patrzec na teraz, bo inaczej liczba zamarzalaby na minute
-     *             po kazdym zapisie
+     * <p>Kolejnosc jest istotna dla WYDAJNOSCI: najpierw tani test (roznica
+     * skrajnych probek), a spacer po probkach tylko dla itemow, ktore sie
+     * ruszaja - bo on sluzy juz tylko do rozbicia ruchu na kierunki. W sieci ze
+     * 100 tys. typow itemow to roznica miedzy "przejdz liste" a "przejdz liste
+     * i dodatkowo 61 probek dla kazdego itemu".
      */
-    private Movement rate(long[] values, long[] ticks, int cursor, int valid,
-                          boolean live, Series s) {
+    private float steadyRate(long[] values, long[] ticks, int cursor, int valid, long now) {
         int oldestIdx = Math.floorMod(cursor - valid, values.length);
+        float seconds = (lastSampleTick - ticks[oldestIdx]) / TICKS_PER_SECOND;
+        if (seconds < 1f) {
+            return Float.NaN;
+        }
         long oldest = values[oldestIdx];
+
+        // 1) TANI TEST: czy w oknie jest w ogole ruch netto.
+        float net = (now - oldest) / seconds;
+        if (Math.abs(net) < EPSILON) {
+            return Float.NaN;
+        }
+
+        // 2) Spacer po probkach - tylko dla ruchomych itemow.
         long prev = oldest;
         long gain = 0;
         long loss = 0;
+        int up = 0;
+        int down = 0;
         for (int i = 1; i < valid; i++) {
             long v = values[Math.floorMod(oldestIdx + i, values.length)];
-            gain += Math.max(0L, v - prev);
-            loss += Math.max(0L, prev - v);
+            long d = v - prev;
+            if (d > 0) {
+                gain += d;
+                up++;
+            } else if (d < 0) {
+                loss += -d;
+                down++;
+            }
             prev = v;
         }
-        long newest = live ? currentValue(s) : prev;
-        if (live) {
-            long step = newest - prev;
-            gain += Math.max(0L, step);
-            loss += Math.max(0L, -step);
+        long step = now - prev;
+        if (step > 0) {
+            gain += step;
+            up++;
+        } else if (step < 0) {
+            loss += -step;
+            down++;
         }
-        float seconds = (lastSampleTick - ticks[oldestIdx]) / TICKS_PER_SECOND;
-        if (seconds < 1f) {
-            return null;
+
+        if ((net > 0 ? up : down) < STEADY_MIN_STEPS) {
+            return Float.NaN;   // jednorazowy skok to nie trend
         }
-        return new Movement((newest - oldest) / seconds, gain / seconds, loss / seconds);
+        float gross = (gain + loss) / seconds;
+        if (gross <= 0f || Math.abs(net) < STEADY_SHARE * gross) {
+            return Float.NaN;   // za duzo ruchu w druga strone - to nie trend
+        }
+        return net;
     }
 
     /** Biezacy stock itemu: ostatnia zapisana probka minutowa. */
     private long currentValue(Series s) {
         return s.minute[Math.floorMod(minuteCursor - 1, SHORT_SLOTS)];
-    }
-
-    /**
-     * Ruch tylko dla itemow, ktore REALNIE sie ruszaja.
-     *
-     * <p>Do wyslania na klienta. Celowo pomijamy stojace itemy: w typowej
-     * sieci jest ich wiekszosc, a wysylanie ich wszystkich co sekunde byloby
-     * marnowaniem pasma. Brak wpisu w mapie = "stoi".
-     */
-    public Map<Item, Movement> movements(Window window) {
-        Map<Item, Movement> out = new HashMap<>();
-        for (Item item : series.keySet()) {
-            Movement m = movement(item, window);
-            if (m != null && m.isMoving()) {
-                out.put(item, m);
-            }
-        }
-        return out;
     }
 
     /** Wszystko do kosza - np. gdy kontroler zostal przestawiony na inna siec. */

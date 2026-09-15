@@ -251,7 +251,7 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `SensorConfigPKT` | C→S | `BlockPos pos, long threshold, boolean highMode` |
 | `ControllerPreferKindPKT` | C→S | `BlockPos pos, Item item, boolean preferFurnace` |
 | `SetFilterPKT` | C→S | `BlockPos pos, int filterIndex, ItemStack filterItem` |
-| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Map<Item, VeloceFlowTracker.Movement> perMinute, Map<Item, VeloceFlowTracker.Movement> perHour` |
+| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Map<Item, Float> rates` |
 | `SyncCraftableCountsPKT` | S→C | `BlockPos pos, Map<Item, Long> counts, boolean complete` |
 | `SyncCraftingTableStatePKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes` |
 | `SyncExtractorFiltersPKT` | S→C | `BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting` |
@@ -321,6 +321,19 @@ została w tyle, tak jak wcześniej lista pakietów i sekcja GUI):
 > (64 piasku → 64 szkła). Plan **wykonania** nadal używa prawdziwego budżetu
 > ciepła (`VeloceHeatSources.totalOperations` + `consumeFrom`) — inaczej
 > obiecywałby przepalenia, których piec nie ugnie w jednym planie.
+>
+> **Tempo w kontrolerze: jedna linia, tylko stały trend.** Serwer liczy próbki
+> co 5 s (okno minuty, 13 próbek) i co 60 s (okno godziny, 61 próbek), a tempo
+> to różnica skrajnych próbek podzielona przez **realny** czas z pierścienia
+> ticków. Do GUI trafiają **wyłącznie** itemy o trendzie jednokierunkowym
+> (≥80% ruchu w jedną stronę i co najmniej dwa ruchy w tę stronę) — stąd jedna
+> linia `+2.0/min, +120/h` (jedna liczba w dwóch skalach) i **brak** linii dla
+> itemów stojących lub szarpiących się. Historia żyje **tylko w pamięci**
+> kontrolera (kontroler nie zapisuje stanu do NBT), więc po restarcie świata
+> liczy się od nowa; przerwa w tykaniu > 20 s kasuje historię. Koszt: dla
+> każdego itemu najpierw tani test (różnica skrajnych próbek, O(1)), a pełny
+> spacer po próbkach tylko dla itemów, które się ruszają — dlatego 100 tys.
+> typów itemów w sieci nie zamula GUI.
 >
 > Partia liczenia ma wspólny budżet czasu (25 ms) i bywa przerywana
 > (`complete=false` w logu). Dlatego serwer startuje kolejną partię tam, gdzie

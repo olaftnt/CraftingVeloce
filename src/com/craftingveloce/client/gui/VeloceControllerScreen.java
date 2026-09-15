@@ -121,16 +121,17 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     private final List<Button> filterButtons = new ArrayList<>();
 
-    // ---------- przeplyw (ile na sekunde przybywa / ubywa) ----------
+    // ---------- przeplyw (staly przyrost / ubytek) ----------
     /**
-     * Ruch w sztukach na sekunde - tylko dla itemow, ktore REALNIE sie ruszaja.
+     * Tempo w sztukach na SEKUNDE - TYLKO dla itemow o stalym trendzie.
      *
-     * <p>Netto, a osobno zysk i strata: sama roznica koncow jest zerowa, gdy
-     * gracz wklada i wyciaga to samo, a wlasnie tak gracz sprawdza, czy
-     * pomiar dziala (patrz {@link VeloceFlowTracker.Movement}).
+     * <p>Serwer sam decyduje, co jest trendem (jednokierunkowy ruch, ktory
+     * powtorzyl sie co najmniej dwa razy) i przysyla wylacznie takie itemy.
+     * Brak wpisu = "stoi albo sie szarpie" = w tooltipie nie ma zadnej linii
+     * tempa. Jedna liczba, dwie skale (na minute i na godzine) liczy klient.
      */
-    private Map<Item, VeloceFlowTracker.Movement> flowPerMinute = new HashMap<>();
-    private Map<Item, VeloceFlowTracker.Movement> flowPerHour = new HashMap<>();
+    private Map<Item, Float> flowRate = new HashMap<>();
+
     /**
      * Szerokosc guzika filtra.
      *
@@ -142,12 +143,8 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     /** Co ile tickow dopytujemy serwer o swieze tempo. */
     private static final int FLOW_REQUEST_INTERVAL_TICKS = 20;
-    /**
-     * Ponizej tego tempa (w sztukach na sekunde) uznajemy, ze nic sie nie
-     * dzieje - ten sam prog co w trackerze, zeby klient nie pokazywal ruchu,
-     * ktorego serwer nie wyslal.
-     */
-    private static final float CHURN_MIN = 0.01f;
+    /** Ponizej tego tempa (szt./s) nic nie pokazujemy - ten sam prog co w trackerze. */
+    private static final float FLOW_MIN = 0.01f;
     private int flowRequestCooldown;
 
     public VeloceControllerScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
@@ -257,14 +254,12 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      */
     public void updateFlow(net.minecraft.core.BlockPos pos,
                            Map<Item, Long> stock,
-                           Map<Item, VeloceFlowTracker.Movement> perMinute,
-                           Map<Item, VeloceFlowTracker.Movement> perHour) {
+                           Map<Item, Float> rates) {
         if (!controllerPos.equals(pos)) {
             return;
         }
         this.stock = new HashMap<>(stock);
-        this.flowPerMinute = new HashMap<>(perMinute);
-        this.flowPerHour = new HashMap<>(perHour);
+        this.flowRate = new HashMap<>(rates);
     }
 
     /**
@@ -439,70 +434,36 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Ile tego itemu na sekunde przybywa albo ubywa.
+     * Jedna linia tempa - tylko dla itemow o STAŁYM trendzie.
      *
-     * <p>Dwa okna, bo odpowiadaja na dwa rozne pytania: minuta mowi "co sie
-     * dzieje TERAZ" (probka co 5 s), a godzina "jaki jest dlugofalowy bilans"
-     * (probka co 60 s). Oba LICZA SIE OD RAZU - nie ma stanu "zbieram dane";
-     * brak wpisu w mapie znaczy po prostu "nic sie nie ruszylo".
+     * <p><b>Czego gracz nie chcial.</b> Dwoch linii ("1 min:" i "1 hour:")
+     * oraz linii "no change" przy kazdym itemie. Zamiast tego: jedna linia
+     * z JEDNA liczba w dwoch skalach, i to tylko wtedy, gdy item naprawde ma
+     * staly przyrost albo staly ubytek (serwer przysyla tylko takie itemy -
+     * patrz VeloceFlowTracker.steadyRates). Gdy nic stalego sie nie dzieje,
+     * nie ma tu zadnej linii.
      */
     private void addFlowLines(List<Component> lines, Item item) {
-        addFlowLine(lines, item, flowPerMinute,
-                "gui.craftingveloce.controller.flow.minute", true);
-        addFlowLine(lines, item, flowPerHour,
-                "gui.craftingveloce.controller.flow.hour", false);
-    }
-
-    /**
-     * Jedna linia tempa.
-     *
-     * <p>Kazdy stan ma INNY tekst, nie tylko inny kolor - gracz nie moze byc
-     * zmuszony do rozrozniania zielonego od czerwonego, a znak liczby i tak
-     * jest czescia napisu.
-     *
-     * <p>W oknie minuty dokladamy zysk i strate, ale TYLKO gdy oba sa
-     * niezerowe. Wtedy samo netto klamie ("bez zmian"), bo item jest
-     * jednoczesnie wkladany i wyciagany - a dokladnie tak gracz sprawdza, czy
-     * pomiar w ogole dziala. W oknie godziny tego nie ma: probka raz na
-     * minute i tak nie widzi takiego szarpania, wiec bylby to szum bez tresci.
-     */
-    private void addFlowLine(List<Component> lines, Item item,
-                             Map<Item, VeloceFlowTracker.Movement> movements,
-                             String windowKey, boolean showChurn) {
-        VeloceFlowTracker.Movement m = movements.get(item);
-        if (m == null) {
-            lines.add(Component.translatable(windowKey,
-                            Component.translatable("gui.craftingveloce.controller.flow.steady"))
-                    .withStyle(ChatFormatting.DARK_GRAY));
+        Float rate = this.flowRate.get(item);
+        if (rate == null || Math.abs(rate) < FLOW_MIN) {
             return;
         }
-        Component net = Component.literal(signed(m.net()));
-        if (showChurn && m.gain() >= CHURN_MIN && m.loss() >= CHURN_MIN) {
-            net = Component.translatable("gui.craftingveloce.controller.flow.churn", net,
-                    Component.literal(signed(m.gain())), Component.literal(signed(-m.loss())));
-        }
-        lines.add(Component.translatable(windowKey, net).withStyle(colorOf(m.net())));
-    }
-
-    /** Kolor liczby netto - jeden dla calego projektu, w jednym miejscu. */
-    private static ChatFormatting colorOf(float net) {
-        if (net > CHURN_MIN) {
-            return ChatFormatting.GREEN;
-        }
-        return net < -CHURN_MIN ? ChatFormatting.RED : ChatFormatting.DARK_GRAY;
+        // Jedna liczba, dwie skale: na minute i na godzine.
+        lines.add(Component.translatable("gui.craftingveloce.controller.flow.rate",
+                        Component.literal(signed(rate * 60f)),
+                        Component.literal(signed(rate * 3600f)))
+                .withStyle(rate > 0f ? ChatFormatting.GREEN : ChatFormatting.RED));
     }
 
     /**
-     * Liczba ze znakiem: "+2.00/s" albo "-19.8/s".
+     * Liczba ze znakiem, bez jednostki: "+2.00" albo "-19.8".
      *
      * <p>Znak jest CZESCIA NAPISU, nie tylko kolorem - inaczej gracz
-     * nierozrozniajacy barw nie wie, czy zapas rosnie, czy spada.
+     * nierozrozniajacy barw nie wie, czy zapas rosnie, czy spada. Jednostke
+     * ("/min", "/h") dodaje klucz jezykowy.
      */
     private static String signed(float rate) {
-        if (Math.abs(rate) < CHURN_MIN) {
-            return "0/s";
-        }
-        return (rate < 0f ? "-" : "+") + formatRate(Math.abs(rate)) + "/s";
+        return (rate < 0f ? "-" : "+") + formatRate(Math.abs(rate));
     }
 
     /** Tempo z dokladnoscia, ktora ma sens: 2 miejsca ponizej 1/s, inaczej 1. */
