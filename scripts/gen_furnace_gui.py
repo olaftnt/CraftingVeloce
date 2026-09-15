@@ -40,17 +40,17 @@ SLOT_BG = (0x8B, 0x8B, 0x8B)
 # UWAGA: kazda stala w OSOBNEJ linii. Build.py czyta je wyrazeniem regularnym,
 # zeby porownac z menu i z ekranem - zapis krotkowy (A, B = 1, 2) tego nie
 # pozwala, a bez tego porownania uklad GUI moze sie rozjechac niezauwazony.
-FILTER_X = 26
+FILTER_X = 63
 FILTER_Y = 18
-FUEL_X = 88      # na prawo od filtrow (bylo pod nimi, nachodzilo na "Inventory")
-FUEL_Y = 26
+FUEL_X = 134     # kolumna plomien+paliwo, jeden skok slotu za filtrami
+FUEL_Y = 36
 PLAYER_X = 26
 PLAYER_Y = 84
 
 # Pozycje elementow rysowanych dynamicznie przez ekrany.
 # JEDNO zrodlo: ekrany uzywaja tych samych liczb (sprawdza to build.py).
-FLAME_X = 112    # na prawo od slotu paliwa
-FLAME_Y = 27
+FLAME_X = 135    # plomien NAD slotem paliwa (wyrownany z gornym rzedem filtrow)
+FLAME_Y = 19
 # Uwaga: samego plomienia NIE rysujemy w teksturze. Ekran sklada go
 # z dwoch sprite'ow wanilii (wygaszony obrys + zapalona czesc), dokladnie
 # tak, jak robi to waniliowy piec - patrz VeloceVelocityFurnaceScreen.

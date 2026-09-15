@@ -26,13 +26,20 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
     /** Ile slotow filtra (musi zgadzac sie z BE). */
     public static final int FILTER_SLOTS = VeloceVelocityFurnaceBlockEntity.FUEL_FILTERS;
 
-    private static final int FILTER_X = 26;
+    // Uklad (wycentrowany w panelu 212 px):
+    //
+    //     [ filtry 3x2 ]   [ plomien ]
+    //                      [ paliwo  ]
+    //
+    // Czyli po prawej od filtrow jest KOLUMNA dwoch kratek: u gory plomien
+    // (rysowany przez ekran sprite'ami wanilii), pod nim slot paliwa z tym,
+    // co piec aktualnie spala. Odstep miedzy filtrami a kolumna to jeden
+    // skok slotu (17 px), wiec odstepy sa rowne, a nie "na oko".
+    private static final int FILTER_X = 63;
     private static final int FILTER_Y = 18;
-    // Slot paliwa: NA PRAWO od filtrow (nie pod nimi). Pod filtrami nachodzil
-    // na napis "Inventory" gracza - a przy okazji uklad "filtry | paliwo |
-    // plomien" czyta sie w naturalnej kolejnosci dzialania pieca.
-    private static final int FUEL_X = 88;
-    private static final int FUEL_Y = 26;
+    /** Kolumna plomien+paliwo - dokladnie jeden skok slotu za filtrami. */
+    private static final int FUEL_X = 134;
+    private static final int FUEL_Y = 36;
     /**
      * Ekwipunek gracza w x=26 - TAK SAMO jak w ekstraktorze.
      *

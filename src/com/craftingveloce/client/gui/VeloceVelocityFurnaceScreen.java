@@ -4,7 +4,6 @@ import com.craftingveloce.CraftingVeloceMod;
 import com.craftingveloce.inventory.VeloceVelocityFurnaceMenu;
 import com.craftingveloce.network.OpenFilterPKT;
 import com.craftingveloce.network.SetFilterPKT;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
@@ -139,21 +138,22 @@ public class VeloceVelocityFurnaceScreen
             int sx = this.leftPos + filterX(i);
             int sy = this.topPos + filterY(i);
             graphics.renderFakeItem(filter, sx, sy);
-            // Delikatna ramka: filtr jest wyborem, nie przedmiotem w slocie.
-            RenderSystem.disableDepthTest();
-            graphics.fill(sx - 1, sy - 1, sx + 17, sy, 0x55C92DEA);
-            graphics.fill(sx - 1, sy + 16, sx + 17, sy + 17, 0x55C92DEA);
-            RenderSystem.enableDepthTest();
+            // UWAGA: nie ma tu juz fioletowych paskow nad i pod ikona.
+            //
+            // BUG, ktory to naprawia: rysowalem je od sx-1 do sx+17, czyli
+            // o piksel POZA slot - nachodzily na sasiednia kratke i wygladaly
+            // jak przypadkowe fioletowe podkreslenie (dokladnie to zglosil
+            // uzytkownik). Sam wybrany item jest wystarczajaco widoczny.
         }
     }
 
     // Polozenie pol - JEDNO zrodlo, uzywane i do rysowania, i do klikania.
-    private static final int FILTER_X = 26;
+    private static final int FILTER_X = 63;
     private static final int FILTER_Y = 18;
-    // Plomien NA PRAWO od slotu paliwa - uklad: filtry | paliwo | plomien.
+    // Plomien NAD slotem paliwa - uklad: filtry 3x2 | (plomien / paliwo).
     // Pozycja musi sie zgadzac z menu i z gen_furnace_gui.py (sprawdza build.py).
-    private static final int FLAME_X = 112;
-    private static final int FLAME_Y = 27;
+    private static final int FLAME_X = 135;
+    private static final int FLAME_Y = 19;
 
     private static int filterX(int index) {
         return FILTER_X + (index % 3) * 18;
@@ -182,8 +182,11 @@ public class VeloceVelocityFurnaceScreen
         if (!isHovering(FLAME_X, FLAME_Y, FLAME_W, FLAME_H, mouseX, mouseY)) {
             return;
         }
+        // Sam stosunek: ile tickow ZOSTALO z tego, co dodal ten itemek.
+        // Bez zadnego "left to burn" - tak prosil uzytkownik.
         graphics.renderTooltip(this.font,
-                Component.translatable("gui.craftingveloce.furnace.ticks", burnRemaining),
+                Component.translatable("gui.craftingveloce.furnace.ticks",
+                        burnRemaining, burnTotal),
                 mouseX, mouseY);
     }
 

@@ -48,7 +48,7 @@
   "gui.craftingveloce.furnace.filterClear": "Left-click to clear",
   "gui.craftingveloce.furnace.filterEmpty": "Empty fuel filter",
   "gui.craftingveloce.furnace.filterHint": "With no filters the furnace accepts ANY fuel",
-  "gui.craftingveloce.furnace.ticks": "%s ticks left to burn",
+  "gui.craftingveloce.furnace.ticks": "%s/%s",
   "gui.craftingveloce.sensor.count": "In network: %s",
   "gui.craftingveloce.sensor.count.unknown": "In network: (measuring...)",
   "gui.craftingveloce.sensor.filterChange": "Left-click to clear",
