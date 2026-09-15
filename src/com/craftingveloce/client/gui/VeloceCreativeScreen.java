@@ -568,9 +568,23 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
     @Override
     public void removed() {
+        // Stos trzymany na kursorze NIE MOZE zginac.
+        //
+        // Wczesniej bylo tu `this.menu.setCarried(ItemStack.EMPTY)` - czyli
+        // przedmiot, ktory gracz mial "na myszce" w chwili zamkniecia okna,
+        // po prostu znikal. To samo powtarzaly nadpisania w kontrolerze
+        // i pickerze filtrow, a ekran craftera dziedziczyl to z tej klasy.
+        // Tylko terminal robil to poprawnie.
+        //
+        // Teraz robimy to raz, tutaj: probujemy wlozyc do ekwipunku, a jak sie
+        // nie zmiesci - upuszczamy do swiata (zamiast skasowac).
         if (this.minecraft != null && this.minecraft.player != null && this.menu != null
                 && !this.menu.getCarried().isEmpty()) {
+            ItemStack carried = this.menu.getCarried();
             this.menu.setCarried(ItemStack.EMPTY);
+            if (!this.minecraft.player.getInventory().add(carried)) {
+                this.minecraft.player.drop(carried, false);
+            }
         }
         super.removed();
         if (this.modeBeforeOpen != null && this.minecraft != null && this.minecraft.gameMode != null) {

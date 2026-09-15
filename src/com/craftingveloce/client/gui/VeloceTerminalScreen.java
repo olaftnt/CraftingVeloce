@@ -420,14 +420,7 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             PacketDistributor.sendToServer(new com.craftingveloce.network.TerminalWatcherPKT(
                     terminalPos, false));
         }
-        if (this.minecraft != null && this.minecraft.player != null && this.menu != null
-                && !this.menu.getCarried().isEmpty()) {
-            ItemStack carried = this.menu.getCarried();
-            this.menu.setCarried(ItemStack.EMPTY);
-            if (!this.minecraft.player.getInventory().add(carried)) {
-                this.minecraft.player.drop(carried, false);
-            }
-        }
+        // Trzymany stos obsluguje klasa bazowa - jedno zrodlo prawdy.
         super.removed();
 
     }

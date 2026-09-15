@@ -333,10 +333,8 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     @Override
     public void removed() {
-        if (this.minecraft != null && this.minecraft.player != null && this.menu != null
-                && !this.menu.getCarried().isEmpty()) {
-            this.menu.setCarried(ItemStack.EMPTY);
-        }
+        // Trzymany stos obsluguje teraz klasa bazowa (oddaje do ekwipunku
+        // albo upuszcza). Wczesniej tutaj byl skasowany.
         super.removed();
 
     }
