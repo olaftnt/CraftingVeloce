@@ -40,8 +40,60 @@ JAR_NAME = "craftingveloce-1.0.0.jar"
 STAGING = "craftingveloce_jar_root"
 BUILD_OUT = "/tmp/craftingveloce_build"
 
+# Katalog na zaleznosci kompilacyjne (compileOnly). W .gitignore (*.jar),
+# bo to cudze mody - nigdy nie moga trafic do naszego JARa.
+LIBS = "libs"
+
+# Zaleznosci kompilacyjne opcjonalnych integracji (compileOnly).
+#
+# Klucz = prefiks pakietu obcego moda. Po nim POZNAJEMY, ktore JAR-y sa
+# potrzebne: jesli zaden plik w src/ nie importuje tego pakietu, JAR nie jest
+# wymagany. Dzieki temu etap "same bramki, zero blokow" kompiluje sie takze
+# bez tych modow, a etap z blokami od razu zglasza brakujacy JAR.
+#
+# Wartosc = krotka WYMAGANYCH artefaktow; kazdy artefakt to lista NAZW
+# (wariantow) do wyboru - pierwszy znaleziony wygrywa. Np. Mekanism ma wariant
+# "sam API" i "pelny JAR": oba wystarcza do kompilacji, ale API jest maly.
+# JAR-y szukamy w kilku katalogach (rozne maszyny trzymaja je roznie), a
+# brakujace biblioteki z META-INF/jarjar wyciagamy do libs/.
+COMPILE_ONLY = {
+    "com.simibubi.create": (
+        ("create-1.21.1-6.0.10.jar",),
+        ("ponder-neoforge-1.0.82+mc1.21.1.jar",),
+    ),
+    "net.createmod": (
+        ("create-1.21.1-6.0.10.jar",),
+        ("ponder-neoforge-1.0.82+mc1.21.1.jar",),
+    ),
+    "com.smashingmods.alchemistry": (
+        ("alchemistry-1.21.1-2.4.5.jar",),
+        ("alchemylib-1.21.1-1.1.6.jar",),
+        ("chemlib-1.21.1-2.1.5.jar",),
+    ),
+    "com.smashingmods.alchemylib": (
+        ("alchemylib-1.21.1-1.1.6.jar",),
+        ("chemlib-1.21.1-2.1.5.jar",),
+    ),
+    "mekanism": (
+        ("Mekanism-1.21.1-10.7.19.85-api.jar",
+         "Mekanism-1.21.1-10.7.19.85.jar"),
+    ),
+}
+
+# Katalogi, w ktorych szukamy JAR-ow compileOnly (w tej kolejnosci).
+COMPILE_ONLY_DIRS = (LIBS, MODS, os.path.expanduser("~/Downloads"))
+
 # Pakiety obcego moda - nigdy nie moga trafic do naszego JARa.
 EXCLUDED_SRC = ("eatawesome", "moze_intel")
+
+# Pakiety obcych modow = granica izolacji. Rdzen (wszystko poza compat/)
+# nie moze ich importowac, a modul compat/ danego moda nie moze importowac
+# innego obcego moda (latwo o pomylke przy kopiowaniu pliku).
+FOREIGN_PACKAGES = ("com.simibubi.create", "net.createmod",
+                    "com.smashingmods", "mekanism")
+FOREIGN_JAR_PATHS = ("com/simibubi/create/", "net/createmod/",
+                     "com/smashingmods/", "mekanism/")
+
 
 # Smieci systemowe, ktore nie moga trafic do JARa.
 JUNK = (".DS_Store", "__MACOSX", ".git")
@@ -570,6 +622,286 @@ def validate_recipe_model():
     print("    OK (jeden model receptury, jedna lista rodzin, jeden filtr special)")
 
 
+def _imports_of(path):
+    """Pelen zbiór importowanych nazw w pliku (prosto i bez parsera)."""
+    text = open(path, encoding="utf-8").read()
+    return [m.group(1) for m in re.finditer(r"^import\s+([\w.]+);", text, re.M)]
+
+
+def foreign_packages_used():
+    """
+    Prefiksy obcych pakietow, ktore sa FAKTYCZNIE importowane w src/.
+
+    Dzieki temu etap "same bramki, zero blokow" nie wymaga JAR-ow obcych
+    modow, a pierwszy plik z obcym typem od razu je wymusza.
+    """
+    used = set()
+    for path in glob.glob("src/**/*.java", recursive=True):
+        if any(x in path for x in EXCLUDED_SRC):
+            continue
+        for name in _imports_of(path):
+            for pkg in COMPILE_ONLY:
+                if name == pkg or name.startswith(pkg + "."):
+                    used.add(pkg)
+    return used
+
+
+def _find_jar(name):
+    for directory in COMPILE_ONLY_DIRS:
+        path = os.path.join(directory, name)
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _extract_nested_jar(name):
+    """
+    Wyciaga JAR z META-INF/jarjar innego moda do libs/.
+
+    Create dolacza swoje biblioteki (Ponder, Flywheel, Registrate) jako
+    zagniezdzone JAR-y. Do kompilacji wystarczy Ponder - bez niego javac
+    nie widzi klasy bazowej bloku kinetycznego ("cannot access
+    VirtualBlockEntity").
+    """
+    for directory in COMPILE_ONLY_DIRS:
+        if not os.path.isdir(directory):
+            continue
+        for jar in sorted(glob.glob(os.path.join(directory, "*.jar"))):
+            try:
+                with zipfile.ZipFile(jar) as archive:
+                    member = "META-INF/jarjar/" + name
+                    if member not in archive.namelist():
+                        continue
+                    os.makedirs(LIBS, exist_ok=True)
+                    dest = os.path.join(LIBS, name)
+                    with archive.open(member) as src, open(dest, "wb") as out:
+                        shutil.copyfileobj(src, out)
+                    print(f"    wyciagnieto {name} z {os.path.basename(jar)}")
+                    return dest
+            except zipfile.BadZipFile:
+                continue
+    return None
+
+
+def resolve_compile_only():
+    """JAR-y compileOnly potrzebne do TEJ kompilacji (moze byc pusto)."""
+    used = foreign_packages_used()
+    if not used:
+        return []
+    paths, missing, seen = [], [], set()
+    for pkg in sorted(used):
+        for variants in COMPILE_ONLY[pkg]:
+            if variants[0] in seen:
+                continue
+            found = None
+            for name in variants:
+                found = _find_jar(name) or _extract_nested_jar(name)
+                if found:
+                    seen.add(variants[0])
+                    break
+            if found:
+                paths.append(found)
+            else:
+                missing.append(" albo ".join(variants))
+    if missing:
+        fail("brak zaleznosci kompilacyjnych: " + ", ".join(sorted(set(missing)))
+             + "\n  importy obcych pakietow w src/: " + ", ".join(sorted(used))
+             + "\n  szukalem w: " + ", ".join(COMPILE_ONLY_DIRS)
+             + "\n  wloz JAR-y tam (albo do libs/) i uruchom ponownie")
+    return paths
+
+
+def validate_core_isolation():
+    """
+    Rdzen nie zna obcych modow, a modul compat zna TYLKO swojego moda.
+
+    Dwa niezmienniki:
+      1. zaden plik poza {@code compat/} nie importuje obcego pakietu - inaczej
+         mod nie wstaje bez tamtego moda (NoClassDefFoundError przy linkowaniu),
+      2. modul {@code compat/<mod>} nie importuje innego obcego moda - to
+         najczestszy blad przy kopiowaniu pliku z jednej integracji do drugiej
+         i objawia sie dopiero u gracza, ktory ma tylko jeden z tych modow.
+    """
+    owners = {
+        "create": ("com.simibubi.create", "net.createmod"),
+        "alchemistry": ("com.smashingmods",),
+        "mekanism": ("mekanism",),
+    }
+    core, cross, checked = [], [], 0
+    for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
+        rel = path.replace(os.sep, "/")
+        foreign = [n for n in _imports_of(path)
+                   if any(n == p or n.startswith(p + ".") for p in FOREIGN_PACKAGES)]
+        if not foreign:
+            continue
+        checked += 1
+        marker = "/compat/"
+        if marker not in rel:
+            core.append(f"{rel} -> {foreign[0]}")
+            continue
+        owner = rel.split(marker, 1)[1].split("/", 1)[0]
+        allowed = owners.get(owner, ())
+        for name in foreign:
+            if not any(name == p or name.startswith(p + ".") for p in allowed):
+                cross.append(f"{rel} -> {name} (modul '{owner}')")
+    problems = []
+    if core:
+        problems.append("rdzen importuje obce mody:\n  " + "\n  ".join(core))
+    if cross:
+        problems.append("modul compat importuje obcego moda:\n  " + "\n  ".join(cross))
+    if problems:
+        fail("izolacja modulow:\n  " + "\n  ".join(problems))
+    print(f"    OK (izolacja: {checked} plikow z obcymi importami, wszystkie w compat/)")
+
+
+def validate_compat_gates(z):
+    """
+    Klasy ladowane ZAWSZE nie moga miec obcego typu w swojej sygnaturze.
+
+    To najwazniejszy niezmiennik izolacji i jednoczesnie najlatwiejszy do
+    zlamania: dopisanie pola albo parametru typu obcego moda do klasy bramki
+    wywala moda bez tego moda. Powod jest mechaniczny - JVM musi znac typy
+    z sygnatur, zeby zweryfikowac klase, a ciala metod tylko przy ich
+    WYWOLANIU.
+
+    Sprawdzamy cztery grupy klas (wszystkie ladowane bezwarunkowo):
+      1. rdzen (poza {@code compat/}),
+      2. klasy w samym {@code compat/} (np. VeloceMods - enum modow),
+      3. klasy-bramki {@code compat/<mod>/XCompat},
+      4. klasy w {@code compat/<mod>/} - z wyjatkiem bramek - sa ladowane
+         TYLKO po sprawdzeniu obecnosci moda, wiec one moga miec obce typy.
+
+    UWAGA: to musi byc kontrola SYGNATUR, a nie test ladowania klasy. HotSpot
+    rozwiazuje typy leniwie, wiec klasa z nieuzywanym polem obcego typu
+    zaladuje sie bez obcego moda - i wywali sie dopiero, gdy ktos dotknie tego
+    pola (np. rok pozniej, przy okazji innej zmiany). Kalibracja: wstrzykniecie
+    pola typu Create do VeloceMods przechodzi test L1, a MUSI byc zlapane tutaj.
+    """
+    gates = {
+        "create": "com.craftingveloce.compat.create.CreateCompat",
+        "alchemistry": "com.craftingveloce.compat.alchemistry.AlchemistryCompat",
+        "mekanism": "com.craftingveloce.compat.mekanism.MekanismCompat",
+    }
+    module_dirs = ("com/craftingveloce/compat/create/",
+                   "com/craftingveloce/compat/alchemistry/",
+                   "com/craftingveloce/compat/mekanism/")
+    gate_paths = {cls.replace(".", "/") + ".class" for cls in gates.values()}
+
+    targets = []
+    for name in z.namelist():
+        if not name.startswith("com/craftingveloce/") or not name.endswith(".class"):
+            continue
+        in_module = any(name.startswith(d) for d in module_dirs)
+        if in_module and name not in gate_paths:
+            continue   # ladowane warunkowo - obce typy sa tu dozwolone
+        targets.append(name[:-len(".class")].replace("/", "."))
+
+    problems, checked = [], 0
+    for cls in sorted(targets):
+        res = subprocess.run(["javap", "-p", "-s", "-cp", BUILD_OUT, cls],
+                             capture_output=True, text=True)
+        if res.returncode != 0:
+            problems.append(f"{cls}: javap nie powiodl sie ({res.stderr.strip()[:120]})")
+            continue
+        checked += 1
+        for line in res.stdout.splitlines():
+            stripped = line.strip()
+            if not (stripped.endswith(";") or stripped.startswith("descriptor:")):
+                continue
+            # Nasze wlasne nazwy moga zawierac slowo "mekanism" (pakiet modulu
+            # compat), wiec najpierw usuwamy cala nasza kwalifikacje - szukamy
+            # obcego pakietu, a nie slowa.
+            probe = re.sub(r"com\.craftingveloce(\.\w+)+", "", line)
+            probe = re.sub(r"com/craftingveloce(/[\w$]+)+", "", probe)
+            for pkg in FOREIGN_PACKAGES:
+                if pkg in probe or pkg.replace(".", "/") in probe:
+                    problems.append(f"{cls}: obcy typ w sygnaturze -> {stripped}")
+    if problems:
+        fail("izolacja sygnatur:\n  " + "\n  ".join(problems[:8]))
+    missing = [c for c in gates.values() if c not in targets]
+    if missing:
+        fail("brak klas bramek w JARze: " + ", ".join(missing))
+    print(f"    OK ({checked} klas ladowanych zawsze: zero obcych typow w sygnaturach)")
+
+
+def validate_jar_isolation(z):
+    """
+    Poziom BAJTKODU: rdzen nie odwoluje sie do zadnej klasy obcego moda.
+
+    Kontrola zrodel patrzy na linie {@code import} - a obcy typ moze byc
+    uzyty bez importu (pelna nazwa w kodzie). Dlatego sprawdzamy gotowy
+    artefakt: zadna nasza klasa SPOZA {@code compat/} nie moze miec w stalej
+    puli odwolania do obcego pakietu. To ten sam niezmiennik, ale odporny na
+    sposob zapisu w zrodle.
+    """
+    root = "com/craftingveloce/"
+    compat = root + "compat/"
+    own_prefix = compat.encode()
+    patterns = [p.encode() for p in FOREIGN_JAR_PATHS]
+
+    def foreign_refs(data):
+        """Odwolania do obcych pakietow, pomijajac nasz wlasny katalog compat/."""
+        found = []
+        for pattern in patterns:
+            start = 0
+            while True:
+                i = data.find(pattern, start)
+                if i < 0:
+                    break
+                # Odwolanie do NASZEGO modulu compat
+                # (com/craftingveloce/compat/mekanism/...) tez zawiera slowo
+                # "mekanism/" - to nie wyciek.
+                if not data[max(0, i - len(own_prefix)):i].endswith(own_prefix):
+                    found.append(pattern.decode())
+                    break
+                start = i + 1
+        return found
+
+    bad = []
+    for name in z.namelist():
+        if not name.startswith(root) or name.startswith(compat) or not name.endswith(".class"):
+            continue
+        found = foreign_refs(z.read(name))
+        if found:
+            bad.append(f"{name} -> {', '.join(found)}")
+    if bad:
+        fail("rdzen odwoluje sie do obcych modow (poziom bajtkodu):\n  "
+             + "\n  ".join(bad[:5]))
+    print("    OK (bajtkod rdzenia bez odwolan do obcych modow)")
+
+
+def validate_isolation_runtime(cp, toms, rs):
+    """
+    L1 na zywo: klasy bramek MUSZA dac sie zaladowac BEZ obcych modow.
+
+    Statyczne kontrole (importy, bajtkod) pilnuja, gdzie lezy obcy typ.
+    Ten test sprawdza SKUTEK: uruchamia maly program z classpath BEZ Create,
+    Alchemistry i Mekanism, ktory laduje klasy bramek i pyta je o obecnosc
+    modow. Gdyby bramka miala obcy typ w sygnaturze, samo jej zaladowanie
+    rzuciloby NoClassDefFoundError - dokladnie to, co zobaczylby gracz bez
+    tamtego moda (i czego nie da sie zobaczyc w kompilacji).
+    """
+    src = os.path.join("scripts", "isolation", "L1Test.java")
+    if not os.path.exists(src):
+        return
+    out = "/tmp/craftingveloce_isolation"
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(out, exist_ok=True)
+    classpath = os.pathsep.join([BUILD_OUT, cp, toms, rs])
+
+    res = subprocess.run(["javac", "-nowarn", "-cp", classpath, "-d", out, src],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        fail("nie kompiluje sie test izolacji (scripts/isolation/L1Test.java):\n"
+             + res.stderr[:600])
+    res = subprocess.run(["java", "-cp", os.pathsep.join([out, classpath]), "L1Test"],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        lines = [l for l in res.stdout.splitlines() if l.startswith("FAIL") or l.startswith("BLAD")]
+        fail("L1 (mod bez obcych modow) nie przeszedl:\n  " + "\n  ".join(lines[:8]))
+    print("    OK (L1: bramki laduja sie bez obcych modow i mowia 'brak')")
+
+
 def game_running():
     """
     Czy Minecraft z tego profilu wlasnie dziala?
@@ -609,11 +941,15 @@ def main():
                if not any(x in f for x in EXCLUDED_SRC)]
     print(f"    plikow: {len(sources)} (pominieto {', '.join(EXCLUDED_SRC)})")
 
+    extra_cp = resolve_compile_only()
+    if extra_cp:
+        print("    compileOnly: " + ", ".join(os.path.basename(p) for p in extra_cp))
+
     shutil.rmtree(BUILD_OUT, ignore_errors=True)
     os.makedirs(BUILD_OUT, exist_ok=True)
     res = subprocess.run(
         ["javac", "--release", "21", "-nowarn",
-         "-cp", f"{cp}:{toms}:{rs}", "-d", BUILD_OUT] + sources,
+         "-cp", ":".join([cp, toms, rs] + extra_cp), "-d", BUILD_OUT] + sources,
         capture_output=True, text=True)
     if res.returncode != 0:
         errs = [l for l in res.stderr.split("\n") if "error" in l.lower()]
@@ -713,7 +1049,13 @@ def main():
     if "META-INF/neoforge.mods.toml" not in names:
         fail("brak META-INF/neoforge.mods.toml")
 
-    leaks = [n for n in names if "moze_intel" in n or "eatawesome" in n]
+    # Wyciek = klasa obcego moda w NASZYM JARze. Nasze wlasne klasy pod
+    # com/craftingveloce/ moga miec w sciezce slowo "mekanism" (pakiet modulu
+    # compat), wiec granica jest prefiks naszego pakietu, a nie sama nazwa.
+    foreign = [n for n in names
+               if not n.startswith("com/craftingveloce/")
+               and any(p in n for p in FOREIGN_JAR_PATHS)]
+    leaks = [n for n in names if "moze_intel" in n or "eatawesome" in n] + foreign
     if leaks:
         fail(f"wyciek obcych pakietow: {leaks[:5]}")
 
@@ -736,6 +1078,10 @@ def main():
     validate_sensor_row()
     validate_node_blocks()
     validate_recipe_model()
+    validate_core_isolation()
+    validate_compat_gates(z)
+    validate_jar_isolation(z)
+    validate_isolation_runtime(cp, toms, rs)
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "

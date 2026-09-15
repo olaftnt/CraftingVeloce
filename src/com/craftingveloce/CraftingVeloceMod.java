@@ -74,6 +74,29 @@ public class CraftingVeloceMod {
         CREATIVE_TABS.register(modEventBus);
         VelocePacketHandler.register(modEventBus);
 
+        // --- Opcjonalne integracje z innymi modami ------------------------
+        //
+        // KAZDA bramka jest sprawdzana PRZED pierwszym odwolaniem do klasy
+        // z obcym typem. Kolejnosc ma znaczenie: NoClassDefFoundError leci przy
+        // ladowaniu i linkowaniu klasy, wiec zaden try/catch by go nie zlapal -
+        // bez sprawdzenia mod po prostu nie wstaje bez tamtego moda.
+        //
+        // Bramki (XCompat) nie maja obcych typow w polach ani sygnaturach; obce
+        // typy sa dopiero w cialach metod wolanych warunkowo.
+        for (com.craftingveloce.compat.VeloceMods mod : com.craftingveloce.compat.VeloceMods.values()) {
+            LOGGER.info("[Veloce][COMPAT] {}: {}", mod.id(),
+                    mod.isLoaded() ? "obecny" : "brak");
+        }
+        if (com.craftingveloce.compat.create.CreateCompat.isPresent()) {
+            com.craftingveloce.compat.create.CreateCompat.register(modEventBus);
+        }
+        if (com.craftingveloce.compat.alchemistry.AlchemistryCompat.isPresent()) {
+            com.craftingveloce.compat.alchemistry.AlchemistryCompat.register(modEventBus);
+        }
+        if (com.craftingveloce.compat.mekanism.MekanismCompat.isPresent()) {
+            com.craftingveloce.compat.mekanism.MekanismCompat.register(modEventBus);
+        }
+
         modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent.class, event -> {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
             event.register(VeloceRegistry.VELOCITY_FURNACE_MENU.get(),

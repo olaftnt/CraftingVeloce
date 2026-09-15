@@ -57,3 +57,44 @@ is built on its terminal block. Refined Storage support is optional.
     versionRange="[2.0.0,)"
     ordering="AFTER"
     side="BOTH"
+
+# --- OPCJONALNE INTEGRACJE (soft-dependencies) --------------------------
+#
+# KAZDA z nich jest "optional" CELOWO. Modul z integracja zyje w
+# com/craftingveloce/compat/<mod>/ i ma obce typy WYLACZNIE w ciele metod,
+# wolanych po sprawdzeniu obecnosci moda (bramka XCompat.isPresent()).
+# Rdzen nie importuje niczego z tych modow - pilnuje tego build.py
+# (validate_core_isolation) i kontrola wyciekow w JARze.
+#
+# NIE zmieniaj "optional" na "required": gracz bez Create/Alchemistry/
+# Mekanism ma dostac dzialajacy mod bez tych integracji, a nie blad
+# ladowania. Odwrotnie - dopisanie "required" nie naprawi zadnego bledu,
+# tylko uniemozliwi uruchomienie.
+
+# CREATE - maszyny kinetyczne (mlyn, piła, prasa, basen, mechanical crafting).
+# Wersja przypieta do serii 6.0.x: klasy kinetyczne to API "spolecznosciowe",
+# ktore potrafi sie zmienic miedzy wersjami.
+[[dependencies.craftingveloce]]
+    modId="create"
+    type="optional"
+    versionRange="[6.0.7,6.1.0)"
+    ordering="AFTER"
+    side="BOTH"
+
+# ALCHEMISTRY - maszyny chemiczne zasilane FE (compactor, combiner, fission).
+# Wchodzi razem z AlchemyLib i ChemLib (biblioteki Alchemistry).
+[[dependencies.craftingveloce]]
+    modId="alchemistry"
+    type="optional"
+    versionRange="[2.4.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# MEKANISM - maszyny itemowe zasilane FE (crusher, enrichment, combiner, sawmill).
+[[dependencies.craftingveloce]]
+    modId="mekanism"
+    type="optional"
+    versionRange="[10.7.0,)"
+    ordering="AFTER"
+    side="BOTH"
+

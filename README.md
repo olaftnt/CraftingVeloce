@@ -192,6 +192,16 @@ git add -A && git commit -m "..." && git push origin main
 - `scripts/cp.txt` — pełny classpath (MC + NeoForge + wszystkie mody)
 - `toms_storage-1.21-2.4.2.jar` — z folderu mods (profil testing)
 - `refinedstorage-neoforge-2.0.9.jar` — z folderu mods (profil testing)
+- **compileOnly (opcjonalne integracje)** — `scripts/build.py` sam znajduje te JAR-y
+  w `libs/`, w folderze mods profilu `testing` albo w `~/Downloads`:
+  `create-1.21.1-6.0.10.jar`, `ponder-neoforge-1.0.82+mc1.21.1.jar` (wyciągany
+  automatycznie z `META-INF/jarjar/` Create), `alchemistry-1.21.1-2.4.5.jar`,
+  `alchemylib-1.21.1-1.1.6.jar`, `chemlib-1.21.1-2.1.5.jar`,
+  `Mekanism-...-api.jar` (albo pełny `Mekanism-...jar`).
+  JAR-y są wymagane **tylko wtedy**, gdy jakieś źródło naprawdę importuje dany
+  obcy pakiet — etap „same bramki, zero bloków" kompiluje się bez nich.
+  `*.jar` jest w `.gitignore`, więc nic z tego nie trafia do repozytorium.
+
 
 ### ⚠️ Ważne pułapki
 
@@ -199,7 +209,11 @@ git add -A && git commit -m "..." && git push origin main
 
 2. **`src/eatawesome/`** — też nie nasze, to stary mod InventoryExchange. Nie kompilować.
 
-3. **`craftingveloce_jar_root/META-INF/`** — musi zawierać `mods.toml` i `MANIFEST.MF`. Generowane przez poprzedni build, nie kasuj tego folderu całkowicie.
+3. **`src_meta/META-INF/`** — JEDYNE źródło `neoforge.mods.toml`. Build czyści
+   staging tylko z `com/`, `assets/`, `data/` i kopiuje `META-INF` ze `src_meta/`,
+   więc plik jest wersjonowany i nie znika przy czystym rebuildzie. Nie trzymaj
+   kopii `mods.toml` w `craftingveloce_jar_root/` — to była przyczyna JAR-a bez
+   metadanych (loader takiego moda nie widzi).
 
 4. **VeloceRegistry.createBEType()** — używa reflection bo NeoForge 21.1.x nie ma publicznego 3-arg konstruktora `BlockEntityType`. Nie zmieniaj bez potrzeby.
 
@@ -228,6 +242,32 @@ git add -A && git commit -m "..." && git push origin main
 | Refined Storage | `RefinedStorageHelper.hasRSNetwork()` — sprawdza i łączy z RS network |
 | NeoForge ItemHandler | `Capabilities.ItemHandler.BLOCK` zarejestrowane dla extractora (pozwala rurą Pipez ssać) |
 | Vanilla Hopper | `VeloceExtractorBlockEntity implements WorldlyContainer` |
+| Create / Alchemistry / Mekanism | opcjonalne (`compat/*`) — patrz niżej |
+
+### Opcjonalne integracje (`com/craftingveloce/compat/`)
+
+Zasada nadrzędna: **rdzeń nie zna żadnego obcego moda**. Moduł integracji żyje w
+`compat/<mod>/`, ma obce typy wyłącznie w ciałach metod i jest wołany dopiero po
+sprawdzeniu obecności moda w bramce (`XCompat.isPresent()` → `XCompat.register()`
+z `CraftingVeloceMod`). Każdy mod jest w `neoforge.mods.toml` jako
+`type="optional"` + `ordering="AFTER"`.
+
+`try/catch` wokół kodu integracji **nie działa** — `NoClassDefFoundError` leci
+przy ładowaniu i linkowaniu klasy, zanim `try` zdąży zadziałać. Dlatego obcy typ
+nie może wystąpić w polu ani sygnaturze klasy ładowanej bezwarunkowo.
+
+Pilnują tego cztery kontrole w `scripts/build.py` (krok 4):
+
+| Kontrola | Czego pilnuje |
+|----------|----------------|
+| `validate_core_isolation` | żaden plik poza `compat/` nie importuje obcego pakietu; `compat/<mod>` nie importuje innego obcego moda |
+| `validate_compat_gates` | klasy ładowane zawsze (rdzeń + `compat/` + bramki) nie mają obcego typu w sygnaturze — na poziomie bajtkodu (`javap`) |
+| `validate_jar_isolation` | żadna klasa rdzenia w JARze nie odwołuje się do obcego pakietu (łapie też użycie bez `import`) |
+| `validate_isolation_runtime` | **L1**: uruchamia `scripts/isolation/L1Test.java` bez obcych modów — bramki muszą się załadować i zwrócić `false` |
+
+Zakres rodzin receptur rejestrują moduły (`XRecipeFamily`) w
+`VeloceRecipeFamilies.registerModFamily` — w `FMLCommonSetupEvent`, bo
+DeferredHoldery obcego moda są wiązane dopiero po rejestracji.
 
 ---
 
