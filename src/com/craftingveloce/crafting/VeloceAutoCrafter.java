@@ -1157,20 +1157,17 @@ public final class VeloceAutoCrafter {
     /** Jedno wykonanie receptury: pobierz skladniki, wstaw wynik. */
     private static boolean runOnce(ServerLevel level, Context ctx,
                                    VeloceRecipeRegistry.CraftingEntry recipe) {
-        // CIEPLO PLACIMY PRZED POBRANIEM SKLADNIKOW.
+        // 1. NAJPIERW POBRANIE SKLADNIKOW, POTEM ZAPLATA CIEPLEM.
         //
-        // Odwrotna kolejnosc oznaczalaby, ze przy braku pradu/paliwa zdazymy
-        // juz zabrac rudy z sieci - a potem musielibysmy je oddawac. Tutaj
-        // przy braku ciepla nie ruszamy niczego.
+        // Odwrotna kolejnosc (cieplo najpierw) przepalala energie na darmo:
+        // gdy po zapłacie okazywalo sie, ze brakuje skladnika, metoda
+        // zwracala pobrane itemy, ale CIEPLA NIKT NIE ODDYWAL. Przy
+        // recepturze, ktorej skladnik wlasnie sie skonczyl, kazda proba
+        // zjadala jedno przepalenie z pieca i nic z tego nie wynikalo.
         //
-        // VeloceHeatSources.consume bierze najpierw z pieca elektrycznego
-        // (priorytet 0), a dopiero gdy w nim zabraknie, dobiera reszte
-        // z paliwowego (1) - dokladnie jak w specyfikacji.
-        if (recipe.isFurnace() && !VeloceHeatSources.consume(level, ctx.network, 1)) {
-            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
-                    "recipe %s needs heat, but no powered furnace could pay for it", recipe.id());
-            return false;
-        }
+        // Teraz: cieplo placimy dopiero, gdy mamy juz komplet skladnikow.
+        // Wowczas jedyna przyczyna niepowodzenia jest brak pradu/paliwa,
+        // a wtedy zwracamy rowniez pobrane itemy.
         NonNullList<ItemStack> consumed = NonNullList.create();
         for (Ingredient ing : recipe.ingredients()) {
             ItemStack taken = takeOne(level, ctx, ing);
@@ -1183,6 +1180,22 @@ public final class VeloceAutoCrafter {
             }
             consumed.add(taken);
         }
+
+        // 2. Zaplata cieplem.
+        //
+        // VeloceHeatSources.consume bierze najpierw z pieca elektrycznego
+        // (priorytet 0), a dopiero gdy w nim zabraknie, dobiera reszte
+        // z paliwowego (1) - dokladnie jak w specyfikacji. Przy niepowodzeniu
+        // nie zabiera NICZEGO.
+        if (recipe.isFurnace() && !VeloceHeatSources.consume(level, ctx.network, 1)) {
+            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                    "recipe %s needs heat, but no powered furnace could pay for it", recipe.id());
+            for (ItemStack s : consumed) {
+                deposit(level, ctx, s);
+            }
+            return false;
+        }
+
         ItemStack result = recipe.result().copy();
         deposit(level, ctx, result);
         return true;
