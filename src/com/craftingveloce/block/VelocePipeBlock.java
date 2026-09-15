@@ -375,9 +375,29 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
 
         if (world instanceof ServerLevel sl) {
-            VelocePipeNetworkManager.get(sl).rebuildAt(sl, pos);
+            // TA SAMA DROGA CO PRZY ZMIANIE SASIADA - i to jest istotne.
+            //
+            // BUG, ktory tu byl: wolalismy tylko rebuildAt(), ktore robi pelny
+            // BFS w trakcie klikania i NIE synchronizuje plaskiej struktury.
+            // O tym, czy odlaczenie w ogole podzieli siec, decydowal wiec
+            // EFEKT UBOCZNY aktualizacji bloku (neighborChanged sasiada) -
+            // czyli raz zadzialalo, a raz nie, zaleznie od tego, czy gra
+            // akurat wyslala powiadomienie. To jest wlasnie to "przez chwile
+            // dzialalo, a potem sie naprawilo".
+            //
+            // onNeighborChanged robi trzy rzeczy, ktorych potrzebujemy:
+            //   1. syncAround - plaska struktura natychmiast wie o zmianie,
+            //   2. queueRebuild - przebudowa ODLOZONA do ticku, wiec klik
+            //      gracza nie placi za skan calej sieci,
+            //   3. uniewaznienie cache endpointow - bez tego terminal dalej
+            //      pokazywalby zawartosc odlaczonej skrzyni.
+            com.craftingveloce.network.pipe.VelocePipeNetworkManager mgr =
+                    com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
+            mgr.onNeighborChanged(sl, pos, side != null ? pos.relative(side) : pos);
             if (side != null) {
-                VelocePipeNetworkManager.get(sl).rebuildAt(sl, pos.relative(side));
+                // Druga strona tez - po podziale nalezy do INNEJ sieci, wiec
+                // jej cache trzeba uniewaznic osobno.
+                mgr.onNeighborChanged(sl, pos.relative(side), pos);
             }
         }
 
