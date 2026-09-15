@@ -393,9 +393,17 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         );
     }
 
-    /** Czy to slot "strzalki" (odkladanie do sieci) - ten na 173, 112. */
-    private boolean isStoreSlot(Slot slot) {
-        return slot != null && slot.x == 173 && slot.y == 112;
+
+
+    /**
+     * Klucz stanu widoku - pozycja TEGO terminala.
+     *
+     * <p>Dzieki temu kazdy terminal pamieta wlasna zakladke, fraze i
+     * przewiniecie, zamiast wspoldzielic je z creative inventory.
+     */
+    @Override
+    protected Object viewStateKey() {
+        return terminalPos;
     }
 
     /** Terminal zostawia hotbar gracza dzialajacy - mozna z niego korzystac. */

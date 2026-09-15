@@ -19,6 +19,17 @@ public class ClientTerminalHelper {
         }
     }
 
+    /**
+     * Czysci zapamietane widoki terminali.
+     *
+     * <p>Pozycje blokow nie maja sensu w innym swiecie (a w nowym moga
+     * przypadkiem wskazywac inny terminal), wiec przy wyjsciu ze swiata
+     * zaczynamy od czystej karty.
+     */
+    public static void clearSavedTerminalViews() {
+        com.craftingveloce.client.gui.VeloceTerminalViewState.clearAll();
+    }
+
     public static void handleSyncCounts(Map<Item, Long> itemCounts) {
         handleSyncCounts(itemCounts, Map.of());
     }

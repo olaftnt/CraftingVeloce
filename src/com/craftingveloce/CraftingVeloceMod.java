@@ -70,6 +70,13 @@ public class CraftingVeloceMod {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
         });
 
+        // Wyjscie ze swiata czysci zapamietane widoki terminali.
+        // Pozycje blokow nie maja sensu w innym swiecie, a w nowym moga
+        // przypadkiem wskazywac inny terminal.
+        NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut.class,
+                event -> com.craftingveloce.client.ClientTerminalHelper.clearSavedTerminalViews());
+
         // UWAGA: przezroczystosc blokow zostala CELOWO WYLACZONA.
         // Usunieto zarowno "render_type" z modeli w assets/.../models/block/,
         // jak i rejestracje render layeru ponizej. Wszystkie bloki Veloce

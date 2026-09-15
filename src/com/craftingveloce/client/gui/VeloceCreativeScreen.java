@@ -1,12 +1,16 @@
 package com.craftingveloce.client.gui;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
 
@@ -137,8 +141,156 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             this.minecraft.gameMode.setLocalMode(GameType.CREATIVE);
         }
         super.init();
+        disableVanillaTrashSlot();
         suppressPlayerSlots();
+        restoreViewState();
         applyItemFilter();
+        // Dopiero teraz, gdy zakladka i fraza sa ustawione - inaczej lista
+        // bywa pusta przy pierwszym otwarciu (zakladka INVENTORY).
+        VeloceTerminalViewState.refreshContents(this);
+        applyItemFilter();
+    }
+
+    /**
+     * Klucz, pod ktorym zapamietujemy widok tego ekranu.
+     *
+     * <p>Domyslnie {@code null} = nie pamietamy nic. Terminal zwraca pozycje
+     * swojego bloku, dzieki czemu KAZDY terminal ma wlasna zakladke, wlasna
+     * fraze wyszukiwania i wlasne przewiniecie - niezaleznie od creative
+     * inventory i od siebie nawzajem.
+     */
+    protected Object viewStateKey() {
+        return null;
+    }
+
+    /** Przywraca zapamietany widok (zakladka, fraza, przewiniecie). */
+    private void restoreViewState() {
+        Object key = viewStateKey();
+        if (key == null) {
+            return;
+        }
+        CreativeModeTab tab = VeloceTerminalViewState.findTab(
+                VeloceTerminalViewState.savedTab(key));
+        // Zakladki, ktorych u nas nie ma (np. ukryte), nie przywracamy.
+        if (tab != null && acceptTab(tab)) {
+            VeloceTerminalViewState.applyTab(this, tab);
+        }
+        VeloceTerminalViewState.applySearch(this, VeloceTerminalViewState.savedSearch(key));
+        Float scroll = VeloceTerminalViewState.savedScroll(key);
+        if (scroll != null) {
+            VeloceTerminalViewState.applyScroll(this, scroll);
+        }
+    }
+
+    /** Zapisuje widok, zeby nastepne otwarcie wrocilo w to samo miejsce. */
+    private void saveViewState() {
+        Object key = viewStateKey();
+        if (key == null) {
+            return;
+        }
+        VeloceTerminalViewState.save(key,
+                VeloceTerminalViewState.currentTab(),
+                VeloceTerminalViewState.currentSearch(this),
+                VeloceTerminalViewState.currentScroll(this));
+    }
+
+    // ------------------------------------------------------------------
+    // Slot "odkladania do sieci" na miejscu vanillaowego kosza
+    // ------------------------------------------------------------------
+
+    /**
+     * Wylacza vanillaowy slot niszczenia przedmiotow.
+     *
+     * <p><b>Dlaczego refleksja.</b> Vanilla trzyma ten slot w prywatnym polu
+     * {@code destroyItemSlot} i w {@code render()} rysuje na jego podstawie
+     * wlasny tooltip ("Destroy Item") - ZUPELNIE z pominięciem
+     * {@code getTooltipFromContainerItem}, wiec nadpisanie samego tooltipa nic
+     * nie dawalo (sprawdzone w bajtkodzie). Ustawienie pola na {@code null}
+     * wylacza cala te obsluge: i tooltip, i rysowanie ikonki.
+     *
+     * <p>Nasz wlasny slot zostaje w {@code menu.slots}, wiec klikanie dziala
+     * dalej - obslugujemy je w {@link #slotClicked} podklas.
+     */
+    private static java.lang.reflect.Field destroySlotField;
+    private static boolean destroySlotReflectionTried;
+
+    protected void disableVanillaTrashSlot() {
+        if (!destroySlotReflectionTried) {
+            destroySlotReflectionTried = true;
+            try {
+                destroySlotField = CreativeModeInventoryScreen.class
+                        .getDeclaredField("destroyItemSlot");
+                destroySlotField.setAccessible(true);
+            } catch (Throwable t) {
+                destroySlotField = null;
+            }
+        }
+        if (destroySlotField == null) {
+            return;
+        }
+        try {
+            destroySlotField.set(this, null);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /**
+     * Slot "odkladania" jest na miejscu vanillaowego kosza (173, 112).
+     *
+     * <p>Numeru nie bierzemy z sufitu: to pozycja, ktora vanilla sama ustawia
+     * dla {@code destroyItemSlot}, potwierdzona w bajtkodzie.
+     */
+    protected boolean isStoreSlot(Slot slot) {
+        return slot != null && slot.x == 173 && slot.y == 112;
+    }
+
+    /**
+     * Rysuje strzalke "do sieci" na slocie odkladania.
+     *
+     * <p>Rysujemy to w {@code render()} PO {@code super}, a nie w
+     * {@code renderSlot}, zeby miec pewnosc, ze zaslonimy krzyzyk wypalony
+     * w teksturze creative inventory.
+     */
+    private void drawStoreSlotIcon(GuiGraphics graphics) {
+        int x = this.leftPos + 173;
+        int y = this.topPos + 112;
+
+        // Tlo slotu - zaslania krzyzyk z tekstury.
+        graphics.fill(x, y, x + 16, y + 16, 0xFFC6C6C6);
+        graphics.fill(x, y, x + 16, y + 1, 0xFF8B8B8B);
+        graphics.fill(x, y, x + 1, y + 16, 0xFF8B8B8B);
+
+        // Strzalka w prawo, ciemnozielona.
+        int cx = x + 3;
+        int cy = y + 7;
+        int color = 0xFF2F6B2F;
+        for (int i = 0; i < 5; i++) {
+            graphics.fill(cx + i, cy + i, cx + i + 1, cy + i + 1, color);
+            graphics.fill(cx + i, cy + 8 - i, cx + i + 1, cy + 9 - i, color);
+        }
+        graphics.fill(cx + 5, cy + 4, cx + 11, cy + 5, color);
+    }
+
+    /** Tooltip slotu odkladania - zamiast vanillaowego "Destroy Item". */
+    private void drawStoreSlotTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!this.isHovering(173, 112, 16, 16, mouseX, mouseY)) {
+            return;
+        }
+        graphics.renderTooltip(this.font, java.util.List.of(
+                Component.translatable("gui.craftingveloce.terminal.storeSlot"),
+                Component.translatable("gui.craftingveloce.terminal.storeHint")
+                        .withStyle(net.minecraft.ChatFormatting.GRAY),
+                Component.translatable("gui.craftingveloce.terminal.storeHintShift")
+                        .withStyle(net.minecraft.ChatFormatting.GRAY)
+        ), java.util.Optional.empty(), mouseX, mouseY);
+    }
+
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        super.render(graphics, mouseX, mouseY, partialTick);
+        // Po super, wiec na wierzchu wszystkiego co narysowala vanilla.
+        drawStoreSlotIcon(graphics);
+        drawStoreSlotTooltip(graphics, mouseX, mouseY);
     }
 
     /**
@@ -718,6 +870,8 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
     @Override
     public void removed() {
+        // Zapamietujemy widok, zanim ekran zniknie.
+        saveViewState();
         // Stos trzymany na kursorze NIE MOZE zginac.
         //
         // Wczesniej bylo tu `this.menu.setCarried(ItemStack.EMPTY)` - czyli
