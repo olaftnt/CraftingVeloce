@@ -155,9 +155,16 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
             ItemStack filter = filterSlots.get(i);
             ItemStack currentOutput = outputInventory.getItem(i);
             int maxStack = filter.getMaxStackSize();
-            int needed = currentOutput.isEmpty()
-                    ? maxStack
-                    : maxStack - currentOutput.getCount();
+            // Ten sam warunek co w fazie 1: slot moze byc zajety innym itemem
+            // (nic innego go nie zapisuje, ale nie zakladamy tego na zapas).
+            int needed;
+            if (currentOutput.isEmpty()) {
+                needed = maxStack;
+            } else if (ItemStack.isSameItemSameComponents(currentOutput, filter)) {
+                needed = maxStack - currentOutput.getCount();
+            } else {
+                continue;
+            }
             if (needed <= 0) continue;
 
             ItemStack crafted = craftFromNetwork(sl, net, filter.getItem(), needed);
