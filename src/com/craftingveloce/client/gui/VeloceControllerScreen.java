@@ -131,6 +131,23 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         };
     }
 
+    /**
+     * Filtr dziala na LISCIE itemow, a nie tylko na rysowaniu ikony.
+     *
+     * <p><b>Bylo tu realne pomylenie.</b> Filtr sprawdzal sie wylacznie w
+     * {@code renderSlot} i w tooltipie, wiec odfiltrowane itemy zostawaly
+     * w siatce jako puste miejsca (cala masa dziur), a ich sloty nadal byly
+     * KLIKALNE - dalo sie wyciagnac item, ktory wlasnie byl oznaczony jako
+     * niedostepny.
+     *
+     * <p>Teraz {@code applyItemFilter} z klasy bazowej usuwa je z listy i
+     * kompaktuje siatke - tak samo, jak robi to ekran craftera.
+     */
+    @Override
+    protected boolean acceptItem(ItemStack stack) {
+        return !stack.isEmpty() && passesFilter(stack.getItem());
+    }
+
     /** Kolor tla ikony wg stanu dostepnosci. */
     private int colorFor(Item item) {
         if (hotbar.containsKey(item)) {
