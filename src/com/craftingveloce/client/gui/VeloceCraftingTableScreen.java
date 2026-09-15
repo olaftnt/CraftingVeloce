@@ -229,92 +229,18 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     // ------------------------------------------------------------------
-    // Zakladka "Survival Inventory" = osobny ekran magazynu
+    // ------------------------------------------------------------------
+    // Zakladka ekwipunku
     // ------------------------------------------------------------------
 
     /**
-     * Czy wybrana jest zakladka ekwipunku (Survival Inventory).
+     * Zakladka "Survival Inventory" NIE otwiera osobnego okna.
      *
-     * <p>Vanilla rozpoznaje ja po {@code CreativeModeTab.Type.INVENTORY}.
+     * <p>Wczesniej otwierala wlasny ekran kontenera, co konczylo sie bialym
+     * blokiem na srodku ekranu, bez zakladek i bez wyjscia - i pojawialo sie
+     * domyslnie przy kazdym wejsciu w crafter. Zrezygnowalismy z tego
+     * calkowicie: zakladka dziala jak reszta tego GUI.
      */
-    private boolean isInventoryTabSelected() {
-        try {
-            var f = net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen.class
-                    .getDeclaredField("selectedTab");
-            f.setAccessible(true);
-            Object tab = f.get(null);
-            if (tab instanceof CreativeModeTab cmt) {
-                return cmt.getType() == CreativeModeTab.Type.INVENTORY;
-            }
-        } catch (Throwable ignored) {
-        }
-        return false;
-    }
-
-    /**
-     * Klikniecie zakladki ekwipunku otwiera OSOBNY ekran magazynu craftera
-     * (jak skrzynia ze scrollbarem), zamiast podmieniac sloty w creative
-     * inventory.
-     *
-     * <p>Poprzednia proba podmieniala sloty w miejscu, co konczylo sie itemami
-     * na slocie glowy i zepsutym ukladem - walczylismy z vanilla. Osobny ekran
-     * daje pelna kontrole i nie ma w nim zbednych slotow.
-     */
-    /**
-     * Czy ekran magazynu zostal juz poproszony o otwarcie.
-     *
-     * <p>Zabezpieczenie przed wielokrotnym wyslaniem zadania w jednej klatce.
-     */
-    private boolean storageRequested = false;
-
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Klikniecie w zakladke ekwipunku -> otworz magazyn.
-        if (button == 0 && this.minecraft != null && this.minecraft.player != null) {
-            CreativeModeTab tab = tabUnderMouse(mouseX, mouseY);
-            if (tab != null && tab.getType() == CreativeModeTab.Type.INVENTORY) {
-                openStorage();
-                return true;
-            }
-        }
-        return super.mouseClicked(mouseX, mouseY, button);
-    }
-
-    /**
-     * Wykrywa wybor zakladki ekwipunku niezaleznie od klikniecia.
-     *
-     * <p>Poleganie wylacznie na {@code mouseClicked} jest zawodne: vanilla
-     * obsluguje zakladki wlasnym kodem i kolejnosc wywolan moze sie roznic
-     * miedzy wersjami. Sprawdzamy wiec stan zakladki w ticku i jesli gracz
-     * wybral ekwipunek, otwieramy magazyn - niezaleznie od tego, co zrobil
-     * vanilla.
-     */
-    @Override
-    public void containerTick() {
-        if (this.minecraft == null || this.minecraft.player == null) {
-            return;
-        }
-        if (isInventoryTabSelected()) {
-            if (!storageRequested) {
-                openStorage();
-            }
-        } else {
-            storageRequested = false;
-        }
-    }
-
-    /** Wysyla zadanie otwarcia ekranu magazynu. */
-    private void openStorage() {
-        if (storageRequested) {
-            return;
-        }
-        storageRequested = true;
-        com.craftingveloce.util.VeloceLog.Gui.attempt(
-                com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                "inventory tab selected - opening crafter storage at %s", tablePos);
-        PacketDistributor.sendToServer(
-                new com.craftingveloce.network.OpenStorageRequestPKT(tablePos));
-    }
 
     /** Znajduje zakladke pod kursorem. */
     private CreativeModeTab tabUnderMouse(double mouseX, double mouseY) {

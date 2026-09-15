@@ -68,8 +68,6 @@ public class CraftingVeloceMod {
 
         modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent.class, event -> {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
-            event.register(VeloceRegistry.VELOCE_CRAFTER_STORAGE_MENU.get(),
-                    com.craftingveloce.client.gui.VeloceCrafterStorageScreen::new);
         });
 
         // UWAGA: przezroczystosc blokow zostala CELOWO WYLACZONA.

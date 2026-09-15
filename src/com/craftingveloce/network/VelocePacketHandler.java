@@ -24,8 +24,6 @@ public class VelocePacketHandler {
             registrar.playToServer(BufferPullItemPKT.TYPE, BufferPullItemPKT.STREAM_CODEC, BufferPullItemPKT::handle);
             registrar.playToServer(RequestCraftableCountsPKT.TYPE, RequestCraftableCountsPKT.STREAM_CODEC, RequestCraftableCountsPKT::handle);
             registrar.playToClient(SyncCraftableCountsPKT.TYPE, SyncCraftableCountsPKT.STREAM_CODEC, SyncCraftableCountsPKT::handle);
-            registrar.playToClient(OpenCrafterStoragePKT.TYPE, OpenCrafterStoragePKT.STREAM_CODEC, OpenCrafterStoragePKT::handle);
-            registrar.playToServer(OpenStorageRequestPKT.TYPE, OpenStorageRequestPKT.STREAM_CODEC, OpenStorageRequestPKT::handle);
         });
     }
 }
