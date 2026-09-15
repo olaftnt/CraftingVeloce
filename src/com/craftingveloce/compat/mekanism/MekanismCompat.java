@@ -20,8 +20,25 @@ public final class MekanismCompat {
         return VeloceMods.MEKANISM.isLoaded();
     }
 
-    /** Rejestruje integracje. Wolno wolac WYLACZNIE gdy {@link #isPresent()}. */
+    /**
+     * Rejestruje integracje. Wolno wolac WYLACZNIE gdy {@link #isPresent()}.
+     */
     public static void register(IEventBus modEventBus) {
+        MekanismBlocks.register(modEventBus);
+        MekanismBlockEntities.register(modEventBus);
+        MekanismCapabilities.register(modEventBus);
         MekanismRecipeFamily.register(modEventBus);
+        MekanismModule.register(modEventBus);
+    }
+
+    /**
+     * Pozycje modulu do zakladki kreatywnej.
+     *
+     * <p>Zakladka buduje sie ZAWSZE (takze bez Mekanism), wiec to wywolanie
+     * jest warunkowane obecnoscia moda w {@code CraftingVeloceMod} - inaczej
+     * samo budowanie zakladki zaladowaloby klase z obcym typem.
+     */
+    public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
+        MekanismBlocks.addCreativeItems(output);
     }
 }

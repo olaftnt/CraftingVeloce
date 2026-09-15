@@ -51,7 +51,7 @@ public final class VeloceModuleRecipes {
         }
         List<ProcessingEntry> out = new ArrayList<>();
         for (VeloceProcessingModule module : active) {
-            List<ProcessingEntry> recipes = module.recipesFor(level, item);
+            List<ProcessingEntry> recipes = module.recipesFor(level, network, item);
             if (recipes != null && !recipes.isEmpty()) {
                 out.addAll(recipes);
             }

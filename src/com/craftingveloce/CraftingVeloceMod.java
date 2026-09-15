@@ -45,6 +45,15 @@ public class CraftingVeloceMod {
                         output.accept(VeloceRegistry.ELECTRIC_FURNACE_ITEM.get());
                         output.accept(VeloceRegistry.THRESHOLD_SENSOR_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_WRENCH.get());
+                        // Pozycje z opcjonalnych integracji - TYLKO gdy mod
+                        // jest obecny. Sprawdzenie musi byc W SRODKU lambdy:
+                        // displayItems wykonuje sie ZAWSZE (takze bez tych
+                        // modow), wiec siegniecie do bloku modulu bez tego
+                        // warunku zaladowaloby klase z obcym typem.
+                        if (com.craftingveloce.compat.mekanism.MekanismCompat.isPresent()) {
+                            com.craftingveloce.compat.mekanism.MekanismCompat
+                                    .addCreativeItems(output);
+                        }
                     })
                     .build()
     );

@@ -50,14 +50,34 @@ public final class MekanismRecipeFamily {
         });
     }
 
+    /** Kruszarka: ruda/sztaba -> pyl (deterministyczne, 1 -> 1). */
+    public static RecipeType<?> crushing() {
+        return MekanismRecipeTypes.TYPE_CRUSHING.get();
+    }
+
+    /** Wzbogacanie: ruda -> 3 sztaby (deterministyczne, 1 -> 1). */
+    public static RecipeType<?> enriching() {
+        return MekanismRecipeTypes.TYPE_ENRICHING.get();
+    }
+
+    /** Laczenie: dwa itemy -> jeden (Combiner). */
+    public static RecipeType<?> combining() {
+        return MekanismRecipeTypes.TYPE_COMBINING.get();
+    }
+
+    /** Pilowanie: item -> deski + LOSOWY trocin (Precision Sawmill). */
+    public static RecipeType<?> sawing() {
+        return MekanismRecipeTypes.TYPE_SAWING.get();
+    }
+
     /** Typy receptur Mekanism. Wolno wolac tylko gdy mod jest obecny. */
     public static Set<RecipeType<?>> types() {
         if (resolved == null) {
             Set<RecipeType<?>> out = new LinkedHashSet<>();
-            out.add(MekanismRecipeTypes.TYPE_CRUSHING.get());
-            out.add(MekanismRecipeTypes.TYPE_ENRICHING.get());
-            out.add(MekanismRecipeTypes.TYPE_COMBINING.get());
-            out.add(MekanismRecipeTypes.TYPE_SAWING.get());
+            out.add(crushing());
+            out.add(enriching());
+            out.add(combining());
+            out.add(sawing());
             resolved = Set.copyOf(out);
         }
         return resolved;

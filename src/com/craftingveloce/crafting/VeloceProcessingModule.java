@@ -63,8 +63,23 @@ public interface VeloceProcessingModule {
      *
      * <p>Domyslnie pusto: modul, ktory tylko doklada gotowe receptury do
      * wspolnego indeksu (jak piec), nie musi nic implementowac.
+     *
+     * <p>Modul dostaje siec, bo o tym, ktore receptury sa wykonalne, decyduja
+     * MASZYNY stojace w sieci (i to, czy maja prad) - a modul moze obslugiwac
+     * kilka rodzin naraz (np. kruszarka i pila), kazda z wlasna maszyna.
      */
-    default List<ProcessingEntry> recipesFor(ServerLevel level, Item item) {
+    default List<ProcessingEntry> recipesFor(ServerLevel level, VelocePipeNetwork network,
+                                             Item item) {
         return List.of();
+    }
+
+    /**
+     * Czysci pamiec modulu (indeksy receptur).
+     *
+     * <p>Wolane przy zmianie swiata / przeladowaniu danych. Domyslnie nic -
+     * modul bez pamieci nie ma czego czyscic. Rdzen nie musi znac zadnego
+     * modulu, zeby to wywolac.
+     */
+    default void invalidate() {
     }
 }

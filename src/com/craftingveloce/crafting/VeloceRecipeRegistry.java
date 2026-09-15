@@ -446,6 +446,7 @@ public final class VeloceRecipeRegistry {
         // uniewaznione razem, inaczej po zmianie swiata planer widzialby
         // maszyny z poprzedniego.
         VeloceModuleRecipes.invalidate();
+        VeloceProcessingRegistry.invalidateAll();
     }
 
     /** Mapa item -> liczba receptur (diagnostyka). */

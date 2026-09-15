@@ -269,6 +269,36 @@ Zakres rodzin receptur rejestrują moduły (`XRecipeFamily`) w
 `VeloceRecipeFamilies.registerModFamily` — w `FMLCommonSetupEvent`, bo
 DeferredHoldery obcego moda są wiązane dopiero po rejestracji.
 
+### Moduły maszyn (bloki z `compat/*`)
+
+Pierwszy zaimplementowany moduł: **Veloce Crusher Module** (`compat/mekanism`,
+receptury `mekanism:crushing`). Stoi w sieci jak każda maszyna, przyjmuje FE
+kablem (capability `EnergyStorage`), a auto-crafter rozlicza nim operacje:
+**4000 FE za operację** (tyle, ile maszyna Mekanism: 20 FE/t × 200 t), bufor
+40 000 FE. Kliknięcie pokazuje stan akumulatora na pasku akcji.
+
+Jak dołożyć kolejny moduł — cała procedura:
+
+1. `XCompat.register(...)` → `XBlocks`, `XBlockEntities`, `XCapabilities`,
+   `XRecipeFamily` oraz `XModule` (rejestracja modułu w `FMLCommonSetupEvent`).
+2. Blok w `compat/<mod>/block/` implementuje `VeloceNetworkNode` i woła
+   `VeloceNodeBlocks.onNodePlaced` / `onNodeRemoved` (pilnuje tego
+   `validate_node_blocks`).
+3. Block entity implementuje `VeloceProcessingSource` (+ `IEnergyStorage` dla
+   FE): podaje `recipeTypes()`, `availableOperations()`, `consumeOperations()`,
+   `isPowered()`. Rdzeń nie zna ani jednej nazwy z obcego moda.
+4. `XModule implements VeloceProcessingModule`: `producible`, `available`,
+   `powered`, `recipesFor` — i tylko tyle.
+5. Receptury obcego moda tłumaczy `XRecipeHarvest` na wspólny `ProcessingEntry`
+   (wyniki, szanse, liczby sztuk na składnik).
+6. Zasoby: blockstate + model bloku + model itemu + loot table (generator
+   `scripts/gen_loot_tables.py` czyta rejestry `compat/*/*Blocks.java`, więc
+   nowy blok sam dostanie loot table i tag `mineable`) + klucze w `en_us.json`.
+7. Wpis w zakładce kreatywnej **wewnątrz** lambdy `displayItems`, pod
+   `isPresent()` — zakładka buduje się zawsze, także bez tego moda.
+
+Rdzeń nie wymaga przy tym żadnej zmiany.
+
 ---
 
 ## 🌐 Network (Packets)

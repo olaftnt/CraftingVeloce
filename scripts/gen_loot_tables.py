@@ -19,6 +19,7 @@ Skrypt jest idempotentny:
 Uruchomienie:  python3 scripts/gen_loot_tables.py
 """
 
+import glob
 import json
 import os
 import re
@@ -26,6 +27,13 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REGISTRY = os.path.join(ROOT, "src/com/craftingveloce/init/VeloceRegistry.java")
+
+# Rejestry blokow modulow opcjonalnych (compat/<mod>/XBlocks.java). Czytamy je
+# TAKZE wtedy, gdy mod jest nieobecny: dane (loot table, tag mineable) sa
+# zwyklymi plikami JSON i nie szkodza, gdy blok sie nie rejestruje. Bez tego
+# nowy blok modulu nie dostalby loot table - a to jest blad widoczny dopiero
+# w grze, po zniszczeniu bloku.
+COMPAT_REGISTRY_GLOB = "src/com/craftingveloce/compat/*/*Blocks.java"
 LOOT_DIR = os.path.join(ROOT, "data/craftingveloce/loot_table/blocks")
 TAG_DIR = os.path.join(ROOT, "data/minecraft/tags/block/mineable")
 
@@ -42,6 +50,7 @@ TOOL_BY_BLOCK = {
     "velocity_furnace": "pickaxe",       # jak vanilla furnace
     "electric_furnace": "pickaxe",       # jak vanilla furnace
     "threshold_sensor": "pickaxe",       # jak vanilla observer
+    "veloce_crusher_module": "pickaxe",  # maszyna z modulu Mekanism
 }
 DEFAULT_TOOL = "pickaxe"
 
@@ -51,9 +60,14 @@ NO_DROP = set()
 
 
 def registered_block_ids():
-    """Wyciaga identyfikatory blokow z rejestru - jedynego zrodla prawdy."""
-    src = open(REGISTRY, encoding="utf-8").read()
-    ids = re.findall(r'\bBLOCKS\.register\(\s*"([a-z0-9_]+)"', src)
+    """Wyciaga identyfikatory blokow z rejestrow - jedynych zrodel prawdy."""
+    files = [REGISTRY] + sorted(glob.glob(os.path.join(ROOT, COMPAT_REGISTRY_GLOB)))
+    ids = []
+    for path in files:
+        if not os.path.exists(path):
+            continue
+        ids += re.findall(r'\bBLOCKS\.register\(\s*"([a-z0-9_]+)"',
+                          open(path, encoding="utf-8").read())
     # Rejestr MENU_TYPES uzywa tego samego wzorca, ale innego DeferredRegister,
     # wiec powyzszy wzorzec go nie lapie. Uprzedzamy sie jednak na przyszlosc.
     ids = [i for i in ids if not i.endswith("_menu")]

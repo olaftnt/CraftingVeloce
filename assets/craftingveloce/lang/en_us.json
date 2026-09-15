@@ -58,5 +58,7 @@
   "item.craftingveloce.veloce_tom_terminal": "Veloce Storage Terminal",
   "item.craftingveloce.wrench": "Veloce Wrench",
   "gui.craftingveloce.controller.prefer.crafting": "Preference: Crafting",
-  "gui.craftingveloce.controller.prefer.furnace": "Preference: Furnace"
+  "gui.craftingveloce.controller.prefer.furnace": "Preference: Furnace",
+  "block.craftingveloce.veloce_crusher_module": "Veloce Crusher Module",
+  "gui.craftingveloce.module.energy": "Energy: %s / %s FE (%s / %s operations)"
 }

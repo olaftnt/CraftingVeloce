@@ -79,6 +79,19 @@ public final class VeloceProcessingRegistry {
         return out;
     }
 
+    /**
+     * Czysci pamiec WSZYSTKICH modulow (indeksy receptur).
+     *
+     * <p>Moduly trzymaja wlasne indeksy receptur, wiec po przeladowaniu danych
+     * trzeba je wyczyscic - ale rdzen nie moze znac ich typow. Dlatego kazdy
+     * modul czysci sie sam, a rdzen tylko o to prosi.
+     */
+    public static void invalidateAll() {
+        for (VeloceProcessingModule module : all()) {
+            module.invalidate();
+        }
+    }
+
     // ------------------------------------------------------------------
     // Wbudowane moduly
     // ------------------------------------------------------------------
