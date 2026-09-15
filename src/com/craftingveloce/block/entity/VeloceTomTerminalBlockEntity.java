@@ -102,19 +102,14 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         Map<Item, Long> counts = new HashMap<>();
         if (level == null || level.isClientSide || !(level instanceof ServerLevel sl)) return counts;
 
-        // 1. Veloce Pipe Network (includes all loaded & unloaded chunk endpoints!)
+        // 1. Veloce Pipe Network (authoritative source when connected to pipe network)
         VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
         if (net != null) {
-            Map<Item, Long> netCounts = net.getAllItemCounts(sl);
-            for (Map.Entry<Item, Long> entry : netCounts.entrySet()) {
-                if (entry.getValue() > 0) {
-                    counts.merge(entry.getKey(), entry.getValue(), Long::sum);
-                }
-            }
+            return net.getAllItemCounts(sl);
         }
 
-        // 2. Direct RS counts (if terminal directly touches an RS block)
+        // 2. Fallback: Direct RS counts (if terminal is placed directly touching an RS block without pipes)
         Direction connDir = getConnectionDirection();
         BlockPos targetPos = worldPosition.relative(connDir);
         if (RefinedStorageHelper.hasRSNetwork(level, targetPos, connDir.getOpposite())) {
@@ -124,9 +119,10 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
                     counts.merge(entry.getKey(), entry.getValue(), Long::sum);
                 }
             }
+            return counts;
         }
 
-        // 3. Tom's Storage counts
+        // 3. Fallback: Tom's Storage counts (only if terminal is directly connected to a Tom's Storage cable)
         getStacks();
         IInventoryAccess access = getTomAccess();
         if (access != null) {
@@ -249,8 +245,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
             ItemStack extracted = net.extractItem(sl, requested.getItem(), count);
             if (!extracted.isEmpty()) {
                 syncCountsToAllWatchers();
-                return extracted;
             }
+            return extracted;
         }
 
         Direction connDir = getConnectionDirection();

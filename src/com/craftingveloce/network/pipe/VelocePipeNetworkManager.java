@@ -165,6 +165,16 @@ public class VelocePipeNetworkManager extends SavedData {
         rebuildAt(level, pipePos);
     }
 
+    public static BlockPos getCanonicalInventoryPos(BlockPos pos, BlockState state) {
+        if (state.getBlock() instanceof net.minecraft.world.level.block.ChestBlock && state.hasProperty(net.minecraft.world.level.block.ChestBlock.TYPE)) {
+            net.minecraft.world.level.block.state.properties.ChestType type = state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE);
+            if (type == net.minecraft.world.level.block.state.properties.ChestType.RIGHT) {
+                return pos.relative(net.minecraft.world.level.block.ChestBlock.getConnectedDirection(state));
+            }
+        }
+        return pos;
+    }
+
     public VelocePipeNetwork scanAndBuildNetwork(ServerLevel level, BlockPos originPos, @Nullable UUID preferredId) {
         if (!level.isLoaded(originPos) || !(level.getBlockState(originPos).getBlock() instanceof VelocePipeBlock)) {
             return null;
@@ -236,9 +246,10 @@ public class VelocePipeNetworkManager extends SavedData {
 
                 // 4. Neighbor is regular inventory
                 if (VelocePipeBlock.canConnectToInventory(level, neighborPos, dir.getOpposite())) {
-                    ConnectedEndpointInfo ep = new ConnectedEndpointInfo(neighborPos, dir.getOpposite(), ConnectedEndpointInfo.Type.INVENTORY);
+                    BlockPos canonicalPos = getCanonicalInventoryPos(neighborPos, neighborState);
+                    ConnectedEndpointInfo ep = new ConnectedEndpointInfo(canonicalPos, dir.getOpposite(), ConnectedEndpointInfo.Type.INVENTORY);
                     ep.refreshIfLoaded(level);
-                    discoveredEndpoints.put(neighborPos, ep);
+                    discoveredEndpoints.put(canonicalPos, ep);
                     continue;
                 }
             }
