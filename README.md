@@ -234,16 +234,53 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 
 | Packet | Kierunek | Zawartość |
 |--------|----------|-----------|
-| `OpenTerminalScreenPKT` | S→C | `BlockPos terminalPos` |
-| `SyncTerminalCountsPKT` | S→C | `Map<Item, Long> counts` |
-| `OpenFilterPickerPKT` | S→C | `BlockPos extractorPos, int filterIndex` |
-| `SyncExtractorFiltersPKT` | S→C | `BlockPos pos, List<ItemStack> filters` |
-| `OpenCraftingTableScreenPKT` | S→C | `BlockPos pos, Set<Item> enabledItems` |
-| `SyncCraftingTableStatePKT` | S→C | `BlockPos pos, Set<Item> enabledItems` |
-| `TerminalPullItemPKT` | C→S | `BlockPos pos, ItemStack item, int count` |
-| `ExtractorSetFilterPKT` | C→S | `BlockPos pos, int filterIndex, ItemStack item` |
-| `ExtractorOpenFilterPKT` | C→S | `BlockPos pos, int filterIndex` (triggeruje sync counts) |
+| `BufferPullItemPKT` | C→S | `BlockPos pos, ItemStack itemStack, int count` |
+| `ControllerFlowRequestPKT` | C→S | `BlockPos pos` |
+| `CraftingTableCycleRecipePKT` | C→S | `BlockPos pos, Item item, ResourceLocation recipeId` |
 | `CraftingTableToggleItemPKT` | C→S | `BlockPos pos, Item item` |
+| `ExtractorToggleCraftingPKT` | C→S | `BlockPos pos, int filterIndex` |
+| `OpenControllerScreenPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Set<Item> craftable, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnaceInNetwork, boolean furnacePowered, Map<Item, Integer> hotbar` |
+| `OpenCraftingTableScreenPKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents` |
+| `OpenFilterPKT` | C→S | `BlockPos pos, int filterIndex` |
+| `OpenFilterPickerPKT` | S→C | `BlockPos pos, int filterIndex` |
+| `OpenTerminalScreenPKT` | S→C | `BlockPos terminalPos` |
+| `RequestCraftableCountsPKT` | C→S | `BlockPos pos, List<Item> items` |
+| `SensorConfigPKT` | C→S | `BlockPos pos, long threshold, boolean highMode` |
+| `SetFilterPKT` | C→S | `BlockPos pos, int filterIndex, ItemStack filterItem` |
+| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Float> perMinute, Map<Item, Float> perHour, float coveredMinute, float coveredHour` |
+| `SyncCraftableCountsPKT` | S→C | `BlockPos pos, Map<Item, Long> counts, boolean complete` |
+| `SyncCraftingTableStatePKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes` |
+| `SyncExtractorFiltersPKT` | S→C | `BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting` |
+| `SyncTerminalCountsPKT` | S→C | `Map<Item, Long> itemCounts, Map<Item, Long> craftableCounts` |
+| `TerminalPullItemPKT` | C→S | `BlockPos terminalPos, ItemStack itemStack, int count` |
+| `TerminalStoreItemPKT` | C→S | `BlockPos terminalPos, int mode` |
+| `TerminalWatcherPKT` | C→S | `BlockPos pos, boolean watching` |
+
+> Ta tabela jest generowana z `VelocePacketHandler.java`. Wcześniej wypisywała
+> pakiety, których już nie ma (`ExtractorSetFilterPKT`, `ExtractorOpenFilterPKT`)
+> i nie znała ośmiu nowych — czyli dokładnie ten sam rozjazd, co przy innych
+> ręcznie pisanych listach w tym projekcie. Build (`scripts/build.py`, krok 4)
+> sprawdza teraz, że **każdy zarejestrowany pakiet jest tu wymieniony**.
+
+---
+
+## 🧭 Komendy diagnostyczne `/cv`
+
+Wszystkie wymagają **poziomu uprawnień 2** (jak `/gamemode`) — wcześniej nie
+miały żadnego wymogu, więc na serwerze mógł ich użyć każdy gracz.
+
+| Komenda | Co robi |
+|---------|---------|
+| `/cv debug` | Ślad połączeń bloku, na który patrzysz (strona, tryb, sąsiedzi) |
+| `/cv perf` | Rozmiary map śledzenia loadera chunków i cache'y |
+| `/cv chunk on\|off\|status\|cleanup` | Podgląd / sprzątanie force-loadów chunków |
+| `/cv trace` | Przełącznik szczegółowego logowania zdarzeń sieci |
+| `/cv testnet [build]` | Buduje sieć testową i wypisuje wynik skanu |
+
+Uprawnienia są zdefiniowane w **jednym** miejscu: `CVCommandRoot.root()`.
+Trzy pliki komend rejestrują ten sam korzeń `cv` (Brigadier scala je w jeden
+węzeł), więc wspólny warunek dostępu musi być identyczny — inaczej jedna
+komenda mogłaby po cichu decydować o dostępie do wszystkich.
 
 ### ClientTerminalHelper
 Centralny dispatcher dla client-side packet handlerów:

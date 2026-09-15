@@ -75,6 +75,29 @@ def validate_block_data(jar_names):
     print(f"    OK (dane {len(registered_block_ids())} blokow kompletne)")
 
 
+def validate_packet_docs():
+    """
+    Kazdy zarejestrowany pakiet musi byc wymieniony w README.
+
+    Tabela pakietow w README jest pisana recznie, a rejestracja pakietow zyje
+    w VelocePacketHandler.java. To dwa spisy tej samej rzeczy, wiec bez kontroli
+    rozjezdzaja sie same - i juz sie rozjechaly: README wymienial dwa pakiety,
+    ktorych nie ma, i nie znal osmiu nowych. Dokument, ktory klamie o protokole,
+    jest gorszy niz jego brak.
+    """
+    handler = os.path.join("src/com/craftingveloce/network/VelocePacketHandler.java")
+    readme = "README.md"
+    if not os.path.exists(handler) or not os.path.exists(readme):
+        return
+    registered = sorted(set(re.findall(
+        r"playTo(?:Server|Client)\((\w+)\.TYPE", open(handler, encoding="utf-8").read())))
+    doc = open(readme, encoding="utf-8").read()
+    missing = [p for p in registered if p not in doc]
+    if missing:
+        fail("pakiety zarejestrowane, ale nieopisane w README.md:\n  " + "\n  ".join(missing))
+    print(f"    OK (README opisuje wszystkie {len(registered)} pakietow)")
+
+
 def game_running():
     """
     Czy Minecraft z tego profilu wlasnie dziala?
@@ -233,6 +256,7 @@ def main():
     # Liste blokow bierzemy z TEGO SAMEGO miejsca co generator danych - patrz
     # scripts/gen_loot_tables.py - zeby nie powstal drugi, recznie pisany spis.
     validate_block_data(names)
+    validate_packet_docs()
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "
