@@ -13,6 +13,8 @@ import com.craftingveloce.client.ClientTerminalHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
@@ -219,7 +221,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
     @Override
     protected ItemInteractionResult useItemOn(ItemStack itemStack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
-        if (VeloceWrenchItem.isWrench(itemStack) && player.isShiftKeyDown()) {
+        if (VeloceWrenchItem.isWrench(itemStack)) {
             return onWrenchClicked(state, level, pos, player, hand, hit);
         }
         return super.useItemOn(itemStack, state, level, pos, player, hand, hit);
@@ -231,7 +233,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
 
-        Direction side = getClickedSide(pos, hit.getLocation(), pipeBE);
+        Direction side = getClickedSide(state, pos, hit.getLocation(), pipeBE);
 
         if (side != null) {
             BlockPos neighborPos = pos.relative(side);
@@ -271,33 +273,47 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             Direction hitDir = hit.getDirection();
             boolean disconnected = pipeBE.isDisconnected(hitDir);
             pipeBE.setDisconnected(hitDir, !disconnected);
+
+            BlockPos neighborPos = pos.relative(hitDir);
+            BlockEntity nbe = world.getBlockEntity(neighborPos);
+            if (nbe instanceof VelocePipeBlockEntity otherPipe) {
+                otherPipe.setDisconnected(hitDir.getOpposite(), !disconnected);
+                BlockState otherState = updateConnections(world, neighborPos, world.getBlockState(neighborPos));
+                world.setBlockAndUpdate(neighborPos, otherState);
+                InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
+            }
         }
 
         BlockState newState = updateConnections(world, pos, state);
         world.setBlockAndUpdate(pos, newState);
         InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
+
+        world.playSound(null, pos, SoundEvents.ITEM_FRAME_ROTATE_ITEM, SoundSource.BLOCKS, 1.0F, 1.2F);
+        if (player != null) {
+            player.swing(hand, true);
+        }
+
         return ItemInteractionResult.sidedSuccess(world.isClientSide);
     }
 
     @Nullable
-    public Direction getClickedSide(BlockPos pos, Vec3 hitLocation, VelocePipeBlockEntity pipeBE) {
+    public Direction getClickedSide(BlockState state, BlockPos pos, Vec3 hitLocation, VelocePipeBlockEntity pipeBE) {
         Vec3 rel = hitLocation.subtract(pos.getX(), pos.getY(), pos.getZ());
         Direction bestDir = null;
-        double bestDist = Double.MAX_VALUE;
+        double shortest = SHAPE_CORE.closestPointTo(rel).map(v -> v.distanceToSqr(rel)).orElse(Double.MAX_VALUE);
 
         for (Direction dir : Direction.values()) {
             int idx = dir.ordinal();
-            VoxelShape sideShape = pipeBE.isExtracting(dir) ? EXTRACT_SHAPES[idx] : SIDE_SHAPES[idx];
+            BooleanProperty prop = PipeBlock.PROPERTY_BY_DIRECTION.get(dir);
+            if (!state.getValue(prop)) {
+                continue;
+            }
+            VoxelShape sideShape = (pipeBE != null && pipeBE.isExtracting(dir)) ? EXTRACT_SHAPES[idx] : SIDE_SHAPES[idx];
             double dist = sideShape.closestPointTo(rel).map(v -> v.distanceToSqr(rel)).orElse(Double.MAX_VALUE);
-            if (dist < bestDist) {
-                bestDist = dist;
+            if (dist < shortest) {
+                shortest = dist;
                 bestDir = dir;
             }
-        }
-
-        double coreDist = SHAPE_CORE.closestPointTo(rel).map(v -> v.distanceToSqr(rel)).orElse(Double.MAX_VALUE);
-        if (coreDist <= bestDist) {
-            return null; // Clicked core
         }
         return bestDir;
     }
@@ -310,7 +326,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                 if (hitResult instanceof BlockHitResult blockHit && blockHit.getBlockPos().equals(pos)) {
                     BlockEntity be = world.getBlockEntity(pos);
                     if (be instanceof VelocePipeBlockEntity pipeBE && VeloceWrenchItem.isHoldingWrench(player)) {
-                        Direction side = getClickedSide(pos, blockHit.getLocation(), pipeBE);
+                        Direction side = getClickedSide(state, pos, blockHit.getLocation(), pipeBE);
                         if (side != null) {
                             int idx = side.ordinal();
                             return pipeBE.isExtracting(side) ? EXTRACT_SHAPES[idx] : SIDE_SHAPES[idx];

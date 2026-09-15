@@ -49,5 +49,29 @@ public class CraftingVeloceMod {
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             CVDebugCommand.register(event.getDispatcher());
         });
+
+        NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock.class, event -> {
+            ItemStack stack = event.getItemStack();
+            if (!com.craftingveloce.item.VeloceWrenchItem.isWrench(stack)) {
+                return;
+            }
+            net.minecraft.world.level.Level level = event.getLevel();
+            net.minecraft.core.BlockPos pos = event.getPos();
+            net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
+            if (!(state.getBlock() instanceof com.craftingveloce.block.VelocePipeBlock pipe)) {
+                return;
+            }
+            net.minecraft.world.entity.player.Player player = event.getEntity();
+            if (player == null) return;
+
+            net.minecraft.world.ItemInteractionResult result = pipe.onWrenchClicked(
+                    state, level, pos, player, event.getHand(), event.getHitVec()
+            );
+            if (result.result().consumesAction()) {
+                event.setUseItem(net.neoforged.neoforge.common.util.TriState.TRUE);
+                event.setCancellationResult(result.result());
+                event.setCanceled(true);
+            }
+        });
     }
 }
