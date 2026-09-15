@@ -519,7 +519,26 @@ public class VelocePipeNetworkManager extends SavedData {
      * lokalne: szesc kierunkow od jednej rury.
      */
     private void collectNeighbours(ServerLevel level, VelocePipeNetwork net, BlockPos pipePos) {
+        // Tryb tej rury (wrench): odlaczone strony i tryb Pull. Czytamy RAZ.
+        VelocePipeBlockEntity pipeBe = level.getBlockEntity(pipePos)
+                instanceof VelocePipeBlockEntity p ? p : null;
+
         for (Direction d : Direction.values()) {
+            // ODLACZONA STRONA = BRAK POLACZENIA. Takze dla magazynow i wezlow.
+            //
+            // BUG, ktory to naprawia: ten warunek byl sprawdzany TYLKO przy
+            // laczeniu rura-rura (w syncPipe), a NIE tutaj. Efekt: strona
+            // ustawiona wrenchem na "Disconnected" znikala z plaskiej
+            // struktury, ale collectNeighbours i tak rejestrowal stojacy za
+            // nia magazyn - wiec siec dalej go widziala, pokazywala i mogla
+            // do niego pushowac i pullowac. Tryb Pull dzialal, bo jest
+            // sprawdzany osobno; Disconnected nie dzialal wcale.
+            //
+            // Wczesniej komentarz obok syncPipe mowil "to wlasnie tutaj
+            // zamknieta strona ROZCINA siec" - i bylo to prawda tylko dla rur.
+            if (pipeBe != null && pipeBe.isDisconnected(d)) {
+                continue;
+            }
             BlockPos np = pipePos.relative(d);
             if (!level.isLoaded(np)) {
                 // MAGAZYN W NIEZALADOWANYM CHUNKU.
@@ -623,6 +642,13 @@ public class VelocePipeNetworkManager extends SavedData {
                     continue;
                 }
                 if (!(level.getBlockEntity(pipePos) instanceof VelocePipeBlockEntity be)) {
+                    continue;
+                }
+                // ODLACZONA STRONA NIE JEST POLACZENIEM - nie moze tez dawac
+                // prawa do wstawiania. Sam endpoint zwykle nie trafi tu wcale
+                // (collectNeighbours pomija odlaczone strony), ale ten sam
+                // magazyn moze byc dotkniety DRUGĄ strona tej samej rury.
+                if (be.isDisconnected(d.getOpposite())) {
                     continue;
                 }
                 // Strona rury PATRZACA NA magazyn to d.getOpposite().

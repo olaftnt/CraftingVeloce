@@ -170,7 +170,25 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     }
 
     public boolean canConnectDirection(Level level, BlockPos pos, Direction dir, @Nullable VelocePipeBlockEntity pipeBE, @Nullable BlockState neighborStateOverride) {
-        if (pipeBE != null && pipeBE.isDisconnected(dir)) {
+        return canConnectDirection(level, pos, dir, pipeBE, neighborStateOverride, false);
+    }
+
+    /**
+     * Czy w tym kierunku jest COKOLWIEK, z czym ta rura moze sie laczyc.
+     *
+     * <p><b>Po co flaga {@code ignoreDisconnectFlags}.</b> Normalnie odlaczona
+     * strona nie laczy sie z niczym - i to jest poprawne dla BUDOWY sieci.
+     * Ale wrench musi umiec odczytac, co lezy za odlaczona strona, zeby
+     * pokazac ja z powrotem: bez tego po odlaczeniu ramie znikalo ze stanu
+     * bloku, a wraz z nim mozliwosc klikniecia w to miejsce. Polaczenia nie
+     * dalo sie juz przywrocic.
+     *
+     * <p>Zamiast pisac drugi, rownolegly warunek "co tu stoi" (ktory predzej
+     * czy pozniej rozjechalby sie z tym), ta sama metoda przyjmuje wiec
+     * informacje, czy ma pominać flagi odlaczenia.
+     */
+    public boolean canConnectDirection(Level level, BlockPos pos, Direction dir, @Nullable VelocePipeBlockEntity pipeBE, @Nullable BlockState neighborStateOverride, boolean ignoreDisconnectFlags) {
+        if (!ignoreDisconnectFlags && pipeBE != null && pipeBE.isDisconnected(dir)) {
             return false;
         }
         BlockPos neighborPos = pos.relative(dir);
@@ -179,7 +197,9 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         // 1. Another Veloce Pipe - connect directly unless the other side was disconnected
         if (neighborState.getBlock() instanceof VelocePipeBlock) {
             BlockEntity nbe = level.getBlockEntity(neighborPos);
-            if (nbe instanceof VelocePipeBlockEntity otherPipe && otherPipe.isDisconnected(dir.getOpposite())) {
+            if (!ignoreDisconnectFlags
+                    && nbe instanceof VelocePipeBlockEntity otherPipe
+                    && otherPipe.isDisconnected(dir.getOpposite())) {
                 return false;
             }
             return true;
@@ -277,14 +297,39 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             return ItemInteractionResult.SUCCESS;
         }
 
-        if (side != null) {
+        if (side == null) {
+            // Klik w RDZEN. Kierunkiem jest sciana, w ktora trafilismy - ale
+            // TYLKO wowczas, gdy w tym kierunku naprawde cos stoi.
+            //
+            // BUG, ktory to naprawia: bez tego warunku klik w rdzen od gory
+            // (albo w dowolna sciane bez sasiada) przelaczal "gore" i
+            // meldowal "Disconnected", nie zmieniajac NICZEGO. Gracz widzial
+            // komunikat o rozlaczeniu, ktore nie nastapilo - i nie mial jak
+            // zgadnac, ze trafil w kierunek bez polaczenia.
+            Direction face = hit.getDirection();
+            if (!canConnectDirection(world, pos, face, pipeBE, null,
+                    /* ignoreDisconnectFlags */ true)) {
+                if (player instanceof ServerPlayer sp) {
+                    sp.displayClientMessage(
+                            Component.literal("Nothing to connect on this side"), true);
+                }
+                world.playSound(null, pos, SoundEvents.ITEM_FRAME_ROTATE_ITEM,
+                        SoundSource.BLOCKS, 1.0F, 0.8F);
+                if (player != null) {
+                    player.swing(hand, true);
+                }
+                return ItemInteractionResult.sidedSuccess(world.isClientSide);
+            }
+            side = face;
+        }
+
+        {
             BlockPos neighborPos = pos.relative(side);
             BlockState neighborState = world.getBlockState(neighborPos);
             boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock
                     || neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock;
             boolean isInventory = !isExtractor && (canConnectToInventory(world, neighborPos, side.getOpposite())
                     || RefinedStorageHelper.hasRSNetwork(world, neighborPos, side.getOpposite()));
-            boolean isNeighborPipe = neighborState.getBlock() instanceof IInventoryCable;
 
             if (isInventory) {
                 boolean extracting = pipeBE.isExtracting(side);
@@ -311,42 +356,17 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                         sp.displayClientMessage(Component.literal("Push/Pull"), true);
                     }
                 }
-            } else if (isNeighborPipe) {
-                boolean disconnected = pipeBE.isDisconnected(side);
-                pipeBE.setExtracting(side, false);
-                pipeBE.setDisconnected(side, !disconnected);
-                // Also update neighbor if it's our pipe
-                BlockEntity nbe = world.getBlockEntity(neighborPos);
-                if (nbe instanceof VelocePipeBlockEntity otherPipe) {
-                    otherPipe.setDisconnected(side.getOpposite(), !disconnected);
-                    BlockState otherState = updateConnections(world, neighborPos, world.getBlockState(neighborPos));
-                    world.setBlockAndUpdate(neighborPos, otherState);
-                    InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
-                }
+            } else if (neighborState.getBlock() instanceof VelocePipeBlock) {
+                togglePipeLink(world, pos, pipeBE, side, neighborPos, player);
+            } else {
+                // Wezel (terminal, crafter, ekstraktor, piec) albo cokolwiek
+                // innego, co sie laczy, ale nie ma trybow. Mowimy o tym wprost:
+                // wczesniej byl tu CICHY no-op, wiec gracz klikal i nie dzialo
+                // sie nic, bez zadnej informacji dlaczego.
                 if (player instanceof ServerPlayer sp) {
-                    sp.displayClientMessage(Component.literal(!disconnected ? "Disconnected" : (isExtractor ? "Connected" : "Push/Pull")), true);
+                    sp.displayClientMessage(
+                            Component.literal("This side is a machine - nothing to toggle"), true);
                 }
-            }
-        } else {
-            // Clicked core -> toggle face clicked
-            Direction hitDir = hit.getDirection();
-            boolean disconnected = pipeBE.isDisconnected(hitDir);
-            pipeBE.setExtracting(hitDir, false);
-            pipeBE.setDisconnected(hitDir, !disconnected);
-
-            BlockPos neighborPos = pos.relative(hitDir);
-            BlockState neighborState = world.getBlockState(neighborPos);
-            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock
-                    || neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock;
-            BlockEntity nbe = world.getBlockEntity(neighborPos);
-            if (nbe instanceof VelocePipeBlockEntity otherPipe) {
-                otherPipe.setDisconnected(hitDir.getOpposite(), !disconnected);
-                BlockState otherState = updateConnections(world, neighborPos, world.getBlockState(neighborPos));
-                world.setBlockAndUpdate(neighborPos, otherState);
-                InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
-            }
-            if (player instanceof ServerPlayer sp) {
-                sp.displayClientMessage(Component.literal(!disconnected ? "Disconnected" : (isExtractor ? "Connected" : "Push/Pull")), true);
             }
         }
 
@@ -367,6 +387,75 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         }
 
         return ItemInteractionResult.sidedSuccess(world.isClientSide);
+    }
+
+    /**
+     * Przelacza polaczenie miedzy DWOMA rurami.
+     *
+     * <p><b>Flaga nalezy do JEDNEJ z nich</b> - do tej o mniejszej pozycji.
+     *
+     * <p><b>Dlaczego nie do obu (jak bylo).</b> Poprzednia wersja ustawiala ta
+     * sama wartosc na obu rurach. A ze polaczenie jest zerwane, gdy odlaczona
+     * jest KTORAKOLWIEK strona, wystarczala chwila, w ktorej flagi sie
+     * rozjechaly (np. jedna strona ustawiona z innej sciezki kodu), i dalej
+     * dzialo sie to:
+     * <ul>
+     *   <li>klik w strone, ktora BYLA juz odlaczona, meldowal "Disconnected"
+     *       i rzeczywiscie nic nie zmienial - bo polaczenie bylo juz zerwane,
+     *       a gracz nie mial tego jak zobaczyc,</li>
+     *   <li>przy odlaczeniu ramie znika ze stanu bloku po OBU stronach, wiec
+     *       przestawalo byc klikalne - i polaczenia nie dalo sie przywrocic.</li>
+     * </ul>
+     *
+     * <p>Jeden wlasciciel (deterministycznie: mniejsza pozycja) sprawia, ze
+     * obie strony czytaja i zapisuja TE SAMA flage. Wynik nie zalezy od tego,
+     * od ktorej strony zacząłeś, i kazda strona jest klikalna naprzemiennie.
+     *
+     * <p>Stan przeliczamy na OBU rurach, bo ramie znika po obu stronach.
+     */
+    private void togglePipeLink(Level world, BlockPos pos, VelocePipeBlockEntity pipeBE,
+                                Direction side, BlockPos neighborPos, Player player) {
+        BlockEntity nbe = world.getBlockEntity(neighborPos);
+        if (!(nbe instanceof VelocePipeBlockEntity other)) {
+            return;   // sasiad zniknal w trakcie
+        }
+        Direction back = side.getOpposite();
+
+        boolean selfOwns = pos.asLong() <= neighborPos.asLong();
+        VelocePipeBlockEntity owner = selfOwns ? pipeBE : other;
+        Direction ownerSide = selfOwns ? side : back;
+        VelocePipeBlockEntity follower = selfOwns ? other : pipeBE;
+        Direction followerSide = selfOwns ? back : side;
+
+        // DECYZJA WYNIKA ZE STANU LACZA, A NIE Z JEDNEJ FLAGI.
+        //
+        // BUG, ktory to naprawia: patrzac tylko na flage wlasciciela, przy
+        // zastanym stanie asymetrycznym (flaga zostala na drugiej rurze)
+        // wlasciciel uwazal lacze za OTWARTE, wiec "przelaczal" je na
+        // zamkniete - a ono bylo juz zamkniete. Gracz dostawal komunikat
+        // "Disconnected" i nie zmienialo sie NIC. To jest dokladnie ten sam
+        // objaw, ktory zglosil, tylko z innego powodu.
+        //
+        // Lacze jest zamkniete, gdy odlaczona jest KTORYKOLWIEK koniec.
+        boolean linkCut = owner.isDisconnected(ownerSide)
+                || follower.isDisconnected(followerSide);
+
+        owner.setExtracting(ownerSide, false);
+        owner.setDisconnected(ownerSide, !linkCut);
+        // Druga rura NIE trzyma flagi. Jej stara wartosc bylaby wlasnie tym
+        // zrodlem asymetrii, ktore opisywal bug - wiec ja zawsze sprzatamy.
+        follower.setDisconnected(followerSide, false);
+
+        world.setBlockAndUpdate(pos, updateConnections(world, pos, world.getBlockState(pos)));
+        world.setBlockAndUpdate(neighborPos,
+                updateConnections(world, neighborPos, world.getBlockState(neighborPos)));
+        InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
+        InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
+
+        if (player instanceof ServerPlayer sp) {
+            sp.displayClientMessage(
+                    Component.literal(linkCut ? "Connected" : "Disconnected"), true);
+        }
     }
 
     @Nullable
