@@ -280,14 +280,31 @@ public class VelocePipeNetwork {
      * <p>Uzywane przez klienta do NATYCHMIASTOWEGO zablokowania odkladania,
      * gdy siec jest pelna - zamiast wysylac pakiet i cofac stan po odpowiedzi.
      *
-     * <p>Jesli CHOC JEDEN magazyn ma nieznana pojemnosc (np. Refined Storage),
-     * zwracamy {@code -1} ("nie wiem"). Wtedy klient nie blokuje: lepiej
-     * przepuscic operacje i pozwolic serwerowi zdecydowac, niz zablokowac
-     * cos, co mogloby sie udac.
+     * <p>Zwracamy {@code -1} ("nie wiem") w dwoch przypadkach:
+     * <ul>
+     *   <li>magazyn ma z natury nieznana pojemnosc (Refined Storage),</li>
+     *   <li>magazyn stoi w NIEZALADOWANYM chunku - jego ostatnio znana liczba
+     *       wolnych slotow jest przechlodzona i moze byc zerem sprzed godzin.</li>
+     * </ul>
+     *
+     * <p>To drugie bylo zrodlem uporczywego falszywego "network full": gdy siec
+     * raz byla pelna, magazyn zapisal sobie {@code cachedFreeSlots == 0},
+     * chunk sie wyladowal (force-loadowane sa tylko WEZLY, nie magazyny),
+     * a {@link ConnectedEndpointInfo#refreshIfLoaded} nie mial okazji tego
+     * odswiezyc. Klient dostawal wiec 0 na zawsze, mimo ze miejsca bylo duzo,
+     * i blokowal odkladanie jeszcze PRZED wyslaniem pakietu. Dodawanie skrzyn,
+     * nowy terminal czy reload swiata nic nie dawaly, bo problemem nie byla
+     * pojemnosc, tylko przedawnione zero.
+     *
+     * <p>Zasada: lepiej przepuscic operacje i pozwolic serwerowi zdecydowac,
+     * niz zablokowac cos, co mogloby sie udac.
      */
-    public int getFreeSlots() {
+    public int getFreeSlots(ServerLevel level) {
         int total = 0;
         for (ConnectedEndpointInfo ep : endpoints.values()) {
+            if (level != null && !level.isLoaded(ep.getPos())) {
+                return -1;   // niezaladowany chunk - liczba nieaktualna, nie zgadujemy
+            }
             int free = ep.getCachedFreeSlots();
             if (free < 0) {
                 return -1;   // nieznana pojemnosc - nie zgadujemy

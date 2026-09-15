@@ -376,6 +376,53 @@ public final class VeloceChunkLoader {
     }
 
     /**
+     * Ile BLOKUJACYCH wczytan chunkow wolno wykonac w jednym ticku.
+     *
+     * <p>Wkladanie do sieci musi byc synchroniczne (patrz
+     * {@link ConnectedEndpointInfo#insertItemLeftover} - inaczej dochodzi do
+     * duplikacji), ale NIE moze byc nieograniczone. Jedno wczytanie chunku z
+     * dysku to kilka-kilkadziesiat milisekund, a wkladanie idzie w petli po
+     * wszystkich magazynach sieci - bez limitu seria odlozen do odleglych
+     * skrzyn rozjechalaby tick i zamrozila serwer.
+     *
+     * <p>Po wyczerpaniu budzetu wkladanie jest ODMAWIANE (stos wraca do
+     * wolajacego, ktory zatrzymuje itemy u gracza). To jest bezpieczne: nic
+     * nie ginie i nic sie nie duplikuje, gracz dostaje komunikat, a kolejny
+     * tick znowu ma pelny budzet.
+     */
+    public static final int MAX_OP_LOADS_PER_TICK = 4;
+
+    /** Budzet liczony OSOBNO dla kazdego swiata - inaczej Nether zjadalby limit Overworldu. */
+    private static final class OpLoadBudget {
+        long tick = Long.MIN_VALUE;
+        int used;
+    }
+
+    private static final Map<ServerLevel, OpLoadBudget> OP_BUDGET = new WeakHashMap<>();
+
+    /**
+     * Rezerwuje jedno synchroniczne wczytanie chunku na ten tick.
+     *
+     * @return {@code true} gdy wolno wczytac; {@code false} gdy budzet na ten
+     *         tick jest wyczerpany (wtedy NIE wczytujemy i nie wkladamy)
+     */
+    public static boolean tryReserveOpLoad(ServerLevel level) {
+        OpLoadBudget budget = OP_BUDGET.computeIfAbsent(level, l -> new OpLoadBudget());
+        long now = level.getGameTime();
+        if (budget.tick != now) {
+            // Nowy tick - budzet od nowa. Uzywamy gameTime, a nie licznika
+            // wlasnego, zeby nie trzeba bylo podpinac zadnego hooka ticku.
+            budget.tick = now;
+            budget.used = 0;
+        }
+        if (budget.used >= MAX_OP_LOADS_PER_TICK) {
+            return false;
+        }
+        budget.used++;
+        return true;
+    }
+
+    /**
      * Zwalnia "sieroty": chunki wymuszone, ktorych nikt juz nie pilnuje.
      *
      * <p><b>Skad sie biara.</b> {@code ServerLevel.setChunkForced()} jest

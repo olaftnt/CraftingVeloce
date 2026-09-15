@@ -12,6 +12,7 @@ import com.tom.storagemod.inventory.InventoryCableNetwork;
 import com.tom.storagemod.inventory.NetworkInventory;
 import com.tom.storagemod.inventory.StoredItemStack;
 import com.craftingveloce.network.pipe.ConnectedEndpointInfo;
+import com.craftingveloce.network.pipe.VeloceChunkLoader;
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
 import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import net.minecraft.server.level.ServerLevel;
@@ -256,7 +257,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         }
         VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
                 .getNetworkForTerminal(sl, worldPosition);
-        return net == null ? -1 : net.getFreeSlots();
+        return net == null ? -1 : net.getFreeSlots(sl);
     }
 
     /**
@@ -550,6 +551,22 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
             return;
         }
 
+        if (!hasAnythingToStore(player, mode)) {
+            // Nie ma czego odkladac - zaden komunikat. Bez tego pusty kursor
+            // (albo pusty ekwipunek) konczyl sie komunikatem "network full",
+            // co bylo po prostu klamstwem.
+            return;
+        }
+        if (VeloceChunkLoader.isFrozen()) {
+            // Przy zapisie swiata celowo NIE wymuszamy chunkow, wiec wkladanie
+            // zwraca caly stos. To nie jest "pelna siec" - to "sprobuj za chwile".
+            player.displayClientMessage(
+                    Component.translatable("gui.craftingveloce.terminal.storeBusy")
+                            .withStyle(ChatFormatting.YELLOW),
+                    true);
+            return;
+        }
+
         int moved = 0;
         if (mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR) {
             // inventoryMenu, a nie containerMenu: sync kursora idzie wlasnie
@@ -603,6 +620,28 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         // Odsylamy zmiany, zeby kursor i ekwipunek zgadzaly sie u klienta.
         com.craftingveloce.network.TerminalPullItemPKT.resyncInventories(player);
         syncCountsToAllWatchers();
+    }
+
+    /**
+     * Czy gracz ma cokolwiek do odlozenia w trybie {@code mode}.
+     *
+     * <p>Sprawdzamy to PRZED wkladaniem, zeby odroznic "nie bylo czego odlozyc"
+     * (brak komunikatu) od "nie udalo sie odlozyc" (komunikat). Wczesniej oba
+     * przypadki konczyly sie tekstem "network full".
+     */
+    private boolean hasAnythingToStore(ServerPlayer player, int mode) {
+        if (mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR) {
+            return !player.inventoryMenu.getCarried().isEmpty();
+        }
+        boolean includeHotbar = mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_EVERYTHING;
+        var inv = player.getInventory();
+        // Sloty 0..8 to hotbar - zwykly shift je pomija.
+        for (int i = includeHotbar ? 0 : 9; i < inv.getContainerSize(); i++) {
+            if (!inv.getItem(i).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

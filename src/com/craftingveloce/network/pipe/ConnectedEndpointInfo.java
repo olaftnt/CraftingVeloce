@@ -1,6 +1,7 @@
 package com.craftingveloce.network.pipe;
 
 import com.craftingveloce.rs.RefinedStorageHelper;
+import com.craftingveloce.debug.ChunkTrace;
 
 import javax.annotation.Nullable;
 import com.craftingveloce.util.VeloceLog;
@@ -511,44 +512,6 @@ public class ConnectedEndpointInfo {
      * @return to, czego NIE udalo sie wlozyc (EMPTY gdy wszystko przyjete)
      */
     /**
-     * Kolejkuje fizyczne wlozenie stosu do tego magazynu.
-     *
-     * <p>Wolane, gdy magazyn jest w chunku poza symulacja. Kolejka zaladuje
-     * chunk, wlozy itemy i od razu zwolni chunk.
-     */
-    private void scheduleInsert(ItemStack stack) {
-        ConnectedEndpointInfo self = this;
-        VeloceChunkTaskQueue.submit(new VeloceChunkTaskQueue.Task() {
-            @Override
-            public long chunkKey() {
-                return ChunkPos.asLong(chunkPos.x, chunkPos.z);
-            }
-
-            @Override
-            public net.minecraft.core.BlockPos pos() {
-                return pos;
-            }
-
-            @Override
-            public VeloceChunkTaskQueue.Kind kind() {
-                return VeloceChunkTaskQueue.Kind.INSERT;
-            }
-
-            @Override
-            public String describe() {
-                return stack.getCount() + "x " + stack.getItem();
-            }
-
-            @Override
-            public ItemStack run(ServerLevel lvl) {
-                // To samo, co sciezka synchroniczna, ale chunk jest juz
-                // zaladowany przez kolejke.
-                return insertNow(lvl, stack.copy());
-            }
-        });
-    }
-
-    /**
      * Fizyczne wlozenie stosu - BEZ sprawdzania i ladowania chunku.
      *
      * @return to, czego NIE udalo sie wlozyc
@@ -612,6 +575,7 @@ public class ConnectedEndpointInfo {
         }
 
         boolean wasLoaded = level.isLoaded(pos);
+        boolean weLoadedChunk = false;
         long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
             // Bez wymuszania przy zapisie swiata - patrz extractItem.
@@ -620,19 +584,46 @@ public class ConnectedEndpointInfo {
             }
             com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
                     com.craftingveloce.debug.ChunkOpNotifier.Op.INSERT);
-            // KOLEJKUJEMY, nie ladujemy synchronicznie - patrz extractItem.
+            // WKLADANIE MUSI BYC SYNCHRONICZNE - i to jest krytyczne.
             //
-            // Wkladanie do niezaladowanego magazynu NIE moze od razu udac sie
-            // "na slowo": gdybysmy powiedzieli wolajacemu "przyjete", a chunk
-            // okazalby sie pelny, itemy zniknelyby z rak gracza. Dlatego
-            // zwracamy CALY stos jako nieprzyjety, a kolejka wstawi go
-            // w swoim ticku. Wolajacy zachowa sie tak, jak przy pelnym
-            // magazynie - czyli item zostaje u gracza.
-            com.craftingveloce.debug.ChunkTrace.at("INSERT", level, pos,
-                    "chunk UNLOADED -> kolejka; stos=%dx %s",
+            // BUG, ktory tu byl (DUPLIKACJA + falszywe "network full"):
+            // wersja z kolejka robila tak:
+            //     scheduleInsert(stack.copy());   // kolejka WSTAWIA caly stos
+            //     return stack;                   // a wolajacemu mowimy "nie przyjete"
+            // Wolajacy (storeFromPlayer) widzial wiec "nic nie weszlo", NIE
+            // zabieral itemow graczowi - a kolejka w swoim ticku wstawiala je
+            // do sieci. Efekt: itemy byly JEDNOCZESNIE w sieci i u gracza.
+            //
+            // Dodatkowo, gdy magazyn stal w niezaladowanym chunku (a tylko
+            // WEZLY sa force-loadowane, nie magazyny), wkladanie ZAWSZE szlo
+            // ta sciezka - wiec terminal na stale krzyczal "network full",
+            // mimo ze miejsca bylo duzo. Dodawanie skrzyn nie pomagalo, bo
+            // problemem nie byla pojemnosc, tylko to, ze wkladanie w ogole
+            // nie docieralo do magazynu.
+            //
+            // Wniosek: wolajacy MUSI znac prawdziwy wynik, zeby zabrac graczowi
+            // DOKLADNIE tyle, ile weszlo. Dlatego chunk wymuszamy tu i teraz
+            // (z biletem operacyjnym, zwalnianym w finally), zamiast kolejkować.
+            // Wkladanie jest akcja gracza (albo odlozeniem wyniku craftu),
+            // wiec jednorazowe wczytanie chunku jest tu w pelni uzasadnione.
+            ChunkTrace.at("INSERT", level, pos,
+                    "chunk UNLOADED -> wczytuje synchronicznie; stos=%dx %s",
                     stack.getCount(), stack.getItem());
-            scheduleInsert(stack.copy());
-            return stack;
+            if (!VeloceChunkLoader.tryReserveOpLoad(level)) {
+                // Budzet blokujacych wczytan na ten tick wyczerpany. Odmawiamy
+                // CALEGO stosu - wolajacy zatrzyma itemy u gracza. To jest
+                // bezpieczne (zero duplikacji), a kolejny tick znowu ma budzet.
+                ChunkTrace.at("INSERT", level, pos,
+                        "budzet loadow wyczerpany (%d/tick) -> odmowa, stos zostaje u gracza",
+                        VeloceChunkLoader.MAX_OP_LOADS_PER_TICK);
+                return stack;
+            }
+            VeloceChunkLoader.retain(level, chunkKey, "op:insert",
+                    VeloceChunkLoader.Reason.OPERATION, pos);
+            weLoadedChunk = true;
+            level.getChunkSource().getChunk(
+                    chunkPos.x, chunkPos.z,
+                    net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true);
         } else {
             VeloceChunkLoader.noteUse(level, chunkKey);
         }
@@ -683,7 +674,7 @@ public class ConnectedEndpointInfo {
         } catch (Throwable t) {
             t.printStackTrace();
         } finally {
-            if (!wasLoaded) {
+            if (weLoadedChunk) {
                 VeloceChunkLoader.release(level, chunkKey, "op:insert");
             }
         }
