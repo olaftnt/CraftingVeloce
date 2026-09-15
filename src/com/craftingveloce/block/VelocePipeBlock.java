@@ -14,7 +14,9 @@ import com.tom.storagemod.util.TickerUtil;
 import com.craftingveloce.client.ClientTerminalHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
@@ -249,24 +251,34 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
         if (side != null) {
             BlockPos neighborPos = pos.relative(side);
-            boolean isInventory = canConnectToInventory(world, neighborPos, side.getOpposite());
+            boolean isInventory = canConnectToInventory(world, neighborPos, side.getOpposite())
+                    || RefinedStorageHelper.hasRSNetwork(world, neighborPos, side.getOpposite());
             boolean isNeighborPipe = world.getBlockState(neighborPos).getBlock() instanceof IInventoryCable;
 
             if (isInventory) {
                 boolean extracting = pipeBE.isExtracting(side);
                 boolean disconnected = pipeBE.isDisconnected(side);
                 if (!extracting && !disconnected) {
-                    // Normal -> Extracting
+                    // Normal PUSHPULL -> Sucking PULL (displays extractor nozzle)
                     pipeBE.setExtracting(side, true);
                     pipeBE.setDisconnected(side, false);
+                    if (player instanceof ServerPlayer sp) {
+                        sp.displayClientMessage(Component.literal("§7[CraftingVeloce] Tryb: §6PULL (Tylko ssanie)"), true);
+                    }
                 } else if (extracting) {
-                    // Extracting -> Disconnected
+                    // Sucking PULL -> Disconnected
                     pipeBE.setExtracting(side, false);
                     pipeBE.setDisconnected(side, true);
+                    if (player instanceof ServerPlayer sp) {
+                        sp.displayClientMessage(Component.literal("§7[CraftingVeloce] Tryb: §cROZŁĄCZONO"), true);
+                    }
                 } else {
-                    // Disconnected -> Normal
+                    // Disconnected -> Normal PUSHPULL (normal pipe connection)
                     pipeBE.setExtracting(side, false);
                     pipeBE.setDisconnected(side, false);
+                    if (player instanceof ServerPlayer sp) {
+                        sp.displayClientMessage(Component.literal("§7[CraftingVeloce] Tryb: §dPUSHPULL (Domyślny)"), true);
+                    }
                 }
             } else if (isNeighborPipe) {
                 boolean disconnected = pipeBE.isDisconnected(side);
@@ -278,6 +290,9 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                     BlockState otherState = updateConnections(world, neighborPos, world.getBlockState(neighborPos));
                     world.setBlockAndUpdate(neighborPos, otherState);
                     InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
+                }
+                if (player instanceof ServerPlayer sp) {
+                    sp.displayClientMessage(Component.literal("§7[CraftingVeloce] Połączenie: " + (!disconnected ? "§cROZŁĄCZONO" : "§aPOŁĄCZONO")), true);
                 }
             }
         } else {
