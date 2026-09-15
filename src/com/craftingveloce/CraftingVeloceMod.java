@@ -173,6 +173,11 @@ public class CraftingVeloceMod {
                         // na kazde przelaczenie itemu.
                         com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity
                                 .flushPendingSyncs(sl);
+                        // Utrzymanie force-loadow sieci. Sterownikiem jest TICK
+                        // POZIOMU, a nie terminal - inaczej siec bez terminala nie
+                        // trzymalaby swoich chunkow i automatyka padalaby, gdy
+                        // gracz odejdzie (patrz VeloceCraftingCache.tickAll).
+                        com.craftingveloce.crafting.VeloceCraftingCache.tickAll(sl);
                     }
                 });
 

@@ -195,15 +195,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
      * chunki z blokami sieci. Bez tego ekstraktory i craftery przestalyby
      * pracowac, gdy gracz odejdzie od bazy.
      */
-    /** Tick ostatniej okresowej pracy cache (patrz VeloceTick). */
-    private long lastCacheTick = Long.MIN_VALUE;
-
     /** Tick ostatniego rozgloszenia licznikow do obserwujacych. */
     private long lastSyncTick = Long.MIN_VALUE;
 
-    private void tickCraftingCache(ServerLevel sl, VelocePipeNetwork net) {
-        com.craftingveloce.crafting.VeloceCraftingCache.get(net).tickIdle(sl);
-    }
 
     /**
      * Krotka migawka stocku sieci - bez liczenia craftowalnosci.
@@ -334,27 +328,14 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         // Z tego samego powodu nie polegamy na slotCount/freeCount/beaconLevel.
         super.updateServer();
 
-        // Cache craftowalnosci pracuje w tle: wykrywa zmiany stocku i przelicza
-        // tylko dotkniete lancuchy. Otwarcie GUI nie czeka na liczenie.
-        if (level instanceof ServerLevel sl) {
-            // Odstep mierzony od ostatniego razu, a nie rownosc z wielokrotnoscia.
-            //
-            // BUG, ktory tu byl: `gameTime % 5 == 0` wymagalo trafienia w DOKLADNA
-            // wielokrotnosc piatki. updateServer leci co tick, wiec akurat tutaj
-            // to dzialalo - ale bylo kruche: wystarczylaby zmiana czestotliwosci
-            // wolania i okresowa praca przestalaby sie wykonywac w ogole.
-            // Ten sam wzorzec w cache spowodowal realny blad ("wymuszonych
-            // chunkow: 0"), wiec ujednolicamy go wszedzie.
-            long now = sl.getGameTime();
-            if (com.craftingveloce.util.VeloceTick.every(now, lastCacheTick, 5)) {
-                lastCacheTick = now;
-                VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
-                        .getNetworkForTerminal(sl, worldPosition);
-                if (net != null) {
-                    tickCraftingCache(sl, net);
-                }
-            }
-        }
+        // UWAGA: utrzymanie force-loadow sieci NIE jest juz wolane stad.
+        //
+        // Bylo tu `VeloceCraftingCache.get(net).tickIdle(sl)` pod warunkiem
+        // "raz na 5 tickow". Skutek: cale utrzymanie chunkow zalezalo od tego,
+        // czy w sieci stoi AKURAT terminal - siec z samym crafterem i piecem
+        // nie trzymala swoich chunkow ani razu, wiec automatyka padala, gdy
+        // gracz odszedl. Sterownikiem jest teraz tick poziomu
+        // (patrz VeloceCraftingCache.tickAll) - dziala niezaleznie od blokow.
 
         // Periodically refresh active viewers
         if (level != null && !activeWatchingPlayers.isEmpty()) {

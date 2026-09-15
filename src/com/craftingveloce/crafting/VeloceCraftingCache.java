@@ -68,7 +68,34 @@ public final class VeloceCraftingCache {
      */
     private static final int MAX_FORCED_CHUNKS = 64;
 
-    private static final Map<UUID, VeloceCraftingCache> CACHES = new HashMap<>();
+    /**
+     * Klucz cache: WYMIAR + identyfikator sieci.
+     *
+     * <p><b>BUG, ktory to naprawia (miedzywymiarowy).</b> Kluczem bylo samo UUID
+     * sieci, a to liczy sie z POZYCJI reprezentanta komponentu:
+     * {@code UUID.nameUUIDFromBytes(root.toShortString())}. Siec w Netherze
+     * stojaca na tych samych wspolrzednych co siec w Nadswiecie dostawala wiec
+     * IDENTYCZNY identyfikator - a {@code CACHES} jest mapa statyczna, wspolna
+     * dla wszystkich wymiarow. Obie sieci dzielily wiec JEDEN wpis:
+     * <ul>
+     *   <li>cache trzymal chunki tej sieci, ktora odezwala sie ostatnia,</li>
+     *   <li>force-loady szly do zlego wymiaru (albo w ogole nie dzialaly),</li>
+     *   <li>{@code retainOnly} jednego wymiaru kasowalo cache drugiego
+     *       - razem z jego force-loadami.</li>
+     * </ul>
+     *
+     * <p>Wyrownane portale (baza w tym samym miejscu w obu wymiarach) to
+     * typowy uklad, wiec to nie jest teoria.
+     */
+    private record CacheKey(net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension,
+                            UUID networkId) {
+    }
+
+    private static final Map<CacheKey, VeloceCraftingCache> CACHES = new HashMap<>();
+
+    private static CacheKey keyOf(ServerLevel level, UUID networkId) {
+        return new CacheKey(level.dimension(), networkId);
+    }
 
     /**
      * Siec, ktorej dotyczy ten cache.
@@ -120,9 +147,9 @@ public final class VeloceCraftingCache {
         this.network = network;
     }
 
-    public static VeloceCraftingCache get(VelocePipeNetwork network) {
+    public static VeloceCraftingCache get(ServerLevel level, VelocePipeNetwork network) {
         VeloceCraftingCache cache = CACHES.computeIfAbsent(
-                network.getId(), id -> new VeloceCraftingCache(network));
+                keyOf(level, network.getId()), id -> new VeloceCraftingCache(network));
         // Siec mogla zostac przebudowana pod tym samym UUID - odswiezamy
         // referencje, zamiast kasowac cache (co kosztowaloby force-loady).
         if (cache.network != network) {
@@ -140,7 +167,7 @@ public final class VeloceCraftingCache {
      * (albo przy kazdej zmianie ukladu rur) to sie zbieralo.
      */
     public static void drop(ServerLevel level, UUID networkId) {
-        VeloceCraftingCache cache = CACHES.remove(networkId);
+        VeloceCraftingCache cache = CACHES.remove(keyOf(level, networkId));
         if (cache != null) {
             cache.release(level);
         }
@@ -158,9 +185,13 @@ public final class VeloceCraftingCache {
      */
     public static int retainOnly(ServerLevel level, java.util.Set<UUID> liveIds) {
         java.util.List<UUID> stale = new java.util.ArrayList<>();
-        for (UUID id : CACHES.keySet()) {
-            if (!liveIds.contains(id)) {
-                stale.add(id);
+        // Tylko cache TEGO wymiaru. Wczesniej petla szla po wszystkich, wiec
+        // uzgadnianie w Nadswiecie kasowalo cache sieci w Netherze (ich UUID
+        // moga byc identyczne - patrz CacheKey).
+        for (Map.Entry<CacheKey, VeloceCraftingCache> e : CACHES.entrySet()) {
+            if (e.getKey().dimension().equals(level.dimension())
+                    && !liveIds.contains(e.getKey().networkId())) {
+                stale.add(e.getKey().networkId());
             }
         }
         for (UUID id : stale) {
@@ -245,7 +276,7 @@ public final class VeloceCraftingCache {
     /**
      * Tick gry, w ktorym ostatnio zrobilismy krok pracy.
      *
-     * <p><b>Po co.</b> {@code tickCraftingCache} wola ten cache KAZDY terminal
+     * <p><b>Po co.</b> Ten krok wolal kiedys kazdy terminal z osobna
      * w sieci, co 5 tickow. Przy dwoch terminalach cache wykonywal dwa kroki
      * w tym samym ticku. Blokada "raz na tick" trzyma go tam, gdzie ma byc,
      * niezaleznie od liczby terminali.
@@ -437,6 +468,12 @@ public final class VeloceCraftingCache {
      */
     public static void onLevelUnloaded(ServerLevel level) {
         int released = com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(level);
+        // Cache'e tego wymiaru MUSZA zniknac razem z nim.
+        //
+        // Trzymaja referencje do obiektu ServerLevel, ktory po wyjsciu do menu
+        // przestaje istniec - a przy ponownym wejsciu powstaje NOWY obiekt.
+        // Stary cache wymuszalby wtedy chunki na martwym swiecie.
+        CACHES.keySet().removeIf(k -> k.dimension().equals(level.dimension()));
         com.craftingveloce.network.pipe.VeloceChunkLoader.releaseAll(level);
         VeloceLog.Network.detail(VeloceLog.Side.SERVER,
                 "level unloaded: released %d forced chunk(s), caches reconciled later", released);
@@ -450,17 +487,50 @@ public final class VeloceCraftingCache {
         // omijalo blokade i zawieszalo zapis swiata.
         com.craftingveloce.network.pipe.VeloceChunkLoader.freeze();
         int released = 0;
-        for (VeloceCraftingCache cache : CACHES.values()) {
-            released += cache.forcedChunks.size();
-            cache.release(level);
+        // Tylko TEN wymiar: przy zatrzymaniu serwera ta metoda leci dla kazdego
+        // poziomu po kolei, a wczesniej pierwsze wywolanie czyscilo CALA mape -
+        // wiec pozostale wymiary nie zwalnialy juz niczego po stronie cache.
+        java.util.List<CacheKey> mine = new java.util.ArrayList<>();
+        for (Map.Entry<CacheKey, VeloceCraftingCache> e : CACHES.entrySet()) {
+            if (e.getKey().dimension().equals(level.dimension())) {
+                mine.add(e.getKey());
+                released += e.getValue().forcedChunks.size();
+                e.getValue().release(level);
+            }
         }
+        mine.forEach(CACHES::remove);
         // Sprzatanie na poziomie loadera: lapie tez chunki wymuszone poza
         // naszymi zbiorami (np. awaryjne doladowanie przy pobieraniu itemu).
         com.craftingveloce.network.pipe.VeloceChunkLoader.releaseAll(level);
         VeloceLog.Network.success(VeloceLog.Side.SERVER,
                 "server stopping: released %d forced chunk(s) across %d network(s)",
-                released, CACHES.size());
-        CACHES.clear();
+                released, mine.size());
+    }
+
+    /**
+     * Krok utrzymania dla WSZYSTKICH sieci tego wymiaru.
+     *
+     * <p><b>BUG, ktory to naprawia.</b> {@code tickIdle} bylo wolane WYLACZNIE
+     * przez terminal ({@code VeloceTomTerminalBlockEntity.tickCraftingCache}).
+     * Siec bez terminala - np. sam crafter z piecem i skrzyniami - nie
+     * utrzymywala wiec swoich chunkow ANI RAZU: crafter i piece przestawaly
+     * pracowac, gdy gracz odszedl, a wygaszanie "gorących" biletow nie
+     * dzialalo wcale. Czyli automatyka padala dokladnie w tej sytuacji, do
+     * ktorej istnieje.
+     *
+     * <p>Teraz sterownikiem jest TICK POZIOMU, wiec dziala niezaleznie od tego,
+     * jakie bloki stoja w sieci. Terminal nie wola juz tego u siebie - jeden
+     * sterownik, jedno miejsce.
+     */
+    public static void tickAll(ServerLevel level) {
+        if (CACHES.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<CacheKey, VeloceCraftingCache> e : CACHES.entrySet()) {
+            if (e.getKey().dimension().equals(level.dimension())) {
+                e.getValue().tickIdle(level);
+            }
+        }
     }
 
     /** Zwalnia wszystkie chunki trzymane przez te siec. */
