@@ -1,5 +1,6 @@
 package com.craftingveloce.network;
 
+import com.craftingveloce.crafting.VeloceFlowTracker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
@@ -15,21 +16,18 @@ import java.util.Map;
 /**
  * S→C: tempo przeplywu itemow w kontrolerze.
  *
- * <p>Niesie tylko to, co sie zmienia z sekundy na sekunde:
- * <ul>
- *   <li>{@code perMinute} / {@code perHour} - tempo w sztukach na sekunde dla
- *       itemow, ktore REALNIE sie ruszaja. Brak wpisu = stoi, wiec nie
- *       wysylamy setek zer.</li>
- *   <li>{@code coveredMinute} / {@code coveredHour} - ile sekund realnie
- *       obejmuje okno. Gdy serwer stoi od 3 minut, okno godzinowe ma 180 s i
- *       klient musi o tym powiedziec, zamiast udawac pelna godzine.</li>
- * </ul>
+ * <p>Niesie tylko to, co sie zmienia z sekundy na sekunde: dla kazdego itemu,
+ * ktory REALNIE sie rusza, netto oraz osobno ile przyszlo i ile ubylo.
+ * Brak wpisu = stoi, wiec nie wysylamy setek zer.
+ *
+ * <p>Okna nie da sie juz "nie miec": okno minutowe liczy sie od drugiej
+ * migawki, a godzinowe od pierwszej (patrz {@link VeloceFlowTracker}). Dzieki
+ * temu ten pakiet nie musi nosic informacji "ile sekund objelo okno" - nie ma
+ * stanu, w ktorym klient mialby pokazac "zbieram dane".
  */
 public record SyncControllerFlowPKT(BlockPos pos,
-                                    Map<Item, Float> perMinute,
-                                    Map<Item, Float> perHour,
-                                    float coveredMinute,
-                                    float coveredHour)
+                                    Map<Item, VeloceFlowTracker.Movement> perMinute,
+                                    Map<Item, VeloceFlowTracker.Movement> perHour)
         implements CustomPacketPayload {
 
     public static final Type<SyncControllerFlowPKT> TYPE =
@@ -45,36 +43,38 @@ public record SyncControllerFlowPKT(BlockPos pos,
 
     private static void encode(FriendlyByteBuf buf, SyncControllerFlowPKT pkt) {
         buf.writeBlockPos(pkt.pos);
-        writeRates(buf, pkt.perMinute);
-        writeRates(buf, pkt.perHour);
-        buf.writeFloat(pkt.coveredMinute);
-        buf.writeFloat(pkt.coveredHour);
+        writeMovements(buf, pkt.perMinute);
+        writeMovements(buf, pkt.perHour);
     }
 
     private static SyncControllerFlowPKT decode(FriendlyByteBuf buf) {
         BlockPos pos = buf.readBlockPos();
-        Map<Item, Float> perMinute = readRates(buf);
-        Map<Item, Float> perHour = readRates(buf);
-        float coveredMinute = buf.readFloat();
-        float coveredHour = buf.readFloat();
-        return new SyncControllerFlowPKT(pos, perMinute, perHour, coveredMinute, coveredHour);
+        Map<Item, VeloceFlowTracker.Movement> perMinute = readMovements(buf);
+        Map<Item, VeloceFlowTracker.Movement> perHour = readMovements(buf);
+        return new SyncControllerFlowPKT(pos, perMinute, perHour);
     }
 
-    private static void writeRates(FriendlyByteBuf buf, Map<Item, Float> rates) {
-        buf.writeInt(rates.size());
-        for (Map.Entry<Item, Float> e : rates.entrySet()) {
+    private static void writeMovements(FriendlyByteBuf buf,
+                                       Map<Item, VeloceFlowTracker.Movement> movements) {
+        buf.writeInt(movements.size());
+        for (Map.Entry<Item, VeloceFlowTracker.Movement> e : movements.entrySet()) {
+            VeloceFlowTracker.Movement m = e.getValue();
             buf.writeVarInt(BuiltInRegistries.ITEM.getId(e.getKey()));
-            buf.writeVarInt(Math.round(e.getValue() * RATE_SCALE));
+            buf.writeVarInt(Math.round(m.net() * RATE_SCALE));
+            buf.writeVarInt(Math.round(m.gain() * RATE_SCALE));
+            buf.writeVarInt(Math.round(m.loss() * RATE_SCALE));
         }
     }
 
-    private static Map<Item, Float> readRates(FriendlyByteBuf buf) {
+    private static Map<Item, VeloceFlowTracker.Movement> readMovements(FriendlyByteBuf buf) {
         int size = buf.readInt();
-        Map<Item, Float> out = new HashMap<>(Math.max(4, size));
+        Map<Item, VeloceFlowTracker.Movement> out = new HashMap<>(Math.max(4, size));
         for (int i = 0; i < size; i++) {
             Item item = BuiltInRegistries.ITEM.byId(buf.readVarInt());
-            float rate = buf.readVarInt() / RATE_SCALE;
-            out.put(item, rate);
+            float net = buf.readVarInt() / RATE_SCALE;
+            float gain = buf.readVarInt() / RATE_SCALE;
+            float loss = buf.readVarInt() / RATE_SCALE;
+            out.put(item, new VeloceFlowTracker.Movement(net, gain, loss));
         }
         return out;
     }
@@ -88,8 +88,7 @@ public record SyncControllerFlowPKT(BlockPos pos,
         ctx.enqueueWork(() -> {
             if (net.minecraft.client.Minecraft.getInstance().screen
                     instanceof com.craftingveloce.client.gui.VeloceControllerScreen screen) {
-                screen.updateFlow(pkt.pos(), pkt.perMinute(), pkt.perHour(),
-                        pkt.coveredMinute(), pkt.coveredHour());
+                screen.updateFlow(pkt.pos(), pkt.perMinute(), pkt.perHour());
             }
         });
     }

@@ -22,6 +22,7 @@ klasy w pamieci i po podmianie pliku moze rzucic NoClassDefFoundError dla
 klas, ktorych w zaladowanej wersji nie bylo.
 """
 import glob
+import json
 import os
 import re
 import shutil
@@ -75,15 +76,61 @@ def validate_block_data(jar_names):
     print(f"    OK (dane {len(registered_block_ids())} blokow kompletne)")
 
 
+def _record_components(path):
+    """(nazwa, lista skladnikow) rekordu-pakietu z jego pliku zrodlowego."""
+    text = open(path, encoding="utf-8").read()
+    m = re.search(r"public record\s+(\w+)\s*\(", text)
+    if not m:
+        return None, None
+    start = m.end() - 1
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return m.group(1), text[start + 1:i]
+    return m.group(1), None
+
+
+def _split_components(body):
+    """Dzieli naglowek rekordu po przecinkach NA POZIOMIE 0 (generyki!)."""
+    out, depth, cur = [], 0, ""
+    for ch in body:
+        if ch in "(<[":
+            depth += 1
+        elif ch in ")>]":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        out.append(cur)
+    return out
+
+
+def _normalize_signature(text):
+    """Skladniki bez pakietow: 'net.minecraft.core.BlockPos pos' -> 'BlockPos pos'."""
+    text = text.replace("`", "").replace("@Nullable", "")
+    text = re.sub(r"(?<![A-Za-z0-9_])(?:[a-z][a-z0-9_]*\.)+", "", text)  # segmenty-pakiety
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def validate_packet_docs():
     """
-    Kazdy zarejestrowany pakiet musi byc wymieniony w README.
+    Kazdy zarejestrowany pakiet musi byc wymieniony w README - Z SYGNATURA.
 
     Tabela pakietow w README jest pisana recznie, a rejestracja pakietow zyje
     w VelocePacketHandler.java. To dwa spisy tej samej rzeczy, wiec bez kontroli
-    rozjezdzaja sie same - i juz sie rozjechaly: README wymienial dwa pakiety,
-    ktorych nie ma, i nie znal osmiu nowych. Dokument, ktory klamie o protokole,
-    jest gorszy niz jego brak.
+    rozjezdzaja sie same - i juz sie rozjezdaly: README wymienial dwa pakiety,
+    ktorych nie ma, nie znal osmiu nowych, a potem przez kilka zmian opisywal
+    `OpenControllerScreenPKT` z polem `hotbar`, ktorego juz nie bylo.
+
+    Dlatego sprawdzamy nie tylko NAZWE, ale i SKLADNIKI: naglowek rekordu
+    kontra komorka tabeli. Nazwa bez pol to dokument, ktory klamie polowicznie.
     """
     handler = os.path.join("src/com/craftingveloce/network/VelocePacketHandler.java")
     readme = "README.md"
@@ -95,7 +142,63 @@ def validate_packet_docs():
     missing = [p for p in registered if p not in doc]
     if missing:
         fail("pakiety zarejestrowane, ale nieopisane w README.md:\n  " + "\n  ".join(missing))
-    print(f"    OK (README opisuje wszystkie {len(registered)} pakietow)")
+
+    # Sygnatury: naglowek rekordu kontra trzecia kolumna wiersza tabeli.
+    mismatches = []
+    for name in registered:
+        path = os.path.join("src/com/craftingveloce/network", name + ".java")
+        if not os.path.exists(path):
+            continue
+        _, body = _record_components(path)
+        if body is None:
+            continue
+        row = re.search(r"^\|\s*`" + re.escape(name) + r"`\s*\|[^|]*\|([^|]*)\|",
+                        doc, re.MULTILINE)
+        if not row:
+            mismatches.append(f"{name}: brak wiersza w tabeli")
+            continue
+        code = _normalize_signature(body)
+        docs = _normalize_signature(row.group(1))
+        if code != docs:
+            mismatches.append(f"{name}:\n    kod:   {code}\n    README: {docs}")
+    if mismatches:
+        fail("sygnatury pakietow niezgodne z README.md:\n  " + "\n  ".join(mismatches))
+    print(f"    OK (README opisuje wszystkie {len(registered)} pakietow - nazwy i sygnatury)")
+
+
+def validate_lang_keys():
+    """
+    Kazdy klucz tlumaczenia uzyty w kodzie musi istniec w en_us.json.
+
+    Brakujacy klucz NIE jest bledem kompilacji - gracz zobaczy w GUI surowy
+    napis "gui.craftingveloce.controller.flow.churn" i nikt tego nie zauwazy
+    w testach, bo kod "dziala". To dokladnie ta klasa bledu, ktora ten projekt
+    juz raz mial (klucz skasowany razem z metoda, a uzywany gdzie indziej).
+    """
+    lang_path = os.path.join("assets/craftingveloce/lang/en_us.json")
+    if not os.path.exists(lang_path):
+        return
+    lang = json.load(open(lang_path, encoding="utf-8"))
+    prefixes = {k.split(".")[0] for k in lang}
+    used = set()
+    for root, _, files in os.walk("src"):
+        for name in files:
+            if not name.endswith(".java"):
+                continue
+            text = open(os.path.join(root, name), encoding="utf-8").read()
+            for lit in re.findall(r'"([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+)"', text):
+                if lit.split(".")[0] in prefixes:
+                    used.add(lit)
+    missing = sorted(k for k in used if k not in lang)
+    if missing:
+        fail("klucze jezykowe uzywane w kodzie, a nieobecne w en_us.json:\n  "
+             + "\n  ".join(missing))
+    unused = sorted(k for k in lang
+                    if k not in used and not k.startswith(("block.", "item.")))
+    info = f"    OK ({len(used)} kluczy uzywanych, wszystkie obecne"
+    if unused:
+        info += f"; nieuzywane: {', '.join(unused)}"
+    print(info + ")   [block./item. pomijam - te tworzy rejestr]")
 
 
 def validate_gui_layout():
@@ -323,6 +426,7 @@ def main():
     # scripts/gen_loot_tables.py - zeby nie powstal drugi, recznie pisany spis.
     validate_block_data(names)
     validate_packet_docs()
+    validate_lang_keys()
     validate_gui_layout()
 
     classes = sum(1 for n in names if n.endswith(".class"))

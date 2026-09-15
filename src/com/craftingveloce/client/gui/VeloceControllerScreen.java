@@ -1,6 +1,8 @@
 package com.craftingveloce.client.gui;
 
+import com.craftingveloce.crafting.VeloceFlowTracker;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.player.LocalPlayer;
@@ -26,19 +28,25 @@ import java.util.Set;
  * <p>Trzy tryby widoku (przyciski na dole ekranu):
  * <ul>
  *   <li><b>SHOW ALL</b> - wszystko, co jest w sieci + wszystko craftowalne</li>
- *   <li><b>AVAILABLE</b> - tylko to, co jest realnie dostepne: jest na stocku
- *       LUB crafter potrafi to zrobic (wlaczony auto-crafting)</li>
- *   <li><b>NOT AVAILABLE</b> - tego crafter nie zrobi i nie ma na stocku;
- *       wlasnie te itemy warto zaplanowac jako maszyny (extractor + skrzynia)</li>
+ *   <li><b>AVAILABLE</b> - tylko to, co jest realnie dostepne: jest na stocku,
+ *       LUB crafter to zrobi, LUB przepali to zasilony piec</li>
+ *   <li><b>NOT AVAILABLE</b> - tego crafter nie zrobi, piec nie przepali
+ *       i nie ma na stocku; wlasnie te itemy warto zaplanowac jako maszyny
+ *       (extractor + skrzynia)</li>
  * </ul>
  *
  * <p>Kolory tla ikony:
  * <ul>
- *   <li>zielony - item jest w hotbarze gracza (pod reka)</li>
  *   <li>niebieski - item jest na stocku w sieci</li>
  *   <li>zolty - itemu nie ma, ale crafter potrafi go zrobic</li>
- *   <li>czerwony - niedostepny (brak stocku i brak craftingu)</li>
+ *   <li>pomaranczowy - itemu nie ma, ale zasilony piec ma na to recepture</li>
+ *   <li>czerwony - niedostepny (brak stocku, craftingu i przepalania)</li>
  * </ul>
+ *
+ * <p>Tooltip pokazuje TYLKO to, co jest potrzebne: nazwe, stock, tempo
+ * (minuta i godzina), powod braku dostepnosci - i preferencje "crafting czy
+ * piec". Komunikaty o stanie, ktory DZIALA ("auto-crafting wlaczony",
+ * "przepalanie wlaczone"), zostaly usuniete na zyczenie gracza.
  */
 public class VeloceControllerScreen extends VeloceCreativeScreen {
 
@@ -98,14 +106,23 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     private final List<Button> filterButtons = new ArrayList<>();
 
     // ---------- przeplyw (ile na sekunde przybywa / ubywa) ----------
-    /** Tempo w sztukach na sekunde, tylko dla itemow, ktore sie ruszaja. */
-    private Map<Item, Float> flowPerMinute = new HashMap<>();
-    private Map<Item, Float> flowPerHour = new HashMap<>();
-    /** Ile sekund realnie obejmuje okno (moze byc mniej niz pelne). */
-    private float flowCoveredMinute;
-    private float flowCoveredHour;
+    /**
+     * Ruch w sztukach na sekunde - tylko dla itemow, ktore REALNIE sie ruszaja.
+     *
+     * <p>Netto, a osobno zysk i strata: sama roznica koncow jest zerowa, gdy
+     * gracz wklada i wyciaga to samo, a wlasnie tak gracz sprawdza, czy
+     * pomiar dziala (patrz {@link VeloceFlowTracker.Movement}).
+     */
+    private Map<Item, VeloceFlowTracker.Movement> flowPerMinute = new HashMap<>();
+    private Map<Item, VeloceFlowTracker.Movement> flowPerHour = new HashMap<>();
     /** Co ile tickow dopytujemy serwer o swieze tempo. */
     private static final int FLOW_REQUEST_INTERVAL_TICKS = 20;
+    /**
+     * Ponizej tego tempa (w sztukach na sekunde) uznajemy, ze nic sie nie
+     * dzieje - ten sam prog co w trackerze, zeby klient nie pokazywal ruchu,
+     * ktorego serwer nie wyslal.
+     */
+    private static final float CHURN_MIN = 0.01f;
     private int flowRequestCooldown;
 
     public VeloceControllerScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
@@ -131,8 +148,33 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         return stock.getOrDefault(item, 0L) > 0;
     }
 
-    private boolean canCrafterMake(Item item) {
-        return craftingEnabled.contains(item);
+    /**
+     * Powod, dla ktorego itemu NIE da sie uzyskac - albo {@code null}, gdy da
+     * sie go uzyskac (jest na stocku, crafter go zrobi albo piec przepali).
+     *
+     * <p><b>Jedno zrodlo prawdy o dostepnosci.</b> Filtr, kolor ikony i
+     * podpowiedz w tooltipie pytaja o to samo, wiec nie moga sie rozjechac.
+     *
+     * <p>Sprawdzamy {@code craftingEnabled}, a nie samo {@code craftable}:
+     * item moze miec recepture, ktorej crafter nie wykonuje. Piec liczy sie
+     * tylko ZASILONY - bez paliwa nic sie nie przepali.
+     */
+    private Blocker blocker(Item item) {
+        if (hasStock(item) || craftingEnabled.contains(item)) {
+            return null;
+        }
+        if (furnaceCanSmelt(item)) {
+            return null;
+        }
+        if (craftable.contains(item)) {
+            return new Blocker("gui.craftingveloce.controller.craftingOff", ChatFormatting.GRAY);
+        }
+        if (furnaceCraftable.contains(item)) {
+            return furnaceInNetwork
+                    ? new Blocker("gui.craftingveloce.controller.smeltingNoFuel", ChatFormatting.DARK_GRAY)
+                    : new Blocker("gui.craftingveloce.controller.smeltingNoFurnace", ChatFormatting.DARK_GRAY);
+        }
+        return new Blocker("gui.craftingveloce.controller.notCraftable", ChatFormatting.RED);
     }
 
     /**
@@ -141,17 +183,16 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      * <p>Wymagamy DWOCH rzeczy: receptury pieca ORAZ zasilonego pieca w sieci.
      * Samo istnienie receptury nie wystarcza - bez paliwa nic sie nie przepali.
      */
-    private boolean canFurnaceMake(Item item) {
+    private boolean furnaceCanSmelt(Item item) {
         return furnacePowered && furnaceCraftable.contains(item);
     }
 
     private boolean isAvailable(Item item) {
-        // Dostepne = jest na stocku ALBO crafter potrafi to zrobic ALBO piec
-        // jest zasilony i ma na to recepture.
-        // (Item moze byc craftowalny w ogole, ale jesli auto-crafting jest
-        //  wylaczony, to realnie nie jest dostepny - dlatego sprawdzamy
-        //  craftingEnabled, a nie samo craftable.)
-        return hasStock(item) || canCrafterMake(item) || canFurnaceMake(item);
+        return blocker(item) == null;
+    }
+
+    /** Powod braku dostepnosci i kolor, w jakim go pokazac. */
+    private record Blocker(String key, ChatFormatting color) {
     }
 
     private boolean passesFilter(Item item) {
@@ -186,10 +227,10 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         if (hasStock(item)) {
             return 0x770000AA;  // niebieski: na stocku
         }
-        if (canCrafterMake(item)) {
+        if (craftingEnabled.contains(item)) {
             return 0x77AAAA00;  // zolty: crafter to zrobi
         }
-        if (canFurnaceMake(item)) {
+        if (furnaceCanSmelt(item)) {
             return 0x77AA5500;  // pomaranczowy: piec to przepali
         }
         return 0x77AA0000;      // czerwony: niedostepne
@@ -207,15 +248,13 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      *            dla innego kontrolera, zeby nie podmieszac danych
      */
     public void updateFlow(net.minecraft.core.BlockPos pos,
-                           Map<Item, Float> perMinute, Map<Item, Float> perHour,
-                           float coveredMinute, float coveredHour) {
+                           Map<Item, VeloceFlowTracker.Movement> perMinute,
+                           Map<Item, VeloceFlowTracker.Movement> perHour) {
         if (!controllerPos.equals(pos)) {
             return;
         }
         this.flowPerMinute = new HashMap<>(perMinute);
         this.flowPerHour = new HashMap<>(perHour);
-        this.flowCoveredMinute = coveredMinute;
-        this.flowCoveredHour = coveredHour;
     }
 
     /**
@@ -371,8 +410,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         lines.add(slot.getItem().getHoverName());
         addStockLines(lines, item);
         addFlowLines(lines, item);
-        addCraftingLines(lines, item);
-        addFurnaceLines(lines, item);
+        addBlockerLines(lines, item);
         addPreferenceLines(lines, item);
         addUnavailableHint(lines, item);
 
@@ -383,19 +421,15 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      * Ile tego itemu na sekunde przybywa albo ubywa.
      *
      * <p>Dwa okna, bo odpowiadaja na dwa rozne pytania: minuta mowi "co sie
-     * dzieje TERAZ" (czy wlasnie trwa produkcja albo zrzut), a godzina "jaki
-     * jest dlugofalowy bilans" (czy zapas rosnie, czy jest zjadany).
-     *
-     * <p>Brak wpisu w mapie znaczy "stoi" - nie wysylamy setek zer. Ale
-     * UWAGA: brak wpisu jest tez tym, co widzimy, gdy okno nie ma jeszcze
-     * danych, dlatego najpierw sprawdzamy pokrycie okna i w takiej sytuacji
-     * mowimy wprost "zbieram dane", a nie "0".
+     * dzieje TERAZ" (probka co 5 s), a godzina "jaki jest dlugofalowy bilans"
+     * (probka co 60 s). Oba LICZA SIE OD RAZU - nie ma stanu "zbieram dane";
+     * brak wpisu w mapie znaczy po prostu "nic sie nie ruszylo".
      */
     private void addFlowLines(List<Component> lines, Item item) {
-        addFlowLine(lines, item, flowPerMinute, flowCoveredMinute, 60f,
-                "gui.craftingveloce.controller.flow.minute");
-        addFlowLine(lines, item, flowPerHour, flowCoveredHour, 3600f,
-                "gui.craftingveloce.controller.flow.hour");
+        addFlowLine(lines, item, flowPerMinute,
+                "gui.craftingveloce.controller.flow.minute", true);
+        addFlowLine(lines, item, flowPerHour,
+                "gui.craftingveloce.controller.flow.hour", false);
     }
 
     /**
@@ -404,33 +438,51 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      * <p>Kazdy stan ma INNY tekst, nie tylko inny kolor - gracz nie moze byc
      * zmuszony do rozrozniania zielonego od czerwonego, a znak liczby i tak
      * jest czescia napisu.
+     *
+     * <p>W oknie minuty dokladamy zysk i strate, ale TYLKO gdy oba sa
+     * niezerowe. Wtedy samo netto klamie ("bez zmian"), bo item jest
+     * jednoczesnie wkladany i wyciagany - a dokladnie tak gracz sprawdza, czy
+     * pomiar w ogole dziala. W oknie godziny tego nie ma: probka raz na
+     * minute i tak nie widzi takiego szarpania, wiec bylby to szum bez tresci.
      */
-    private void addFlowLine(List<Component> lines, Item item, Map<Item, Float> rates,
-                             float coveredSeconds, float fullWindowSeconds, String windowKey) {
-        String value;
-        net.minecraft.ChatFormatting color;
-
-        if (coveredSeconds < 1f) {
-            value = Component.translatable("gui.craftingveloce.controller.flow.gathering").getString();
-            color = net.minecraft.ChatFormatting.DARK_GRAY;
-        } else {
-            float rate = rates.getOrDefault(item, 0f);
-            if (Math.abs(rate) < 0.01f) {
-                value = Component.translatable("gui.craftingveloce.controller.flow.steady").getString();
-                color = net.minecraft.ChatFormatting.DARK_GRAY;
-            } else {
-                value = (rate > 0 ? "+" : "-") + formatRate(Math.abs(rate)) + "/s";
-                color = rate > 0
-                        ? net.minecraft.ChatFormatting.GREEN
-                        : net.minecraft.ChatFormatting.RED;
-            }
+    private void addFlowLine(List<Component> lines, Item item,
+                             Map<Item, VeloceFlowTracker.Movement> movements,
+                             String windowKey, boolean showChurn) {
+        VeloceFlowTracker.Movement m = movements.get(item);
+        if (m == null) {
+            lines.add(Component.translatable(windowKey,
+                            Component.translatable("gui.craftingveloce.controller.flow.steady"))
+                    .withStyle(ChatFormatting.DARK_GRAY));
+            return;
         }
-        lines.add(Component.translatable(windowKey, value).withStyle(color));
-
-        // UWAGA: nie pokazujemy juz "5 min of data so far" - gracz tego nie
-        // chcial, a sama liczba tempa jest prawdziwa dla okna, ktore minelo.
+        Component net = Component.literal(signed(m.net()));
+        if (showChurn && m.gain() >= CHURN_MIN && m.loss() >= CHURN_MIN) {
+            net = Component.translatable("gui.craftingveloce.controller.flow.churn", net,
+                    Component.literal(signed(m.gain())), Component.literal(signed(-m.loss())));
+        }
+        lines.add(Component.translatable(windowKey, net).withStyle(colorOf(m.net())));
     }
 
+    /** Kolor liczby netto - jeden dla calego projektu, w jednym miejscu. */
+    private static ChatFormatting colorOf(float net) {
+        if (net > CHURN_MIN) {
+            return ChatFormatting.GREEN;
+        }
+        return net < -CHURN_MIN ? ChatFormatting.RED : ChatFormatting.DARK_GRAY;
+    }
+
+    /**
+     * Liczba ze znakiem: "+2.00/s" albo "-19.8/s".
+     *
+     * <p>Znak jest CZESCIA NAPISU, nie tylko kolorem - inaczej gracz
+     * nierozrozniajacy barw nie wie, czy zapas rosnie, czy spada.
+     */
+    private static String signed(float rate) {
+        if (Math.abs(rate) < CHURN_MIN) {
+            return "0/s";
+        }
+        return (rate < 0f ? "-" : "+") + formatRate(Math.abs(rate)) + "/s";
+    }
 
     /** Tempo z dokladnoscia, ktora ma sens: 2 miejsca ponizej 1/s, inaczej 1. */
     private static String formatRate(float rate) {
@@ -449,53 +501,20 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     private void addStockLines(List<Component> lines, Item item) {
         long n = stock.getOrDefault(item, 0L);
         lines.add(Component.translatable("gui.craftingveloce.controller.stock", n)
-                .withStyle(n > 0
-                        ? net.minecraft.ChatFormatting.AQUA
-                        : net.minecraft.ChatFormatting.DARK_GRAY));
+                .withStyle(n > 0 ? ChatFormatting.AQUA : ChatFormatting.DARK_GRAY));
     }
 
     /**
-     * Trzy stany auto-craftingu: wlaczony / crafter potrafi ale wylaczony /
-     * crafter w ogole nie potrafi.
-     */
-    private void addCraftingLines(List<Component> lines, Item item) {
-        if (craftingEnabled.contains(item)) {
-            lines.add(Component.translatable("gui.craftingveloce.controller.craftingOn")
-                    .withStyle(net.minecraft.ChatFormatting.YELLOW));
-        } else if (craftable.contains(item)) {
-            lines.add(Component.translatable("gui.craftingveloce.controller.craftingOff")
-                    .withStyle(net.minecraft.ChatFormatting.GRAY));
-        } else {
-            lines.add(Component.translatable("gui.craftingveloce.controller.notCraftable")
-                    .withStyle(net.minecraft.ChatFormatting.RED));
-        }
-    }
-
-    /**
-     * Informacja o piecu - tylko dla itemow, ktore maja recepture pieca.
+     * Dlaczego itemu NIE da sie zrobic - jedna linia i TYLKO gdy cos blokuje.
      *
-     * <p>Trzy rozne komunikaty, bo trzy rozne sytuacje:
-     * <ul>
-     *   <li>piec zasilony -> "mozna przepalic" (to jest realna dostepnosc),</li>
-     *   <li>piec jest, ale stoi -> "receptura jest, brak paliwa" - to jest
-     *       podpowiedz, co zrobic, a nie "niedostepne",</li>
-     *   <li>pieca nie ma w sieci -> "potrzebny piec" - podpowiedz, ze trzeba
-     *       go postawic i podlaczyc.</li>
-     * </ul>
+     * <p>Gracz nie chcial komunikatow o stanie, ktory DZIALA ("auto-crafting
+     * wlaczony", "przepalanie wlaczone") - to szum, bo dziala to, co ma
+     * dzialac. Zostaje sam powod, gdy jest problem.
      */
-    private void addFurnaceLines(List<Component> lines, Item item) {
-        if (!furnaceCraftable.contains(item)) {
-            return;
-        }
-        if (furnacePowered) {
-            lines.add(Component.translatable("gui.craftingveloce.controller.smeltingOn")
-                    .withStyle(net.minecraft.ChatFormatting.GOLD));
-        } else if (furnaceInNetwork) {
-            lines.add(Component.translatable("gui.craftingveloce.controller.smeltingNoFuel")
-                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
-        } else {
-            lines.add(Component.translatable("gui.craftingveloce.controller.smeltingNoFurnace")
-                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+    private void addBlockerLines(List<Component> lines, Item item) {
+        Blocker blocker = blocker(item);
+        if (blocker != null) {
+            lines.add(Component.translatable(blocker.key()).withStyle(blocker.color()));
         }
     }
 
@@ -505,6 +524,10 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      * <p>Pokazujemy ja wprost ("Preference: Crafting" / "Preference: Furnace"),
      * bo item moze miec obie drogi naraz i gracz musi widziec, ktora jest
      * pierwsza. Prawy klik przelacza.
+     *
+     * <p><b>Jeden kolor w obu stanach</b> - gracz tego chcial: linia ma czytac
+     * sie jak USTAWIENIE, a nie jak alarm. Podpowiedz "kliknij prawym"
+     * zniknela, bo prawy klik jest jedynym sensownym klikiem na tej ikonie.
      */
     private void addPreferenceLines(List<Component> lines, Item item) {
         if (!furnaceCraftable.contains(item)) {
@@ -514,10 +537,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         lines.add(Component.translatable(furnace
                         ? "gui.craftingveloce.controller.prefer.furnace"
                         : "gui.craftingveloce.controller.prefer.crafting")
-                .withStyle(furnace ? net.minecraft.ChatFormatting.GOLD
-                        : net.minecraft.ChatFormatting.YELLOW));
-        lines.add(Component.translatable("gui.craftingveloce.controller.prefer.hint")
-                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+                .withStyle(ChatFormatting.YELLOW));
     }
 
     private void addUnavailableHint(List<Component> lines, Item item) {

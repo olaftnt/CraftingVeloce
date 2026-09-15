@@ -131,10 +131,8 @@ public class VeloceControllerBlockEntity extends BlockEntity
     public void sendFlowTo(ServerPlayer player) {
         PacketDistributor.sendToPlayer(player, new com.craftingveloce.network.SyncControllerFlowPKT(
                 worldPosition,
-                flow.movingItems(VeloceFlowTracker.Window.MINUTE),
-                flow.movingItems(VeloceFlowTracker.Window.HOUR),
-                flow.coveredSeconds(VeloceFlowTracker.Window.MINUTE),
-                flow.coveredSeconds(VeloceFlowTracker.Window.HOUR)));
+                flow.movements(VeloceFlowTracker.Window.MINUTE),
+                flow.movements(VeloceFlowTracker.Window.HOUR)));
     }
 
     /** Zbiera aktualny stan sieci i wysyla GUI graczowi. */
@@ -169,10 +167,10 @@ public class VeloceControllerBlockEntity extends BlockEntity
                 : VeloceCraftingRegistry.getAllEnabledItems(sl, net);
 
         // PIEC: receptury pieca sa uzywalne TYLKO gdy w sieci stoi ZASILONY piec.
-        // Rozrozniamy trzy stany, bo kazdy znaczy dla gracza cos innego:
-        //   brak pieca      -> "tego nie da sie przepalic"
-        //   piec bez paliwa -> "receptura jest, ale piec stoi" (podpowiedz!)
-        //   piec zasilony   -> "mozna przepalac"
+        // Klient uzywa tego do JEDNEJ rzeczy: gdy itemu nie da sie uzyskac, ma
+        // powiedziec DLACZEGO ("brak pieca" vs "piec bez paliwa"). Stanu
+        // "mozna przepalac" nie wysylamy jako komunikatu - gracz nie chcial
+        // tekstow o tym, co dziala.
         Set<Item> furnaceCraftable = VeloceRecipeRegistry.getAllFurnaceCraftableItems(sl);
         boolean furnaceInNetwork = net != null && VeloceHeatSources.hasAnyHeatSource(sl, net);
         boolean furnacePowered = net != null && VeloceHeatSources.hasPower(sl, net);

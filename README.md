@@ -239,7 +239,7 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `CraftingTableCycleRecipePKT` | C→S | `BlockPos pos, Item item, ResourceLocation recipeId` |
 | `CraftingTableToggleItemPKT` | C→S | `BlockPos pos, Item item` |
 | `ExtractorToggleCraftingPKT` | C→S | `BlockPos pos, int filterIndex` |
-| `OpenControllerScreenPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Set<Item> craftable, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnaceInNetwork, boolean furnacePowered, Map<Item, Integer> hotbar` |
+| `OpenControllerScreenPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Set<Item> craftable, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnaceInNetwork, boolean furnacePowered, Set<Item> furnacePreferred` |
 | `OpenCraftingTableScreenPKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents` |
 | `OpenFilterPKT` | C→S | `BlockPos pos, int filterIndex` |
 | `OpenFilterPickerPKT` | S→C | `BlockPos pos, int filterIndex` |
@@ -248,7 +248,7 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `SensorConfigPKT` | C→S | `BlockPos pos, long threshold, boolean highMode` |
 | `ControllerPreferKindPKT` | C→S | `BlockPos pos, Item item, boolean preferFurnace` |
 | `SetFilterPKT` | C→S | `BlockPos pos, int filterIndex, ItemStack filterItem` |
-| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Float> perMinute, Map<Item, Float> perHour, float coveredMinute, float coveredHour` |
+| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, VeloceFlowTracker.Movement> perMinute, Map<Item, VeloceFlowTracker.Movement> perHour` |
 | `SyncCraftableCountsPKT` | S→C | `BlockPos pos, Map<Item, Long> counts, boolean complete` |
 | `SyncCraftingTableStatePKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes` |
 | `SyncExtractorFiltersPKT` | S→C | `BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting` |
