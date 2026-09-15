@@ -138,9 +138,6 @@ public class VelocePipeNetworkManager extends SavedData {
             if (netId != null && networks.containsKey(netId)) {
                 VelocePipeNetwork net = networks.get(netId);
                 net.getTerminals().add(terminalPos);
-                // Nowy wezel = nowe dane w GUI (i nowy crafter moze craftowac).
-                com.craftingveloce.crafting.VeloceCraftingCache.get(net)
-                        .onEndpointChanged(level);
                 net.updateTrackedChunks();
                 terminalToNetwork.put(terminalPos, netId);
                 setDirty();
@@ -203,7 +200,6 @@ public class VelocePipeNetworkManager extends SavedData {
             affected++;
 
             if (!wantDetails) {
-                com.craftingveloce.crafting.VeloceCraftingCache.get(net).onEndpointChanged(level);
                 continue;
             }
 
@@ -219,8 +215,6 @@ public class VelocePipeNetworkManager extends SavedData {
                 }
             }
 
-            com.craftingveloce.crafting.VeloceCraftingCache.get(net)
-                    .onEndpointChanged(level);
         }
         if (affected > 0) {
             com.craftingveloce.util.VeloceLog.Network.detail(
@@ -357,7 +351,6 @@ public class VelocePipeNetworkManager extends SavedData {
             }
         }
         for (VelocePipeNetwork net : touched) {
-            com.craftingveloce.crafting.VeloceCraftingCache.get(net).onEndpointChanged(level);
             // Bufor endpointu mogl wskazywac na usunieta skrzynie - przelicz od nowa.
             net.invalidateEndpointCache();
         }

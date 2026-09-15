@@ -163,14 +163,61 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         return null;
     }
 
+    /**
+     * Czy ten ekran pamieta swoja zakladke.
+     *
+     * <p>Domyslnie tak, per {@link #viewStateKey()}. Ekran wyboru filtra
+     * zwraca {@code false}, bo ma zawsze otwierac sie na pierwszej zakladce.
+     */
+    protected boolean rememberTab() {
+        return true;
+    }
+
+    /**
+     * Zakladka, na ktorej ekran otwiera sie bez zapamietanej.
+     *
+     * <p>{@code null} = pierwsza dostepna (lewy gorny rog).
+     */
+    @Nullable
+    protected CreativeModeTab defaultTab() {
+        return null;
+    }
+
+    /**
+     * Zakladka, ktora byla wybrana ZANIM ten ekran sie otworzyl.
+     *
+     * <p>Vanilla trzyma wybrana zakladke w polu {@code private static
+     * selectedTab}, wspolnym dla calego klienta. Nasz ekran ja zmienia, wiec
+     * po zamknieciu trzeba przywrocic poprzednia - inaczej zwykle creative
+     * inventory otwieraloby sie na zakladce z terminala.
+     */
+    @Nullable
+    private CreativeModeTab tabBeforeOpen;
+    private boolean tabBeforeOpenCaptured;
+
     /** Przywraca zapamietany widok (zakladka, fraza, przewiniecie). */
     private void restoreViewState() {
         Object key = viewStateKey();
+
+        // Zapamietujemy zakladke creative TYLKO raz, przy pierwszym init().
+        // init() leci takze przy rebuildWidgets (np. po kliknieciu filtra),
+        // a wtedy "poprzednia" bylaby juz nasza zakladka.
+        if (!tabBeforeOpenCaptured) {
+            tabBeforeOpenCaptured = true;
+            tabBeforeOpen = VeloceTerminalViewState.currentTab();
+        }
+
         if (key == null) {
             return;
         }
-        CreativeModeTab tab = VeloceTerminalViewState.findTab(
-                VeloceTerminalViewState.savedTab(key));
+
+        CreativeModeTab tab;
+        if (rememberTab()) {
+            tab = VeloceTerminalViewState.findTab(VeloceTerminalViewState.savedTab(key));
+        } else {
+            // Nie pamietamy - zawsze pierwsza dostepna (lewy gorny rog).
+            tab = defaultTab() != null ? defaultTab() : firstAcceptedTab();
+        }
         // Zakladki, ktorych u nas nie ma (np. ukryte), nie przywracamy.
         if (tab != null && acceptTab(tab)) {
             VeloceTerminalViewState.applyTab(this, tab);
@@ -185,13 +232,40 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     /** Zapisuje widok, zeby nastepne otwarcie wrocilo w to samo miejsce. */
     private void saveViewState() {
         Object key = viewStateKey();
-        if (key == null) {
+        if (key == null || !rememberTab()) {
             return;
         }
         VeloceTerminalViewState.save(key,
                 VeloceTerminalViewState.currentTab(),
                 VeloceTerminalViewState.currentSearch(this),
                 VeloceTerminalViewState.currentScroll(this));
+    }
+
+    /**
+     * Przywraca zakladke, ktora byla wybrana przed otwarciem tego ekranu.
+     *
+     * <p>Bez tego zwykle creative inventory otwieraloby sie na zakladce
+     * z terminala (albo craftera, kontrolera...), bo vanilla trzyma ja
+     * w polu statycznym wspolnym dla calego klienta. Kazdy nasz ekran ma
+     * wlasny zapamietany stan, a creative ma swoj - i te stany musza byc
+     * calkowicie od siebie niezalezne.
+     */
+    private void restoreCreativeTab() {
+        if (tabBeforeOpen == null || !acceptTab(tabBeforeOpen)) {
+            return;
+        }
+        VeloceTerminalViewState.applyTab(this, tabBeforeOpen);
+    }
+
+    /** Pierwsza zakladka, ktora u nas przechodzi filtr (lewy gorny rog). */
+    @Nullable
+    protected CreativeModeTab firstAcceptedTab() {
+        for (CreativeModeTab tab : net.minecraft.world.item.CreativeModeTabs.tabs()) {
+            if (acceptTab(tab)) {
+                return tab;
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------
@@ -870,8 +944,9 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
     @Override
     public void removed() {
-        // Zapamietujemy widok, zanim ekran zniknie.
+        // Najpierw zapisujemy swoj widok, potem oddajemy creative jego wlasny.
         saveViewState();
+        restoreCreativeTab();
         // Stos trzymany na kursorze NIE MOZE zginac.
         //
         // Wczesniej bylo tu `this.menu.setCarried(ItemStack.EMPTY)` - czyli

@@ -317,6 +317,17 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
     }
 
+    /**
+     * Kontroler pamieta swoja zakladke PER BLOK.
+     *
+     * <p>Blok jest na razie wstepnie napisany, ale pamiec zakladki dziala
+     * tak samo jak w pozostalych ekranach.
+     */
+    @Override
+    protected Object viewStateKey() {
+        return controllerPos;
+    }
+
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         // Controller jest tylko do odczytu - nie przenosimy itemow.

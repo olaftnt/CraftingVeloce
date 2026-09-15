@@ -150,6 +150,18 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
         graphics.fill(x1, y1, x2, y2, 0xFFC6C6C6);
     }
 
+    /**
+     * Wybor filtra NIE pamieta zakladki.
+     *
+     * <p>Ma sie zawsze otwierac na pierwszej zakladce (lewy gorny rog) -
+     * gracz szuka tam konkretnego itemu, a nie wraca do miejsca sprzed
+     * poprzedniego otwarcia.
+     */
+    @Override
+    protected boolean rememberTab() {
+        return false;
+    }
+
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         if (this.minecraft == null || this.minecraft.player == null) {

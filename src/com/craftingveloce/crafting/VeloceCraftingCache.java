@@ -158,7 +158,6 @@ public final class VeloceCraftingCache {
      * chunk, wezel). Diff sam znajdzie zmienione itemy i zakolejkuje tylko
      * ich lancuch - to o rzedy wielkosci tansze od pelnego reskanu.
      */
-    private boolean forceStockScan = false;
 
     /** Ile razy dany item wracal do kolejki, bo nie zmiescil sie w budzecie. */
     private final Map<Item, Integer> retries = new HashMap<>();
@@ -532,27 +531,7 @@ public final class VeloceCraftingCache {
     // Reakcja na zdarzenia swiata
     // ------------------------------------------------------------------
 
-    /** Inventory podlaczone/odlaczone albo chunk zaladowany/rozladowany. */
-    public void onEndpointChanged(ServerLevel level) {
-        // Zmienil sie sklad sieci (dolaczona/odlaczona skrzynia, chunk, wezel).
-        // Nie wiemy CO dokladnie, wiec trzeba przeliczyc na nowo.
-        //
-        // Wazne: NIE czyscimy kolejki i NIE kolejkujemy wszystkiego od razu.
-        // Poprzednia wersja przy kazdym wywolaniu startowala od zera, a ze
-        // zdarzen bylo duzo, cache nigdy nie konczyl liczenia - liczby w GUI
-        // zostawaly stare az do ponownego otwarcia terminala.
-        //
-        // Zamiast tego: wymuszamy na najblizszym ticku zwykly diff stocku.
-        // Diff sam wykryje, ktore itemy zniknely/pojawily sie w sieci i
-        // zakolejkuje TYLKO ich lancuch. Poprzednia wersja ustawiala
-        // needsFullRescan, co czyscilo cache i wrzucalo z powrotem wszystkie
-        // ~500 itemow przy KAZDEJ zmianie skladu sieci. Przy kilku sieciach
-        // i ciaglych zmianach (chunk load/unload) kolejka nigdy sie nie
-        // konczyla i serwer przestawal odpowiadac na interakcje gracza.
-        forceStockScan = true;
-        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "crafting cache: network composition changed - stock diff scheduled");
-    }
+
 
 
 

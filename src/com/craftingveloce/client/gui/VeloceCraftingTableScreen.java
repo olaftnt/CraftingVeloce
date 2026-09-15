@@ -400,6 +400,17 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         return recipes != null && !recipes.isEmpty();
     }
 
+    /**
+     * Crafter pamieta swoja zakladke PER BLOK.
+     *
+     * <p>Kazdy crafter ma wlasne zapamietane miejsce, niezaleznie od
+     * terminali, kontrolerow i zwyklego creative inventory.
+     */
+    @Override
+    protected Object viewStateKey() {
+        return tablePos;
+    }
+
     @Override
     protected boolean isToggledOn(Item item) {
         return !disabledItems.contains(item);
