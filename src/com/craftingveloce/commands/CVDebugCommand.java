@@ -354,6 +354,23 @@ public class CVDebugCommand {
         }
         player.sendSystemMessage(Component.literal("  §7razem: §f" + mine + " §7chunk(ow)"));
 
+        // --- POLACZENIA: tablica polaczen miedzy sieciami ---
+        var graph = VelocePipeNetworkManager.get(sl).getGraph();
+        var links = graph.describeLinks();
+        player.sendSystemMessage(Component.literal(
+                "§b--- Polaczone sieci (tablica polaczen): " + links.size() + " ---"));
+        if (links.isEmpty()) {
+            player.sendSystemMessage(Component.literal(
+                    "  §7(brak - ta siec stoi samodzielnie)"));
+        }
+        for (var e : links.entrySet()) {
+            player.sendSystemMessage(Component.literal(
+                    "  §e" + e.getKey() + " §7stykow: §f" + e.getValue()));
+        }
+        player.sendSystemMessage(Component.literal(
+                "  §7W grupie tej sieci: §f"
+                        + graph.findGroup(id).size() + " §7sieci"));
+
         // --- ZASOBY: co siec widzi ---
         Map<Item, Long> netCounts = net.getAllItemCounts(sl);
         player.sendSystemMessage(Component.literal("§6Resources (" + netCounts.size() + " types):"));

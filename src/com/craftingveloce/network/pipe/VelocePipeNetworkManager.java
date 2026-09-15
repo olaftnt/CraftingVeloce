@@ -52,6 +52,15 @@ public class VelocePipeNetworkManager extends SavedData {
      */
     private final Set<BlockPos> pendingRebuilds = new java.util.LinkedHashSet<>();
 
+    /**
+     * Tablica polaczen miedzy sieciami.
+     *
+     * <p>To ona sprawia, ze laczenie sieci A z B NIE niszczy zadnej z nich:
+     * powstaje tylko krawedz. Rozlaczenie usuwa krawedz i obie sieci wracaja
+     * dokladnie do stanu sprzed - z wlasnymi cache i force-loadami.
+     */
+    private final VeloceNetworkGraph graph = new VeloceNetworkGraph();
+
     /** Tick ostatniej przebudowy - do odstepu miedzy nimi. */
     private long lastRebuildTick = Long.MIN_VALUE;
 
@@ -194,6 +203,11 @@ public class VelocePipeNetworkManager extends SavedData {
 
     public static VelocePipeNetworkManager get(ServerLevel level) {
         return level.getDataStorage().computeIfAbsent(factory(), "veloce_pipe_networks");
+    }
+
+    /** Tablica polaczen miedzy sieciami - do raportow i testow. */
+    public VeloceNetworkGraph getGraph() {
+        return graph;
     }
 
     public VelocePipeNetwork getNetworkById(UUID id) {
@@ -397,6 +411,11 @@ public class VelocePipeNetworkManager extends SavedData {
                 queueRebuild(np);
             }
         }
+
+        // Usuniecie rury moze rozerwac styk dwoch sieci. Sprawdzamy to OD RAZU,
+        // a nie dopiero przy nastepnej przebudowie: jesli sieci mialy byc
+        // rozdzielone, gracz musi to zobaczyc natychmiast w terminalu.
+        refreshLinkedNetworks(level);
         setDirty();
     }
 
@@ -472,6 +491,10 @@ public class VelocePipeNetworkManager extends SavedData {
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
                     "neighbor change at %s -> invalidated %d network(s)", neighborPos, touched.size());
         }
+        // Postawienie rury moze POLACZYC dwie sieci (albo zamknieta strona je
+        // rozciac) - graf musi to zobaczyc od razu, zeby terminal od razu
+        // widzial nowa zawartosc.
+        refreshLinkedNetworks(level);
     }
 
     public static BlockPos getCanonicalInventoryPos(BlockPos pos, BlockState state) {
@@ -656,46 +679,75 @@ public class VelocePipeNetworkManager extends SavedData {
         // a jej cache ma po prostu odswiezona referencje do nowego obiektu.
         // Kasowanie go zwalnialo force-loady, wiec kazda przebudowa wykladowywala
         // i ladowala chunki od nowa - mimo ze siec jest ta sama.
+        // TOZSAMOSC SIECI - jednej z wciagnietych sieci NIE niszczymy.
+        //
+        // BUG, ktory tu byl: przy spotkaniu dwoch sieci OBIE byly kasowane
+        // (networks.remove + drop cache), a powstawal jeden nowy obiekt.
+        // Skutki widoczne w grze:
+        //   - cache i force-loady obu sieci przepadaly, wiec terminal stojacy
+        //     daleko tracil trzymanie swojego chunku,
+        //   - nie dalo sie ich rozlozyc z powrotem, bo informacja o tym, ze
+        //     byly DWIE sieci, juz nie istniala,
+        //   - gdy obie mialy terminal, jeden tracil tozsamosc.
+        //
+        // Teraz siec-ciaglosc (preferredId albo ta, od ktorej zaczeto) jest
+        // PRZEBUDOWYWANA na miejscu: zachowuje UUID, a wiec i cache, i
+        // force-loady. Pozostale wciagniete sieci znikaja jako samodzielne
+        // byty, ale ich zawartosc (rury, wezly, magazyny) jest przenoszona.
         UUID finalId = preferredId != null
                 ? preferredId
-                : (intersectedOldNets.size() == 1
-                        ? intersectedOldNets.iterator().next()
-                        : UUID.randomUUID());
+                : (intersectedOldNets.isEmpty()
+                        ? UUID.randomUUID()
+                        : preferredIdOf(intersectedOldNets, originPos));
 
-        // Preserve cached endpoints from old networks (crucial for unloaded chunks)
+        // Przenoszenie zawartosci z sieci, ktore zostaly wciagniete.
         for (UUID oldId : intersectedOldNets) {
+            if (oldId.equals(finalId)) {
+                continue;   // te przebudowujemy, nie przenosimy
+            }
             VelocePipeNetwork oldNet = networks.get(oldId);
-            if (oldNet != null) {
-                for (Map.Entry<BlockPos, ConnectedEndpointInfo> oldEp : oldNet.getEndpoints().entrySet()) {
-                    if (!discoveredEndpoints.containsKey(oldEp.getKey())) {
-                        // If unloaded, preserve it in the network
-                        if (!level.isLoaded(oldEp.getKey())) {
-                            discoveredEndpoints.put(oldEp.getKey(), oldEp.getValue());
-                        }
-                    } else {
-                        ConnectedEndpointInfo newEp = discoveredEndpoints.get(oldEp.getKey());
-                        if (newEp.getCachedCounts().isEmpty() && !oldEp.getValue().getCachedCounts().isEmpty()) {
-                            newEp.getCachedCounts().putAll(oldEp.getValue().getCachedCounts());
-                        }
+            if (oldNet == null) {
+                continue;
+            }
+            // Zapamietane liczby z niezaladowanych magazynow - bez tego
+            // zawartosc skrzyni stojacej daleko znikalaby z GUI.
+            for (Map.Entry<BlockPos, ConnectedEndpointInfo> oldEp : oldNet.getEndpoints().entrySet()) {
+                if (discoveredEndpoints.containsKey(oldEp.getKey())) {
+                    ConnectedEndpointInfo newEp = discoveredEndpoints.get(oldEp.getKey());
+                    if (newEp.getCachedCounts().isEmpty()
+                            && !oldEp.getValue().getCachedCounts().isEmpty()) {
+                        newEp.getCachedCounts().putAll(oldEp.getValue().getCachedCounts());
                     }
+                } else if (!level.isLoaded(oldEp.getKey())) {
+                    discoveredEndpoints.put(oldEp.getKey(), oldEp.getValue());
                 }
-                // Sprzatamy TYLKO sieci, ktore naprawde znikaja. Siec o ID
-                // wynikowym jest przebudowywana, nie usuwana - jej cache
-                // (i force-loady) zostaja.
-                if (!oldId.equals(finalId)) {
-                    com.craftingveloce.crafting.VeloceCraftingCache.drop(level, oldId);
-                }
-                networks.remove(oldId);
-                for (BlockPos p : oldNet.getPipes()) {
-                    pipeToNetwork.remove(p);
-                }
-                for (BlockPos t : oldNet.getTerminals()) {
-                    terminalToNetwork.remove(t);
-                }
+            }
+            // Ta siec przestaje istniec jako osobny byt - zwalniamy jej
+            // force-loady, bo jej rury i wezly przechodza do finalId.
+            com.craftingveloce.crafting.VeloceCraftingCache.drop(level, oldId);
+            graph.forget(oldId);
+            networks.remove(oldId);
+            for (BlockPos p : oldNet.getPipes()) {
+                pipeToNetwork.remove(p);
+            }
+            for (BlockPos t : oldNet.getTerminals()) {
+                terminalToNetwork.remove(t);
             }
         }
 
-        VelocePipeNetwork newNet = new VelocePipeNetwork(finalId);
+        // Siec-ciaglosc: zachowujemy ja, jesli istnieje. Wtedy jej cache
+        // i force-loady NIE sa ruszane (patrz VeloceCraftingCache.get, ktory
+        // odswieza tylko referencje do obiektu pod tym samym UUID).
+        VelocePipeNetwork newNet = networks.get(finalId);
+        if (newNet == null) {
+            newNet = new VelocePipeNetwork(finalId);
+        } else {
+            // Stara zawartosc zniknie - budujemy nowa liste od zera, ale
+            // obiekt (a wiec UUID i cache) zostaje ten sam.
+            newNet.getPipes().clear();
+            newNet.getTerminals().clear();
+            newNet.getEndpoints().clear();
+        }
         newNet.getPipes().addAll(visitedPipes);
         newNet.getTerminals().addAll(discoveredTerminals);
         newNet.getEndpoints().putAll(discoveredEndpoints);
@@ -709,8 +761,132 @@ public class VelocePipeNetworkManager extends SavedData {
             terminalToNetwork.put(t, finalId);
         }
 
+        // Wyczysc wpisy grafu dla sieci, ktore juz nie istnieja.
+        for (UUID oldId : new java.util.ArrayList<>(graph.allNodes())) {
+            if (!networks.containsKey(oldId)) {
+                graph.forget(oldId);
+            }
+        }
+
+        refreshLinkedNetworks(level);
         setDirty();
         return newNet;
+    }
+
+    /**
+     * Wybiera, ktora z wciagnietych sieci ma zachowac tozsamosc.
+     *
+     * <p>Preferujemy siec, ktora zawiera pozycje startowa przebudowy - to
+     * naturalna ciaglosc: przebudowujemy siec "od tej rury". Gdy takiej nie ma,
+     * bierzemy pierwsza deterministycznie (po UUID), zeby wynik byl powtarzalny
+     * miedzy uruchomieniami.
+     */
+    private UUID preferredIdOf(Set<UUID> candidates, BlockPos originPos) {
+        UUID byOrigin = pipeToNetwork.get(originPos);
+        if (byOrigin != null && candidates.contains(byOrigin)) {
+            return byOrigin;
+        }
+        return candidates.stream().min(UUID::compareTo).orElseGet(UUID::randomUUID);
+    }
+
+    /**
+     * Wykrywa styki miedzy sieciami i wpisuje je do tablicy polaczen.
+     *
+     * <p>Dwie sieci stykaja sie, gdy rura jednej sasiaduje z rura drugiej -
+     * czyli gdy leza w odleglosci 1 i ZADNA z nich nie ma zamknietej strony
+     * w tym kierunku. Zamknieta strona (wrench) jest wiec ROZCIECIEM lacza,
+     * zgodnie z tym jak dziala wrench w innych modach.
+     *
+     * <p>Wykrywanie jest lokalne: sprawdzamy tylko sasiadow rur, ktore juz
+     * znamy. Nie ma tu zadnego BFS po calym swiecie, wiec nie zalezy od tego,
+     * ktore chunki sa zaladowane.
+     */
+    private void refreshLinkedNetworks(ServerLevel level) {
+        // Zbieramy wszystkie styki: para sieci -> pozycja styku.
+        Map<String, UUID[]> pairs = new HashMap<>();
+        Map<String, Set<Long>> found = new HashMap<>();
+
+        for (Map.Entry<BlockPos, UUID> e : pipeToNetwork.entrySet()) {
+            BlockPos pos = e.getKey();
+            UUID mine = e.getValue();
+            if (!level.isLoaded(pos)) {
+                continue;
+            }
+            VelocePipeBlockEntity be = level.getBlockEntity(pos) instanceof VelocePipeBlockEntity p
+                    ? p : null;
+            for (Direction d : Direction.values()) {
+                // Zamknieta strona = rozciecie lacza.
+                if (be != null && be.isDisconnected(d)) {
+                    continue;
+                }
+                BlockPos np = pos.relative(d);
+                UUID theirs = pipeToNetwork.get(np);
+                if (theirs == null || theirs.equals(mine)) {
+                    continue;
+                }
+                // Sasiad tez musi byc otwarty w nasza strone.
+                if (level.isLoaded(np)
+                        && level.getBlockEntity(np) instanceof VelocePipeBlockEntity other
+                        && other.isDisconnected(d.getOpposite())) {
+                    continue;
+                }
+                String key = VeloceNetworkGraph.pairKey(mine, theirs);
+                pairs.putIfAbsent(key, new UUID[]{mine, theirs});
+                found.computeIfAbsent(key, k -> new HashSet<>()).add(np.asLong());
+            }
+        }
+
+        // Wpisujemy nowe styki. Stare, ktorych juz nie ma, usuwamy.
+        for (Map.Entry<String, UUID[]> e : pairs.entrySet()) {
+            UUID[] pair = e.getValue();
+            Set<Long> points = found.getOrDefault(e.getKey(), Set.of());
+            for (long p : points) {
+                graph.link(pair[0], pair[1], p);
+            }
+        }
+        // Krawedzie, ktorych juz nie ma w swiecie (rura zniknela), usuwamy.
+        //
+        // Robimy to na podstawie FAKTYCZNYCH stykow, a nie nazw w logu:
+        // dla kazdej pary w grafie sprawdzamy, czy ktorykolwiek z jej punktow
+        // styku nadal istnieje w swiecie.
+        for (UUID a : new java.util.ArrayList<>(graph.allNodes())) {
+            for (UUID b : new java.util.ArrayList<>(graph.neighbours(a))) {
+                if (a.compareTo(b) > 0) {
+                    continue;   // ta sama krawedz widziana z drugiej strony
+                }
+                java.util.Set<Long> points = graph.contactPoints(a, b);
+                boolean alive = false;
+                for (long packed : points) {
+                    BlockPos cp = BlockPos.of(packed);
+                    // Styk zyje, jesli obie rury nadal sa i sa do siebie
+                    // przypisane jako rozne sieci.
+                    UUID atCp = pipeToNetwork.get(cp);
+                    if (atCp != null && (atCp.equals(a) || atCp.equals(b))) {
+                        alive = true;
+                        break;
+                    }
+                }
+                if (!alive) {
+                    // Usuwamy po kolei wszystkie punkty - unlink sam zdecyduje,
+                    // czy krawedz znikla (znika przy ostatnim).
+                    for (long packed : points) {
+                        graph.unlink(a, b, packed);
+                    }
+                }
+            }
+        }
+
+        // Rozdajemy kazdej sieci liste polaczonych - to widzi terminal.
+        for (VelocePipeNetwork net : networks.values()) {
+            java.util.List<VelocePipeNetwork> linked = new java.util.ArrayList<>();
+            for (UUID otherId : graph.neighbours(net.getId())) {
+                VelocePipeNetwork other = networks.get(otherId);
+                if (other != null) {
+                    linked.add(other);
+                }
+            }
+            net.setLinkedNetworks(linked);
+        }
     }
 
     @Override
