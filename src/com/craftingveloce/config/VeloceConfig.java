@@ -83,11 +83,23 @@ public final class VeloceConfig {
     }
 
     /** Czy logowac zdarzenia o danym poziomie (lub wazniejsze). */
+    /**
+     * Czy logowac zdarzenia o danym poziomie (lub wazniejsze).
+     *
+     * <p>Odczyt configu jest zabezpieczony: przed jego wczytaniem NeoForge
+     * rzuca {@code IllegalStateException}. Logowanie nie moze z tego powodu
+     * wywalic moda, wiec w razie problemu zwracamy bezpieczna domyslna wartosc
+     * (logujemy tylko bledy).
+     */
     public static boolean allows(LogLevel level) {
-        if (!DEBUG_ENABLED.get()) {
-            // Bez debugowania pokazujemy tylko bledy.
+        try {
+            if (!DEBUG_ENABLED.get()) {
+                // Bez debugowania pokazujemy tylko bledy.
+                return level == LogLevel.ERRORS;
+            }
+            return level.ordinal() <= DEBUG_LEVEL.get().ordinal();
+        } catch (Throwable notLoadedYet) {
             return level == LogLevel.ERRORS;
         }
-        return level.ordinal() <= DEBUG_LEVEL.get().ordinal();
     }
 }

@@ -43,12 +43,24 @@ public class CraftingVeloceMod {
 
     public CraftingVeloceMod(IEventBus modEventBus, ModContainer modContainer) {
         LOGGER.info("CraftingVeloce initializing...");
-        LOGGER.info("[Veloce][INIT] debug logging: {} (level={})",
-                com.craftingveloce.config.VeloceConfig.DEBUG_ENABLED.get(),
-                com.craftingveloce.config.VeloceConfig.DEBUG_LEVEL.get());
+
         // Rejestracja configu (config/craftingveloce-common.toml).
+        // UWAGA: wartosci configu mozna czytac DOPIERO po jego wczytaniu.
+        // Odczyt w konstruktorze rzuca "Cannot get config value before config
+        // is loaded" i wywala caly mod - dlatego logujemy dopiero w zdarzeniu
+        // ModConfigEvent.Loading, ktore odpala sie po wczytaniu.
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.COMMON,
                 com.craftingveloce.config.VeloceConfig.SPEC);
+
+        modEventBus.addListener(net.neoforged.fml.event.config.ModConfigEvent.Loading.class,
+                event -> {
+                    if (event.getConfig().getSpec()
+                            == com.craftingveloce.config.VeloceConfig.SPEC) {
+                        LOGGER.info("[Veloce][INIT] debug logging: {} (level={})",
+                                com.craftingveloce.config.VeloceConfig.DEBUG_ENABLED.get(),
+                                com.craftingveloce.config.VeloceConfig.DEBUG_LEVEL.get());
+                    }
+                });
 
         VeloceRegistry.register(modEventBus);
         CREATIVE_TABS.register(modEventBus);
