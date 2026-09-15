@@ -55,21 +55,35 @@ public final class VeloceAutoCrafter {
     /**
      * Glebokosc rekurencji przy SZACOWANIU (countCraftableNow).
      *
-     * <p>Musi byc maly: szacowanie leci w tle dla wielu itemow, a przy 5033
-     * recepturach gleboka rekursja trwa setki milisekund na jeden item.
-     * Szacunek nie musi byc dokladny dla lancuchow dluzszych niz kilka
-     * poziomow - sluzy tylko do wyswietlenia liczby w GUI.
+     * <p>16 jest bezpieczne dla realnych lancuchow (np. plotek = deski =
+     * kloda to 3 poziomy), a jednoczesnie chroni przed zapetleniem na
+     * patologicznym grafie receptur.
      */
-    private static final int ESTIMATE_MAX_DEPTH = 8;
+    private static final int ESTIMATE_MAX_DEPTH = 16;
 
     /**
-     * Twardy limit operacji w JEDNYM szacowaniu.
+     * Awaryjny limit operacji w jednym szacowaniu.
      *
-     * <p>Budzet czasowy w cache jest sprawdzany miedzy itemami, wiec nie chroni
-     * przed pojedynczym drogim itemem. Ten licznik jest sprawdzany w trakcie
-     * rekursji i przerywa ja, gdy przekroczy limit.
+     * <p>To NIE jest glowne ograniczenie - throttling robi budzet czasowy
+     * ({@link #ESTIMATE_DEADLINE}). Ten licznik istnieje tylko po to, zeby
+     * szalony graf receptur nie krecil sie w nieskonczonosc, gdyby pomiar
+     * czasu zawiodl.
+     *
+     * <p>Poprzednia wartosc (2000) byla glownym ograniczeniem i byla
+     * <b>drastycznie za mala</b>: przy 5033 recepturach licznik konczyl sie
+     * w polowie przeliczania i zwracal 0. Dlatego plotek z 2 klod pokazywal
+     * sie jako niewykonalny - szacowanie nie dobiegalo konca.
      */
-    private static final int MAX_ESTIMATE_OPS = 2000;
+    private static final int MAX_ESTIMATE_OPS = 2_000_000;
+
+    /**
+     * Domyslny budzet czasu na jedno szacowanie, w nanosekundach.
+     *
+     * <p>25 ms to wartosc bezpieczna dla pojedynczego itemu przy natychmiastowym
+     * przeliczeniu widocznej strony (ok. 45 itemow obliczanych razem).
+     * W tle cache uzywa mniejszego budzetu, zeby nie przekroczyc ticku.
+     */
+    public static final long DEFAULT_ESTIMATE_BUDGET_NS = 25_000_000L;
 
     private VeloceAutoCrafter() {
     }
@@ -199,14 +213,38 @@ public final class VeloceAutoCrafter {
     private static final ThreadLocal<int[]> ESTIMATE_OPS =
             ThreadLocal.withInitial(() -> new int[]{0});
 
-    /** Resetuje licznik operacji przed szacowaniem. */
-    private static void resetEstimateOps() {
+    /**
+     * Termin zakonczenia biezacego szacowania (System.nanoTime).
+     *
+     * <p>0 = brak budzetu czasowego (tylko awaryjny limit operacji).
+     */
+    private static final ThreadLocal<long[]> ESTIMATE_DEADLINE =
+            ThreadLocal.withInitial(() -> new long[]{0L});
+
+    /** Ustawia budzet czasowy dla biezacego szacowania. */
+    private static void startEstimate(long budgetNanos) {
         ESTIMATE_OPS.get()[0] = 0;
+        ESTIMATE_DEADLINE.get()[0] = budgetNanos > 0
+                ? System.nanoTime() + budgetNanos
+                : 0L;
     }
 
-    /** Czy szacowanie przekroczylo limit operacji. */
+    /**
+     * Czy szacowanie powinno sie przerwac.
+     *
+     * <p>Sprawdzamy budzet czasowy (co 64 operacje, zeby nie wolac
+     * System.nanoTime przy kazdym wejsciu) oraz awaryjny limit operacji.
+     */
     private static boolean estimateBudgetExceeded() {
-        return ESTIMATE_OPS.get()[0]++ > MAX_ESTIMATE_OPS;
+        int ops = ESTIMATE_OPS.get()[0]++;
+        if (ops > MAX_ESTIMATE_OPS) {
+            return true;
+        }
+        long deadline = ESTIMATE_DEADLINE.get()[0];
+        if (deadline != 0L && (ops & 63) == 0) {
+            return System.nanoTime() > deadline;
+        }
+        return false;
     }
 
     /**
@@ -223,16 +261,73 @@ public final class VeloceAutoCrafter {
     public static long countCraftableNow(ServerLevel level, VelocePipeNetwork network,
                                          Item item, Set<Item> enabledItems,
                                          Map<Item, ResourceLocation> preferred) {
+        return countCraftableNow(level, network, item, enabledItems, preferred,
+                DEFAULT_ESTIMATE_BUDGET_NS);
+    }
+
+    /**
+     * Jak wyzej, ale z jawnym budzetem czasowym.
+     *
+     * @param budgetNanos maksymalny czas w nanosekundach; 0 = bez limitu czasu
+     *                    (tylko awaryjny limit operacji)
+     */
+    public static long countCraftableNow(ServerLevel level, VelocePipeNetwork network,
+                                         Item item, Set<Item> enabledItems,
+                                         Map<Item, ResourceLocation> preferred,
+                                         long budgetNanos) {
         if (!enabledItems.contains(item)) {
             return 0L;
         }
         Map<Item, Long> stock = new HashMap<>(network.getAllItemCounts(level));
         long onStock = stock.getOrDefault(item, 0L);
-        resetEstimateOps();
+        startEstimate(budgetNanos);
         long total = maxCraftable(level, item, stock, enabledItems, new HashSet<>(), 0);
         // Zwracamy tylko nadwyzke ponad stock - inaczej licznik pokazywalby
         // przedmioty, ktore juz leza w sieci, jako "do zrobienia".
         return Math.max(0L, total - onStock);
+    }
+
+    /**
+     * Liczy wiele itemow naraz, wspoldzielac jeden budzet czasowy.
+     *
+     * <p>Uzywane do NATYCHMIASTOWEGO przeliczenia widocznej strony terminala.
+     * Zamiast placic za odczyt stocku przy kazdym itemie, robimy go raz.
+     * Dzieki temu 45 itemow liczy sie w kilka milisekund.
+     *
+     * @return mapa item -> ile da sie dorobic (tylko wartosci > 0)
+     */
+    public static Map<Item, Long> countCraftableBatch(
+            ServerLevel level, VelocePipeNetwork network,
+            java.util.Collection<Item> items, Set<Item> enabledItems,
+            Map<Item, ResourceLocation> preferred, long budgetNanos) {
+        Map<Item, Long> out = new HashMap<>();
+        if (items == null || items.isEmpty()) {
+            return out;
+        }
+
+        // Jednorazowy odczyt stocku dla calej partii.
+        Map<Item, Long> stockSnapshot = network.getAllItemCounts(level);
+        long deadline = budgetNanos > 0 ? System.nanoTime() + budgetNanos : 0L;
+
+        for (Item item : items) {
+            if (!enabledItems.contains(item)) {
+                continue;
+            }
+            // Przerwij, gdy minie budzet - reszta przy nastepnym zadaniu.
+            if (deadline != 0L && System.nanoTime() > deadline) {
+                break;
+            }
+            Map<Item, Long> stock = new HashMap<>(stockSnapshot);
+            long onStock = stock.getOrDefault(item, 0L);
+            startEstimate(deadline == 0L ? 0L
+                    : Math.max(1_000_000L, deadline - System.nanoTime()));
+            long total = maxCraftable(level, item, stock, enabledItems, new HashSet<>(), 0);
+            long surplus = Math.max(0L, total - onStock);
+            if (surplus > 0) {
+                out.put(item, surplus);
+            }
+        }
+        return out;
     }
 
     /**

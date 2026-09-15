@@ -42,11 +42,27 @@ public final class VeloceCraftingCache {
 
     // --- Budzet pracy -------------------------------------------------
 
-    /** Maksymalny czas pracy na jeden tick, w nanosekundach (2 ms). */
-    private static final long TICK_BUDGET_NS = 2_000_000L;
+    /**
+     * Maksymalny czas pracy cache na jeden tick, w nanosekundach.
+     *
+     * <p>10 ms przy ticku 50 ms (20 TPS) zostawia 80% budzetu na resztę gry,
+     * a jednoczesnie pozwala przeliczyc kilkaset itemow na sekunde. Poprzednie
+     * 2 ms bylo zbyt zachowawcze - cache nie nadazal i liczby w GUI zostawaly
+     * stare, dopoki gracz nie wszedl i nie wyszedl z terminala.
+     *
+     * <p>Wazne: to jest GORNY limit, nie cel. Na spokojnym serwerze petla
+     * skonczy sie wczesniej, bo po prostu nie ma juz pracy.
+     */
+    private static final long TICK_BUDGET_NS = 10_000_000L;
 
-    /** Twardy limit pojedynczego przeliczenia - jeden item nie moze zamulic ticku. */
-    private static final int MAX_ITEMS_PER_TICK = 64;
+    /**
+     * Awaryjny limit itemow na tick.
+     *
+     * <p>Glownym ograniczeniem jest czas. Ten limit istnieje tylko po to, zeby
+     * jeden katastrofalnie drogi item nie zjadl calego ticku zanim petla
+     * zdazy sprawdzic zegar.
+     */
+    private static final int MAX_ITEMS_PER_TICK = 2000;
 
     /** Bezpiecznik na dlugosc lancucha "w gore". */
     private static final int MAX_CHAIN = 512;
@@ -292,8 +308,11 @@ public final class VeloceCraftingCache {
                 craftable.remove(item);
                 continue;
             }
+            // Budzet na ten jeden item: nie wiecej niz zostalo do konca ticku.
+            long remaining = TICK_BUDGET_NS - (System.nanoTime() - start);
             long n = VeloceAutoCrafter.countCraftableNow(
-                    level, network, item, enabledItems, preferred);
+                    level, network, item, enabledItems, preferred,
+                    Math.max(1_000_000L, remaining));
             if (n > 0) {
                 craftable.put(item, n);
             } else {

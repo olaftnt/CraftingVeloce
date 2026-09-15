@@ -113,6 +113,17 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
      * <p>Jesli czegos nie ma w cache (nowy item, trwa jeszcze pierwszy skan),
      * po prostu nie ma go w wyniku - GUI pokaze zero zamiast czekac.
      */
+    /**
+     * Liczy NATYCHMIAST "ile da sie dorobic" dla podanych itemow.
+     *
+     * <p>Wywolywane gdy klient otwiera terminal albo zmienia strone - gracz
+     * ma zobaczyc aktualne liczby od razu, a nie po sekundzie. Liczymy cala
+     * partie z jednym wspoldzielonym budzetem czasowym (25 ms), wiec ~45
+     * widocznych itemow oblicza sie w kilka milisekund.
+     *
+     * <p>To NIE jest to samo co tlo: tlo systematycznie przelicza cala siec,
+     * a to odpowiada na konkretne zapytanie widoczne na ekranie.
+     */
     public Map<Item, Long> computeCraftableCounts(Collection<Item> items) {
         if (!(level instanceof ServerLevel sl) || items == null || items.isEmpty()) {
             return Map.of();
@@ -122,8 +133,24 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         if (net == null) {
             return Map.of();
         }
-        return com.craftingveloce.crafting.VeloceCraftingCache.get(net)
-                .lookup(new java.util.HashSet<>(items));
+        Set<Item> enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getAllEnabledItems(sl, net);
+        if (enabled.isEmpty()) {
+            return Map.of();
+        }
+        Map<Item, ResourceLocation> preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getPreferredRecipes(sl, net);
+
+        long start = System.nanoTime();
+        Map<Item, Long> out = com.craftingveloce.crafting.VeloceAutoCrafter
+                .countCraftableBatch(sl, net, items, enabled, preferred,
+                        com.craftingveloce.crafting.VeloceAutoCrafter.DEFAULT_ESTIMATE_BUDGET_NS);
+
+        com.craftingveloce.util.VeloceLog.Craft.detail(
+                com.craftingveloce.util.VeloceLog.Side.SERVER,
+                "instant craftable count for %d item(s) -> %d result(s) in %d ms",
+                items.size(), out.size(), (System.nanoTime() - start) / 1_000_000L);
+        return out;
     }
 
     /**

@@ -74,27 +74,102 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         this.craftableCounts = new HashMap<>(craftable);
     }
 
-    /** Odpowiedz serwera z liczbami "ile da sie dorobic" dla widocznych itemow. */
+    /**
+     * Odpowiedz serwera z liczbami dla widocznych itemow.
+     *
+     * <p>Aktualizujemy TYLKO te itemy, o ktore pytalismy. Gdybysmy
+     * nadpisali cala mape, tlo (cache) i natychmiastowa odpowiedz
+     * nadpisywalyby sie nawzajem i liczby by migotaly.
+     *
+     * <p>Usuwamy tez wpisy dla pytanych itemow, ktorych nie ma w wyniku -
+     * bo odpowiedz zawiera tylko wartosci > 0. Bez tego item, ktorego juz
+     * nie da sie zrobic, zachowalby stara liczbe.
+     */
     public void updateCraftableCounts(Map<Item, Long> craftable) {
         com.craftingveloce.util.VeloceLog.Gui.detail(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                "received craftable counts for %d item(s)", craftable.size());
-        this.craftableCounts = new HashMap<>(craftable);
+                "received instant counts for %d item(s)", craftable.size());
+        // Wyczysc stare wartosci dla pytanych itemow...
+        for (Item it : lastRequestedItems) {
+            this.craftableCounts.remove(it);
+        }
+        // ...i wstaw swieze.
+        this.craftableCounts.putAll(craftable);
     }
 
+    /** Itemy z ostatniego zadania - zeby wiedziec, ktore wpisy odswiezyc. */
+    private final java.util.Set<Item> lastRequestedItems = new java.util.HashSet<>();
+
     /**
-     * Liczby craftowalnosci przychodza w pakiecie sync razem ze stockiem.
+     * Sygnatura ostatnio zamowionej strony.
      *
-     * <p>Serwer utrzymuje je w cache w tle (patrz VeloceCraftingCache) i wysyla
-     * gotowe. Klient NIE pyta o nic i nie liczy nic sam, wiec otwarcie GUI jest
-     * natychmiastowe i nie zalezy od liczby receptur w paczce modow.
+     * <p>Pozwala wykryc zmiane zawartosci ekranu (inna zakladka, przewiniecie)
+     * i zamowic liczby dla nowej strony, bez wysylania zadania co tick.
      */
+    private int lastPageSignature = 0;
+
+    /** Czy juz zamowiono liczby po otwarciu ekranu. */
+    private boolean initialRequestSent = false;
+
+    @Override
+    protected void init() {
+        super.init();
+        // Natychmiast po otwarciu: zamow liczby dla tego, co widac.
+        initialRequestSent = false;
+        requestVisibleCounts(true);
+    }
+
     @Override
     public void containerTick() {
         // WAZNE: wolamy baze - inaczej nie dziala wykrywanie zakladek ani
         // filtrowanie itemow z VeloceCreativeScreen.
         super.containerTick();
-        // Liczby craftowalnosci przychodza z serwera, wiec nic wiecej tu nie robimy.
+        // Na zywo: gdy zmieni sie zawartosc ekranu (zakladka, przewiniecie),
+        // zamow liczby dla nowej strony.
+        requestVisibleCounts(false);
+    }
+
+    /**
+     * Zamawia na serwerze liczby "ile da sie dorobic" dla widocznych itemow.
+     *
+     * <p>To daje odpowiedz NATYCHMIAST: serwer liczy cala strone jednym
+     * wspoldzielonym budzetem czasowym i odsyla gotowe liczby. Tlo (cache)
+     * przelicza reszte sieci, ale gracz nie musi na to czekac, zeby zobaczyc
+     * aktualne wartosci tam, gdzie patrzy.
+     *
+     * @param force true = wyslij nawet jesli sygnatura sie nie zmienila
+     */
+    private void requestVisibleCounts(boolean force) {
+        if (this.minecraft == null || this.minecraft.player == null || this.menu == null) {
+            return;
+        }
+        java.util.List<Item> visible = new java.util.ArrayList<>();
+        int signature = 1;
+        for (Slot slot : this.menu.slots) {
+            if (slot == null || !slot.hasItem() || isPlayerSlot(slot)) {
+                continue;
+            }
+            Item it = slot.getItem().getItem();
+            if (!visible.contains(it)) {
+                visible.add(it);
+                // Sygnatura: kolejnosc i sklad widocznych itemow.
+                signature = signature * 31 + it.hashCode();
+            }
+        }
+        if (visible.isEmpty()) {
+            return;
+        }
+        if (!force && signature == lastPageSignature) {
+            return;
+        }
+        lastPageSignature = signature;
+        lastRequestedItems.clear();
+        lastRequestedItems.addAll(visible);
+        com.craftingveloce.util.VeloceLog.Gui.detail(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "requesting instant counts for %d visible item(s)", visible.size());
+        PacketDistributor.sendToServer(
+                new com.craftingveloce.network.RequestCraftableCountsPKT(terminalPos, visible));
     }
 
 
