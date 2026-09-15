@@ -13,6 +13,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -57,6 +58,35 @@ public class VelocePipeNetworkManager extends SavedData {
     /** Minimalny odstep miedzy przebudowami sieci, w tickach (5 na sekunde). */
     private static final int REBUILD_COOLDOWN_TICKS = 4;
 
+    /**
+     * Ile pozycji przebudowujemy na jeden cooldown.
+     *
+     * <p>Wczesniej byla to JEDNA pozycja na 4 ticki, czyli 5 na sekunde. Przy
+     * bazie, w ktorej maszyna obok rur sypie update'ami, kolejka rosla szybciej,
+     * niz sie oprozniala - i rozplątywanie jej zajmowalo minuty. Zostaje wiec
+     * tempo ograniczone, ale bez wielominutowego zalegania.
+     */
+    private static final int MAX_REBUILDS_PER_TICK = 4;
+
+    /**
+     * Twardy limit dlugosci kolejki przebudow.
+     *
+     * <p>Bezpiecznik pamieci: przy wybuchu rozwalajacym ogromna siec pozycji
+     * moze byc naprawde duzo. Lepiej zgubic czesc przebudow (kolejny update
+     * sasiada i tak je dorzuci) niz trzymac dziesiatki tysiecy pozycji.
+     */
+    private static final int MAX_PENDING_REBUILDS = 512;
+
+    /**
+     * Budzet czasu na JEDEN BFS sieci, w nanosekundach.
+     *
+     * <p>{@code scanAndBuildNetwork} przechodzi po wszystkich rurach sieci,
+     * a dla kazdej robi {@code getBlockState} i {@code getBlockEntity}. Bez
+     * limitu ogromna siec blokowala watek serwera na dowolnie dlugo - dokladnie
+     * ta klasa bledu, ktora w tym modzie juz raz zamrozila serwer.
+     */
+    private static final long SCAN_BUDGET_NS = 20_000_000L;
+
     public VelocePipeNetworkManager() {
     }
 
@@ -88,10 +118,60 @@ public class VelocePipeNetworkManager extends SavedData {
         }
         lastRebuildTick = now;
 
-        java.util.Iterator<BlockPos> it = pendingRebuilds.iterator();
-        BlockPos pos = it.next();
-        it.remove();
-        rebuildAt(level, pos);
+        for (int done = 0; done < MAX_REBUILDS_PER_TICK; done++) {
+            java.util.Iterator<BlockPos> it = pendingRebuilds.iterator();
+            if (!it.hasNext()) {
+                break;
+            }
+            BlockPos pos = it.next();
+            it.remove();
+            rebuildAt(level, pos);
+        }
+    }
+
+    /**
+     * Dodaje pozycje do kolejki przebudow, pilnujac jej dlugosci.
+     *
+     * <p>Jedno wspolne wejscie dla wszystkich zrodel zgloszen (zmiana sasiada,
+     * rozbita rura), zeby limit byl egzekwowany wszedzie, a nie tylko tam,
+     * gdzie ktos o nim pamietal.
+     */
+    private void queueRebuild(BlockPos pos) {
+        if (pendingRebuilds.size() >= MAX_PENDING_REBUILDS) {
+            return;
+        }
+        pendingRebuilds.add(pos.immutable());
+    }
+
+    /**
+     * Czy blok-wezel (terminal, extractor, crafter) faktycznie laczy sie z rura
+     * od strony {@code pipeSide}?
+     *
+     * <p><b>Po co to.</b> Terminal ma przod, ktory NIE jest podlaczany. Zarowno
+     * {@code scanAndBuildNetwork}, jak i {@code VelocePipeBlock.canConnectFrom}
+     * sprawdzaja to przez {@code canConnectFrom}, ale rejestracja wezla przy
+     * postawieniu bloku patrzyla wylacznie na to, czy obok jest rura.
+     *
+     * <p>Skutek: terminal postawiony przodem do rury (wizualnie niepodlaczony)
+     * i tak zostawal wpisany do tej sieci - jego GUI pokazywalo i wyciagalo
+     * stock, do ktorego nie powinien miec dostepu.
+     *
+     * @param pipeSide kierunek OD rury DO wezla (czyli {@code dir.getOpposite()}
+     *                 przy iterowaniu kierunkow z pozycji wezla)
+     */
+    private static boolean nodeConnectsToPipe(ServerLevel level, BlockPos nodePos, Direction pipeSide) {
+        BlockState state = level.getBlockState(nodePos);
+        Block block = state.getBlock();
+        if (block instanceof VeloceTomTerminalBlock terminalBlock) {
+            return terminalBlock.canConnectFrom(state, pipeSide);
+        }
+        if (block instanceof com.craftingveloce.block.VeloceExtractorBlock extractorBlock) {
+            return extractorBlock.canConnectFrom(state, pipeSide);
+        }
+        if (block instanceof com.craftingveloce.block.VeloceCraftingTableBlock craftingTableBlock) {
+            return craftingTableBlock.canConnectFrom(state, pipeSide);
+        }
+        return false;
     }
 
     /** Zwalnia kolejke przy zamykaniu/rozladowaniu swiata. */
@@ -131,18 +211,27 @@ public class VelocePipeNetworkManager extends SavedData {
             return networks.get(id);
         }
 
-        // Check adjacent blocks for pipe networks
+        // Szukamy sieci wsrod sasiadow, ale TYLKO z tej strony, z ktorej wezel
+        // naprawde moze sie podlaczyc (patrz nodeConnectsToPipe).
         for (Direction d : Direction.values()) {
             BlockPos neighborPos = terminalPos.relative(d);
             UUID netId = pipeToNetwork.get(neighborPos);
-            if (netId != null && networks.containsKey(netId)) {
-                VelocePipeNetwork net = networks.get(netId);
-                net.getTerminals().add(terminalPos);
-                net.updateTrackedChunks();
-                terminalToNetwork.put(terminalPos, netId);
-                setDirty();
-                return net;
+            if (netId == null || !networks.containsKey(netId)) {
+                continue;
             }
+            // d to kierunek OD wezla DO rury, wiec z perspektywy rury jest to
+            // strona przeciwna.
+            if (!nodeConnectsToPipe(level, terminalPos, d.getOpposite())) {
+                continue;
+            }
+            VelocePipeNetwork net = networks.get(netId);
+            net.getTerminals().add(terminalPos);
+            net.updateTrackedChunks();
+            terminalToNetwork.put(terminalPos, netId);
+            // Doszedl wezel - jego dane sa czescia stocku sieci.
+            net.invalidateEndpointCache();
+            setDirty();
+            return net;
         }
         return null;
     }
@@ -286,10 +375,22 @@ public class VelocePipeNetworkManager extends SavedData {
             terminalToNetwork.remove(t);
         }
 
-        // Rescan each remaining connected component
+        // Przebudowa ODLOZONA, nie natychmiastowa.
+        //
+        // BUG, ktory tu byl: dla KAZDEGO ocalalego sasiada od razu lecial pelny
+        // BFS (scanAndBuildNetwork) - bez budzetu, bez limitu odwiedzonych
+        // pozycji i bez sprawdzenia isFrozen(). A ze onPipeBroken wolane jest
+        // per rura z destroy(), z BreakEvent i - najgorzej - raz na kazda
+        // dotknieta rure w petli ExplosionEvent.Detonate, to rozwalenie sciany
+        // z K rur kosztowalo do ~K*6 pelnych przejsc po calej sieci w JEDNYM
+        // ticku. Przy duzej sieci i wybuchu = zawieszenie serwera.
+        //
+        // Teraz tylko kolejkujemy - zdebounce'owany tick robi jedna przebudowe
+        // na cooldown, wiec koszt jest rozlozony na kolejne ticki.
         for (BlockPos np : remainingNeighbors) {
-            if (!pipeToNetwork.containsKey(np) && level.isLoaded(np) && level.getBlockState(np).getBlock() instanceof VelocePipeBlock) {
-                scanAndBuildNetwork(level, np, null);
+            if (!pipeToNetwork.containsKey(np) && level.isLoaded(np)
+                    && level.getBlockState(np).getBlock() instanceof VelocePipeBlock) {
+                queueRebuild(np);
             }
         }
         setDirty();
@@ -299,14 +400,21 @@ public class VelocePipeNetworkManager extends SavedData {
         for (Direction d : Direction.values()) {
             BlockPos neighborPos = terminalPos.relative(d);
             UUID netId = pipeToNetwork.get(neighborPos);
-            if (netId != null && networks.containsKey(netId)) {
-                VelocePipeNetwork net = networks.get(netId);
-                net.getTerminals().add(terminalPos);
-                net.updateTrackedChunks();
-                terminalToNetwork.put(terminalPos, netId);
-                setDirty();
-                return;
+            if (netId == null || !networks.containsKey(netId)) {
+                continue;
             }
+            // Kierunek musi byc taki sam jak w scanAndBuildNetwork - inaczej
+            // wezel trafial do sieci, z ktora nie jest polaczony.
+            if (!nodeConnectsToPipe(level, terminalPos, d.getOpposite())) {
+                continue;
+            }
+            VelocePipeNetwork net = networks.get(netId);
+            net.getTerminals().add(terminalPos);
+            net.updateTrackedChunks();
+            terminalToNetwork.put(terminalPos, netId);
+            net.invalidateEndpointCache();
+            setDirty();
+            return;
         }
     }
 
@@ -338,7 +446,7 @@ public class VelocePipeNetworkManager extends SavedData {
         // Przebudowe ODKLADAMY do ticku (patrz pendingRebuilds). Robienie
         // pelnego BFS w kazdym neighborChanged oznaczalo przebudowe sieci
         // kilka razy na tick, gdy obok pracowala jakas maszyna.
-        pendingRebuilds.add(pipePos.immutable());
+        queueRebuild(pipePos);
 
         // Uniewaznij cache sieci dotknietych ta zmiana. Szukamy po pozycji rury
         // oraz po pozycji sasiada - zmiana mogla dodac albo usunac endpoint.
@@ -375,6 +483,17 @@ public class VelocePipeNetworkManager extends SavedData {
         if (!level.isLoaded(originPos) || !(level.getBlockState(originPos).getBlock() instanceof VelocePipeBlock)) {
             return null;
         }
+        // Przy zapisie/zamknieciu swiata nie budujemy sieci: to bez sensu,
+        // a kazde getBlockEntity moze dociagnac chunk i zawiesic zapis.
+        if (VeloceChunkLoader.isFrozen()) {
+            return null;
+        }
+
+        // Budzet czasu na caly BFS. Po jego wyczerpaniu przerywamy i NIE
+        // przebudowujemy sieci - kolejny update sasiada zglosi ja ponownie.
+        // Lepiej miec chwilowo nieaktualny uklad sieci niz zamrozony tick.
+        final long scanDeadline = System.nanoTime() + SCAN_BUDGET_NS;
+        boolean budgetExceeded = false;
 
         Queue<BlockPos> queue = new ArrayDeque<>();
         Set<BlockPos> visitedPipes = new HashSet<>();
@@ -386,6 +505,12 @@ public class VelocePipeNetworkManager extends SavedData {
         visitedPipes.add(originPos);
 
         while (!queue.isEmpty()) {
+            // Sprawdzamy czas przy KAZDYM kroku, nie co N krokow. Probowanie
+            // "co 64" juz raz w tym modzie uczynilo budzet martwym.
+            if (System.nanoTime() > scanDeadline) {
+                budgetExceeded = true;
+                break;
+            }
             BlockPos current = queue.poll();
             UUID oldNetAtPos = pipeToNetwork.get(current);
             if (oldNetAtPos != null) {
@@ -469,12 +594,28 @@ public class VelocePipeNetworkManager extends SavedData {
             }
         }
 
+        if (budgetExceeded) {
+            // NIE budujemy sieci z niepelnego przejscia.
+            //
+            // Kontynuowanie na czesciowo zebranych danych byloby gorsze niz nic:
+            // powstala siec mialaby mniej rur niz naprawde, a petla scalania
+            // nizej skasowalaby stare sieci uznane za "znikniete" - czyli
+            // rozbilibysmy dzialajaca siec tylko dlatego, ze zabraklo czasu na
+            // policzenie jej w calosci. Kolejny update sasiada zglosi ja znowu.
+            VeloceLog.Network.detail(VeloceLog.Side.SERVER,
+                    "network scan at %s exceeded %d ms budget after %d pipe(s) - deferred",
+                    originPos, SCAN_BUDGET_NS / 1_000_000L, visitedPipes.size());
+            queueRebuild(originPos);
+            return null;
+        }
+
         VeloceLog.Network.detail(VeloceLog.Side.SERVER,
                 "built network at %s: %d pipe(s), %d terminal(s), %d endpoint(s)",
                 originPos, visitedPipes.size(), discoveredTerminals.size(),
                 discoveredEndpoints.size());
 
         // ID wynikowej sieci liczymy PRZED petla scalania - potrzebne, zeby
+        // (patrz nizej)
         // wiedziec, ktorych starych cache'y NIE kasowac.
         //
         // Przebudowa zachowuje to samo UUID (preferredId = istniejaca siec),
