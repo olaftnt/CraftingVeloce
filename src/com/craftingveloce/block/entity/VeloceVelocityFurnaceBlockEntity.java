@@ -80,7 +80,14 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
      */
     private long burnTicksTotal;
 
-    private int pullCooldown;
+    /**
+     * Tick, w ktorym ostatnio pobralismy paliwo z sieci (harmonogram okresowy).
+     *
+     * <p>{@code Long.MIN_VALUE} = jeszcze ani razu. Wtedy o pierwszym pobraniu
+     * decyduje faza wyliczona z pozycji pieca, a nie wspolny start od zera -
+     * inaczej wszystkie piece dobieraly paliwo w tym samym ticku.
+     */
+    private long lastFuelPullTick = Long.MIN_VALUE;
 
     /**
      * Czy piec ma pominac odliczanie i pobrac paliwo w tym ticku.
@@ -213,10 +220,9 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         // do PULL_INTERVAL_TICKS, a przez ten czas bylby "niezasilony" - i
         // crafter, ktory wlasnie zaplacil cieplem, nie moglby zaplacic
         // nastepnym razem, mimo ze paliwo lezy w sieci.
-        if (wantImmediatePull) {
-            wantImmediatePull = false;
-            pullCooldown = 0;
-        }
+        //
+        // Flaga jest obslugiwana w kroku 3 ponizej (razem z rozproszonym
+        // harmonogramem), zeby nie bylo dwoch miejsc decydujacych o pobraniu.
 
         // 1. Piec pali sie CALY CZAS - to jest koszt instant craftowania.
         //    Bufor ciepla schodzi niezaleznie od tego, czy ktokolwiek craftuje.
@@ -230,10 +236,23 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         }
 
         // 3. Zapas paliwa niski -> dociagnij z sieci wedlug filtrow.
-        if (pullCooldown > 0) {
-            pullCooldown--;
-        } else {
-            pullCooldown = PULL_INTERVAL_TICKS;
+        //
+        // ROZPROSZENIE PO TICKACH: cooldown liczony od zera u kazdego pieca
+        // oznaczal, ze WSZYSTKIE piece dobieraly paliwo w TYM SAMYM ticku
+        // (kazdy startowal z pullCooldown == 0), czyli zamiast pracy rozlozonej
+        // rownomiernie powstawal skok obciazenia co 10 tickow. Teraz faza
+        // kazdego pieca wynika z jego pozycji.
+        //
+        // Dobranie NATYCHMIASTOWE (po tym, jak crafter zjadl cieplo) zostaje
+        // bez zmian - i celowo NIE przesuwa harmonogramu, zeby kilka piecow
+        // obslugujacych jeden craft nie zsynchronizowalo sie na nowo.
+        long nowTick = sl.getGameTime();
+        if (wantImmediatePull) {
+            wantImmediatePull = false;
+            pullFuelFromNetwork(sl);
+        } else if (com.craftingveloce.util.VeloceTick.everySpread(
+                nowTick, lastFuelPullTick, PULL_INTERVAL_TICKS, worldPosition)) {
+            lastFuelPullTick = nowTick;
             pullFuelFromNetwork(sl);
         }
 

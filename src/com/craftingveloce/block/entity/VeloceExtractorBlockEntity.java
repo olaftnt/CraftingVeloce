@@ -46,7 +46,16 @@ public class VeloceExtractorBlockEntity extends BlockEntity
     private final NonNullList<ItemStack> filterSlots = NonNullList.withSize(FILTER_SLOTS, ItemStack.EMPTY);
     private final SimpleContainer outputInventory = new SimpleContainer(9);
 
-    private int tickCounter = 0;
+    /**
+     * Tick ostatniego pobrania z sieci.
+     *
+     * <p>Zastepuje dawny licznik z warunkiem {@code tickCounter % 10 == 0}.
+     * Tamten wzorzec mial dwa problemy: licznik startowal od zera u KAZDEGO
+     * ekstraktora (wiec wszystkie pobieraly w tym samym ticku - skok obciazenia
+     * zamiast pracy rozlozonej), a przy okazji byl slepy na faze ticku.
+     * Faza liczona z pozycji bloku rozklada te pobrania na kolejne ticki.
+     */
+    private long lastPullTick = Long.MIN_VALUE;
 
     /**
      * Czy dany slot filtra moze korzystac z auto-craftingu.
@@ -156,12 +165,23 @@ public class VeloceExtractorBlockEntity extends BlockEntity
     }
 
     public void serverTick() {
-        tickCounter++;
-        // Attempt extraction from network every 10 ticks (0.5s)
-        if (tickCounter % 10 == 0) {
+        // Osłona: odczytujemy teraz czas gry z poziomu, a ticker nie powinien
+        // trafic tu przed setLevel() - ale NPE w ticku zabilby serwer, wiec
+        // nie zakladamy tego na zapas.
+        if (level == null) {
+            return;
+        }
+        // Pobranie z sieci co 10 tickow (0.5 s), ale z faza zalezna od
+        // pozycji bloku - zeby kilka ekstraktorow nie uderzylo w siec naraz.
+        if (com.craftingveloce.util.VeloceTick.everySpread(
+                level.getGameTime(), lastPullTick, PULL_INTERVAL_TICKS, worldPosition)) {
+            lastPullTick = level.getGameTime();
             pullFilteredItemsFromNetwork();
         }
     }
+
+    /** Co ile tickow ekstraktor probuje pobrac filtry z sieci. */
+    private static final int PULL_INTERVAL_TICKS = 10;
 
     private void pullFilteredItemsFromNetwork() {
         if (level == null || level.isClientSide || !(level instanceof ServerLevel sl)) return;
