@@ -182,7 +182,14 @@ public class VelocePipeNetworkManager extends SavedData {
         if (VeloceChunkLoader.isFrozen()) {
             return;
         }
-        java.util.List<String> affectedThings = new java.util.ArrayList<>();
+        // Opisy blokow budujemy TYLKO gdy debug na czacie jest wlaczony
+        // (domyslnie wylaczony). Wczesniej describeBlock() - z nazwa klasy,
+        // nazwa bloku i sklejaniem stringow - lecialo przy KAZDEJ zmianie
+        // chunka, nawet gdy nikt tego nie ogladal.
+        boolean wantDetails = com.craftingveloce.debug.ChunkDebugNotifier.isEnabled();
+        java.util.List<String> affectedThings = wantDetails
+                ? new java.util.ArrayList<>()
+                : java.util.List.of();
         int affected = 0;
         for (VelocePipeNetwork net : networks.values()) {
             if (!net.getTrackedChunks().contains(chunkPos)) {
@@ -190,14 +197,19 @@ public class VelocePipeNetworkManager extends SavedData {
             }
             affected++;
 
+            if (!wantDetails) {
+                com.craftingveloce.crafting.VeloceCraftingCache.get(net).onEndpointChanged(level);
+                continue;
+            }
+
             // Zbierz CO dokladnie lezy w tym chunku - do raportu na czacie.
             for (BlockPos p : net.getTerminals()) {
-                if (new ChunkPos(p).equals(chunkPos)) {
+                if (isInChunk(p, chunkPos)) {
                     affectedThings.add(describeBlock(level, p));
                 }
             }
             for (BlockPos p : net.getEndpoints().keySet()) {
-                if (new ChunkPos(p).equals(chunkPos)) {
+                if (isInChunk(p, chunkPos)) {
                     affectedThings.add(describeBlock(level, p));
                 }
             }
@@ -218,6 +230,17 @@ public class VelocePipeNetworkManager extends SavedData {
     }
 
     /** Krotki opis bloku w chunku - do komunikatu debugowego. */
+    /**
+     * Czy blok lezy w tym chunku - bez alokowania ChunkPos na kazdy blok.
+     *
+     * <p>Wczesniej bylo tu {@code new ChunkPos(p).equals(chunkPos)} w petli po
+     * wszystkich terminalach i endpointach KAZDEJ sieci, czyli kilka alokacji
+     * na kazde zdarzenie chunka.
+     */
+    private static boolean isInChunk(BlockPos p, ChunkPos chunkPos) {
+        return (p.getX() >> 4) == chunkPos.x && (p.getZ() >> 4) == chunkPos.z;
+    }
+
     private static String describeBlock(ServerLevel level, BlockPos pos) {
         try {
             var be = level.getBlockEntity(pos);
