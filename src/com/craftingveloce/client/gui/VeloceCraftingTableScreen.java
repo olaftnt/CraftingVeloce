@@ -200,14 +200,6 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         graphics.pose().popPose();
         RenderSystem.enableDepthTest();
 
-        if (craftable && recipes.size() > 1) {
-            graphics.pose().pushPose();
-            graphics.pose().translate(0, 0, 250);
-            String badge = "§e" + recipes.size() + "r";
-            graphics.drawString(this.font, badge, slot.x + 16 - this.font.width(badge),
-                    slot.y + 1, 0xFFFFFF, true);
-            graphics.pose().popPose();
-        }
     }
 
     @Override
@@ -276,6 +268,7 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         lines.add(Component.literal("§7Lewy klik: " + (enabledItems.contains(item)
                 ? "§cWYŁĄCZ §7auto-crafting"
                 : "§aWŁĄCZ §7auto-crafting")));
+        lines.add(Component.literal("§8Prawy klik na ikonce kategorii: cała kategoria"));
 
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
     }
@@ -296,6 +289,35 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
             sb.append("1x ").append(options.get(0).getHoverName().getString());
         }
         return sb.toString();
+    }
+
+    // ------------------------------------------------------------------
+    // Przelaczanie calej kategorii (prawy klik na ikonke zakladki)
+    // ------------------------------------------------------------------
+
+    /** W crafterze mozna przelaczac tylko itemy z receptura. */
+    @Override
+    protected boolean isToggleable(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        List<ClientRecipe> recipes = getCraftableItems().get(stack.getItem());
+        return recipes != null && !recipes.isEmpty();
+    }
+
+    @Override
+    protected boolean isToggledOn(Item item) {
+        return enabledItems.contains(item);
+    }
+
+    @Override
+    protected void applyToggle(Item item) {
+        if (enabledItems.contains(item)) {
+            enabledItems.remove(item);
+        } else {
+            enabledItems.add(item);
+        }
+        PacketDistributor.sendToServer(new CraftingTableToggleItemPKT(tablePos, item));
     }
 
     // ------------------------------------------------------------------
