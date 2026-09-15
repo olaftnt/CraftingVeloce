@@ -84,21 +84,30 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
     public static final MapCodec<VelocePipeBlock> CODEC = ChestBlock.simpleCodec(properties -> new VelocePipeBlock());
 
-    // Precise VoxelShapes exactly matching Pipez dimensions
-    public static final VoxelShape SHAPE_CORE = Block.box(5.0D, 5.0D, 5.0D, 11.0D, 11.0D, 11.0D);
-    public static final VoxelShape SHAPE_NORTH = Block.box(5.0D, 5.0D, 0.0D, 11.0D, 11.0D, 5.0D);
-    public static final VoxelShape SHAPE_SOUTH = Block.box(5.0D, 5.0D, 11.0D, 11.0D, 11.0D, 16.0D);
-    public static final VoxelShape SHAPE_WEST = Block.box(0.0D, 5.0D, 5.0D, 5.0D, 11.0D, 11.0D);
-    public static final VoxelShape SHAPE_EAST = Block.box(11.0D, 5.0D, 5.0D, 16.0D, 11.0D, 11.0D);
-    public static final VoxelShape SHAPE_UP = Block.box(5.0D, 11.0D, 5.0D, 11.0D, 16.0D, 11.0D);
-    public static final VoxelShape SHAPE_DOWN = Block.box(5.0D, 0.0D, 5.0D, 11.0D, 5.0D, 11.0D);
+    // Precise VoxelShapes matching the pipe models.
+    // Uwaga: te wymiary MUSZA byc zgodne z modelami w assets/.../models/block/
+    // (pipe_core.json, pipe_part.json, pipe_extract.json). Rura jest 8x8 px
+    // (4..12), a nozzle 10x10 px (3..13) - czyli wiekszy od rury.
+    //
+    // MIN/MAX to znormalizowane granice przekroju rury (4/16 i 12/16).
+    // Uzywa ich getClickedSide() do rozpoznania, w ktore ramie trafil klucz.
+    public static final double MIN = 4.0D / 16.0D;
+    public static final double MAX = 12.0D / 16.0D;
 
-    public static final VoxelShape SHAPE_EXTRACT_NORTH = Shapes.or(SHAPE_NORTH, Block.box(4.0D, 4.0D, 0.0D, 12.0D, 12.0D, 1.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_SOUTH = Shapes.or(SHAPE_SOUTH, Block.box(4.0D, 4.0D, 15.0D, 12.0D, 12.0D, 16.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_WEST = Shapes.or(SHAPE_WEST, Block.box(0.0D, 4.0D, 4.0D, 1.0D, 12.0D, 12.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_EAST = Shapes.or(SHAPE_EAST, Block.box(15.0D, 4.0D, 4.0D, 16.0D, 12.0D, 12.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_UP = Shapes.or(SHAPE_UP, Block.box(4.0D, 15.0D, 4.0D, 12.0D, 16.0D, 12.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_DOWN = Shapes.or(SHAPE_DOWN, Block.box(4.0D, 0.0D, 4.0D, 12.0D, 1.0D, 12.0D)).optimize();
+    public static final VoxelShape SHAPE_CORE = Block.box(4.0D, 4.0D, 4.0D, 12.0D, 12.0D, 12.0D);
+    public static final VoxelShape SHAPE_NORTH = Block.box(4.0D, 4.0D, 0.0D, 12.0D, 12.0D, 4.0D);
+    public static final VoxelShape SHAPE_SOUTH = Block.box(4.0D, 4.0D, 12.0D, 12.0D, 12.0D, 16.0D);
+    public static final VoxelShape SHAPE_WEST = Block.box(0.0D, 4.0D, 4.0D, 4.0D, 12.0D, 12.0D);
+    public static final VoxelShape SHAPE_EAST = Block.box(12.0D, 4.0D, 4.0D, 16.0D, 12.0D, 12.0D);
+    public static final VoxelShape SHAPE_UP = Block.box(4.0D, 12.0D, 4.0D, 12.0D, 16.0D, 12.0D);
+    public static final VoxelShape SHAPE_DOWN = Block.box(4.0D, 0.0D, 4.0D, 12.0D, 4.0D, 12.0D);
+
+    public static final VoxelShape SHAPE_EXTRACT_NORTH = Shapes.or(SHAPE_NORTH, Block.box(3.0D, 3.0D, 0.0D, 13.0D, 13.0D, 1.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_SOUTH = Shapes.or(SHAPE_SOUTH, Block.box(3.0D, 3.0D, 15.0D, 13.0D, 13.0D, 16.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_WEST = Shapes.or(SHAPE_WEST, Block.box(0.0D, 3.0D, 3.0D, 1.0D, 13.0D, 13.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_EAST = Shapes.or(SHAPE_EAST, Block.box(15.0D, 3.0D, 3.0D, 16.0D, 13.0D, 13.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_UP = Shapes.or(SHAPE_UP, Block.box(3.0D, 15.0D, 3.0D, 13.0D, 16.0D, 13.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_DOWN = Shapes.or(SHAPE_DOWN, Block.box(3.0D, 0.0D, 3.0D, 13.0D, 1.0D, 13.0D)).optimize();
 
     public static final VoxelShape[] SIDE_SHAPES = new VoxelShape[] {
             SHAPE_DOWN, SHAPE_UP, SHAPE_NORTH, SHAPE_SOUTH, SHAPE_WEST, SHAPE_EAST
@@ -348,12 +357,14 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     @Nullable
     public Direction getClickedSide(BlockState state, BlockPos pos, Vec3 hitLocation) {
         Vec3 rel = hitLocation.subtract(pos.getX(), pos.getY(), pos.getZ());
-        if (rel.z < 0.3125 && state.getValue(NORTH)) return Direction.NORTH;
-        if (rel.z > 0.6875 && state.getValue(SOUTH)) return Direction.SOUTH;
-        if (rel.x < 0.3125 && state.getValue(WEST)) return Direction.WEST;
-        if (rel.x > 0.6875 && state.getValue(EAST)) return Direction.EAST;
-        if (rel.y < 0.3125 && state.getValue(DOWN)) return Direction.DOWN;
-        if (rel.y > 0.6875 && state.getValue(UP)) return Direction.UP;
+        // Granice musza odpowiadac geometrii rury (4..12 px => 0.25 .. 0.75).
+        // Wczesniej bylo 5..11 px (0.3125 .. 0.6875) przy rurze 6x6.
+        if (rel.z < MIN && state.getValue(NORTH)) return Direction.NORTH;
+        if (rel.z > MAX && state.getValue(SOUTH)) return Direction.SOUTH;
+        if (rel.x < MIN && state.getValue(WEST)) return Direction.WEST;
+        if (rel.x > MAX && state.getValue(EAST)) return Direction.EAST;
+        if (rel.y < MIN && state.getValue(DOWN)) return Direction.DOWN;
+        if (rel.y > MAX && state.getValue(UP)) return Direction.UP;
         return null;
     }
 

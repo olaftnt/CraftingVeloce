@@ -308,36 +308,60 @@ Rdzeń używał **tego samego regionu na wszystkich 6 ścianach**, a boki ramien
 prostokątny** region. Na zakręcie przód rdzenia (region `[10..16]`) stykał się z bokiem ramienia
 (region `[0..5]`) → wzór się łamał, opaska nie była ciągła.
 
-### Rozwiązanie: jeden symetryczny region 6×6
+### Rozwiązanie: jeden symetryczny region 8×8
 
-Rura ma przekrój **kwadratowy 6×6 px**, więc każda ściana wzdłuż rury jest dokładnie 6×6.
-Wszystkie ściany `pipe_core` i `pipe_part` mapują teraz **ten sam region `[0,0,6,6]`**.
+Rura ma przekrój **kwadratowy 8×8 px**, więc każda ściana wzdłuż rury jest dokładnie 8×8.
+Wszystkie ściany `pipe_core` i `pipe_part` mapują **ten sam region `[0,0,8,8]`**.
 
 Wzorzec jest **symetryczny lustrzanie względem obu osi**, więc obrót o 90° (zakręty, ramiona
 w różnych osiach) daje identyczny obraz:
 
 ```
         dlugosc ->
-        0  1  2  3  4  5
-szer 0  K  K  K  K  K  K      K = czarna opaska (opaque)
-szer 1  K  .  .  .  .  K      . = przezroczyste okno
-szer 2  K  .  .  .  .  K
-szer 3  K  .  .  .  .  K
-szer 4  K  .  .  .  .  K
-szer 5  K  K  K  K  K  K
+        0  1  2  3  4  5  6  7
+szer 0  K  K  G  G  G  G  K  K      K = czarna opaska (opaque)
+szer 1  K  K  G  G  G  G  K  K      G = szary odcień
+szer 2  K  K  .  .  .  .  K  K      . = przezroczyste okno
+szer 3  K  K  .  .  .  .  K  K
+szer 4  K  K  .  .  .  .  K  K
+szer 5  K  K  .  .  .  .  K  K
+szer 6  K  K  G  G  G  G  K  K
+szer 7  K  K  G  G  G  G  K  K
 ```
 
-- Ramka opaski dookoła + **jedno duże okno 4×4** na środku każdej ściany
+- Ramka opaski 2 px dookoła + **okno 4×4** na środku każdej ściany
+  (zależność: `rozmiar ściany = okno + 2 × opaska`, czyli `8 = 4 + 2×2`)
 - **Paleta ograniczona do 2 kolorów**: czerń `(18,18,20)` + szary `(58,58,64)`.
   Bez fioletu, bez dodatkowych rozjaśnień — celowo, decyzja projektowa.
-- Szary występuje tylko w regionie głowicy (pasy poziome) — patrz niżej
-- kolumny 0 i 5 to opaska → na styku bloków **brak szczeliny**, opaska jest ciągła
-- `rotation: 90` **usunięte** — było potrzebne tylko dla prostokątnego regionu 5×6;
-  przy kwadratowym 6×6 mapowanie jest 1:1 i rotacja łamałaby symetrię
+- Szary pas rozbija płaszczyznę opaski w wierszach 0,1,6,7 (kolumny 2–5),
+  dzięki czemu rura nie jest jednolitą czernią
+- kolumny 0 i 7 to opaska → na styku bloków **brak szczeliny**, opaska jest ciągła
+- `rotation: 90` **usunięte** — przy kwadratowym regionie mapowanie jest 1:1,
+  a rotacja łamałaby symetrię
+
+### Geometria rury i hitbox (WAŻNE — trzy miejsca muszą być spójne)
+
+Przy zmianie grubości rury trzeba zaktualizować **wszystkie trzy** miejsca, inaczej
+rura będzie grubsza wizualnie, ale nie da się w nią kliknąć:
+
+| Co | Gdzie | Wartość |
+|----|-------|---------|
+| Model | `pipe_core.json`, `pipe_part.json` | `from 4..12` |
+| UV | te same modele | `[0,0,8,8]` |
+| Hitbox | `VelocePipeBlock.SHAPE_*` | `Block.box(4,…,12,…)` |
+| Raycast klucza | `VelocePipeBlock.MIN/MAX` | `4.0/16` … `12.0/16` |
+
+`MIN`/`MAX` są znormalizowane (4/16 = `0.25`, 12/16 = `0.75`) i służą do rozpoznania,
+w które ramię trafił klucz. **Wcześniej były zahardkodowane jako `0.3125`/`0.6875`**
+(stara rura 5..11) — po pogrubieniu zostały zastąpione stałymi.
+
+Nozzle (`pipe_extract`) jest **10×10 px (`3..13`)**, czyli o 1 px większy od rury
+z każdej strony — dzięki temu głowica jest wyraźnie widoczna. Jego hitbox
+(`SHAPE_EXTRACT_*`) to `Shapes.or(SHAPE_*, Block.box(3,…,13,…))`.
 
 ### Nozzle (`pipe_extract`) — region 8×8
 
-Nozzle jest większy (8×8) i ma cienkie ściany boczne, więc używa osobnego regionu:
+Nozzle używa osobnego regionu tekstury:
 - `north`/`south` (przód/tył) → `[8,0,16,8]` (pełne 8×8)
 - `east`/`west`/`up`/`down` (boki) → `[8,0,9,8]` (pasek 1×8 z lewej krawędzi regionu)
 
@@ -360,8 +384,8 @@ Przy zmianie wzoru sprawdź, że przechodzą:
 1. **Symetria alphy** pozioma i pionowa — decyduje o tym, gdzie widać przez rurę
 2. **Symetria koloru** pozioma i pionowa — przy obecnej palecie (czerń + szary) przechodzi w pełni,
    bo wzór nie ma już żadnego asymetrycznego akcentu
-3. **Ciągłość opaski** — kolumny 0 i 5 opaque w każdym wierszu
-4. **Okna przezroczyste** — wszystkie 4 piksele okien mają `alpha == 0`
+3. **Ciągłość opaski** — kolumny 0 i 7 opaque w każdym wierszu
+4. **Okna przezroczyste** — wszystkie 16 pikseli okna (4×4) ma `alpha == 0`
 5. **Liczba kolorów** — dokładnie 2 nieprzezroczyste (czerń + szary); łapie przypadkowe
    dodanie fioletu lub rozjaśnień
 
