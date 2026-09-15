@@ -388,6 +388,7 @@ public class VelocePipeNetworkManager extends SavedData {
             }
             collectNeighbours(level, net, pipePos);
         }
+        refreshInsertModes(level, net, members);
         net.updateTrackedChunks();
 
         // Zapisujemy opis, zeby kolejne zapytania byly darmowe.
@@ -443,6 +444,9 @@ public class VelocePipeNetworkManager extends SavedData {
                 net.getEndpoints().put(ep, e.getValue());
             }
         }
+        // Trybow stron NIE da sie wziac z opisu komponentu - trzeba je
+        // odczytac z rur. Bez tego tryb Pull nie dzialalby w praktyce.
+        refreshInsertModes(level, net, pipes);
         net.updateTrackedChunks();
         return net;
     }
@@ -529,19 +533,86 @@ public class VelocePipeNetworkManager extends SavedData {
             }
 
             if (RefinedStorageHelper.hasRSNetwork(level, np, d.getOpposite())) {
-                ConnectedEndpointInfo ep = new ConnectedEndpointInfo(np, d.getOpposite(),
+                registerEndpoint(level, net, knownEndpoints, np, d.getOpposite(),
                         ConnectedEndpointInfo.Type.REFINED_STORAGE);
-                ep.refreshIfLoaded(level);
-                net.getEndpoints().put(np, ep);
-                knownEndpoints.put(np, ep);
             } else if (VelocePipeBlock.canConnectToInventory(level, np, d.getOpposite())) {
                 BlockPos canonical = getCanonicalInventoryPos(np, ns);
-                ConnectedEndpointInfo ep = new ConnectedEndpointInfo(canonical, d.getOpposite(),
+                registerEndpoint(level, net, knownEndpoints, canonical, d.getOpposite(),
                         ConnectedEndpointInfo.Type.INVENTORY);
-                ep.refreshIfLoaded(level);
-                net.getEndpoints().put(canonical, ep);
-                knownEndpoints.put(canonical, ep);
             }
+        }
+    }
+
+    /**
+     * Rejestruje magazyn jako endpoint sieci, z informacja o trybie rury.
+     *
+     * <p><b>Laczenie flagi, a nie nadpisywanie.</b> Ten sam magazyn moze byc
+     * dotkniety przez kilka rur (albo kilka stron), kazda w innym trybie.
+     * Wstawianie ma byc dozwolone, gdy CHOC JEDNA strona na to pozwala, wiec
+     * flaga z kolejnych wywolan jest sumowana logicznie. Nadpisywanie
+     * oznaczaloby, ze o calym magazynie decyduje rura odwiedzona jako
+     * ostatnia - czyli wynik zalezalby od kolejnosci budowy sieci.
+     *
+     * <p>Przy pierwszej rejestracji w danym przebiegu flaga jest USTAWIANA
+     * (nie sumowana), bo endpoint moze byc ten sam obiekt co w poprzedniej
+     * budowie i niósłby wtedy stara wartosc.
+     */
+    private void registerEndpoint(ServerLevel level, VelocePipeNetwork net,
+                                  Map<BlockPos, ConnectedEndpointInfo> known,
+                                  BlockPos key, Direction accessSide,
+                                  ConnectedEndpointInfo.Type type) {
+        ConnectedEndpointInfo ep = net.getEndpoints().get(key);
+        if (ep == null) {
+            ep = new ConnectedEndpointInfo(key, accessSide, type);
+            net.getEndpoints().put(key, ep);
+            known.put(key, ep);
+        }
+        ep.refreshIfLoaded(level);
+    }
+
+    /**
+     * Ustala, do ktorych magazynow siec NIE moze wstawiac (tryb Pull z wrencha).
+     *
+     * <p><b>Dlaczego osobnym przebiegiem, po zlozeniu calej sieci.</b> Siec
+     * buduje sie dwiema drogami: pelnym skanem ({@code collectNeighbours})
+     * albo z pamieci podrecznej komponentu ({@link #toNetwork}, ktora swiata
+     * nie czyta). Gdyby tryb byl ustalany w trakcie skanu, to skorzyscie
+     * z pamieci podrecznej nigdy by go nie odswiezylo - a to jest sciezka,
+     * ktora chodzi w praktyce. Dokladnie tak samo rozjechala sie kiedys lista
+     * wezlow sieci.
+     *
+     * <p>Dlatego tryb ustalamy TU, raz, dla obu drog - i patrzymy na WSZYSTKIE
+     * rury dotykajace magazynu, bo jedna skrzynia moze miec ich kilka.
+     *
+     * <p><b>Zasada.</b> Wstawianie jest dozwolone, gdy CHOC JEDNA czytelna
+     * strona na to pozwala. Gdy nie da sie odczytac zadnej strony (chunk
+     * niezaladowany), zostawiamy wstawianie WLACZONE - wolimy nie blokowac
+     * na podstawie braku danych.
+     */
+    private void refreshInsertModes(ServerLevel level, VelocePipeNetwork net,
+                                    Collection<BlockPos> pipes) {
+        for (ConnectedEndpointInfo ep : net.getEndpoints().values()) {
+            // Endpointy RS nie maja stron rury przy sobie w tym sensie,
+            // ale sprawdzenie ich nic nie kosztuje i nic nie psuje.
+            boolean sawReadablePull = false;
+            boolean pushAllowed = false;
+            for (Direction d : Direction.values()) {
+                BlockPos pipePos = ep.getPos().relative(d);
+                if (!pipes.contains(pipePos) || !level.isLoaded(pipePos)) {
+                    continue;
+                }
+                if (!(level.getBlockEntity(pipePos) instanceof VelocePipeBlockEntity be)) {
+                    continue;
+                }
+                // Strona rury PATRZACA NA magazyn to d.getOpposite().
+                if (be.isExtracting(d.getOpposite())) {
+                    sawReadablePull = true;
+                } else {
+                    pushAllowed = true;
+                    break;
+                }
+            }
+            ep.resetAcceptsInsert(pushAllowed || !sawReadablePull);
         }
     }
 

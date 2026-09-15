@@ -120,6 +120,52 @@ public class ConnectedEndpointInfo {
         return type;
     }
 
+    /**
+     * Czy wolno do tego magazynu WSTAWIAĆ przedmioty.
+     *
+     * <p><b>Po co to jest.</b> Wrench ustawia strone rury w jeden z trzech
+     * trybow: Push/Pull, Pull, Disconnected. W trybie <b>Pull</b> magazyn ma
+     * byc WYLACZNIE zrodlem - siec ma z niego tylko zabierac (np. z pieca,
+     * ktory sam produkuje, albo ze skrzyni, do ktorej nie chcemy, zeby cokolwiek
+     * wpadalo). Wczesniej tryb ten byl ignorowany przy wstawianiu: rura
+     * wiedziala o nim tylko po to, zeby narysowac dysze, a siec i tak
+     * wrzucala do tego magazynu wszystko, co chciala odlozyc.
+     *
+     * <p>Domyslnie {@code true}, zeby magazyn bez zadnej rury w trybie Pull
+     * zachowywal sie dokladnie jak dotad.
+     */
+    public boolean acceptsInsert() {
+        return acceptsInsert;
+    }
+
+    /** Ustawia, czy ten magazyn przyjmuje wstawiane przedmioty. */
+    public void setAcceptsInsert(boolean accepts) {
+        this.acceptsInsert = accepts;
+    }
+
+    /**
+     * Dolacza informacje z KOLEJNEJ rury dotykajacej tego samego magazynu.
+     *
+     * <p>Jeden magazyn moze miec kilka rur, kazda w innym trybie. Siec ma
+     * do niego wstawiac wtedy, gdy <b>choc jedna</b> strona na to pozwala -
+     * wiec tryb Pull wygrywa tylko wtedy, gdy obejmuje wszystkie polaczenia.
+     * Bez tego ostatnia rura w kolejnosci budowy decydowalaby o calym
+     * magazynie i wynik zalezalby od kolejnosci przechodzenia sieci.
+     */
+    public void mergeAcceptsInsert(boolean accepts) {
+        this.acceptsInsert = this.acceptsInsert || accepts;
+    }
+
+    /**
+     * Oznacza, ze to pierwsza rura rejestrujaca ten magazyn w tym przebiegu -
+     * czyli flage trzeba ustawic, a nie dolaczyc.
+     */
+    public void resetAcceptsInsert(boolean accepts) {
+        this.acceptsInsert = accepts;
+    }
+
+    private boolean acceptsInsert = true;
+
     public Map<Item, Long> getCachedCounts() {
         return cachedCounts;
     }
@@ -209,6 +255,13 @@ public class ConnectedEndpointInfo {
      *         Wolajacy MUSI odroznic 0 od -1: 0 to dowod, -1 to brak wiedzy.
      */
     public long capacityFor(Item item) {
+        // Magazyn w trybie Pull nie przyjmie NICZEGO, wiec nie wnosci zadnej
+        // pojemnosci. Bez tego licznik miejsca w sieci pokazywalby wolne sloty
+        // magazynu, do ktorego wstawianie jest zabronione - i gracz dostawalby
+        // "jest miejsce", a potem cicho nic by sie nie odlozylo.
+        if (!acceptsInsert) {
+            return 0;
+        }
         if (cachedFreeSlots < 0) {
             return -1;
         }
@@ -628,6 +681,23 @@ public class ConnectedEndpointInfo {
     public ItemStack insertItemLeftover(ServerLevel level, ItemStack stack) {
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;
+        }
+
+        // TRYB PULL: strona rury ustawiona na "Pull" oznacza, ze z tego
+        // magazynu wolno TYLKO zabierac. Sprawdzamy to jako PIERWSZA rzecz,
+        // zanim cokolwiek wczytamy czy dotkniemy - i zwracamy CALY stos, wiec
+        // wolajacy zatrzymuje przedmioty u siebie (nic nie ginie i nic sie
+        // nie duplikuje).
+        //
+        // Jedno miejsce na cala regule: te sciezke przechodzi terminal,
+        // crafter (odkladanie wyniku) i piec (oddawanie nadwyzki paliwa).
+        // Sprawdzanie tego w kazdym z nich osobno gwarantowaloby, ze kiedys
+        // jedno z nich zostanie pominięte.
+        if (!acceptsInsert) {
+            ChunkTrace.at("INSERT", level, pos,
+                    "tryb PULL - wstawianie zabronione; stos=%dx %s",
+                    stack.getCount(), stack.getItem());
+            return stack;
         }
 
         if (type == Type.REFINED_STORAGE) {
