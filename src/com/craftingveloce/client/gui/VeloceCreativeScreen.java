@@ -460,6 +460,28 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      * korzystac z hotbara, np. odkladac wyciagniete itemy. Podklasy
      * nadpisuja te metode zwracajac true.
      */
+    /**
+     * Slot zastepczy dla ukrytych slotow gracza.
+     *
+     * <p>Osobna klasa (a nie anonimowa) po to, zeby dalo sie go ROZPOZNAC przy
+     * kolejnym wywolaniu - inaczej zawijalibysmy go w nieskonczonosc.
+     */
+    private static final class HiddenSlot extends Slot {
+        HiddenSlot(net.minecraft.world.Container container, int index) {
+            super(container, index, -10000, -10000);
+        }
+
+        @Override
+        public boolean isActive() {
+            return false;
+        }
+
+        @Override
+        public boolean isHighlightable() {
+            return false;
+        }
+    }
+
     protected boolean keepPlayerHotbar() {
         return false;
     }
@@ -470,23 +492,23 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         }
         for (int i = 0; i < this.menu.slots.size(); i++) {
             Slot s = this.menu.slots.get(i);
+
+            // Juz ukryty - nie zawijamy go drugi raz.
+            //
+            // BUG, ktory tu byl: zastepczy slot zachowywal TEN SAM container,
+            // wiec isPlayerInventorySlot() nadal rozpoznawal go jako slot gracza
+            // i przy kolejnym init() zawijal go ponownie. A init() leci przy
+            // KAZDYM rebuildWidgets() (np. po kazdym kliknieciu filtra
+            // w kontrolerze), wiec lancuch wrapperow rosl bez ograniczen.
+            if (s instanceof HiddenSlot) {
+                continue;
+            }
             if (isPlayerInventorySlot(s)) {
                 // Hotbar zostawiamy, jesli podklasa tego chce.
                 if (keepPlayerHotbar() && isHotbarSlot(s)) {
                     continue;
                 }
-                final Slot orig = s;
-                this.menu.slots.set(i, new Slot(orig.container, orig.getContainerSlot(), -10000, -10000) {
-                    @Override
-                    public boolean isActive() {
-                        return false;
-                    }
-
-                    @Override
-                    public boolean isHighlightable() {
-                        return false;
-                    }
-                });
+                this.menu.slots.set(i, new HiddenSlot(s.container, s.getContainerSlot()));
             }
         }
     }
