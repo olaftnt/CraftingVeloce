@@ -204,6 +204,20 @@ public final class VeloceChunkTaskQueue {
             completed++;
             ok = true;
             outcome = "wynik=" + (result.isEmpty() ? "nic" : result.toString());
+
+            // ODLICZ UZYCIE - to wlacza mechanizm "gorącego chunku".
+            //
+            // BUG, ktory tu byl: kolejka nie wolala noteUse, wiec przy
+            // powtarzanych operacjach chunk byl wymuszany i zwalniany za
+            // KAZDYM razem - w logu widac to jako petle load/unload co ~100 ms,
+            // ponad 100 razy w 20 sekund. Kazdy taki cykl to pelne wczytanie
+            // chunku z dysku.
+            //
+            // Po HOT_THRESHOLD uzyc chunk dostaje trzymanie na HOLD_TICKS
+            // (minuta), wiec release() w finally NIE zwalnia go od razu -
+            // kolejne operacje trafiaja juz na zaladowany chunk i nie ma
+            // zadnego ladowania.
+            VeloceChunkLoader.noteUse(level, chunkKey);
         } catch (Throwable t) {
             // Zadanie nie moze wywalic ticku - logujemy i idziemy dalej.
             outcome = "wyjatek=" + t;
