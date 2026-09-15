@@ -173,7 +173,15 @@ public final class VeloceTerminalViewState {
         }
     }
 
-    /** Ustawia przewiniecie listy. */
+    /**
+     * Ustawia przewiniecie listy.
+     *
+     * <p><b>Wazne.</b> Samo wpisanie {@code scrollOffs} NIE wystarcza. Vanilla
+     * trzyma itemy w statycznym {@code CONTAINER}, a do slotow przepisuje je
+     * dopiero {@code ItemPickerMenu.scrollTo(float)}. Bez tego wywolania
+     * pasek przewijania rysowalby sie w zapamietanym miejscu, ale lista
+     * pokazywalaby itemy od gory - czyli zupelnie inne, niz wskazuje pasek.
+     */
     static void applyScroll(CreativeModeInventoryScreen screen, float scroll) {
         if (screen == null) {
             return;
@@ -182,7 +190,17 @@ public final class VeloceTerminalViewState {
             var f = CreativeModeInventoryScreen.class.getDeclaredField("scrollOffs");
             f.setAccessible(true);
             f.set(screen, scroll);
-        } catch (Throwable ignored) {
+
+            var menu = screen.getMenu();
+            if (menu == null) {
+                return;
+            }
+            var scrollTo = menu.getClass().getMethod("scrollTo", float.class);
+            scrollTo.invoke(menu, scroll);
+        } catch (Throwable t) {
+            com.craftingveloce.util.VeloceLog.Gui.detail(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "could not restore scroll: %s", t);
         }
     }
 

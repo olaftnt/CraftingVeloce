@@ -207,20 +207,29 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             tabBeforeOpen = VeloceTerminalViewState.currentTab();
         }
 
-        if (key == null) {
+        // Ekran bez wlasnej pamieci (key == null) i jednoczesnie pamietajacy
+        // zakladke nic nie zmienia - to zwykly creative, ma zostac jak jest.
+        if (key == null && rememberTab()) {
             return;
         }
 
         CreativeModeTab tab;
-        if (rememberTab()) {
+        if (key != null && rememberTab()) {
             tab = VeloceTerminalViewState.findTab(VeloceTerminalViewState.savedTab(key));
         } else {
             // Nie pamietamy - zawsze pierwsza dostepna (lewy gorny rog).
+            // To dotyczy takze pickera filtra, ktory nie ma klucza, a ma
+            // zawsze otwierac sie od poczatku listy.
             tab = defaultTab() != null ? defaultTab() : firstAcceptedTab();
         }
         // Zakladki, ktorych u nas nie ma (np. ukryte), nie przywracamy.
         if (tab != null && acceptTab(tab)) {
             VeloceTerminalViewState.applyTab(this, tab);
+        }
+
+        // Fraza i przewiniecie tylko dla ekranow z wlasnym kluczem.
+        if (key == null) {
+            return;
         }
         VeloceTerminalViewState.applySearch(this, VeloceTerminalViewState.savedSearch(key));
         Float scroll = VeloceTerminalViewState.savedScroll(key);

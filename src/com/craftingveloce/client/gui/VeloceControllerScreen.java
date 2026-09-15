@@ -1,10 +1,8 @@
 package com.craftingveloce.client.gui;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -13,10 +11,7 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.GameType;
 
-import javax.annotation.Nullable;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -71,27 +66,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     private Filter filter = Filter.ALL;
 
-    @Nullable
-
-    private static Field slotWrapperTargetField;
-
     private final List<Button> filterButtons = new ArrayList<>();
-
-    static {
-        try {
-            Class<?> wrapperClass = Class.forName(
-                    "net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen$SlotWrapper");
-            for (Field f : wrapperClass.getDeclaredFields()) {
-                if (Slot.class.isAssignableFrom(f.getType())) {
-                    f.setAccessible(true);
-                    slotWrapperTargetField = f;
-                    break;
-                }
-            }
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
-    }
 
     public VeloceControllerScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                   boolean displayOperatorCreativeTab, BlockPos controllerPos,

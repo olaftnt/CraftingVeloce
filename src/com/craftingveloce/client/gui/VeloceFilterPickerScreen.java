@@ -16,7 +16,6 @@ import net.minecraft.world.level.GameType;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import javax.annotation.Nullable;
-import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -32,23 +31,6 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
 
     public void updateNetworkCounts(Map<Item, Long> counts) {
         this.networkCounts = new HashMap<>(counts);
-    }
-
-    private static Field slotWrapperTargetField;
-
-    static {
-        try {
-            Class<?> wrapperClass = Class.forName("net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen$SlotWrapper");
-            for (Field f : wrapperClass.getDeclaredFields()) {
-                if (Slot.class.isAssignableFrom(f.getType())) {
-                    f.setAccessible(true);
-                    slotWrapperTargetField = f;
-                    break;
-                }
-            }
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
     }
 
     public VeloceFilterPickerScreen(LocalPlayer player, FeatureFlagSet enabledFeatures, boolean displayOperatorCreativeTab, BlockPos extractorPos, int filterIndex) {
@@ -69,29 +51,13 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
             }
             this.minecraft.gameMode.setLocalMode(GameType.CREATIVE);
         }
+        // Uwaga: NIE ukrywamy tu slotow gracza po raz drugi.
+        //
+        // Bylo tu wlasne suppressHotbarSlots() z anonimowym Slotem, ktore
+        // robilo dokladnie to samo co suppressPlayerSlots() z klasy bazowej
+        // (i to po nim), a dodatkowo nie rozpoznawalo juz ukrytego slotu -
+        // przez co przy kazdym init() zawijalo slot w nowy wrapper.
         super.init();
-        suppressHotbarSlots();
-    }
-
-    private void suppressHotbarSlots() {
-        if (this.menu == null || this.minecraft == null || this.minecraft.player == null) return;
-        for (int i = 0; i < this.menu.slots.size(); i++) {
-            Slot s = this.menu.slots.get(i);
-            if (isPlayerInventorySlot(s)) {
-                // Replace with a dummy inactive slot offscreen
-                final Slot orig = s;
-                this.menu.slots.set(i, new Slot(orig.container, orig.getContainerSlot(), -10000, -10000) {
-                    @Override
-                    public boolean isActive() {
-                        return false;
-                    }
-                    @Override
-                    public boolean isHighlightable() {
-                        return false;
-                    }
-                });
-            }
-        }
     }
 
 
@@ -142,12 +108,9 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        // Blank out the bottom hotbar area (x: 8 to 170, y: 111 to 130) with solid GUI gray
-        int x1 = this.leftPos + 8;
-        int y1 = this.topPos + 111;
-        int x2 = this.leftPos + 170;
-        int y2 = this.topPos + 130;
-        graphics.fill(x1, y1, x2, y2, 0xFFC6C6C6);
+        // Pasek hotbara jest nieuzywany - zamalowujemy go wspolnym helperem
+        // z klasy bazowej, zeby geometria nie rozjechala sie z reszta GUI.
+        drawHotbarCover(graphics, 0xFFC6C6C6);
     }
 
     /**
