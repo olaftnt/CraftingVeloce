@@ -298,6 +298,29 @@ public final class VeloceCraftingCache {
     // ------------------------------------------------------------------
 
     /**
+     * Tick gry, w ktorym ostatnio zrobilismy krok pracy.
+     *
+     * <p><b>Po co.</b> {@code tickCraftingCache} wola ten cache KAZDY terminal
+     * w sieci, co 5 tickow. Przy dwoch terminalach cache wykonywal dwa kroki
+     * w tym samym ticku - czyli budzet 10 ms zamienial sie w 20 ms, a przy
+     * wiekszej liczbie terminali rosl dalej. Blokada "raz na tick" trzyma
+     * budzet tam, gdzie ma byc, niezaleznie od liczby terminali.
+     *
+     * @return true gdy w tym ticku juz pracowalismy (wolajacy ma wyjsc)
+     */
+    private boolean claimTick(ServerLevel level) {
+        long now = level.getGameTime();
+        if (now == lastTickedGameTime) {
+            return true;
+        }
+        lastTickedGameTime = now;
+        return false;
+    }
+
+    /** Ostatni tick gry, w ktorym zrobilismy krok. */
+    private long lastTickedGameTime = Long.MIN_VALUE;
+
+    /**
      * Krok pracy, gdy nikt nie patrzy.
      *
      * <p>Robimy wtedy DOKLADNIE jedna rzecz: utrzymujemy force-loady chunkow
@@ -310,6 +333,9 @@ public final class VeloceCraftingCache {
      * to, zeby {@code tick} wyszedl w pierwszej instrukcji.
      */
     public void tickIdle(ServerLevel level) {
+        if (claimTick(level)) {
+            return;
+        }
         long start = System.nanoTime();
         phaseScanNanos = 0L;
         phaseChunksNanos = 0L;
@@ -339,6 +365,9 @@ public final class VeloceCraftingCache {
      */
     public void tick(ServerLevel level, Set<Item> enabledItems,
                      Map<Item, ResourceLocation> preferred) {
+        if (claimTick(level)) {
+            return;
+        }
         long start = System.nanoTime();
         lastBatchSize = 0;
         // Rozbicie czasu na fazy - bez tego watchdog mowi tylko "wolno",
