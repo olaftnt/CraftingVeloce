@@ -84,30 +84,30 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
     public static final MapCodec<VelocePipeBlock> CODEC = ChestBlock.simpleCodec(properties -> new VelocePipeBlock());
 
-    // Precise VoxelShapes matching the pipe models.
-    // Uwaga: te wymiary MUSZA byc zgodne z modelami w assets/.../models/block/
-    // (pipe_core.json, pipe_part.json, pipe_extract.json). Rura jest 8x8 px
-    // (4..12), a nozzle 10x10 px (3..13) - czyli wiekszy od rury.
+    // Precise VoxelShapes matching the pipe models (przywrocone do 6x6).
+    // Wymiary MUSZA byc zgodne z modelami w assets/.../models/block/
+    // (pipe_core.json, pipe_part.json, pipe_extract.json).
+    // Rura jest 6x6 px (5..11), a nozzle 8x8 px (4..12).
     //
-    // MIN/MAX to znormalizowane granice przekroju rury (4/16 i 12/16).
+    // MIN/MAX to znormalizowane granice przekroju rury (5/16 i 11/16).
     // Uzywa ich getClickedSide() do rozpoznania, w ktore ramie trafil klucz.
-    public static final double MIN = 4.0D / 16.0D;
-    public static final double MAX = 12.0D / 16.0D;
+    public static final double MIN = 5.0D / 16.0D;
+    public static final double MAX = 11.0D / 16.0D;
 
-    public static final VoxelShape SHAPE_CORE = Block.box(4.0D, 4.0D, 4.0D, 12.0D, 12.0D, 12.0D);
-    public static final VoxelShape SHAPE_NORTH = Block.box(4.0D, 4.0D, 0.0D, 12.0D, 12.0D, 4.0D);
-    public static final VoxelShape SHAPE_SOUTH = Block.box(4.0D, 4.0D, 12.0D, 12.0D, 12.0D, 16.0D);
-    public static final VoxelShape SHAPE_WEST = Block.box(0.0D, 4.0D, 4.0D, 4.0D, 12.0D, 12.0D);
-    public static final VoxelShape SHAPE_EAST = Block.box(12.0D, 4.0D, 4.0D, 16.0D, 12.0D, 12.0D);
-    public static final VoxelShape SHAPE_UP = Block.box(4.0D, 12.0D, 4.0D, 12.0D, 16.0D, 12.0D);
-    public static final VoxelShape SHAPE_DOWN = Block.box(4.0D, 0.0D, 4.0D, 12.0D, 4.0D, 12.0D);
+    public static final VoxelShape SHAPE_CORE = Block.box(5.0D, 5.0D, 5.0D, 11.0D, 11.0D, 11.0D);
+    public static final VoxelShape SHAPE_NORTH = Block.box(5.0D, 5.0D, 0.0D, 11.0D, 11.0D, 5.0D);
+    public static final VoxelShape SHAPE_SOUTH = Block.box(5.0D, 5.0D, 11.0D, 11.0D, 11.0D, 16.0D);
+    public static final VoxelShape SHAPE_WEST = Block.box(0.0D, 5.0D, 5.0D, 5.0D, 11.0D, 11.0D);
+    public static final VoxelShape SHAPE_EAST = Block.box(11.0D, 5.0D, 5.0D, 16.0D, 11.0D, 11.0D);
+    public static final VoxelShape SHAPE_UP = Block.box(5.0D, 11.0D, 5.0D, 11.0D, 16.0D, 11.0D);
+    public static final VoxelShape SHAPE_DOWN = Block.box(5.0D, 0.0D, 5.0D, 11.0D, 5.0D, 11.0D);
 
-    public static final VoxelShape SHAPE_EXTRACT_NORTH = Shapes.or(SHAPE_NORTH, Block.box(3.0D, 3.0D, 0.0D, 13.0D, 13.0D, 1.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_SOUTH = Shapes.or(SHAPE_SOUTH, Block.box(3.0D, 3.0D, 15.0D, 13.0D, 13.0D, 16.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_WEST = Shapes.or(SHAPE_WEST, Block.box(0.0D, 3.0D, 3.0D, 1.0D, 13.0D, 13.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_EAST = Shapes.or(SHAPE_EAST, Block.box(15.0D, 3.0D, 3.0D, 16.0D, 13.0D, 13.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_UP = Shapes.or(SHAPE_UP, Block.box(3.0D, 15.0D, 3.0D, 13.0D, 16.0D, 13.0D)).optimize();
-    public static final VoxelShape SHAPE_EXTRACT_DOWN = Shapes.or(SHAPE_DOWN, Block.box(3.0D, 0.0D, 3.0D, 13.0D, 1.0D, 13.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_NORTH = Shapes.or(SHAPE_NORTH, Block.box(4.0D, 4.0D, 0.0D, 12.0D, 12.0D, 1.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_SOUTH = Shapes.or(SHAPE_SOUTH, Block.box(4.0D, 4.0D, 15.0D, 12.0D, 12.0D, 16.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_WEST = Shapes.or(SHAPE_WEST, Block.box(0.0D, 4.0D, 4.0D, 1.0D, 12.0D, 12.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_EAST = Shapes.or(SHAPE_EAST, Block.box(15.0D, 4.0D, 4.0D, 16.0D, 12.0D, 12.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_UP = Shapes.or(SHAPE_UP, Block.box(4.0D, 15.0D, 4.0D, 12.0D, 16.0D, 12.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_DOWN = Shapes.or(SHAPE_DOWN, Block.box(4.0D, 0.0D, 4.0D, 12.0D, 1.0D, 12.0D)).optimize();
 
     public static final VoxelShape[] SIDE_SHAPES = new VoxelShape[] {
             SHAPE_DOWN, SHAPE_UP, SHAPE_NORTH, SHAPE_SOUTH, SHAPE_WEST, SHAPE_EAST

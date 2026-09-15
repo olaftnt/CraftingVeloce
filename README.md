@@ -266,147 +266,36 @@ Wszystkie ekrany rozszerzają `CreativeModeInventoryScreen` i:
 
 ---
 
-## 🔍 Transparency / render_type (WAŻNE dla animowanych itemów)
+## 🔍 Transparency / render_type — WYŁĄCZONE
 
-**Wszystkie bloki Veloce muszą obsługiwać przezroczystość** — w przyszłości będziemy renderować
-animowane itemy *wewnątrz* bloków, więc każdy block model ma ustawiony `render_type`.
+**Przezroczystość bloków została celowo wyłączona.** Wszystkie bloki Veloce
+(rura, extractor, crafting table, terminal) renderują się jako `solid`.
 
-### Dwa mechanizmy (używamy obu)
+Usunięte zostały **oba** mechanizmy:
+1. `"render_type": "minecraft:translucent"` z wszystkich modeli w `assets/.../models/block/`
+2. rejestracja `ItemBlockRenderTypes.setRenderLayer(...)` z `CraftingVeloceMod`
 
-1. **Model JSON `render_type`** (główny, kanoniczny dla 1.21.1) — dziedziczony przez item modele:
-   - `assets/craftingveloce/models/block/pipe_core.json` → `"render_type": "minecraft:translucent"`
-   - `assets/craftingveloce/models/block/pipe_part.json` → `translucent`
-   - `assets/craftingveloce/models/block/pipe_extract.json` → `translucent`
-   - `assets/craftingveloce/models/block/veloce_extractor.json` → `translucent`
-   - `assets/craftingveloce/models/block/veloce_crafting_table.json` → `translucent`
-   - `assets/craftingveloce/models/block/veloce_tom_terminal.json` → `translucent`
+### ⚠️ Jeśli chcesz przywrócić przezroczystość
 
-2. **Java** — `CraftingVeloceMod` w `FMLClientSetupEvent` rejestruje render layer dla
-   `VELOCE_PIPE`, `VELOCE_EXTRACTOR`, `VELOCE_CRAFTING_TABLE`, `VELOCE_TOM_TERMINAL`.
+Potrzebne są **oba** elementy powyżej. Dodatkowo **tekstura musi być pod to przygotowana**:
 
-### Dlaczego `translucent`, a nie `cutout`?
+Bez `render_type` piksele z `alpha == 0` renderują się jako **czarne**, nie znikają.
+Tekstura rury (`veloce_pipe.png`) jest tak zaprojektowana, że **żaden obszar używany
+przez UV nie zawiera przezroczystych pikseli** — dlatego rura wygląda poprawnie
+jako solid. Sprawdź to przed zmianą UV:
 
-`cutout` daje twardą, 1-bitową alfę (piksel albo w pełni widoczny, albo wcale) — źle wygląda
-przy animowanych itemach renderowanych wewnątrz bloku, bo krawędzie się „szarpią".
-`translucent` obsługuje stopniowaną alfę i poprawne mieszanie kolorów.
-
----
-
-## 🧵 Tekstura i UV rury (`veloce_pipe`) — ciągłość na zakrętach
-
-### Problem, który był wcześniej
-
-Oryginalne UV było **niespójne**, przez co na zakrętach wzór się rozjeżdżał:
-
-| Model | Ściana | Stare UV | Rozmiar |
-|-------|--------|----------|---------|
-| `pipe_core` | wszystkie 6 ścian | `[10,0,16,6]` | 6×6 |
-| `pipe_part` | north/south (przód) | `[10,0,16,6]` | 6×6 |
-| `pipe_part` | east/west/up/down (boki) | `[0,0,5,6]` + `rotation:90` | 5×6 |
-
-Rdzeń używał **tego samego regionu na wszystkich 6 ścianach**, a boki ramienia brały **inny,
-prostokątny** region. Na zakręcie przód rdzenia (region `[10..16]`) stykał się z bokiem ramienia
-(region `[0..5]`) → wzór się łamał, opaska nie była ciągła.
-
-### Rozwiązanie: symetryczne regiony 8×8
-
-Rura ma przekrój **kwadratowy 8×8 px**, więc każda ściana wzdłuż rury jest dokładnie 8×8.
-Wszystkie ściany `pipe_core` i `pipe_part` mapują **ten sam region `[0,0,8,8]`**.
-
-Wzorzec jest **symetryczny lustrzanie względem obu osi**, więc obrót o 90° (zakręty, ramiona
-w różnych osiach) daje identyczny obraz:
-
-```
-        dlugosc ->
-        0  1  2  3  4  5  6  7
-szer 0  K  K  K  K  K  K  K  K      K = czarna opaska (opaque)
-szer 1  K  K  K  K  K  K  K  K      . = przezroczyste okno
-szer 2  K  K  .  .  .  .  K  K
-szer 3  K  K  .  .  .  .  K  K
-szer 4  K  K  .  .  .  .  K  K
-szer 5  K  K  .  .  .  .  K  K
-szer 6  K  K  K  K  K  K  K  K
-szer 7  K  K  K  K  K  K  K  K
+```python
+# dla każdej ściany: policz puste piksele w prostokącie UV
+n = sum(1 for y in range(v0, v1) for x in range(u0, u1) if alpha(x, y) == 0)
+# n musi być 0, inaczej solid render pokaże czarne pasy
 ```
 
-- Ramka opaski 2 px dookoła + **okno 4×4** na środku każdej ściany
-  (zależność: `rozmiar ściany = okno + 2 × opaska`, czyli `8 = 4 + 2×2`)
-- **Paleta: jedna nieprzezroczysta barwa** — czerń `(18,18,20)` + przezroczystość.
-  Bez fioletu, bez szarości, bez rozjaśnień — celowo, decyzja projektowa.
-- kolumny 0 i 7 to opaska → opaska biegnie ciągle wzdłuż rury
-- `rotation: 90` **usunięte** — przy kwadratowym regionie mapowanie jest 1:1,
-  a rotacja łamałaby symetrię
+### Historia (dlaczego wracamy do solid)
 
-### Trzy regiony tekstury (atlas 16×16)
-
-| Region | Zakres | Przeznaczenie |
-|--------|--------|---------------|
-| **A** | `[0,0 .. 8,8]` | **LICO** rury (przekrój) — pełna ramka + okno 4×4 |
-| **B** | `[8,0 .. 16,8]` | **BOK** rury (wzdłuż osi) — opaska tylko po bokach |
-| **C** | `[0,8 .. 8,16]` | **GŁOWICA** (nozzle) — ramka + okno 4×4 |
-
-Rozdzielenie lica i boku jest **konieczne**, żeby rura nie była „podzielona na kwadraty":
-
-- **Lico** (`north`/`south` ramienia) to przekrój poprzeczny — tam rura nie biegnie
-  wzdłuż, więc potrzebna jest pełna ramka. UV `[0,0,8,8]`.
-- **Bok** (`east`/`west`/`up`/`down` ramienia) biegnie **wzdłuż** rury. Gdyby miał
-  zamkniętą ramkę, na **każdym styku bloków** powstałby czarny pasek w poprzek rury.
-  Dlatego okno jest tam **otwarte na krawędziach** (kolumny 8 i 15 przezroczyste
-  w wierszach 2–5), a opaska biegnie tylko po bokach. UV `[8,0,12,8]`
-  (4 px = długość ramienia, mapowanie 1:1).
-
-Efekt: dwa sąsiednie bloki dają **jedno ciągłe okno** wzdłuż rury — bez czarnego podziału.
-
-### Geometria rury i hitbox (WAŻNE — trzy miejsca muszą być spójne)
-
-Przy zmianie grubości rury trzeba zaktualizować **wszystkie** miejsca, inaczej
-rura będzie grubsza wizualnie, ale nie da się w nią kliknąć:
-
-| Co | Gdzie | Wartość |
-|----|-------|---------|
-| Model | `pipe_core.json`, `pipe_part.json` | `from 4..12` |
-| UV lica | `pipe_core`, `pipe_part` north/south | `[0,0,8,8]` |
-| UV boków | `pipe_part` east/west/up/down | `[8,0,12,8]` |
-| UV głowicy | `pipe_extract` | `[0,8,8,16]` / `[0,8,1,16]` |
-| Hitbox | `VelocePipeBlock.SHAPE_*` | `Block.box(4,…,12,…)` |
-| Raycast klucza | `VelocePipeBlock.MIN/MAX` | `4.0/16` … `12.0/16` |
-
-`MIN`/`MAX` są znormalizowane (4/16 = `0.25`, 12/16 = `0.75`) i służą do rozpoznania,
-w które ramię trafił klucz. **Wcześniej były zahardkodowane jako `0.3125`/`0.6875`**
-(stara rura 5..11) — po pogrubieniu zostały zastąpione stałymi.
-
-Nozzle (`pipe_extract`) jest **10×10 px (`3..13`)**, czyli o 1 px większy od rury
-z każdej strony — dzięki temu głowica jest wyraźnie widoczna. Jego hitbox
-(`SHAPE_EXTRACT_*`) to `Shapes.or(SHAPE_*, Block.box(3,…,13,…))`.
-
-### Testy symetrii (uruchamiane ręcznie)
-
-Przy zmianie wzoru sprawdź, że przechodzą:
-1. **Symetria alphy** pozioma i pionowa — decyduje o tym, gdzie widać przez rurę
-2. **Symetria koloru** pozioma i pionowa — przy jednokolorowej palecie przechodzi w pełni,
-   bo wzór nie ma żadnego asymetrycznego akcentu
-3. **Ciągłość opaski** — kolumny 0 i 7 opaque w każdym wierszu
-4. **Okna przezroczyste** — wszystkie 16 pikseli okna (4×4) ma `alpha == 0`
-5. **Liczba kolorów** — dokładnie 1 nieprzezroczysty (czerń); łapie przypadkowe
-   dodanie fioletu, szarości lub rozjaśnień
-6. **Ciągłość wzdłuż rury** — symuluj 3 segmenty ramion i sprawdź, że w wierszach
-   okna regionu B nie ma ani jednego czarnego piksela (inaczej wróci „podział na kwadraty")
-
----
-
-## 🔍 Transparency / render_type (WAŻNE dla animowanych itemów)
-
-### ⚠️ Pułapki
-
-- `ItemBlockRenderTypes.setRenderLayer()` ma guard `checkClientLoading()` w
-  `ClientModLoader.isLoading()`. Wywołanie **poza** client setup rzuca
-  `IllegalStateException: Render layers can only be set during client loading!`
-- `RenderShape` musi zostać `MODEL` (tak jest w `VelocePipeBlock`, `VeloceExtractorBlock`,
-  `VeloceCraftingTableBlock`) — przezroczystość kontroluje render type, nie render shape.
-- Modele używające vanilla parenta `block/cube_all` **nie mogą** polegać na dziedziczeniu,
-  bo ten parent jest nieprzezroczysty — `render_type` trzeba wpisać w naszym modelu-dziecku.
-
----
+Przezroczysta rura wymagała `translucent`, ale kolejne próby poprawy UV
+(ciągłość na zakrętach, brak czarnych pasków na stykach) nie dały zadowalającego
+efektu wizualnego. Zdecydowano o powrocie do solidnej rury 6×6 z oryginalną
+teksturą. Wcześniejsze wersje są w historii gita (commit `8553ae5` i wcześniejsze).
 
 ## 🚧 Co jeszcze do zrobienia / Known Issues
 
@@ -414,10 +303,13 @@ Przy zmianie wzoru sprawdź, że przechodzą:
 - **Loot tables** — bloki po zniszczeniu nie dropują się (brak `data/craftingveloce/loot_table/blocks/`)
 - **Crafting recipes** — brak receptur craftu dla bloków (można tylko creative)
 - **Textures** — `veloce_crafting_table.png` to przebarwiona wersja extractora (placeholder)
-- **`veloce_pipe.png` — tekstura użytkownika** — czarna ramka + okno 4×4 na każdej ścianie.
-  Zastąpiła popsutą wersję (100 px `(0,0,0)` bez danych kolorystycznych) oraz roboczą
-  wersję agenta. `veloce_pipe-kopia.png` to najstarsza kolorowa wersja (backup).
-- **UV rury zmienione na wspólny region `[0,0,6,6]`** — jeśli w przyszłości dodasz nowy element
-  rury, użyj tego samego regionu i **nie dodawaj `rotation`** (region jest kwadratowy i
-  symetryczny; rotacja łamie ciągłość na zakrętach).
+- **Rura: stan obecny** — geometria `5..11` (6×6), render `solid`, tekstura
+  `veloce_pipe.png` = kopia `veloce_pipe-kopia.png` (fiolet + szarości, pełne wypełnienie).
+  Wszystkie obszary używane przez UV są wypełnione, więc **nie ma czarnych pasów**.
+  ⚠️ Nie zamieniaj tej tekstury na wersję z przezroczystymi pikselami dopóki
+  render jest `solid` — alpha 0 renderuje się wtedy jako czerń.
+- **UV rury: `[10,0,16,6]` (rdzeń + lica ramion) i `[0,0,5,6]` (boki ramion)** —
+  to oryginalne UV. Ma ono tę wadę, że rdzeń i ramię używają różnych regionów,
+  więc wzór może się rozjeżdżać na zakrętach. Próby naprawy (commity `f3feac1`–`8553ae5`)
+  zostały wycofane razem z przezroczystością.
 - **src/moze_intel/** — patchowane klasy InventoryExchange moda, logika wyłączenia EMC tooltipów — trzeba zdecydować jak czysto to rozwiązać (osobny JAR patch?)

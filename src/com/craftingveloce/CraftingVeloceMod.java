@@ -50,31 +50,16 @@ public class CraftingVeloceMod {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
         });
 
-        modEventBus.addListener(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent.class, event -> {
-            event.enqueueWork(() -> {
-                // All Veloce blocks must support transparency. The primary mechanism is the
-                // "render_type" field in each block model JSON; registering here as well keeps the
-                // chunk render type set correct even for models that inherit an opaque parent.
-                // TRANSLUCENT (not CUTOUT) is required so that animated items rendered inside the
-                // blocks blend smoothly instead of being reduced to 1-bit alpha.
-                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
-                        VeloceRegistry.VELOCE_PIPE.get(),
-                        net.minecraft.client.renderer.RenderType.translucent()
-                );
-                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
-                        VeloceRegistry.VELOCE_EXTRACTOR.get(),
-                        net.minecraft.client.renderer.RenderType.translucent()
-                );
-                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
-                        VeloceRegistry.VELOCE_CRAFTING_TABLE.get(),
-                        net.minecraft.client.renderer.RenderType.translucent()
-                );
-                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
-                        VeloceRegistry.VELOCE_TOM_TERMINAL.get(),
-                        net.minecraft.client.renderer.RenderType.translucent()
-                );
-            });
-        });
+        // UWAGA: przezroczystosc blokow zostala CELOWO WYLACZONA.
+        // Usunieto zarowno "render_type" z modeli w assets/.../models/block/,
+        // jak i rejestracje render layeru ponizej. Wszystkie bloki Veloce
+        // renderuja sie teraz jako solid (nieprzezroczyste).
+        //
+        // Jesli kiedys bedziesz chcial wrocic do przezroczystosci, potrzebne sa OBA:
+        //   1. "render_type": "minecraft:translucent" w kazdym modelu bloku
+        //   2. rejestracja ponizej (ItemBlockRenderTypes.setRenderLayer)
+        // Sam render_type w JSON wystarcza dla wiekszosci przypadkow, ale
+        // rejestracja w kodzie gwarantuje poprawny chunk render type set.
 
         modEventBus.addListener(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent.class, event -> {
             event.registerBlockEntity(
