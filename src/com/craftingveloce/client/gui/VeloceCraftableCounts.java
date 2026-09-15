@@ -201,29 +201,6 @@ public final class VeloceCraftableCounts {
         // Niepelna odpowiedz = trzeba dopytac (patrz pole partial).
         this.partial = !complete;
 
-        // Diagnostyka: ile ZADANYCH itemow ma wartosc, ile ma zero, a ilu brak.
-        // To rozroznia dwie zupelnie rozne przyczyny "brak liczby":
-        //   * brak wpisu  = item nie zostal policzony (zadanie nie objelo go),
-        //   * wpis 0      = policzony i naprawde nie da sie go zrobic.
-        int withValue = 0;
-        int zero = 0;
-        Map<Item, Long> absent = new HashMap<>();
-        for (Item it : lastRequested) {
-            Long v = counts.get(it);
-            if (v == null) {
-                absent.put(it, 0L);
-            } else if (v == 0L) {
-                zero++;
-            } else {
-                withValue++;
-            }
-        }
-        com.craftingveloce.util.VeloceLog.Gui.detail(
-                com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                "counts for %d requested item(s): %d with a value, %d with ZERO, "
-                        + "%d without any entry (complete=%s) -> %s",
-                lastRequested.size(), withValue, zero, absent.size(), complete,
-                sample(new ArrayList<>(absent.keySet()), 8));
         if (complete) {
             for (Item it : lastRequested) {
                 counts.remove(it);
@@ -236,5 +213,37 @@ public final class VeloceCraftableCounts {
             // wracaly.
             counts.putAll(craftable);
         }
+        reportState(complete);
+    }
+
+    /**
+     * Log stanu PO scaleniu odpowiedzi: ile ZADANYCH itemow ma wartosc, ile ma
+     * zero, a ilu brakuje.
+     *
+     * <p>Rozroznia dwie zupelnie rozne przyczyny "brak liczby": brak wpisu =
+     * item nie zostal policzony (zadanie go nie objelo), zero = policzony
+     * i naprawde nie da sie go zrobic. Wczesniej log byl PRZED scaleniem, wiec
+     * pokazywal stan sprzed odpowiedzi i wprowadzal w blad.
+     */
+    private void reportState(boolean complete) {
+        int withValue = 0;
+        int zero = 0;
+        java.util.List<Item> absent = new java.util.ArrayList<>();
+        for (Item it : lastRequested) {
+            Long v = counts.get(it);
+            if (v == null) {
+                absent.add(it);
+            } else if (v == 0L) {
+                zero++;
+            } else {
+                withValue++;
+            }
+        }
+        com.craftingveloce.util.VeloceLog.Gui.detail(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "counts AFTER merge for %d requested item(s): %d with a value, "
+                        + "%d with ZERO, %d without any entry (complete=%s) -> %s",
+                lastRequested.size(), withValue, zero, absent.size(), complete,
+                sample(absent, 8));
     }
 }

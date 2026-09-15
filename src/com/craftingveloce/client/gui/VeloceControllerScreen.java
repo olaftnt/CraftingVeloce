@@ -301,6 +301,8 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         if (this.minecraft == null || this.minecraft.player == null || this.menu == null) {
             return;
         }
+        // Jak w terminalu: puste sloty = brak zamowienia = brak liczb.
+        ensureGridItems();
         craftableCounts.request(controllerPos, this.menu.slots,
                 this::isPlayerInventorySlot, force);
     }

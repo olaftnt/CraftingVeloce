@@ -160,6 +160,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         if (this.minecraft == null || this.minecraft.player == null || this.menu == null) {
             return;
         }
+        // Sloty moga byc puste, mimo ze itemy sa wyswietlone (patrz
+        // ensureGridItems) - wtedy nie ma czego zamowic i liczby nie pojawiaja
+        // sie, dopoki nie przelaczy sie zakladki albo frazy.
+        ensureGridItems();
         this.craftable.request(terminalPos, this.menu.slots, this::isPlayerSlot, force);
     }
 

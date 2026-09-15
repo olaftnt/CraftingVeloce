@@ -1150,6 +1150,48 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
+     * Czy w slotach siatki jest COKOLWIEK (poza slotami gracza).
+     *
+     * <p>Zadanie liczb budujemy ze slotow, a one bywaja puste mimo ze itemy sa
+     * WYSWIETLONE - wanilia rysuje siatke z listy {@code items}, a sloty
+     * wypelnia dopiero {@code scrollTo}. W logu gracza widzielismy to wprost:
+     * <pre>
+     *   craftable counts: NIC do policzenia (slots=47, gracza=4, puste=43)
+     * </pre>
+     * Czyli zero zamowien i zero liczb, dopoki nie przelaczy sie zakladki albo
+     * frazy. Dlatego przed zamowieniem sprawdzamy ten stan i - gdy trzeba -
+     * uzupelniamy sloty z listy itemow.
+     */
+    protected boolean hasGridItems() {
+        if (this.menu == null) {
+            return false;
+        }
+        for (Slot slot : this.menu.slots) {
+            if (slot != null && slot.hasItem() && !isPlayerInventorySlot(slot)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Upewnia sie, ze sloty siatki odpowiadaja wyswietlanej liscie.
+     *
+     * <p>To samo, co robi zmiana zakladki czy frazy ({@link #applyItemFilter()}
+     * przepisuje liste i wola {@code scrollTo}), tylko wolane wtedy, gdy
+     * zauwazymy, ze sloty sa puste - inaczej liczby "+N" nie mialyby skad
+     * powstac.
+     */
+    protected void ensureGridItems() {
+        if (!hasGridItems()) {
+            com.craftingveloce.util.VeloceLog.Gui.detail(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "sloty siatki byly puste - uzupelniam je z listy itemow");
+            applyItemFilter();
+        }
+    }
+
+    /**
      * Tooltip itemu BEZ linii kategorii i tagow, ktore dokleja creative.
      *
      * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> W zakladkach
