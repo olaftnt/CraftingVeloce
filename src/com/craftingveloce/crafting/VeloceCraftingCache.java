@@ -670,6 +670,29 @@ public final class VeloceCraftingCache {
         com.craftingveloce.network.pipe.VeloceChunkLoader.unfreeze();
     }
 
+    /**
+     * Rozladowanie jednego swiata (np. wyjscie z Netheru).
+     *
+     * <p><b>Celowo NIE ustawia flagi "serwer sie zamyka".</b> Wczesniej ten
+     * przypadek szedl ta sama droga co zamkniecie serwera, wiec rozladowanie
+     * jednego wymiaru wylaczalo force-loading wszystkim pozostalym - i nic tego
+     * nie cofalo, bo {@code LevelEvent.Load} dla Nadswiata juz nie poleci.
+     *
+     * <p>Czyscimy tez ksiegowosc {@code forcedChunks}: loader wlasnie zwolnil
+     * te chunki, wiec gdybysmy zostawili je w zbiorach, po ponownym wczytaniu
+     * swiata {@code maintainForcedChunks} uznalby, ze juz je trzyma, i nigdy
+     * by ich nie wymusil z powrotem.
+     */
+    public static void onLevelUnloaded(ServerLevel level) {
+        for (VeloceCraftingCache cache : CACHES.values()) {
+            cache.forcedChunks.clear();
+        }
+        int released = com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(level);
+        com.craftingveloce.network.pipe.VeloceChunkLoader.releaseAll(level);
+        VeloceLog.Network.detail(VeloceLog.Side.SERVER,
+                "level unloaded: released %d forced chunk(s), caches kept", released);
+    }
+
     /** Zwalnia force-loady wszystkich sieci. Wolane przy zamykaniu serwera. */
     public static void releaseAll(ServerLevel level) {
         shuttingDown = true;

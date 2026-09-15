@@ -156,7 +156,10 @@ public class CraftingVeloceMod {
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                         com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
                                 .clearPendingRebuilds();
-                        com.craftingveloce.crafting.VeloceCraftingCache.releaseAll(sl);
+                        // Rozladowanie wymiaru != zamkniecie serwera. Uzywamy
+                        // lżejszej sciezki, zeby nie wylaczyc force-loadingu
+                        // pozostalym swiatom na stale.
+                        com.craftingveloce.crafting.VeloceCraftingCache.onLevelUnloaded(sl);
                     }
                 });
 
