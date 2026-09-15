@@ -134,6 +134,7 @@ public final class VeloceAutoCrafter {
         Map<Item, Long> stock = snapshotStock(ctx);
         Plan plan = new Plan();
         if (!plan(level, ctx, item, missing, stock, plan, new HashSet<>(), 0)) {
+        logPlanFailure(level, ctx, item, missing, stock);
             return CraftResult.fail("brak bazowych składników");
         }
 
@@ -158,6 +159,35 @@ public final class VeloceAutoCrafter {
         }
         Map<Item, Long> stock = new HashMap<>(network.getAllItemCounts(level));
         return maxCraftable(level, item, stock, enabledItems, new HashSet<>(), 0);
+    }
+
+    /**
+     * Loguje, dlaczego planowanie sie nie udalo: jakie sa receptury dla itemu
+     * i czego brakuje. Wlaczane tylko przy niepowodzeniu, wiec nie zasmieca
+     * loga w normalnej pracy.
+     */
+    private static void logPlanFailure(ServerLevel level, Context ctx, Item item,
+                                       int missing, Map<Item, Long> stock) {
+        var log = com.craftingveloce.CraftingVeloceMod.LOGGER;
+        log.info("[Veloce] craft {} x{} - PLAN NIEUDANY. Wlaczonych: {}, na stocku: {} roznych itemow",
+                item, missing, ctx.enabledItems.size(), stock.size());
+        var recipes = VeloceRecipeRegistry.getRecipesFor(level, item);
+        log.info("[Veloce]   receptur znalezionych dla {}: {}", item, recipes.size());
+        for (var r : recipes) {
+            StringBuilder sb = new StringBuilder();
+            for (var ing : r.ingredients()) {
+                var opts = ing.getItems();
+                if (opts.length == 0) {
+                    continue;
+                }
+                var first = opts[0];
+                long have = stock.getOrDefault(first.getItem(), 0L);
+                boolean en = ctx.isEnabled(first.getItem());
+                sb.append(first.getItem()).append("[ma=").append(have)
+                  .append(",on=").append(en).append("] ");
+            }
+            log.info("[Veloce]     {} -> {}", r.id(), sb.toString());
+        }
     }
 
     // ------------------------------------------------------------------
