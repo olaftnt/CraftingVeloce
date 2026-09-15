@@ -60,6 +60,18 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
         this.pos = pos;
 
         // 1. Filtry paliwa - widma, 3 kolumny x 2 rzedy.
+        //
+        // UWAGA: slot MUSI pozostac AKTYWNY (nie nadpisujemy isActive).
+        //
+        // BUG, ktory tu byl: ustawialem isActive() na false "bo ikony rysuje
+        // ekran". Ale AbstractContainerScreen.getSlotUnderMouse() pomija
+        // sloty nieaktywne - wiec taki slot nigdy nie trafial do slotClicked
+        // i KLIKNIECIE W FILTR NIE ROBILO NIC. Ekran rysowal filtry pieknie,
+        // a wybor itemu byl martwy.
+        //
+        // Ekstraktor robi to dobrze: zostawia slot aktywnym, a blokuje tylko
+        // mayPlace/mayPickup. Wtedy slot da sie najechac i kliknac, ale nic
+        // nie da sie do niego przelozyc - i o to chodzi.
         Container placeholders = new SimpleContainer(FILTER_SLOTS);
         for (int i = 0; i < FILTER_SLOTS; i++) {
             int col = i % 3;
@@ -72,8 +84,8 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
                 }
 
                 @Override
-                public boolean isActive() {
-                    return false;   // ikony rysuje ekran z danych BE
+                public boolean mayPickup(Player player) {
+                    return false;   // i nie zabieramy z nich przedmiotow
                 }
             });
         }
