@@ -743,6 +743,20 @@ public final class VeloceAutoCrafter {
                 int mark2 = plan.runs.size();
                 stock.put(optItem, 0L);
                 if (plan(level, enabled, preferred, optItem, lacking, stock, plan, visiting, depth + 1)) {
+                    // ZUZYJ TO, CO WLASNIE ZAPLANOWANO.
+                    //
+                    // BUG, ktory tu byl: po udanym planowaniu zostawialismy
+                    // w stocku WSZYSTKO, co powstalo, nie odejmujac `need`.
+                    // Wczesniej ustawilismy stock[optItem] = 0, wiec plan()
+                    // wyprodukowal `lacking` sztuk - ale nikt ich nie zuzywal.
+                    // Zostawaly wiec jako darmowy nadmiar i kolejne skladniki
+                    // (oraz kolejne iteracje bisekcji) widzialy itemy, ktorych
+                    // w rzeczywistosci nie ma.
+                    //
+                    // Objaw: z 2 klod terminal pokazywal 6 plotkow (naprawde 1),
+                    // a po skraftowaniu liczby "same sie zmienialy".
+                    long produced = stock.getOrDefault(optItem, 0L);
+                    stock.put(optItem, Math.max(0L, produced - need));
                     supplied = true;
                     break;
                 }
