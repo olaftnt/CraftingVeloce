@@ -65,6 +65,33 @@ public final class VeloceCraftableCounts {
     private static final int RETRY_INTERVAL_TICKS = 10;
     private int retryCooldown;
 
+    /**
+     * Czy zamowic liczby JESZCZE RAZ w pierwszym ticku po otwarciu ekranu.
+     *
+     * <p><b>Po co.</b> {@code init()} leci, zanim wanilia zdazy wypelnic sloty
+     * siatki (przy przywracanej frazie widzielismy to w logu: zadanie na 45
+     * pozycji, a liczby pojawialy sie tylko na czesci). Pierwsze zadanie idzie
+     * wiec od razu (zeby gracz nie czekal), a drugie - juz po wypelnieniu
+     * slotow - w najblizszym ticku.
+     */
+    private boolean repeatFirstRequest;
+
+    /** Probka nazw itemow do logu diagnostycznego (max {@code limit}). */
+    private static String sample(List<Item> items, int limit) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < items.size() && i < limit; i++) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(items.get(i)).getPath());
+        }
+        if (items.size() > limit) {
+            sb.append(", ...");
+        }
+        return sb.toString();
+    }
+
     /** Liczba do dorobienia dla tego itemu; 0 gdy brak wpisu. */
     public long get(Item item) {
         return counts.getOrDefault(item, 0L);
@@ -95,8 +122,20 @@ public final class VeloceCraftableCounts {
         List<Item> visible = new ArrayList<>();
         Set<Item> seen = new HashSet<>();
         int signature = 1;
+        // Liczniki do logu: bez nich nie da sie stwierdzic, CZY i CO klient
+        // w ogole objal zadaniem (gracz podejrzewal, ze request nie leci).
+        int totalSlots = 0;
+        int playerSlots = 0;
+        int emptySlots = 0;
+        int duplicates = 0;
         for (Slot slot : slots) {
+            totalSlots++;
             if (slot == null || !slot.hasItem() || isPlayerSlot.test(slot)) {
+                if (slot == null || !slot.hasItem()) {
+                    emptySlots++;
+                } else {
+                    playerSlots++;
+                }
                 continue;
             }
             Item item = slot.getItem().getItem();
@@ -114,13 +153,19 @@ public final class VeloceCraftableCounts {
             }
         }
         if (visible.isEmpty()) {
+            com.craftingveloce.util.VeloceLog.Gui.detail(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "craftable counts: NIC do policzenia (slots=%d, gracza=%d, puste=%d)",
+                    totalSlots, playerSlots, emptySlots);
             return;
         }
         // Ponawiamy, dopoki poprzednia odpowiedz byla niepelna - inaczej itemy
         // z ogona listy nigdy nie doczekalyby sie przeliczenia. Z throttlem,
         // bo kazde zadanie kosztuje serwer do 25 ms.
         boolean retry = this.partial && --this.retryCooldown <= 0;
-        if (!force && !retry && initialRequestSent && signature == lastSignature) {
+        boolean firstRepeat = this.repeatFirstRequest;
+        this.repeatFirstRequest = false;
+        if (!force && !retry && !firstRepeat && initialRequestSent && signature == lastSignature) {
             return;
         }
         this.retryCooldown = RETRY_INTERVAL_TICKS;
@@ -137,6 +182,7 @@ public final class VeloceCraftableCounts {
         initialRequestSent = false;
         partial = false;
         retryCooldown = 0;
+        repeatFirstRequest = true;
     }
 
     /**
@@ -154,6 +200,30 @@ public final class VeloceCraftableCounts {
     public void update(Map<Item, Long> craftable, boolean complete) {
         // Niepelna odpowiedz = trzeba dopytac (patrz pole partial).
         this.partial = !complete;
+
+        // Diagnostyka: ile ZADANYCH itemow ma wartosc, ile ma zero, a ilu brak.
+        // To rozroznia dwie zupelnie rozne przyczyny "brak liczby":
+        //   * brak wpisu  = item nie zostal policzony (zadanie nie objelo go),
+        //   * wpis 0      = policzony i naprawde nie da sie go zrobic.
+        int withValue = 0;
+        int zero = 0;
+        Map<Item, Long> absent = new HashMap<>();
+        for (Item it : lastRequested) {
+            Long v = counts.get(it);
+            if (v == null) {
+                absent.put(it, 0L);
+            } else if (v == 0L) {
+                zero++;
+            } else {
+                withValue++;
+            }
+        }
+        com.craftingveloce.util.VeloceLog.Gui.detail(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "counts for %d requested item(s): %d with a value, %d with ZERO, "
+                        + "%d without any entry (complete=%s) -> %s",
+                lastRequested.size(), withValue, zero, absent.size(), complete,
+                sample(new ArrayList<>(absent.keySet()), 8));
         if (complete) {
             for (Item it : lastRequested) {
                 counts.remove(it);
