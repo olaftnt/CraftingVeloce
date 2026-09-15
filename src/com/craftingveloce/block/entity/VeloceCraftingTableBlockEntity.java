@@ -148,9 +148,46 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         markUpdated();
     }
 
+    /**
+     * Craftery czekajace na rozgloszenie swojego stanu.
+     *
+     * <p><b>Po co kolejka.</b> Prawy klik na zakladce przelacza CALA grupe
+     * itemow, a klient wysyla wtedy jeden pakiet na item (przy duzej zakladce
+     * setki). Kazdy taki pakiet konczyl sie natychmiastowym rozgloszeniem
+     * {@code SyncCraftingTableStatePKT} do WSZYSTKICH graczy w swiecie, ze
+     * wszystkimi wylaczonymi itemami w srodku. Setki broadcastow po kilkanascie
+     * kilobajtow w ulamku sekundy to realne zacięcie.
+     *
+     * <p>Teraz zbieramy tylko "ten crafter sie zmienil" i wysylamy RAZ na tick
+     * (patrz {@link #flushPendingSyncs}). Slaby zbior, zeby nie trzymac
+     * block entity na sztywno.
+     */
+    private static final java.util.Set<VeloceCraftingTableBlockEntity> PENDING_SYNC =
+            java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+
+    /** Wysyla zalegle stany crafterow. Wolane z ticku serwera. */
+    public static void flushPendingSyncs(ServerLevel level) {
+        if (PENDING_SYNC.isEmpty()) {
+            return;
+        }
+        java.util.Iterator<VeloceCraftingTableBlockEntity> it = PENDING_SYNC.iterator();
+        while (it.hasNext()) {
+            VeloceCraftingTableBlockEntity be = it.next();
+            it.remove();
+            if (be.isRemoved()) {
+                continue;
+            }
+            if (be.getLevel() == level) {
+                be.syncToWatchers(level);
+            }
+        }
+    }
+
     private void markUpdated() {
-        if (level instanceof ServerLevel sl) {
-            syncToWatchers(sl);
+        if (level instanceof ServerLevel) {
+            // Nie wysylamy od razu - zbieramy i rozglaszamy raz na tick,
+            // zeby seria przelaczen nie zamienila sie w lawine broadcastow.
+            PENDING_SYNC.add(this);
         }
     }
 

@@ -45,7 +45,6 @@ public record CraftingTableToggleItemPKT(BlockPos pos, Item item) implements Cus
                 BlockEntity be = level.getBlockEntity(pkt.pos());
                 if (be instanceof VeloceCraftingTableBlockEntity ctBE) {
                     ctBE.toggleItem(pkt.item());
-                    ctBE.syncToWatchers(level);
                 }
             }
         });

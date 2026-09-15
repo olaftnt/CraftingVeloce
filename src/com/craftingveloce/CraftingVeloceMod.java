@@ -138,6 +138,10 @@ public class CraftingVeloceMod {
                 net.neoforged.neoforge.event.tick.LevelTickEvent.Post.class, event -> {
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                         com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl).tick(sl);
+                        // Stany crafterow rozglaszamy raz na tick, a nie raz
+                        // na kazde przelaczenie itemu.
+                        com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity
+                                .flushPendingSyncs(sl);
                     }
                 });
 

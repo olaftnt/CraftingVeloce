@@ -54,7 +54,6 @@ public record CraftingTableCycleRecipePKT(BlockPos pos, Item item, ResourceLocat
                 BlockEntity be = level.getBlockEntity(pkt.pos());
                 if (be instanceof VeloceCraftingTableBlockEntity ctBE) {
                     ctBE.setPreferredRecipe(pkt.item(), pkt.recipeId());
-                    ctBE.syncToWatchers(level);
                 }
             }
         });
