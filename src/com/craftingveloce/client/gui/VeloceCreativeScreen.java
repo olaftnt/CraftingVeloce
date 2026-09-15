@@ -665,35 +665,33 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Esc zawsze zamyka.
+        boolean typing = isTypingInTextField();
+
+        // GRACZ PISZE W WYSZUKIWARCE - klawisze naleza do pola.
+        //
+        // BUG: "E" zamykalo okno bezwarunkowo, wiec wpisanie litery "e"
+        // w pole wyszukiwania (zakladka SEARCH) wyrzucalo gracza z GUI.
+        // Podobnie Esc wychodzil z okna zamiast z samego pola.
+        if (typing) {
+            boolean isEscape = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+            boolean isInventoryKey = this.minecraft != null && this.minecraft.options != null
+                    && this.minecraft.options.keyInventory != null
+                    && this.minecraft.options.keyInventory.matches(keyCode, scanCode);
+            if (isEscape || isInventoryKey) {
+                // Esc najpierw zdejmuje fokus z pola; dopiero kolejne Esc
+                // zamyka okno. Tak dziala vanilla i tego oczekuje gracz.
+                this.setFocused(null);
+                return true;
+            }
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
+
+        // Esc zamyka (gdy nie piszemy).
         if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
             this.onClose();
             return true;
         }
-        // Klawisz ekwipunku (domyslnie E) zamyka - ALE NIE gdy gracz wlasnie
-        // pisze w wyszukiwarce.
-        //
-        // BUG: E zamykalo okno bezwarunkowo, wiec wpisanie litery "e" w pole
-        // wyszukiwania (zakladka SEARCH) wyrzucalo gracza z GUI. Teraz
-        // sprawdzamy, czy fokus jest na polu tekstowym - jesli tak, klawisz
-        // nalezy do pola i ma tam trafic.
-        if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE
-                || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER
-                || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER
-                || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_TAB) {
-            // Te klawisze obsluguje samo pole tekstowe (zatwierdzenie, wyjscie
-            // z pola) - nie zamykamy okna, gdy jest aktywne.
-            if (isTypingInTextField()) {
-                return super.keyPressed(keyCode, scanCode, modifiers);
-            }
-        }
-        if (isTypingInTextField()
-                && this.minecraft != null && this.minecraft.options != null
-                && this.minecraft.options.keyInventory != null
-                && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
-            // "e" jest zwyklym znakiem, gdy piszemy - niech idzie do pola.
-            return super.keyPressed(keyCode, scanCode, modifiers);
-        }
+        // Klawisz ekwipunku (domyslnie E) tez zamyka.
         if (this.minecraft != null && this.minecraft.options != null
                 && this.minecraft.options.keyInventory != null
                 && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
