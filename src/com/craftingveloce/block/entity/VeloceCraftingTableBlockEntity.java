@@ -1,5 +1,7 @@
 package com.craftingveloce.block.entity;
 
+import com.craftingveloce.util.VeloceLog;
+import com.craftingveloce.crafting.VeloceRecipeRegistry;
 import com.craftingveloce.init.VeloceRegistry;
 import com.craftingveloce.network.OpenCraftingTableScreenPKT;
 import com.craftingveloce.network.SyncCraftingTableStatePKT;
@@ -56,8 +58,65 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
      */
     private Set<Item> disabledItems = new HashSet<>();
 
-    /** Znacznik, czy blok byl juz kiedys zapisany (patrz {@link #loadAdditional}). */
-    private boolean loadedFromSave = false;
+    /**
+     * Migracja ze starego formatu (opt-in) czeka na wykonanie.
+     *
+     * <p><b>BUG, ktory to naprawia.</b> Migracja liczyla wyjatki jako
+     * "wszystko craftowalne MINUS lista wlaczonych ze starego zapisu" i robila
+     * to w {@code loadAdditional}. Ale tam {@code level} jest JESZCZE NULL -
+     * Minecraft tworzy block entity i wola {@code loadAdditional}, a poziom
+     * przypisuje dopiero potem ({@code setLevel}). A
+     * {@code getAllCraftableItems(null)} zwraca zbior PUSTY (bo {@code null}
+     * nie jest {@code instanceof ServerLevel}), wiec petla nie miala po czym
+     * iterowac i {@code disabledItems} zostawalo puste.
+     *
+     * <p>Skutek: stary swiat zapisany w formacie opt-in dostawal WSZYSTKO
+     * WLACZONE - czyli dokladnie ta regresja, przed ktora ostrzega komentarz
+     * przy {@link #disabledItems}.
+     *
+     * <p>Dlatego liste ze starego zapisu tylko zapamietujemy, a przeliczamy ja
+     * pozniej - gdy poziom i receptury sa juz dostepne.
+     */
+    @Nullable
+    private Set<Item> pendingOptInMigration;
+
+    /**
+     * Domyka migracje ze starego formatu, gdy tylko da sie ja policzyc.
+     *
+     * <p>Wolane z {@link #setLevel} (poziom jest juz przypisany) ORAZ przy
+     * kazdym pytaniu o wyjatki - gdyby w chwili wczytania chunka receptury nie
+     * byly jeszcze gotowe, proba wroci przy pierwszym uzyciu zamiast przepasc.
+     */
+    private void finishOptInMigration() {
+        if (pendingOptInMigration == null || !(level instanceof ServerLevel sl)) {
+            return;
+        }
+        Set<Item> craftable = VeloceRecipeRegistry.getAllCraftableItems(sl);
+        if (craftable.isEmpty()) {
+            // Receptury jeszcze nie wczytane - zostawiamy flage i sprobujemy
+            // ponownie przy nastepnym pytaniu. Wyczyszczenie jej teraz znaczyloby
+            // zapisanie pustej listy wyjatkow, czyli "wszystko wlaczone".
+            return;
+        }
+        for (Item candidate : craftable) {
+            if (!pendingOptInMigration.contains(candidate)) {
+                disabledItems.add(candidate);
+            }
+        }
+        pendingOptInMigration = null;
+        setChanged();
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "migrated opt-in crafter at %s: %d recipe(s) disabled (was %d enabled)",
+                worldPosition, disabledItems.size(), 0);
+    }
+
+    @Override
+    public void setLevel(net.minecraft.world.level.Level level) {
+        super.setLevel(level);
+        // Poziom jest od teraz dostepny - to pierwsza okazja, zeby dokonczyc
+        // migracje ze starego formatu (patrz finishOptInMigration).
+        finishOptInMigration();
+    }
 
     /** Item -> id receptury, ktora ma priorytet przy auto-craftowaniu. */
     private Map<Item, ResourceLocation> preferredRecipes = new HashMap<>();
@@ -85,6 +144,9 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
 
     /** Itemy wylaczone (wyjatki od reguly "wszystko wlaczone"). */
     public Set<Item> getDisabledItems() {
+        // Ponowienie migracji: jesli w chwili wczytania chunka receptury nie byly
+        // jeszcze gotowe, dokanczamy ja teraz - ten call ma juz poziom.
+        finishOptInMigration();
         return disabledItems;
     }
 
@@ -268,9 +330,13 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
                 }
             }
         } else if (tag.contains("EnabledItems")) {
-            // Migracja ze starego formatu (opt-in). Wtedy wlaczone bylo tylko to,
-            // co na liscie, wiec wyliczamy wyjatki jako "wszystko poza lista".
-            // Bez tego stare swiaty nagle wlaczylyby wszystko.
+            // Migracja ze starego formatu (opt-in): wtedy wlaczone bylo tylko to,
+            // co na liscie, wiec wyjatkami maja byc WSZYSTKIE POZOSTALE
+            // craftowalne itemy.
+            //
+            // Liczymy to dopiero pozniej - w loadAdditional `level` jest jeszcze
+            // null i lista craftowalnych jest pusta (patrz
+            // pendingOptInMigration). Tutaj tylko zapamietujemy, co bylo wlaczone.
             Set<Item> wasEnabled = new HashSet<>();
             ListTag list = tag.getList("EnabledItems", Tag.TAG_STRING);
             for (int i = 0; i < list.size(); i++) {
@@ -282,14 +348,8 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
                     }
                 }
             }
-            for (Item candidate : com.craftingveloce.crafting.VeloceRecipeRegistry
-                    .getAllCraftableItems(level instanceof ServerLevel sl2 ? sl2 : null)) {
-                if (!wasEnabled.contains(candidate)) {
-                    disabledItems.add(candidate);
-                }
-            }
+            pendingOptInMigration = wasEnabled;
         }
-        loadedFromSave = true;
 
         preferredRecipes = new HashMap<>();
         CompoundTag prefs = tag.getCompound("PreferredRecipes");
