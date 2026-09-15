@@ -626,14 +626,6 @@ public final class VeloceChunkLoader {
     }
 
     /**
-     * Czy ten chunk jest przez nas realnie wymuszony na tym swiecie.
-     *
-     * <p>Potrzebne do uzgodnienia ksiegowosci: cache moze myslec, ze trzyma
-     * chunk, ktory loader zdazyl juz zwolnic (np. przy rozladowaniu swiata).
-     * Bez tego sprawdzenia albo nie wymusilbysmy go ponownie, albo - gorzej -
-     * doliczylibysmy druga referencje do chunku, ktora nigdy nie zniknie.
-     */
-    /**
      * Block entity TYLKO jesli chunk jest zaladowany - inaczej {@code null},
      * BEZ wczytywania chunku.
      *
@@ -662,6 +654,15 @@ public final class VeloceChunkLoader {
             net.minecraft.world.level.Level level, BlockPos pos) {
         return level.isLoaded(pos) ? level.getBlockState(pos) : null;
     }
+
+    /**
+     * Czy ten chunk jest przez nas realnie wymuszony na tym swiecie.
+     *
+     * <p>Potrzebne do uzgodnienia ksiegowosci: cache moze myslec, ze trzyma
+     * chunk, ktory loader zdazyl juz zwolnic (np. przy rozladowaniu swiata).
+     * Bez tego sprawdzenia albo nie wymusilbysmy go ponownie, albo - gorzej -
+     * doliczylibysmy druga referencje do chunku, ktora nigdy nie zniknie.
+     */
 
     public static boolean isHeld(ServerLevel level, long chunkKey) {
         Set<Long> applied = APPLIED.get(level);
