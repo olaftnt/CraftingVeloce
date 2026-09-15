@@ -9,7 +9,10 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import com.craftingveloce.block.VelocePipeBlock;
+import com.craftingveloce.network.pipe.VelocePipeWorld;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -169,107 +172,131 @@ public class CVDebugCommand {
     private static int executeListChunks(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         ServerLevel sl = source.getLevel();
+        var manager = VelocePipeNetworkManager.get(sl);
+        var world = manager.getWorld();
 
-        var held = com.craftingveloce.network.pipe.VeloceChunkLoader.listHeld(sl);
         source.sendSuccess(() -> Component.literal(
-                "§6=== [CraftingVeloce] Trzymane chunki: §f" + held.size()
-                        + " §6w §f" + sl.dimension().location() + " §6==="), false);
+                "§6=== [CraftingVeloce] Struktura rur — wymiar §f"
+                        + sl.dimension().location() + " §6==="), false);
+        source.sendSuccess(() -> Component.literal(
+                "§7Rur: §f" + world.pipeCount()
+                        + " §7| komponentow: §f" + world.componentCount()
+                        + " §7| zcache'owanych opisow: §f" + world.cachedComponentCount()
+                        + " §7| wymuszonych chunkow: §f"
+                        + com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(sl)), false);
 
-        if (held.isEmpty()) {
+        if (world.pipeCount() == 0) {
             source.sendSuccess(() -> Component.literal(
-                    "§7Brak. Zaden chunk nie jest aktualnie wymuszony."), false);
+                    "§7Struktura jest pusta - nie ma zadnych rur."), false);
             return 1;
         }
 
-        var manager = VelocePipeNetworkManager.get(sl);
+        // --- WSZYSTKIE ELEMENTY: wezly i magazyny, ze stanem chunku ---
+        //
+        // To jest wlasnie narzedzie do testu: kazdy element ma jasna informacje
+        // LOADED/UNLOADED, wiec widac, ktore magazyny sa poza symulacja i czy
+        // ich zawartosc pochodzi z cache.
+        int loadedCount = 0;
+        int unloadedCount = 0;
+
+        source.sendSuccess(() -> Component.literal("§b--- WEZLY (trzymaja chunk na stale) ---"), false);
+        java.util.List<BlockPos> allNodes = new java.util.ArrayList<>();
+        for (var net : manager.getAllNetworks()) {
+            allNodes.addAll(net.getTerminals());
+        }
+        if (allNodes.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("  §7(brak wezlow)"), false);
+        }
+        for (BlockPos p : sorted(allNodes)) {
+            boolean loaded = sl.isLoaded(p);
+            if (loaded) {
+                loadedCount++;
+            } else {
+                unloadedCount++;
+            }
+            source.sendSuccess(() -> Component.literal(
+                    "  §a" + describeNode(sl, p) + " §7" + shortPos(p)
+                            + " §8" + chunkTag(p) + " " + loadedTag(sl, p)), false);
+            source.sendSuccess(() -> blockLine(p), false);
+        }
+
+        source.sendSuccess(() -> Component.literal("§b--- MAGAZYNY (maja sie rozladowywac) ---"), false);
+        java.util.Map<BlockPos, ConnectedEndpointInfo> allStorages = new java.util.LinkedHashMap<>();
+        for (var net : manager.getAllNetworks()) {
+            allStorages.putAll(net.getEndpoints());
+        }
+        if (allStorages.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("  §7(brak magazynow)"), false);
+        }
+        for (var e : sortedEntries(allStorages)) {
+            BlockPos p = e.getKey();
+            ConnectedEndpointInfo info = e.getValue();
+            boolean loaded = sl.isLoaded(p);
+            if (loaded) {
+                loadedCount++;
+            } else {
+                unloadedCount++;
+            }
+            source.sendSuccess(() -> Component.literal(
+                    "  §e" + info.getType() + " §7" + shortPos(p)
+                            + " §8" + chunkTag(p) + " " + loadedTag(sl, p)
+                            + (loaded ? " §7(dane ze swiata)" : " §6(dane z CACHE)")
+                            + " §7| typow: §f" + info.getCachedCounts().size()), false);
+            // Zawartosc - to wlasnie testujemy przy niezaladowanych.
+            for (var ic : info.getCachedCounts().entrySet()) {
+                if (ic.getValue() > 0) {
+                    source.sendSuccess(() -> Component.literal(
+                            "      §7" + ic.getKey().getDescription().getString()
+                                    + " §fx" + ic.getValue()), false);
+                }
+            }
+            source.sendSuccess(() -> blockLine(p), false);
+        }
+
+        int lc = loadedCount;
+        int uc = unloadedCount;
+        source.sendSuccess(() -> Component.literal(
+                "§6Podsumowanie: §a" + lc + " LOADED §7| §c" + uc + " UNLOADED"), false);
+
+        // --- CHUNKI WYMUSZONE, z powodem ---
+        var held = com.craftingveloce.network.pipe.VeloceChunkLoader.listHeld(sl);
+        source.sendSuccess(() -> Component.literal(
+                "§b--- Wymuszone chunki: §f" + held.size() + " ---"), false);
         for (var hc : held) {
             boolean loaded = sl.isLoaded(new ChunkPos(hc.x(), hc.z()).getWorldPosition());
             source.sendSuccess(() -> Component.literal(
-                    "§8- §f[" + hc.x() + ", " + hc.z() + "] "
+                    "  §f[" + hc.x() + ", " + hc.z() + "] "
                             + (loaded ? "§a[SYMULOWANY]" : "§c[POZA SYMULACJA]")
                             + " §7uzyc: §f" + hc.hits()), false);
-
-            if (hc.tickets().isEmpty()) {
-                source.sendSuccess(() -> Component.literal(
-                        "§8    powod: §7(nieznany - wpis bez biletu)"), false);
-                continue;
-            }
             for (var t : hc.tickets()) {
-                String netId = networkIdAt(manager, t.ownerPos());
                 source.sendSuccess(() -> Component.literal(
-                        "§8    siec: §e" + netId
-                                + " §8| powod: §f" + t.reason()
+                        "      §8powod: §f" + t.reason()
                                 + " §8| wlasciciel: §7" + t.owner()), false);
                 if (t.ownerPos() != null) {
                     source.sendSuccess(() -> blockLine(t.ownerPos()), false);
                 }
             }
         }
+
+        // --- KOLEJKA ZADAN ---
+        var queue = com.craftingveloce.network.pipe.VeloceChunkTaskQueue.pending();
+        source.sendSuccess(() -> Component.literal(
+                "§b--- Kolejka zadan chunkowych: §f" + queue
+                        + " §7| wykonane: §f"
+                        + com.craftingveloce.network.pipe.VeloceChunkTaskQueue.completed()
+                        + " §7| odrzucone: §f"
+                        + com.craftingveloce.network.pipe.VeloceChunkTaskQueue.dropped()), false);
+        for (String line : com.craftingveloce.network.pipe.VeloceChunkTaskQueue.describePending(5)) {
+            source.sendSuccess(() -> Component.literal("  §8- §7" + line), false);
+        }
+
         source.sendSuccess(() -> Component.literal(
                 "§7Kliknij wspolrzedne bloku, aby sie teleportowac."), false);
         return 1;
     }
 
-    /**
-     * Wykrywa chunki, ktore wygladaja na trzymane bez powodu.
-     *
-     * <p>To test na wyciek: chunk wymuszony, ale zaden blok zadnej sieci w nim
-     * nie lezy - czyli zostal po sieci, ktora juz nie istnieje.
-     */
-    private static int executeCheckStrict(CommandContext<CommandSourceStack> context) {
-        CommandSourceStack source = context.getSource();
-        ServerLevel sl = source.getLevel();
-        var manager = VelocePipeNetworkManager.get(sl);
 
-        var held = com.craftingveloce.network.pipe.VeloceChunkLoader.listHeld(sl);
-        int orphaned = 0;
-        for (var hc : held) {
-            // Czy w tym chunku jest cokolwiek, co usprawiedliwia trzymanie?
-            boolean justified = false;
-            for (VelocePipeNetwork net : manager.getAllNetworks()) {
-                for (BlockPos p : net.getPipes()) {
-                    if ((p.getX() >> 4) == hc.x() && (p.getZ() >> 4) == hc.z()) {
-                        justified = true;
-                        break;
-                    }
-                }
-                if (justified) {
-                    break;
-                }
-                for (BlockPos p : net.getTerminals()) {
-                    if ((p.getX() >> 4) == hc.x() && (p.getZ() >> 4) == hc.z()) {
-                        justified = true;
-                        break;
-                    }
-                }
-                if (justified) {
-                    break;
-                }
-            }
-            if (!justified) {
-                orphaned++;
-                int fx = hc.x();
-                int fz = hc.z();
-                source.sendSuccess(() -> Component.literal(
-                        "§cSierota: §f[" + fx + ", " + fz + "] §7- zaden blok sieci tu nie lezy"), false);
-            }
-        }
-        int total = held.size();
-        int found = orphaned;
-        source.sendSuccess(() -> Component.literal(
-                "§6Wynik: §f" + found + " §7sierot na §f" + total + " §7trzymanych chunkow."), false);
-        return 1;
-    }
 
-    /** ID sieci wlasciciela danej pozycji (skrocone) albo "-". */
-    private static String networkIdAt(VelocePipeNetworkManager manager, BlockPos pos) {
-        if (pos == null) {
-            return "-";
-        }
-        VelocePipeNetwork byPipe = manager.getNetworkForPipe(pos);
-        VelocePipeNetwork net = byPipe != null ? byPipe : manager.getNetworkForTerminal(null, pos);
-        return net == null ? "-" : net.getId().toString().substring(0, 8);
-    }
 
     /** Linia z klikalnymi wspolrzednymi bloku. */
     private static Component blockLine(BlockPos pos) {
@@ -304,45 +331,86 @@ public class CVDebugCommand {
      */
     private static void reportNetwork(ServerPlayer player, ServerLevel sl,
                                       VelocePipeNetwork net, BlockPos pipePos) {
-        UUID id = net.getId();
-        player.sendSystemMessage(Component.literal("§aNetwork ID: §e" + id));
-        player.sendSystemMessage(Component.literal(
-                "§7Pipes: §f" + net.getPipes().size()
-                        + " §7| Nodes: §f" + net.getTerminals().size()
-                        + " §7| Storages: §f" + net.getEndpoints().size()));
+        var manager = VelocePipeNetworkManager.get(sl);
+        var world = manager.getWorld();
 
-        // --- WEZLY: to one trzymaja chunki na stale ---
-        player.sendSystemMessage(Component.literal("§b--- Nodes (trzymaja chunk na stale) ---"));
-        if (net.getTerminals().isEmpty()) {
-            player.sendSystemMessage(Component.literal("  §7(brak - siec nie ma czym pracowac)"));
-        }
-        for (BlockPos p : sorted(net.getTerminals())) {
+        player.sendSystemMessage(Component.literal("§6=== [CraftingVeloce] Trace polaczen ==="));
+        player.sendSystemMessage(Component.literal(
+                "§7Rura startowa: §f" + shortPos(pipePos) + " §8" + chunkTag(pipePos)
+                        + " " + loadedTag(sl, pipePos)));
+
+        // --- 1. SAME POLACZENIA TEJ RURY (bezposredni sasiedzi) ---
+        var neighbours = world.neighbours(pipePos);
+        player.sendSystemMessage(Component.literal(
+                "§b--- Bezposrednie polaczenia: " + neighbours.size() + " z 6 mozliwych ---"));
+        if (neighbours.isEmpty()) {
             player.sendSystemMessage(Component.literal(
-                    "  §a" + describeNode(sl, p) + " §7at " + shortPos(p)
+                    "  §c(brak - ta rura nie laczy sie z niczym)"));
+        }
+        // Pokazujemy WSZYSTKIE 6 kierunkow, takze te bez polaczenia - to
+        // najszybszy sposob, zeby zobaczyc, gdzie siec sie urwala.
+        for (Direction d : Direction.values()) {
+            BlockPos np = pipePos.relative(d);
+            boolean linked = neighbours.contains(np);
+            String what = describeAt(sl, world, np);
+            player.sendSystemMessage(Component.literal(
+                    "  " + (linked ? "§a[+] " : "§8[-] ") + "§7" + d.name().toLowerCase()
+                            + " -> " + what
+                            + (linked ? "" : " §8(rozciete albo nic tam nie ma)")));
+        }
+
+        // --- 2. CALY KOMPONENT (przejscie po polaczeniach) ---
+        var members = world.componentMembers(pipePos);
+        player.sendSystemMessage(Component.literal(
+                "§b--- Cala polaczona grupa: §f" + members.size() + " §brur ---"));
+        player.sendSystemMessage(Component.literal(
+                "  §7Reprezentant: §f" + shortPos(world.componentOf(pipePos))));
+
+        // --- 3. WEZLY: maszyny i terminale ---
+        var nodes = net.getTerminals();
+        player.sendSystemMessage(Component.literal("§b--- Wezly (maszyny): " + nodes.size() + " ---"));
+        if (nodes.isEmpty()) {
+            player.sendSystemMessage(Component.literal("  §7(brak)"));
+        }
+        for (BlockPos p : sorted(nodes)) {
+            player.sendSystemMessage(Component.literal(
+                    "  §a" + describeNode(sl, p) + " §7" + shortPos(p)
                             + " §8" + chunkTag(p) + " " + loadedTag(sl, p)));
             player.sendSystemMessage(coordsLine(p));
         }
 
-        // --- MAGAZYNY: doladowywane tylko na czas operacji ---
-        player.sendSystemMessage(Component.literal("§b--- Storages (doladowywane tylko na czas operacji) ---"));
-        if (net.getEndpoints().isEmpty()) {
+        // --- 4. MAGAZYNY: skrzynie, beczki, RS ---
+        var endpooints = net.getEndpoints();
+        player.sendSystemMessage(Component.literal("§b--- Magazyny: " + endpooints.size() + " ---"));
+        if (endpooints.isEmpty()) {
             player.sendSystemMessage(Component.literal("  §7(brak)"));
         }
-        for (Map.Entry<BlockPos, ConnectedEndpointInfo> e : sortedEntries(net.getEndpoints())) {
-            BlockPos epPos = e.getKey();
-            ConnectedEndpointInfo ep = e.getValue();
+        for (var e : sortedEntries(endpooints)) {
+            BlockPos ep = e.getKey();
+            ConnectedEndpointInfo info = e.getValue();
+            boolean loaded = sl.isLoaded(ep);
             player.sendSystemMessage(Component.literal(
-                    "  §e" + ep.getType() + " §7at " + shortPos(epPos)
-                            + " §8" + chunkTag(epPos) + " " + loadedTag(sl, epPos)
-                            + " §7(item types: §f" + ep.getCachedCounts().size() + "§7)"));
-            player.sendSystemMessage(coordsLine(epPos));
+                    "  §e" + info.getType() + " §7" + shortPos(ep)
+                            + " §8" + chunkTag(ep) + " " + loadedTag(sl, ep)
+                            + " §7| typy itemow: §f" + info.getCachedCounts().size()
+                            + (loaded ? "" : " §8<- z cache, nie ze swiata")));
+            // Zawartosc - dla niezaladowanych to jest wlasnie ten cache,
+            // ktory mamy przetestowac.
+            for (var ic : info.getCachedCounts().entrySet()) {
+                if (ic.getValue() > 0) {
+                    player.sendSystemMessage(Component.literal(
+                            "      §7" + ic.getKey().getDescription().getString()
+                                    + " §fx" + ic.getValue()));
+                }
+            }
+            player.sendSystemMessage(coordsLine(ep));
         }
 
-        // --- CHUNKI: ktore REALNIE sa wymuszone i dlaczego ---
-        player.sendSystemMessage(Component.literal("§b--- Chunks faktycznie wymuszone przez te siec ---"));
+        // --- 5. CHUNKI TRZYMANE PRZEZ TA SIEĆ ---
         var held = com.craftingveloce.network.pipe.VeloceChunkLoader.listHeld(sl);
-        String prefix = "net:" + id.toString().substring(0, 8);
+        String prefix = "net:" + net.getId().toString().substring(0, 8);
         int mine = 0;
+        player.sendSystemMessage(Component.literal("§b--- Chunki trzymane przez te siec ---"));
         for (var hc : held) {
             boolean ours = hc.tickets().stream().anyMatch(t -> t.owner().equals(prefix));
             if (!ours) {
@@ -354,29 +422,39 @@ public class CVDebugCommand {
         }
         player.sendSystemMessage(Component.literal("  §7razem: §f" + mine + " §7chunk(ow)"));
 
-        // --- STRUKTURA RUROW: z czego wynika ta siec ---
-        var world = VelocePipeNetworkManager.get(sl).getWorld();
-        var root = world.componentOf(pipePos);
-        int pipesInComponent = root == null ? 0 : world.componentMembers(pipePos).size();
-        player.sendSystemMessage(Component.literal(
-                "§b--- Struktura rur ---"));
-        player.sendSystemMessage(Component.literal(
-                "  §7Rur w tej sieci: §f" + pipesInComponent
-                        + " §7| wszystkich rur: §f" + world.pipeCount()
-                        + " §7| komponentow: §f" + world.componentCount()));
-        player.sendSystemMessage(Component.literal(
-                "  §7Polaczenia tej rury: §f" + world.neighbours(pipePos).size()
-                        + " §7(z 6 mozliwych)"));
-
-        // --- ZASOBY: co siec widzi ---
-        Map<Item, Long> netCounts = net.getAllItemCounts(sl);
-        player.sendSystemMessage(Component.literal("§6Resources (" + netCounts.size() + " types):"));
-        for (Map.Entry<Item, Long> itemEntry : netCounts.entrySet()) {
-            player.sendSystemMessage(Component.literal(
-                    "  §e" + itemEntry.getKey().getDescription().getString()
-                            + " §7x§a" + itemEntry.getValue()));
-        }
+        player.sendSystemMessage(Component.literal("§6==================================="));
     }
+
+    /** Opis bloku na danej pozycji - do listy polaczen. */
+    private static String describeAt(ServerLevel sl, VelocePipeWorld world, BlockPos p) {
+        if (!sl.isLoaded(p)) {
+            return world.hasPipe(p)
+                    ? "§7rura §8" + chunkTag(p) + " §c[UNLOADED]"
+                    : "§8(niezladowany chunk)";
+        }
+        var st = sl.getBlockState(p);
+        var b = st.getBlock();
+        if (b instanceof com.craftingveloce.block.VelocePipeBlock) {
+            return "§7rura " + loadedTag(sl, p);
+        }
+        if (b instanceof com.craftingveloce.block.VeloceTomTerminalBlock) {
+            return "§aTERMINAL " + loadedTag(sl, p);
+        }
+        if (b instanceof com.craftingveloce.block.VeloceExtractorBlock) {
+            return "§aEXTRACTOR " + loadedTag(sl, p);
+        }
+        if (b instanceof com.craftingveloce.block.VeloceCraftingTableBlock) {
+            return "§aCRAFTER " + loadedTag(sl, p);
+        }
+        if (b instanceof com.craftingveloce.block.VeloceControllerBlock) {
+            return "§aKONTROLER " + loadedTag(sl, p);
+        }
+        if (VelocePipeBlock.canConnectToInventory(sl, p, Direction.UP)) {
+            return "§eMAGAZYN (" + b.getName().getString() + ") " + loadedTag(sl, p);
+        }
+        return "§8" + b.getName().getString();
+    }
+
 
     /** Typ bloku-wezla po nazwie klasy (terminal / crafter / extractor). */
     private static String describeNode(ServerLevel sl, BlockPos p) {
