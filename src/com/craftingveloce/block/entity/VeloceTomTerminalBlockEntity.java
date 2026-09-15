@@ -272,7 +272,11 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         }
 
         // 3. Fallback: Tom's Storage counts (only if terminal is directly connected to a Tom's Storage cable)
-        getStacks();
+        //
+        // Bez getStacks(): ponizej sami pytamy tracker o zmiany i sami ciagniemy
+        // stosy (streamWrappedStacks). getStacks() dokladaloby tylko przebudowe
+        // mapy itemow Toma, ktorej nie czytamy - a ta sciezka leci co sekunde
+        // w syncCountsToAllWatchers.
         IInventoryAccess access = getTomAccess();
         if (access != null) {
             IInventoryChangeTracker tracker = access.tracker();
