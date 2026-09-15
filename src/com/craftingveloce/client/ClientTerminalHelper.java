@@ -78,6 +78,14 @@ public class ClientTerminalHelper {
         }
     }
 
+    /** Odpowiedz serwera z liczbami "ile da sie dorobic". */
+    public static void handleCraftableCounts(Map<Item, Long> counts) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof VeloceTerminalScreen screen) {
+            screen.updateCraftableCounts(counts);
+        }
+    }
+
     /** Otwiera GUI Veloce Controller z obrazem sieci. */
     public static void openControllerScreen(BlockPos pos,
                                             java.util.Map<Item, Long> stock,

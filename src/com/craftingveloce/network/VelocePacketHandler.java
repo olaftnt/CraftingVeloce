@@ -22,6 +22,8 @@ public class VelocePacketHandler {
             registrar.playToServer(CraftingTableToggleItemPKT.TYPE, CraftingTableToggleItemPKT.STREAM_CODEC, CraftingTableToggleItemPKT::handle);
             registrar.playToServer(CraftingTableCycleRecipePKT.TYPE, CraftingTableCycleRecipePKT.STREAM_CODEC, CraftingTableCycleRecipePKT::handle);
             registrar.playToServer(BufferPullItemPKT.TYPE, BufferPullItemPKT.STREAM_CODEC, BufferPullItemPKT::handle);
+            registrar.playToServer(RequestCraftableCountsPKT.TYPE, RequestCraftableCountsPKT.STREAM_CODEC, RequestCraftableCountsPKT::handle);
+            registrar.playToClient(SyncCraftableCountsPKT.TYPE, SyncCraftableCountsPKT.STREAM_CODEC, SyncCraftableCountsPKT::handle);
         });
     }
 }

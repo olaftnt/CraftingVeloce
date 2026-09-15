@@ -29,6 +29,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.Iterator;
@@ -78,15 +79,18 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
     }
 
     /**
-     * Liczy, ile sztuk ktorego itemu da sie jeszcze dorobic auto-craftingiem
-     * z obecnego stanu sieci. Uzywane do zoltej liczby "+N" w terminalu.
+     * Liczy "ile da sie dorobic" dla podanych itemow.
      *
-     * <p>Zwraca tylko itemy z wlaczonym auto-craftingiem, dla ktorych wynik > 0.
-     * Gdy nie da sie nic dorobic (brak bazowych skladnikow), itemu nie ma w mapie
-     * - czyli wyswietla sie zero.
+     * <p><b>Uwaga wydajnosciowa.</b> Wczesniej liczone byly WSZYSTKIE wlaczone
+     * itemy (przy opt-out ok. 850), co sekunde, dla kazdego otwartego terminala.
+     * Kazde obliczenie rekurencyjnie kopiuje mape stocku na kazdym poziomie,
+     * wiec koszt rosnie lawinowo i serwer sie zadlawial - dokladnie to widac
+     * w logu, gdzie Server thread przestawal odpowiadac po otwarciu terminala.
+     *
+     * <p>Teraz liczymy tylko to, o co poprosi klient, i tylko na zadanie.
      */
-    private Map<Item, Long> computeCraftableCounts() {
-        if (!(level instanceof ServerLevel sl)) {
+    public Map<Item, Long> computeCraftableCounts(Collection<Item> items) {
+        if (!(level instanceof ServerLevel sl) || items == null || items.isEmpty()) {
             return Map.of();
         }
         VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
@@ -103,7 +107,10 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
                 .getPreferredRecipes(sl, net);
 
         Map<Item, Long> out = new HashMap<>();
-        for (Item item : enabled) {
+        for (Item item : items) {
+            if (!enabled.contains(item)) {
+                continue;
+            }
             long n = com.craftingveloce.crafting.VeloceAutoCrafter
                     .countCraftableNow(sl, net, item, enabled, preferred);
             if (n > 0) {
@@ -113,8 +120,24 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         return out;
     }
 
+    /**
+     * Krotka migawka stocku sieci - bez liczenia craftowalnosci.
+     * Tanie (sam odczyt cache endpointow), wystarcza do zielonych liczb.
+     */
+    public Map<Item, Long> snapshotStock() {
+        if (!(level instanceof ServerLevel sl)) {
+            return Map.of();
+        }
+        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                .getNetworkForTerminal(sl, worldPosition);
+        return net == null ? Map.of() : net.getAllItemCounts(sl);
+    }
+
     public void syncCountsToAllWatchers() {
         if (level == null || level.isClientSide || activeWatchingPlayers.isEmpty()) return;
+        // Tylko stock - liczenie craftowalnosci dla wszystkich itemow co sekunde
+        // zadlawialo serwer (patrz computeCraftableCounts). Zolta liczba "+N"
+        // jest doliczana osobno, na zadanie, tylko dla widocznych itemow.
         Map<Item, Long> counts = getAllStoredItemCounts();
         Iterator<WeakReference<ServerPlayer>> it = activeWatchingPlayers.iterator();
         while (it.hasNext()) {
@@ -122,7 +145,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
             if (sp == null || sp.hasDisconnected() || sp.distanceToSqr(worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5) > 64.0) {
                 it.remove();
             } else {
-                PacketDistributor.sendToPlayer(sp, new SyncTerminalCountsPKT(counts, computeCraftableCounts()));
+                PacketDistributor.sendToPlayer(sp, new SyncTerminalCountsPKT(counts, Map.of()));
             }
         }
     }
