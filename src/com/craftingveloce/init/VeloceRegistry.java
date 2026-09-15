@@ -86,6 +86,30 @@ public class VeloceRegistry {
                     (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceExtractorMenu(windowId, inv, data.readBlockPos())
             ));
 
+    // 3b. Velocity Furnace (zrodlo ciepla dla auto-craftera)
+    public static final DeferredBlock<com.craftingveloce.block.VeloceVelocityFurnaceBlock> VELOCITY_FURNACE =
+            BLOCKS.register("velocity_furnace",
+                    () -> new com.craftingveloce.block.VeloceVelocityFurnaceBlock(
+                            net.minecraft.world.level.block.state.BlockBehaviour.Properties.of()
+                                    .strength(3.5f)
+                                    .requiresCorrectToolForDrops()));
+
+    public static final DeferredItem<BlockItem> VELOCITY_FURNACE_ITEM = ITEMS.registerSimpleBlockItem(
+            "velocity_furnace", VELOCITY_FURNACE);
+
+    public static final DeferredHolder<BlockEntityType<?>,
+            BlockEntityType<com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity>> VELOCITY_FURNACE_BE =
+            BLOCK_ENTITY_TYPES.register("velocity_furnace", () -> createBEType(
+                    (pos, state) -> new com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity(pos, state),
+                    VELOCITY_FURNACE.get()));
+
+    public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>,
+            net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceVelocityFurnaceMenu>> VELOCITY_FURNACE_MENU =
+            MENU_TYPES.register("velocity_furnace_menu",
+                    () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(
+                            (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceVelocityFurnaceMenu(
+                                    windowId, inv, data.readBlockPos())));
+
     // 4. Veloce Wrench
     public static final DeferredItem<VeloceWrenchItem> VELOCE_WRENCH = ITEMS.register(
             "wrench",

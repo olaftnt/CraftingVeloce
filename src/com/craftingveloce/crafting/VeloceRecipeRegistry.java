@@ -63,6 +63,29 @@ public final class VeloceRecipeRegistry {
     );
 
     /**
+     * Typy receptur obslugiwane przez Velocity Furnace.
+     *
+     * <p><b>CELOWO OSOBNA LISTA.</b> Te receptury wymagaja paliwa, wiec NIE
+     * moga trafic do {@link #FREE_TYPES}. Gdyby tam byly, auto-crafter uznalby,
+     * ze potrafi "wytworzyc" sztabke zelaza z rudy za darmo - bez pieca i bez
+     * paliwa - i zniszczylby wlasne zalozenie, ze craftujemy tylko z tego,
+     * co realnie mamy.
+     *
+     * <p>Piec ma wlasny indeks ({@link #FURNACE_CACHE}) i wlasne wejscie
+     * ({@link #getFurnaceRecipesFor}). Dzieki temu mozna je uzyc TYLKO tam,
+     * gdzie swiadomie sprawdzimy, ze w sieci stoi zasilony piec.
+     *
+     * <p>Kolejnosc w {@link #FURNACE_TYPES} nie ma znaczenia - o priorytecie
+     * decyduje czas przetwarzania (blasting i smoking 100 t, smelting 200 t),
+     * patrz {@link #getFurnaceRecipesFor}.
+     */
+    private static final Set<RecipeType<?>> FURNACE_TYPES = Set.of(
+            RecipeType.SMELTING,
+            RecipeType.BLASTING,
+            RecipeType.SMOKING
+    );
+
+    /**
      * Namespace'y modow, ktorych receptury chcemy dodatkowo brac pod uwage,
      * mimo ze uzywaja wlasnego typu. Na razie puste - swiadomie konserwatywnie.
      * Dodawac tylko po zweryfikowaniu, ze dany typ nie wymaga infrastruktury.
@@ -85,6 +108,10 @@ public final class VeloceRecipeRegistry {
      * tozsamosciowo jak poprzednio.
      */
     private static final Map<RecipeManager, Map<Item, List<CraftingEntry>>> CACHE =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** Osobny indeks receptur pieca (smelting/blasting/smoking). */
+    private static final Map<RecipeManager, Map<Item, List<CraftingEntry>>> FURNACE_CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     private VeloceRecipeRegistry() {
@@ -181,6 +208,58 @@ public final class VeloceRecipeRegistry {
         return ordered;
     }
 
+    /**
+     * Receptury PIECA dla danego itemu, w kolejnosci NAJSZYBSZEJ najpierw.
+     *
+     * <p>Kolejnosc: {@code blasting} i {@code smoking} (100 tickow) przed
+     * {@code smelting} (200 tickow). To realizuje wymog "jesli surowiec pasuje
+     * do kilku, bierz wydajniejsza/szybsza" bez zadnych przelacznikow.
+     *
+     * <p>Wolajacy MUSI sam sprawdzic, ze w sieci jest zasilony piec - ta
+     * metoda tylko czyta receptury.
+     */
+    public static List<CraftingEntry> getFurnaceRecipesFor(Level level, Item item) {
+        if (!(level instanceof ServerLevel serverLevel)) {
+            return List.of();
+        }
+        List<CraftingEntry> all = getFurnaceIndex(serverLevel).getOrDefault(item, List.of());
+        if (all.size() <= 1) {
+            return all;
+        }
+        List<CraftingEntry> sorted = new ArrayList<>(all);
+        sorted.sort(java.util.Comparator.comparingLong(VeloceRecipeRegistry::processingTicks));
+        return sorted;
+    }
+
+    /**
+     * Czas przetwarzania receptury w tickach.
+     *
+     * <p>Vanilla: blasting i smoking 100 t, smelting 200 t. Dla nieznanych
+     * typow przyjmujemy 200 t, zeby nie faworyzowac niczego przypadkiem.
+     */
+    private static long processingTicks(CraftingEntry entry) {
+        if (entry.type() == RecipeType.BLASTING || entry.type() == RecipeType.SMOKING) {
+            return 100L;
+        }
+        return 200L;
+    }
+
+    /** Buduje (lub pobiera z cache) indeks Item -> receptury pieca. */
+    private static Map<Item, List<CraftingEntry>> getFurnaceIndex(ServerLevel level) {
+        RecipeManager manager = level.getRecipeManager();
+        Map<Item, List<CraftingEntry>> cached = FURNACE_CACHE.get(manager);
+        if (cached != null) {
+            return cached;
+        }
+        long start = System.nanoTime();
+        Map<Item, List<CraftingEntry>> built = buildIndex(manager, level, FURNACE_TYPES);
+        FURNACE_CACHE.put(manager, built);
+        VeloceLog.Craft.success(VeloceLog.Side.SERVER,
+                "furnace recipe index built: %d item(s), %d ms",
+                built.size(), (System.nanoTime() - start) / 1_000_000L);
+        return built;
+    }
+
     /** Buduje (lub pobiera z cache) indeks Item -> receptury. */
     private static Map<Item, List<CraftingEntry>> getIndex(ServerLevel level) {
         RecipeManager manager = level.getRecipeManager();
@@ -193,7 +272,7 @@ public final class VeloceRecipeRegistry {
         // serwera. Mierzymy go, zeby dalo sie go wskazac w logu, gdyby ktos
         // znow zglaszal "klikniecie w terminal zamula serwer".
         long start = System.nanoTime();
-        Map<Item, List<CraftingEntry>> built = buildIndex(manager, level);
+        Map<Item, List<CraftingEntry>> built = buildIndex(manager, level, FREE_TYPES);
         CACHE.put(manager, built);
         VeloceLog.Craft.success(VeloceLog.Side.SERVER,
                 "recipe index built: %d item(s) with a recipe, %d ms",
@@ -201,7 +280,9 @@ public final class VeloceRecipeRegistry {
         return built;
     }
 
-    private static Map<Item, List<CraftingEntry>> buildIndex(RecipeManager manager, ServerLevel level) {
+    private static Map<Item, List<CraftingEntry>> buildIndex(RecipeManager manager,
+                                                             ServerLevel level,
+                                                             Set<RecipeType<?>> types) {
         Map<Item, List<CraftingEntry>> index = new HashMap<>();
         HolderLookup.Provider registries = level.registryAccess();
 
@@ -211,7 +292,7 @@ public final class VeloceRecipeRegistry {
         // getType(). Przy duzym modpacku to bylo 3x wiecej pracy niz trzeba -
         // i to na watku serwera, przy pierwszym uzyciu indeksu.
         for (RecipeHolder<?> holder : manager.getRecipes()) {
-            if (FREE_TYPES.contains(holder.value().getType())) {
+            if (types.contains(holder.value().getType())) {
                 addHolder(holder, registries, index, false);
             }
         }
@@ -295,6 +376,7 @@ public final class VeloceRecipeRegistry {
     /** Czysci cache - wywolywane przy zmianie swiata/serwera. */
     public static void invalidate() {
         CACHE.clear();
+        FURNACE_CACHE.clear();
     }
 
     /** Mapa item -> liczba receptur (diagnostyka). */
