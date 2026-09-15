@@ -263,21 +263,21 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                     pipeBE.setExtracting(side, true);
                     pipeBE.setDisconnected(side, false);
                     if (player instanceof ServerPlayer sp) {
-                        sp.displayClientMessage(Component.literal("§7[CraftingVeloce] Tryb: §6PULL (Tylko ssanie)"), true);
+                        sp.displayClientMessage(Component.literal("Pull"), true);
                     }
                 } else if (extracting) {
                     // Sucking PULL -> Disconnected
                     pipeBE.setExtracting(side, false);
                     pipeBE.setDisconnected(side, true);
                     if (player instanceof ServerPlayer sp) {
-                        sp.displayClientMessage(Component.literal("§7[CraftingVeloce] Tryb: §cROZŁĄCZONO"), true);
+                        sp.displayClientMessage(Component.literal("Disconnected"), true);
                     }
                 } else {
                     // Disconnected -> Normal PUSHPULL (normal pipe connection)
                     pipeBE.setExtracting(side, false);
                     pipeBE.setDisconnected(side, false);
                     if (player instanceof ServerPlayer sp) {
-                        sp.displayClientMessage(Component.literal("§7[CraftingVeloce] Tryb: §dPUSHPULL (Domyślny)"), true);
+                        sp.displayClientMessage(Component.literal("Push/Pull"), true);
                     }
                 }
             } else if (isNeighborPipe) {
@@ -292,7 +292,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                     InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
                 }
                 if (player instanceof ServerPlayer sp) {
-                    sp.displayClientMessage(Component.literal("§7[CraftingVeloce] Połączenie: " + (!disconnected ? "§cROZŁĄCZONO" : "§aPOŁĄCZONO")), true);
+                    sp.displayClientMessage(Component.literal(!disconnected ? "Disconnected" : "Push/Pull"), true);
                 }
             }
         } else {
@@ -308,6 +308,9 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                 BlockState otherState = updateConnections(world, neighborPos, world.getBlockState(neighborPos));
                 world.setBlockAndUpdate(neighborPos, otherState);
                 InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
+            }
+            if (player instanceof ServerPlayer sp) {
+                sp.displayClientMessage(Component.literal(!disconnected ? "Disconnected" : "Push/Pull"), true);
             }
         }
 
