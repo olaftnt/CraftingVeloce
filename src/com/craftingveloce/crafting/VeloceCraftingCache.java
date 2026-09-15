@@ -179,14 +179,45 @@ public final class VeloceCraftingCache {
             startupGracePassed = true;
         }
 
-        // Rzadko (co sekunde), bo to i tak tanie.
-        if (!shuttingDown && level.getGameTime() % 20 == 0) {
-            maintainForcedChunks(level);
-            // Wygasle bilety "gorących" chunkow trzeba zdjac, inaczej chunk
-            // uznany raz za czesto uzywany zostawal wymuszony na zawsze.
-            com.craftingveloce.network.pipe.VeloceChunkLoader.expireHotTickets(level);
+        if (shuttingDown) {
+            return;
         }
+
+        // BUG, ktory tu byl: warunek `gameTime % 20 == 0` sprawdzal DOKLADNA
+        // rownosc z wielokrotnoscia 20. A tickIdle wolane jest tylko raz na
+        // tick (claimTick), przez tego terminala, ktory akurat trafil - wiec
+        // jesli terminal wola w tickach 1, 6, 11, 16, 21..., to w zycie NIGDY
+        // nie trafi w wielokrotnosc 20 i wymuszanie chunkow nie zdarzy sie
+        // ANI RAZU.
+        //
+        // Objaw: "wymuszonych chunkow: 0" mimo ze terminal stoi i jest wykryty
+        // jako wezel - a bez force-loadu terminal i crafter przestaja pracowac,
+        // gdy gracz odejdzie od bazy.
+        //
+        // Miara odstepu, a nie rownosc: dziala niezaleznie od fazy, w ktorej
+        // wolajacy trafia.
+        long now = level.getGameTime();
+        if (!com.craftingveloce.util.VeloceTick.every(
+                now, lastMaintainTick, FORCE_MAINTAIN_INTERVAL_TICKS)) {
+            return;
+        }
+        lastMaintainTick = now;
+        maintainForcedChunks(level);
+        // Wygasle bilety "gorących" chunkow trzeba zdjac, inaczej chunk
+        // uznany raz za czesto uzywany zostawal wymuszony na zawsze.
+        com.craftingveloce.network.pipe.VeloceChunkLoader.expireHotTickets(level);
     }
+
+    /**
+     * Co ile tickow utrzymujemy force-loady.
+     *
+     * <p>Mierzone jako ODSTEP od ostatniego razu, a nie rownosc z wielokrotnoscia -
+     * patrz komentarz w {@link #tickIdle}.
+     */
+    private static final long FORCE_MAINTAIN_INTERVAL_TICKS = 20L;
+
+    /** Tick ostatniego utrzymania force-loadow. */
+    private long lastMaintainTick = Long.MIN_VALUE;
 
     /**
      * Tick gry, w ktorym ostatnio zrobilismy krok pracy.

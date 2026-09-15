@@ -188,6 +188,12 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
      * chunki z blokami sieci. Bez tego ekstraktory i craftery przestalyby
      * pracowac, gdy gracz odejdzie od bazy.
      */
+    /** Tick ostatniej okresowej pracy cache (patrz VeloceTick). */
+    private long lastCacheTick = Long.MIN_VALUE;
+
+    /** Tick ostatniego rozgloszenia licznikow do obserwujacych. */
+    private long lastSyncTick = Long.MIN_VALUE;
+
     private void tickCraftingCache(ServerLevel sl, VelocePipeNetwork net) {
         com.craftingveloce.crafting.VeloceCraftingCache.get(net).tickIdle(sl);
     }
@@ -319,17 +325,33 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
 
         // Cache craftowalnosci pracuje w tle: wykrywa zmiany stocku i przelicza
         // tylko dotkniete lancuchy. Otwarcie GUI nie czeka na liczenie.
-        if (level instanceof ServerLevel sl && level.getGameTime() % 5 == 0) {
-            VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
-                    .getNetworkForTerminal(sl, worldPosition);
-            if (net != null) {
-                tickCraftingCache(sl, net);
+        if (level instanceof ServerLevel sl) {
+            // Odstep mierzony od ostatniego razu, a nie rownosc z wielokrotnoscia.
+            //
+            // BUG, ktory tu byl: `gameTime % 5 == 0` wymagalo trafienia w DOKLADNA
+            // wielokrotnosc piatki. updateServer leci co tick, wiec akurat tutaj
+            // to dzialalo - ale bylo kruche: wystarczylaby zmiana czestotliwosci
+            // wolania i okresowa praca przestalaby sie wykonywac w ogole.
+            // Ten sam wzorzec w cache spowodowal realny blad ("wymuszonych
+            // chunkow: 0"), wiec ujednolicamy go wszedzie.
+            long now = sl.getGameTime();
+            if (com.craftingveloce.util.VeloceTick.every(now, lastCacheTick, 5)) {
+                lastCacheTick = now;
+                VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                        .getNetworkForTerminal(sl, worldPosition);
+                if (net != null) {
+                    tickCraftingCache(sl, net);
+                }
             }
         }
 
         // Periodically refresh active viewers
-        if (level != null && !activeWatchingPlayers.isEmpty() && level.getGameTime() % 20 == 0) {
-            syncCountsToAllWatchers();
+        if (level != null && !activeWatchingPlayers.isEmpty()) {
+            long now = level.getGameTime();
+            if (com.craftingveloce.util.VeloceTick.every(now, lastSyncTick, 20)) {
+                lastSyncTick = now;
+                syncCountsToAllWatchers();
+            }
         }
     }
 

@@ -78,11 +78,26 @@ public class VelocePipeBlockEntity extends PlatformBlockEntity implements Tickab
         if (level == null || level.isClientSide) return;
 
         long time = level.getGameTime();
-        if (time % 20 == Math.abs(worldPosition.hashCode()) % 20) {
+        // Sprawdzanie okresowe z ROZPROSZENIEM po pozycji - kazda rura ma wlasna
+        // faze, wiec sciana rur nie robi pracy w jednym ticku.
+        //
+        // BUG, ktory tu byl: `Math.abs(worldPosition.hashCode()) % 20`.
+        // Math.abs(Integer.MIN_VALUE) zostaje UJEMNE (-2147483648), wiec dla
+        // rury o takim hashu faza wychodzila ujemna i NIGDY nie zrownala sie
+        // z nieujemnym `time % 20`. Taka rura nie wykrywalaby podlaczonego
+        // inwentarza ani sieci kabli - w praktyce "nie widzi" skrzyni obok.
+        //
+        // VeloceTick.everySpread uzywa Math.floorMod, wiec faza jest zawsze
+        // poprawna, i mierzy ODSTEP od ostatniego razu zamiast rownosci.
+        if (com.craftingveloce.util.VeloceTick.everySpread(time, lastPeriodicTick, 20, worldPosition)) {
+            lastPeriodicTick = time;
             updateInventories();
             detectCableNetwork();
         }
     }
+
+    /** Tick ostatniej okresowej pracy tej rury. */
+    private long lastPeriodicTick = Long.MIN_VALUE;
 
     private void updateInventories() {
         for (Direction dir : Direction.values()) {
