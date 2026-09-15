@@ -75,9 +75,12 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
   i 2 z paliwa
 
 ### 8. Veloce Threshold Sensor (`threshold_sensor`)
-- Jeden slot filtra + pole na liczbę + trzy guziki (tryb, `-`, `+`)
+- **Jeden wyśrodkowany wiersz:** slot itemu, pole na liczbę (38 px), `+`, `-`
+  i guzik trybu — bez żadnych napisów w GUI (tylko tytuł bloku)
+- Guzik trybu to **pochodnia redstone**: zapalona = `When at least`,
+  zgaszona = `When below`; klik odwraca sygnał
 - Patrzy, ile **fizycznie** jest filtrowanego itemu w sieci, i wystawia redstone
-- Tryby: `When below` (prad, gdy mniej niż próg) i `When at least` (odwrotny)
+- Domyślny próg **64**, dolna granica **1** (próg 0 nie znaczy nic)
 - Wynik trzymany w **stanie bloku** (`POWERED`), bo to zmiana stanu rozglaszana
   sąsiadom uruchamia maszyny; moc **mocna** (`getSignal` + `getDirectSignal`)
 - Sprawdza sieć raz na sekundę (`CHECK_INTERVAL_TICKS = 20`), bo skan magazynów
@@ -297,7 +300,13 @@ została w tyle, tak jak wcześniej lista pakietów i sekcja GUI):
 - `handleSyncCounts(Map<Item, Long> itemCounts)` / `handleSyncCounts(itemCounts, craftableCounts)`
 - `openFilterPickerScreen(BlockPos pos, int filterIndex)`
 - `reopenFilterHostScreen(BlockPos pos)` — powrót z pickera do GUI bloku,
-  z którego go otwarto (pyta żywe menu gracza, więc obsługuje każdy blok z filtrami)
+  z którego go otwarto. Przywraca **zapamiętany ekran** (nie pyta o typ menu —
+  tamta wersja crashowała) i **oddaje graczowi menu tego ekranu**: picker
+  dziedziczy po ekranie creative, który w konstruktorze podmienia
+  `player.containerMenu` na swoje `ItemPickerMenu`, a bez oddania menu każde
+  kliknięcie w ekwipunku wracającego GUI jest cicho odrzucane
+  (`Ignoring click in mismatching container`). Zwraca `false`, gdy nie ma do
+  czego wracać — wtedy wołający musi zamknąć ekran sam.
 - `handleSyncExtractorFilters(BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting)`
 - `getClientHitResult()` — co gracz widzi pod kursorem (klient)
 - `openCraftingTableScreen(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents)`

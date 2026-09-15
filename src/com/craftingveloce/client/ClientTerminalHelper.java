@@ -79,14 +79,24 @@ public class ClientTerminalHelper {
      * <p>Nie zgadujemy po typie menu (patrz {@link #filterPickerReturnScreen}) -
      * przywracamy zapamietany ekran. Dzieki temu obsluguje kazdy blok z filtrami
      * bez listy warunkow i bez pytania o typ menu.
+     *
+     * @return {@code true}, gdy jakis ekran zostal przywrocony. {@code false}
+     *         znaczy "nie ma do czego wracac" - wtedy wolasz musi zamknac
+     *         ekran sam (inaczej Esc nie robilby NIC i gracz zostalby
+     *         uwieziony w selektorze)
      */
-    public static void reopenFilterHostScreen(BlockPos pos) {
+    public static boolean reopenFilterHostScreen(BlockPos pos) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
-            return;
+            return false;
         }
         Screen back = filterPickerReturnScreen;
         filterPickerReturnScreen = null;
+
+        // MENU WRAZ Z EKRANEM - patrz handBackMenu. Musi to byc PRZED
+        // setScreen, bo po powrocie ekran od razu rysuje sloty i przyjmuje
+        // klikniecia.
+        handBackMenu(mc, back);
 
         if (back == null) {
             // Nie wiemy, skad otwarto picker (np. po przeladowaniu zasobow).
@@ -95,7 +105,7 @@ public class ClientTerminalHelper {
             com.craftingveloce.util.VeloceLog.Gui.detail(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,
                     "filter picked, but no host screen remembered - staying in the world");
-            return;
+            return false;
         }
 
         // OSŁONA: to dzieje sie na ekranie gracza, wiec wyjatek tutaj wywalilby
@@ -103,12 +113,51 @@ public class ClientTerminalHelper {
         // kiedys sie zepsulo, gracz ma wrocic do swiata, a nie do pulpitu.
         try {
             mc.setScreen(back);
+            return true;
         } catch (Throwable t) {
             com.craftingveloce.util.VeloceLog.Gui.error(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT, t,
                     "nie udalo sie wrocic z wyboru filtra do ekranu %s - zostaje w swiecie",
                     back.getClass().getSimpleName());
             mc.setScreen(null);
+            return false;
+        }
+    }
+
+    /**
+     * Oddaje graczowi menu ekranu, do ktorego wracamy.
+     *
+     * <p><b>BUG, ktory to naprawia (zgloszony przez gracza).</b> Selektor filtra
+     * dziedziczy po waniliowym ekranie ekwipunku creative, a ten w KONSTRUKTORZE
+     * robi {@code player.containerMenu = <swoje ItemPickerMenu>} i NIGDY tego nie
+     * oddaje - u vanilli nie ma komu: pod spodem jest swiat, nie GUI bloku.
+     *
+     * <p>Po powrocie do ekstraktora/pieca/czujnika ekran rysowal sie ze swoim
+     * menu, ale {@code MultiPlayerGameMode.handleInventoryMouseClick} porownuje
+     * id kontenera z {@code player.containerMenu} i konczy na logu "Ignoring
+     * click in mismatching container". Efekt dla gracza: widzi swoje sloty, ale
+     * nie da sie przełożyć ani jednego itemu, dopoki nie zamknie i nie otworzy
+     * GUI od nowa (a filtry nadal dzialaja, bo ida wlasnymi pakietami).
+     *
+     * <p>Gdy nie wracamy do zadnego ekranu, oddajemy plecak - czyli dokladnie
+     * ten stan, w jakim gra jest po zamknieciu okna.
+     */
+    private static void handBackMenu(Minecraft mc, @Nullable Screen back) {
+        if (mc.player == null || back == null) {
+            if (mc.player != null && mc.player.containerMenu != mc.player.inventoryMenu) {
+                mc.player.containerMenu = mc.player.inventoryMenu;
+            }
+            return;
+        }
+        if (!(back instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> host)) {
+            return;
+        }
+        if (mc.player.containerMenu != host.getMenu()) {
+            com.craftingveloce.util.VeloceLog.Gui.detail(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "przywracam menu ekranu %s graczowi (containerMenu != menu ekranu)",
+                    back.getClass().getSimpleName());
+            mc.player.containerMenu = host.getMenu();
         }
     }
 

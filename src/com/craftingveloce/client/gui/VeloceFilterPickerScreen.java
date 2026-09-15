@@ -12,10 +12,8 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.GameType;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,9 +21,6 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
 
     private final BlockPos extractorPos;
     private final int filterIndex;
-
-    @Nullable
-    private GameType modeBeforeOpen;
 
     /**
      * Czy wybieramy filtr do PIECA PALIWOWEGO (wtedy liczy sie tylko paliwo).
@@ -73,22 +68,18 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
 
     @Override
     protected void init() {
-        if (this.minecraft == null || this.minecraft.gameMode == null) {
-            super.init();
-            return;
-        }
-        if (!this.minecraft.gameMode.hasInfiniteItems()) {
-            if (this.modeBeforeOpen == null) {
-                this.modeBeforeOpen = this.minecraft.gameMode.getPlayerMode();
-            }
-            this.minecraft.gameMode.setLocalMode(GameType.CREATIVE);
-        }
         // Uwaga: NIE ukrywamy tu slotow gracza po raz drugi.
         //
         // Bylo tu wlasne suppressHotbarSlots() z anonimowym Slotem, ktore
         // robilo dokladnie to samo co suppressPlayerSlots() z klasy bazowej
         // (i to po nim), a dodatkowo nie rozpoznawalo juz ukrytego slotu -
         // przez co przy kazdym init() zawijalo slot w nowy wrapper.
+        //
+        // Tak samo zniknela DRUGA kopia przelaczania trybu lokalnego
+        // (survival -> creative na czas GUI): klasa bazowa robi to samo, a jej
+        // zapamietany tryb byl przez te kopie nadpisywany PO podmianie, wiec
+        // "tryb przed otwarciem" znaczyl "tryb juz podmieniony". Jedno miejsce
+        // = jedno zrodlo prawdy.
         super.init();
     }
 
@@ -205,14 +196,24 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
         }
     }
 
+    /**
+     * Esc (i klawisz ekwipunku) WRACA do GUI bloku, nie do swiata.
+     *
+     * <p>Selektor jest czescia ekranu bloku: gracz, ktory chcial tylko cofnac
+     * wybor, ladowal w swiecie z niedokonczonym filtrem - a do klocka musial
+     * wracac sam. "Wstecz" ma znaczyc "wroc tam".
+     *
+     * <p>Ta sama sciezka co po wybraniu itemu, wiec menu gracza wraca na
+     * miejsce razem z ekranem (patrz ClientTerminalHelper.handBackMenu).
+     *
+     * <p>Gdy nie ma do czego wracac (host nie zostal zapamietany, np. po
+     * przeladowaniu zasobow), musi zadzialac ZWYKLE zamkniecie - inaczej Esc
+     * nie robilby nic i gracz zostalby uwieziony w selektorze.
+     */
     @Override
-    public void removed() {
-        // Trzymany stos obsluguje teraz klasa bazowa (oddaje do ekwipunku
-        // albo upuszcza). Wczesniej tutaj byl skasowany.
-        super.removed();
-        if (this.modeBeforeOpen != null && this.minecraft != null && this.minecraft.gameMode != null) {
-            this.minecraft.gameMode.setLocalMode(this.modeBeforeOpen);
-            this.modeBeforeOpen = null;
+    public void onClose() {
+        if (!com.craftingveloce.client.ClientTerminalHelper.reopenFilterHostScreen(extractorPos)) {
+            super.onClose();
         }
     }
 }
