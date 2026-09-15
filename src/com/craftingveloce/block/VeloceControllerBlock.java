@@ -100,7 +100,7 @@ public class VeloceControllerBlock extends BaseEntityBlock implements EntityBloc
         super.destroy(world, pos, state);
         if (world instanceof ServerLevel l) {
             InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
-            VelocePipeNetworkManager.get(l).onTerminalRemoved(pos);
+            VelocePipeNetworkManager.get(l).onTerminalRemoved(l, pos);
         }
     }
 

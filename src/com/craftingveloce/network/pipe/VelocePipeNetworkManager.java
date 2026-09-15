@@ -229,7 +229,7 @@ public class VelocePipeNetworkManager extends SavedData {
             net.updateTrackedChunks();
             terminalToNetwork.put(terminalPos, netId);
             // Doszedl wezel - jego dane sa czescia stocku sieci.
-            net.invalidateEndpointCache();
+            net.invalidateEndpointCache(level);
             setDirty();
             return net;
         }
@@ -412,21 +412,22 @@ public class VelocePipeNetworkManager extends SavedData {
             net.getTerminals().add(terminalPos);
             net.updateTrackedChunks();
             terminalToNetwork.put(terminalPos, netId);
-            net.invalidateEndpointCache();
+            net.invalidateEndpointCache(level);
             setDirty();
             return;
         }
     }
 
-    public void onTerminalRemoved(BlockPos terminalPos) {
+    public void onTerminalRemoved(ServerLevel level, BlockPos terminalPos) {
         UUID netId = terminalToNetwork.remove(terminalPos);
         if (netId != null) {
             VelocePipeNetwork net = networks.get(netId);
             if (net != null) {
                 net.getTerminals().remove(terminalPos);
-                // Wezel zniknal - jego dane nie sa juz aktualne. Cache dostanie
-                // pelny skan przy najblizszym ticku (lastFullStockScan).
-                net.invalidateEndpointCache();
+                // Wezel zniknal - jego dane nie sa juz aktualne. Dla chunkow
+                // zaladowanych cache sie przeliczy; dla rozladowanych zostaje
+                // ostatnia znana zawartosc (patrz invalidateCache).
+                net.invalidateEndpointCache(level);
                 net.updateTrackedChunks();
                 setDirty();
             }
@@ -460,7 +461,7 @@ public class VelocePipeNetworkManager extends SavedData {
         }
         for (VelocePipeNetwork net : touched) {
             // Bufor endpointu mogl wskazywac na usunieta skrzynie - przelicz od nowa.
-            net.invalidateEndpointCache();
+            net.invalidateEndpointCache(level);
         }
         if (!touched.isEmpty()) {
             com.craftingveloce.util.VeloceLog.Network.detail(

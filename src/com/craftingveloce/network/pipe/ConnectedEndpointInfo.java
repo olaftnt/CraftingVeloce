@@ -117,17 +117,35 @@ public class ConnectedEndpointInfo {
     /**
      * Uniewaznia zapamietane liczniki I pozwala na natychmiastowy ponowny skan.
      *
-     * <p><b>To jest wazne.</b> Samo wyczyszczenie mapy nie wystarczy: throttle
-     * w {@link #refreshIfLoadedThrottled} blokowal skan przez kolejne 10 tickow,
-     * wiec przez pol sekundy endpoint raportowal ZERO itemow zamiast po prostu
-     * nieaktualnych. A {@link VelocePipeNetwork#invalidateEndpointCache()} leci
-     * przy kazdej zmianie sasiedztwa sieci.
+     * <p><b>UWAGA: to NIE moze czyscic liczb dla rozladowanego chunku.</b>
      *
-     * <p>Zerowanie {@code lastScanTick} mowi "ten wpis jest niewazny, zeskanuj
-     * go przy nastepnym pytaniu".
+     * <p>BUG, ktory tu byl i ktory dawal glowny zglaszany objaw ("w
+     * niezaladowanym chunku nie mam itemow, ktore tam sa"): metoda czyscila
+     * {@code cachedCounts}, a {@link #refreshIfLoaded} dla rozladowanego
+     * chunku <b>nie robi nic</b> - nie ma z czego odtworzyc zawartosci.
+     *
+     * <p>Czyli: cache zostawal wyzerowany i nie mial jak sie odbudowac, bo
+     * chunk jest poza symulacja. A ze uniewaznienie leci przy kazdej zmianie
+     * sasiedztwa sieci i przy kazdej przebudowie, starczylo cokolwiek
+     * przestawic w bazie albo oddalic sie od skrzyni - i jej zawartosc
+     * znikala z GUI na stale.
+     *
+     * <p>Teraz rozrozniamy dwa przypadki:
+     * <ul>
+     *   <li><b>chunk zaladowany</b> - czyscimy, bo za chwile odczytamy
+     *       prawdziwy stan ze swiata,</li>
+     *   <li><b>chunk rozladowany</b> - zostawiamy ostatnia znana zawartosc.
+     *       Jest nadal prawdziwa: skoro chunk nie jest symulowany, nikt tych
+     *       itemow nie ruszyl. To jest wlasnie zalozenie calego mechanizmu.</li>
+     * </ul>
+     *
+     * <p>Zerowanie {@code lastScanTick} zostaje w obu przypadkach - mowi
+     * "ten wpis jest niewazny, zeskanuj go przy nastepnym pytaniu".
      */
-    public void invalidateCache() {
-        cachedCounts.clear();
+    public void invalidateCache(ServerLevel level) {
+        if (level == null || level.isLoaded(pos)) {
+            cachedCounts.clear();
+        }
         lastScanTick = Long.MIN_VALUE;
     }
 

@@ -107,12 +107,15 @@ public class VelocePipeNetwork {
      * inventory, zaladowanie chunka). Bez tego endpoint usunietej skrzyni
      * nadal raportowalby swoja dawna zawartosc.
      */
-    public void invalidateEndpointCache() {
+    public void invalidateEndpointCache(ServerLevel level) {
         for (ConnectedEndpointInfo ep : endpoints.values()) {
             // invalidateCache(), a nie samo getCachedCounts().clear():
             // czyszczenie bez zwolnienia throttlingu oznaczalo, ze przez
             // kolejne 10 tickow endpoint raportowal ZERO itemow.
-            ep.invalidateCache();
+            //
+            // level jest potrzebny, zeby NIE czyscic liczb dla chunku poza
+            // symulacja - tam nie ma jak ich odtworzyc (patrz invalidateCache).
+            ep.invalidateCache(level);
         }
         aggregateCache = null;
         aggregateCacheTick = Long.MIN_VALUE;
