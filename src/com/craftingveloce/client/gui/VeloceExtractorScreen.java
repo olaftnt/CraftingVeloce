@@ -82,7 +82,7 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
                     if (!filterItem.isEmpty()) {
                         graphics.renderTooltip(this.font, filterItem, mouseX, mouseY);
                     } else {
-                        graphics.renderTooltip(this.font, Component.literal("§7Filter Slot " + (index + 1) + "\n§eClick to pick item\n§eOr click with item in hand"), mouseX, mouseY);
+                        graphics.renderTooltip(this.font, Component.literal("Filter Slot " + (index + 1)), mouseX, mouseY);
                     }
                 }
             }
