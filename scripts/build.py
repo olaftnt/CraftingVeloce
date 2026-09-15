@@ -98,6 +98,59 @@ def validate_packet_docs():
     print(f"    OK (README opisuje wszystkie {len(registered)} pakietow)")
 
 
+def validate_gui_layout():
+    """
+    Wspolrzedne GUI zyja w kilku plikach i musza sie zgadzac.
+
+    Kto z kim, zalezy od tego, kto czego uzywa:
+      * FILTER_X/Y  - menu stawia sloty, ekran rysuje ikony filtrow,
+                      generator maluje ramki  -> wszystkie trzy,
+      * FUEL_X/Y    - menu (slot) + generator (ramka),
+      * PLAYER_X/Y  - menu (ekwipunek) + generator (ramki),
+      * FLAME_X/Y   - ekran (sprite plomienia) + generator (pozycja do opisu).
+
+    Raz juz sie to rozjechalo: slot paliwa stal tam, gdzie mowilo menu, a
+    tekstura miala ramke gdzie indziej - slot nachodzil na napis "Inventory".
+    Kompilator tego nie widzi, a w grze wyglada jak blad grafiki.
+    """
+    def consts(path, names):
+        text = open(path, encoding="utf-8").read()
+        out = {}
+        for n in names:
+            m = re.search(r"\b" + re.escape(n) + r"\s*=\s*(-?\d+)", text)
+            out[n] = int(m.group(1)) if m else None
+        return out
+
+    paths = {
+        "menu": "src/com/craftingveloce/inventory/VeloceVelocityFurnaceMenu.java",
+        "ekran": "src/com/craftingveloce/client/gui/VeloceVelocityFurnaceScreen.java",
+        "generator": "scripts/gen_furnace_gui.py",
+    }
+    names = ["FILTER_X", "FILTER_Y", "FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y",
+             "FLAME_X", "FLAME_Y"]
+    who = {n: [k for k in paths] for n in names}
+    for n in ("FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y"):
+        who[n] = ["menu", "generator"]          # ekran ich nie potrzebuje
+    for n in ("FLAME_X", "FLAME_Y"):
+        who[n] = ["ekran", "generator"]         # menu ich nie potrzebuje
+
+    values = {n: {k: consts(paths[k], [n])[n] for k in who[n]} for n in names}
+
+    problems = []
+    for n in names:
+        v = values[n]
+        if any(x is None for x in v.values()):
+            problems.append(f"{n}: brak stalej (" + ", ".join(
+                f"{k}={'brak' if x is None else x}" for k, x in v.items()) + ")")
+        elif len(set(v.values())) > 1:
+            problems.append(f"{n}: " + ", ".join(f"{k}={x}" for k, x in v.items()))
+
+    if problems:
+        fail("uklad GUI nie zgadza sie miedzy plikami:\n  " + "\n  ".join(problems))
+    print("    OK (uklad GUI zgodny: " + ", ".join(
+        f"{n}={values[n][who[n][0]]}" for n in names) + ")")
+
+
 def game_running():
     """
     Czy Minecraft z tego profilu wlasnie dziala?
@@ -257,6 +310,7 @@ def main():
     # scripts/gen_loot_tables.py - zeby nie powstal drugi, recznie pisany spis.
     validate_block_data(names)
     validate_packet_docs()
+    validate_gui_layout()
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "

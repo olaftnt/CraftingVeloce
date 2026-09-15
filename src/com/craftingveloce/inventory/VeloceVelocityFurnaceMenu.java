@@ -28,8 +28,11 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
 
     private static final int FILTER_X = 26;
     private static final int FILTER_Y = 18;
-    private static final int FUEL_X = 26;
-    private static final int FUEL_Y = 60;
+    // Slot paliwa: NA PRAWO od filtrow (nie pod nimi). Pod filtrami nachodzil
+    // na napis "Inventory" gracza - a przy okazji uklad "filtry | paliwo |
+    // plomien" czyta sie w naturalnej kolejnosci dzialania pieca.
+    private static final int FUEL_X = 88;
+    private static final int FUEL_Y = 26;
     /**
      * Ekwipunek gracza w x=26 - TAK SAMO jak w ekstraktorze.
      *

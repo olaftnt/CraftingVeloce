@@ -40,16 +40,30 @@ public class VeloceVelocityFurnaceScreen
     private static final ResourceLocation GUI_TEXTURE = ResourceLocation.fromNamespaceAndPath(
             CraftingVeloceMod.MODID, "textures/gui/velocity_furnace.png");
 
-    /** Tekstura waniliowego pieca - z niej bierzemy sprite plomyka. */
+    /** Tekstura waniliowego pieca - z niej bierzemy WYGASZONY obrys plomienia. */
     private static final ResourceLocation VANILLA_FURNACE = ResourceLocation
             .withDefaultNamespace("textures/gui/container/furnace.png");
 
-    /** Plomyk: 14x14, wersja zapalona i wygaszona, w prawym gornym rogu tekstury. */
+    /**
+     * ZAPALONA czesc plomienia - waniliowy sprite (osobny plik od 1.20.2).
+     *
+     * <p><b>BUG, ktory to naprawia.</b> Wczesniej bralem plomien ze starej
+     * tekstury panelu pod (176, 0). W 1.21 wanilia przeniosla ten sprite do
+     * {@code textures/gui/sprites/container/furnace/lit_progress.png} i pod
+     * (176, 0) w panelu nie ma NIC - rysowala sie wiec PUSTKA, a jedynym
+     * sladem plomienia byl tekst w tooltipie. Teraz idziemy ta sama droga co
+     * waniliowy piec: sprite {@code minecraft:container/furnace/lit_progress}.
+     */
+    private static final ResourceLocation LIT_PROGRESS_SPRITE = ResourceLocation
+            .withDefaultNamespace("container/furnace/lit_progress");
+
+    /** Wygaszony obrys plomienia w teksturze waniliowego pieca (jak w wanilii). */
+    private static final int EMPTY_FLAME_U = 56;
+    private static final int EMPTY_FLAME_V = 36;
+
+    /** Plomien: 14x14 - dokladnie jak w waniliowym piecu. */
     private static final int FLAME_W = 14;
     private static final int FLAME_H = 14;
-    private static final int FLAME_U = 176;
-    private static final int FLAME_V_LIT = 0;
-    private static final int FLAME_V_EMPTY = 14;
 
     private final List<ItemStack> clientFilters =
             new ArrayList<>(java.util.Collections.nCopies(
@@ -94,14 +108,24 @@ public class VeloceVelocityFurnaceScreen
     private void renderFlame(GuiGraphics graphics) {
         int x = this.leftPos + FLAME_X;
         int y = this.topPos + FLAME_Y;
-        graphics.blit(VANILLA_FURNACE, x, y, FLAME_U, FLAME_V_EMPTY, FLAME_W, FLAME_H);
 
-        int lit = burnTotal > 0
-                ? (int) Math.min(FLAME_H, (FLAME_H * burnRemaining) / burnTotal)
-                : 0;
-        if (lit > 0) {
-            graphics.blit(VANILLA_FURNACE, x, y + (FLAME_H - lit),
-                    FLAME_U, FLAME_V_EMPTY - lit, FLAME_W, lit);
+        // 1. Wygaszony obrys - z tekstury waniliowego pieca, dokladnie ten
+        //    fragment, nad ktorym wanilia rysuje zapalona czesc.
+        graphics.blit(VANILLA_FURNACE, x, y, EMPTY_FLAME_U, EMPTY_FLAME_V,
+                FLAME_W, FLAME_H);
+
+        // 2. Zapalona czesc - waniliowy sprite, przycinany OD GORY.
+        //
+        // Wzor jest przepisany z AbstractFurnaceScreen:
+        //     lit = floor(progress * 13) + 1
+        //     blitSprite(sprite, 14, 14, 0, 14 - lit, x, y + 14 - lit, 14, lit)
+        // Dlatego plomien opada z gory, a nie rosnie od dolu - tak gasnie ogien.
+        if (burnTotal > 0 && burnRemaining > 0) {
+            int lit = net.minecraft.util.Mth.floor(
+                    Math.min(1.0f, (float) burnRemaining / (float) burnTotal) * 13.0F) + 1;
+            lit = net.minecraft.util.Mth.clamp(lit, 1, FLAME_H);
+            graphics.blitSprite(LIT_PROGRESS_SPRITE, FLAME_W, FLAME_H,
+                    0, FLAME_H - lit, x, y + FLAME_H - lit, FLAME_W, lit);
         }
     }
 
@@ -126,9 +150,10 @@ public class VeloceVelocityFurnaceScreen
     // Polozenie pol - JEDNO zrodlo, uzywane i do rysowania, i do klikania.
     private static final int FILTER_X = 26;
     private static final int FILTER_Y = 18;
-    // Pozycja musi sie zgadzac z wglebieniem w teksturze (gen_furnace_gui.py).
-    private static final int FLAME_X = 150;
-    private static final int FLAME_Y = 30;
+    // Plomien NA PRAWO od slotu paliwa - uklad: filtry | paliwo | plomien.
+    // Pozycja musi sie zgadzac z menu i z gen_furnace_gui.py (sprawdza build.py).
+    private static final int FLAME_X = 112;
+    private static final int FLAME_Y = 27;
 
     private static int filterX(int index) {
         return FILTER_X + (index % 3) * 18;
@@ -146,19 +171,20 @@ public class VeloceVelocityFurnaceScreen
         this.renderTooltip(graphics, mouseX, mouseY);
     }
 
-    /** Na plomyku - ile ciepla zostalo (w przepaleniach). */
+    /**
+     * Na plomyku - TYLKO ile tickow palenia zostalo.
+     *
+     * <p>Wczesniej byl tu opis z liczba przepalen i podpowiedzia; uzytkownik
+     * chcial dokladnie jednej liczby. Plomien jest ikonka waniliowa, wiec
+     * tooltip ma tylko dopowiedziec to, czego z ikonki nie widac.
+     */
     private void renderHeatTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         if (!isHovering(FLAME_X, FLAME_Y, FLAME_W, FLAME_H, mouseX, mouseY)) {
             return;
         }
-        long ops = burnRemaining / com.craftingveloce.block.entity
-                .VeloceVelocityFurnaceBlockEntity.SMELT_HEAT_COST;
-        List<Component> lines = new ArrayList<>();
-        lines.add(Component.translatable("gui.craftingveloce.furnace.heat",
-                ops, burnRemaining));
-        lines.add(Component.translatable("gui.craftingveloce.furnace.heatHint")
-                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
-        graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
+        graphics.renderTooltip(this.font,
+                Component.translatable("gui.craftingveloce.furnace.ticks", burnRemaining),
+                mouseX, mouseY);
     }
 
     private void renderFilterTooltip(GuiGraphics graphics, int mouseX, int mouseY) {

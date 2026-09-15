@@ -37,13 +37,23 @@ SHADOW = (0x8B, 0x8B, 0x8B)
 SLOT_BG = (0x8B, 0x8B, 0x8B)
 
 # Pozycje slotow - MUSZA sie zgadzac z menu (VeloceVelocityFurnaceMenu).
-FILTER_X, FILTER_Y = 26, 18
-FUEL_X, FUEL_Y = 26, 60
-PLAYER_X, PLAYER_Y = 26, 84
+# UWAGA: kazda stala w OSOBNEJ linii. Build.py czyta je wyrazeniem regularnym,
+# zeby porownac z menu i z ekranem - zapis krotkowy (A, B = 1, 2) tego nie
+# pozwala, a bez tego porownania uklad GUI moze sie rozjechac niezauwazony.
+FILTER_X = 26
+FILTER_Y = 18
+FUEL_X = 88      # na prawo od filtrow (bylo pod nimi, nachodzilo na "Inventory")
+FUEL_Y = 26
+PLAYER_X = 26
+PLAYER_Y = 84
 
 # Pozycje elementow rysowanych dynamicznie przez ekrany.
-# JEDNO zrodlo: ekrany uzywaja tych samych liczb.
-FLAME_X, FLAME_Y = 150, 30
+# JEDNO zrodlo: ekrany uzywaja tych samych liczb (sprawdza to build.py).
+FLAME_X = 112    # na prawo od slotu paliwa
+FLAME_Y = 27
+# Uwaga: samego plomienia NIE rysujemy w teksturze. Ekran sklada go
+# z dwoch sprite'ow wanilii (wygaszony obrys + zapalona czesc), dokladnie
+# tak, jak robi to waniliowy piec - patrz VeloceVelocityFurnaceScreen.
 BAR_X, BAR_Y, BAR_W, BAR_H = 150, 30, 18, 54
 
 
@@ -118,8 +128,9 @@ def velocity_furnace():
     # Realny slot paliwa.
     slot(d, FUEL_X, FUEL_Y)
 
-    # Okno plomienia po prawej - dokladnie tam, gdzie ekran rysuje sprite.
-    recess(d, FLAME_X, FLAME_Y, FLAME_X + 13, FLAME_Y + 13)
+    # Plomienia NIE malujemy: ekran rysuje go sprite'ami z waniliowego pieca
+    # (obrys + zapalona czesc). Malowanie tu czegokolwiek pod nim tylko by
+    # psulo wyglad - i tak bylo: wlasne wglebienie wygladalo jak slot.
 
     player_inventory(d)
     return img
@@ -136,6 +147,54 @@ def electric_furnace():
     return img
 
 
+def self_check(img):
+    """Sprawdza WYGENEROWANY obraz: czy ramki slotow sa dokladnie tam, gdzie
+    deklaruja stale tego pliku.
+
+    <p>Po co: te same liczby zyja w TRZECH miejscach (ten generator, menu i
+    ekran). Raz juz sie rozjechaly - slot paliwa stal w innym miejscu, niz
+    mowilo menu, i nachodzil na napis "Inventory". Latwiej sprawdzic piksele
+    niz wierzyc, ze ktos pamietal o wszystkich trzech.
+    """
+    DARK = (0x37, 0x37, 0x37, 255)
+    LIGHT = (0xFF, 0xFF, 0xFF, 255)
+    BG = (0x8B, 0x8B, 0x8B, 255)
+    PANEL = (0xC6, 0xC6, 0xC6, 255)
+
+    def slot_ok(sx, sy):
+        return (all(img.getpixel((sx - 1 + i, sy - 1)) == DARK for i in range(17))
+                and all(img.getpixel((sx - 1, sy + i)) == DARK for i in range(16))
+                and all(img.getpixel((sx + 16, sy + i)) == LIGHT for i in range(16))
+                and all(img.getpixel((sx + i, sy + 16)) == LIGHT for i in range(16))
+                and all(img.getpixel((sx + 2 + i, sy + 2)) == BG for i in range(12)))
+
+    bad = []
+    for i in range(6):
+        x, y = FILTER_X + (i % 3) * 18, FILTER_Y + (i // 3) * 18
+        if not slot_ok(x, y):
+            bad.append(f"filtr {i} @ {x},{y}")
+    if not slot_ok(FUEL_X, FUEL_Y):
+        bad.append(f"paliwo @ {FUEL_X},{FUEL_Y}")
+    for row in range(3):
+        for col in range(9):
+            if not slot_ok(PLAYER_X + col * 18, PLAYER_Y + row * 18):
+                bad.append(f"ekwipunek r{row}c{col}")
+    for col in range(9):
+        if not slot_ok(PLAYER_X + col * 18, PLAYER_Y + 58):
+            bad.append(f"hotbar c{col}")
+
+    # Miejsce plomienia musi byc czyste - plomien rysuje ekran, sprite'ami wanilii.
+    dirty = sum(1 for y in range(FLAME_Y, FLAME_Y + 14)
+                for x in range(FLAME_X, FLAME_X + 14)
+                if img.getpixel((x, y)) != PANEL)
+    if dirty:
+        bad.append(f"miejsce plomienia zabrudzone ({dirty} px)")
+
+    if bad:
+        raise SystemExit("BLAD: tekstura nie zgadza sie ze stalymi: " + ", ".join(bad))
+    print("  samokontrola: ramki slotow i miejsce plomienia OK")
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     for name, img in (("velocity_furnace", velocity_furnace()),
@@ -143,6 +202,8 @@ def main():
         path = os.path.join(OUT, name + ".png")
         img.save(path)
         print("zapisano:", path, img.size)
+        if name == "velocity_furnace":
+            self_check(img)
 
     print()
     print("Pozycje do zgodnosci w ekranach:")
