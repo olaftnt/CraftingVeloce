@@ -52,6 +52,13 @@ public final class VeloceRecipeGraph {
     /** id receptury -> lista skladnikow (kazdy jako zbior akceptowanych itemow). */
     private final Map<ResourceLocation, List<Set<Item>>> ingredients = new HashMap<>();
 
+    /** Typy receptur, ktore nas interesuja - te bez infrastruktury. */
+    private static final java.util.Set<RecipeType<?>> FREE_TYPES = java.util.Set.of(
+            RecipeType.CRAFTING,
+            RecipeType.STONECUTTING,
+            RecipeType.SMITHING
+    );
+
     private VeloceRecipeGraph() {
     }
 
@@ -80,19 +87,20 @@ public final class VeloceRecipeGraph {
         var registries = level.registryAccess();
         var manager = level.getRecipeManager();
 
-        g.collect(manager, RecipeType.CRAFTING, registries);
-        g.collect(manager, RecipeType.STONECUTTING, registries);
-        g.collect(manager, RecipeType.SMITHING, registries);
+        // JEDNO przejscie po recepturach, nie jedno na typ. Poprzednia wersja
+        // wolala collect() trzy razy, a kazde collect() przechodzilo CALA liste
+        // receptur i odsiewalo reszte po getType() - czyli 3x wiecej pracy niz
+        // trzeba, na watku serwera, przy pierwszej zmianie stocku.
+        g.collect(manager, registries);
 
         return g;
     }
 
     private void collect(net.minecraft.world.item.crafting.RecipeManager manager,
-                         RecipeType<?> type,
                          net.minecraft.core.HolderLookup.Provider registries) {
         for (RecipeHolder<?> holder : manager.getRecipes()) {
             var recipe = holder.value();
-            if (recipe.getType() != type || recipe.isSpecial()) {
+            if (!FREE_TYPES.contains(recipe.getType()) || recipe.isSpecial()) {
                 continue;
             }
             ItemStack result;
