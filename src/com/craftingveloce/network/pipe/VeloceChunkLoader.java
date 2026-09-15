@@ -342,11 +342,17 @@ public final class VeloceChunkLoader {
      * goracy zostawal wymuszony na zawsze.
      */
     public static void expireHotTickets(ServerLevel level) {
+        long now = level.getGameTime();
+
+        // Sprzatanie map pomocniczych robimy PRZED wyjsciem z pustym REFS -
+        // inaczej po zwolnieniu wszystkich biletow mapy nie bylyby czyszczone
+        // nigdy, bo metoda konczylaby sie wczesniej.
+        pruneTrackingMaps(level, now);
+
         Map<Long, Entry> byChunk = REFS.get(level);
         if (byChunk == null || byChunk.isEmpty()) {
             return;
         }
-        long now = level.getGameTime();
         List<Long> expired = new ArrayList<>();
         for (Map.Entry<Long, Entry> e : byChunk.entrySet()) {
             Entry entry = e.getValue();
@@ -376,6 +382,56 @@ public final class VeloceChunkLoader {
     // ------------------------------------------------------------------
     // Diagnostyka
     // ------------------------------------------------------------------
+
+    /**
+     * Usuwa wpisy o chunkach, ktorych okna dawno wygasly.
+     *
+     * <p><b>BUG (wyciek pamieci), ktory to naprawia.</b> Obie mapy pomocnicze
+     * - {@code HIT_WINDOW} (licznik uzyc) i {@code FORCE_WATCH} (licznik
+     * wymuszen) - sa kluczowane numerem chunku i dostawaly wpis przy KAZDYM
+     * chunku, ktorego kiedykolwiek dotknelismy. Nie byly czyszczone wcale:
+     * jedyne miejsce, ktore je usuwalo, to {@code releaseAll} przy wyjsciu
+     * ze swiata. Efekt: na dlugiej sesji z siecia siegajaca wielu chunkow
+     * (albo z graczem, ktory polata po swiecie) rosla liczba martwych wpisow -
+     * setki tysiecy przy dlugiej grze.
+     *
+     * <p>Wpis jest bezuzyteczny, gdy okno, ktorego dotyczyl, minelo: licznik
+     * uzyc i tak zaczyna sie od nowa, a licznik wymuszen sluzy tylko do
+     * raportu. Dlatego wyrzucamy je raz na sekunde, razem z wygaszaniem
+     * gorących biletow - czyli tam, gdzie to sprzatanie ma naturalne miejsce.
+     *
+     * <p>Przypadek {@code now < zapisanyTick} (cofniety czas swiata) traktujemy
+     * tak samo jak wygasniecie: nie da sie go ocenic, a trzymanie takiego
+     * wpisu na zawsze jest gorsze niz zgubienie licznika.
+     */
+    private static void pruneTrackingMaps(ServerLevel level, long now) {
+        Map<Long, Long> windows = HIT_WINDOW.get(level);
+        if (windows != null) {
+            windows.entrySet().removeIf(e -> now < e.getValue()
+                    || now - e.getValue() > HOT_WINDOW_TICKS);
+            if (windows.isEmpty()) {
+                HIT_WINDOW.remove(level);
+            }
+        }
+        Map<Long, ForceWatch> watch = FORCE_WATCH.get(level);
+        if (watch != null) {
+            watch.entrySet().removeIf(e -> now < e.getValue().windowStart
+                    || now - e.getValue().windowStart > FORCE_THROTTLE_WINDOW_TICKS);
+            if (watch.isEmpty()) {
+                FORCE_WATCH.remove(level);
+            }
+        }
+    }
+
+    /** Diagnostyka: ile wpisow trzymaja mapy pomocnicze (do wykrywania wyciekow). */
+    public static String trackingMapSizes(ServerLevel level) {
+        Map<Long, Long> windows = HIT_WINDOW.get(level);
+        Map<Long, ForceWatch> watch = FORCE_WATCH.get(level);
+        Map<Long, Entry> refs = REFS.get(level);
+        return "hits=" + (windows == null ? 0 : windows.size())
+                + ", forceWatch=" + (watch == null ? 0 : watch.size())
+                + ", refs=" + (refs == null ? 0 : refs.size());
+    }
 
     /** Opis jednego trzymanego chunku - do raportu na czacie. */
     public record HeldChunk(long chunkKey, int x, int z, List<Ticket> tickets, int hits) {

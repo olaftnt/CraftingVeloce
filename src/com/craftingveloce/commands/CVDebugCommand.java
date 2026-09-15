@@ -88,6 +88,12 @@ public class CVDebugCommand {
                 false);
         source.sendSuccess(() -> Component.literal(
                 "§7Ticking server: §fyes §7| gameTime: §f" + sl.getGameTime()), false);
+        // Liczniki map pomocniczych loadera. Rosnace w czasie = wyciek pamieci;
+        // maja oscylowac wokol liczby chunkow, ktorych siec REALNIE dotyka.
+        source.sendSuccess(() -> Component.literal(
+                "§7Chunk loader tracking maps: §f"
+                        + com.craftingveloce.network.pipe.VeloceChunkLoader.trackingMapSizes(sl)),
+                false);
         for (VelocePipeNetwork net : manager.getAllNetworks(sl)) {
             source.sendSuccess(() -> Component.literal(
                     "  §8net §7" + net.getId().toString().substring(0, 8)
