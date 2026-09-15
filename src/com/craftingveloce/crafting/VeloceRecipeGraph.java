@@ -67,8 +67,16 @@ public final class VeloceRecipeGraph {
         Object key = level.getRecipeManager();
         VeloceRecipeGraph g = CACHE.get(key);
         if (g == null) {
+            // Jak w VeloceRecipeRegistry - jednorazowy, ale realny koszt na
+            // watku serwera. Logujemy, zeby byl widoczny, a nie zgadywany.
+            long start = System.nanoTime();
             g = build(level);
             CACHE.put(key, g);
+            com.craftingveloce.util.VeloceLog.Craft.success(
+                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                    "recipe graph built: %d recipe(s), %d ingredient item(s), %d ms",
+                    g.recipeCount(), g.ingredientItemCount(),
+                    (System.nanoTime() - start) / 1_000_000L);
         }
         return g;
     }

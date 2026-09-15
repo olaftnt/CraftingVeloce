@@ -5,6 +5,7 @@ import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import com.craftingveloce.util.VeloceLog;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -187,8 +188,16 @@ public final class VeloceRecipeRegistry {
         if (cached != null) {
             return cached;
         }
+        // Budowa indeksu to przejscie po WSZYSTKICH recepturach modpacka wraz
+        // z rozwiazaniem skladnikow - jednorazowy, ale realny koszt na watku
+        // serwera. Mierzymy go, zeby dalo sie go wskazac w logu, gdyby ktos
+        // znow zglaszal "klikniecie w terminal zamula serwer".
+        long start = System.nanoTime();
         Map<Item, List<CraftingEntry>> built = buildIndex(manager, level);
         CACHE.put(manager, built);
+        VeloceLog.Craft.success(VeloceLog.Side.SERVER,
+                "recipe index built: %d item(s) with a recipe, %d ms",
+                built.size(), (System.nanoTime() - start) / 1_000_000L);
         return built;
     }
 
