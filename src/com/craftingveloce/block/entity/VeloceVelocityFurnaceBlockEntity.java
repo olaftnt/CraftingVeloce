@@ -83,6 +83,14 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
 
     private int pullCooldown;
 
+    /**
+     * Czy piec ma pominac odliczanie i pobrac paliwo w tym ticku.
+     *
+     * <p>Ustawiane przez {@link #consumeOperations(long)}, gdy crafter zje
+     * cieplo do zera. Jednorazowe - po pobraniu flaga gasnie.
+     */
+    private boolean wantImmediatePull = false;
+
     public VeloceVelocityFurnaceBlockEntity(BlockPos pos, BlockState state) {
         super(com.craftingveloce.init.VeloceRegistry.VELOCITY_FURNACE_BE.get(), pos, state);
         // Kazda zmiana w slocie paliwa musi trafic do zapisu.
@@ -104,6 +112,11 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             return;
         }
         burnTicksRemaining = Math.max(0L, burnTicksRemaining - operations * SMELT_HEAT_COST);
+        // Bufor spadl ponizej jednego przepalenia - piec musi jak najszybciej
+        // siegnac po kolejne paliwo, inaczej przestanie byc "zasilony".
+        if (burnTicksRemaining < SMELT_HEAT_COST) {
+            wantImmediatePull = true;
+        }
         setChanged();
     }
 
@@ -172,6 +185,19 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             return;
         }
         boolean wasLit = isLit();
+
+        // 0. Crafter wlasnie zjadl nam cieplo - dobierz paliwo NATYCHMIAST.
+        //
+        // To jest wprost wymog specyfikacji: "gdy Crafter wykonuje operacje
+        // przetapiania, wysyla tick do pieca i ścina mu czas spalania, co
+        // wymusza szybsze pobranie kolejnego paliwa". Bez tego piec czekalby
+        // do PULL_INTERVAL_TICKS, a przez ten czas bylby "niezasilony" - i
+        // crafter, ktory wlasnie zaplacil cieplem, nie moglby zaplacic
+        // nastepnym razem, mimo ze paliwo lezy w sieci.
+        if (wantImmediatePull) {
+            wantImmediatePull = false;
+            pullCooldown = 0;
+        }
 
         // 1. Piec pali sie CALY CZAS - to jest koszt instant craftowania.
         //    Bufor ciepla schodzi niezaleznie od tego, czy ktokolwiek craftuje.

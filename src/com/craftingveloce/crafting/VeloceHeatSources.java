@@ -93,4 +93,68 @@ public final class VeloceHeatSources {
         }
         return false;
     }
+
+    /**
+     * Ile przepalen siec moze teraz wykonac LACZNIE.
+     *
+     * <p>To jest budzet dla planera: nie ma sensu planowac stu przepalen, gdy
+     * piec uciagnie trzy. Wolajacy nie musi przy tym wiedziec, czy cieplo
+     * pochodzi z pradu, czy z wegla.
+     */
+    public static long totalOperations(ServerLevel level, VelocePipeNetwork network) {
+        long total = 0;
+        for (VeloceHeatSource heat : allIn(level, network)) {
+            total += Math.max(0L, heat.availableOperations());
+        }
+        return total;
+    }
+
+    /**
+     * Zrodlo, z ktorego bierzemy cieplo: zasilone, o najmniejszym priorytecie.
+     *
+     * <p>Kolejnosc jest wymaganiem, nie preferencja: piec elektryczny (0) ma
+     * byc uzywany PIERWSZY, a paliwowy (1) jest fallbackiem na wypadek, gdy
+     * zabraknie pradu. {@link #poweredIn} juz sortuje po priorytecie, wiec
+     * wystarczy wziac pierwsze.
+     *
+     * @return zasilone zrodlo albo {@code null}, gdy sieci na nic nie stac
+     */
+    public static VeloceHeatSource preferred(ServerLevel level, VelocePipeNetwork network) {
+        List<VeloceHeatSource> powered = poweredIn(level, network);
+        return powered.isEmpty() ? null : powered.get(0);
+    }
+
+    /**
+     * Zabiera cieplo na {@code operations} przepalen, z najlepszego zrodla.
+     *
+     * <p><b>Fallback w trakcie.</b> Bierzemy z jednego zrodla tyle, ile ono ma
+     * (ale nie wiecej niz potrzeba), a reszte dobieramy z kolejnych. Dzieki
+     * temu zuzycie 5 przepalen przy elektrycznym majacym 3 nie konczy sie
+     * niepowodzeniem - 3 ida z pradu, 2 z paliwa, dokladnie tak, jak opisuje
+     * specyfikacja ("dopiero gdy zabraknie pradu, fallback na paliwowy").
+     *
+     * @return {@code true} gdy udalo sie zabrac CALOSC; przy {@code false}
+     *         nie zabieramy niczego (wolajacy ma wtedy przerwac operacje)
+     */
+    public static boolean consume(ServerLevel level, VelocePipeNetwork network, long operations) {
+        if (operations <= 0) {
+            return true;
+        }
+        if (totalOperations(level, network) < operations) {
+            return false;
+        }
+        long left = operations;
+        for (VeloceHeatSource heat : poweredIn(level, network)) {
+            if (left <= 0) {
+                break;
+            }
+            long take = Math.min(left, Math.max(0L, heat.availableOperations()));
+            if (take <= 0) {
+                continue;
+            }
+            heat.consumeOperations(take);
+            left -= take;
+        }
+        return left <= 0;
+    }
 }

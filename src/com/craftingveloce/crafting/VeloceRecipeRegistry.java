@@ -86,6 +86,19 @@ public final class VeloceRecipeRegistry {
     );
 
     /**
+     * Czy ten typ receptury wymaga ROZGRZANEGO pieca.
+     *
+     * <p>Jedyne miejsce, ktore odpowiada na to pytanie. Crafter musi to
+     * wiedziec, zeby policzyc cieplo przy planowaniu i zabrac je przy
+     * wykonaniu - a gdyby sprawdzal typy samodzielnie, lista typow pieca
+     * musialaby byc utrzymywana w dwoch miejscach (i predzej czy pozniej
+     * rozjechalaby sie tak, jak rozjechala sie lista wezlow sieci).
+     */
+    public static boolean isFurnaceType(RecipeType<?> type) {
+        return FURNACE_TYPES.contains(type);
+    }
+
+    /**
      * Namespace'y modow, ktorych receptury chcemy dodatkowo brac pod uwage,
      * mimo ze uzywaja wlasnego typu. Na razie puste - swiadomie konserwatywnie.
      * Dodawac tylko po zweryfikowaniu, ze dany typ nie wymaga infrastruktury.
@@ -136,6 +149,14 @@ public final class VeloceRecipeRegistry {
             return result.getCount() + "x " + result.getHoverName().getString();
         }
 
+        /**
+         * Czy to receptura PIECA - czyli czy wymaga zabrania jednego
+         * przepalenia z zasilonego pieca w sieci.
+         */
+        public boolean isFurnace() {
+            return isFurnaceType(type);
+        }
+
         /** Czy receptura wymaga siatki (3x3) czy wystarczy 2x2 / 1x1. */
         public boolean needsGrid(int size) {
             if (!(type == RecipeType.CRAFTING)) {
@@ -175,6 +196,34 @@ public final class VeloceRecipeRegistry {
         return getIndex(serverLevel).getOrDefault(item, List.of());
     }
 
+    /**
+     * Receptury dla itemu z uwzglednieniem PIECA.
+     *
+     * <p>To jedyne miejsce, w ktorym wolno polaczyc receptury darmowe z
+     * piecowymi - i robi to tylko wtedy, gdy wolajacy POTWIERDZIL, ze w sieci
+     * stoi zasilony piec ({@code heatAvailable}).
+     *
+     * <p><b>Kolejnosc ma znaczenie.</b> Receptury darmowe ida pierwsze, zeby
+     * przepalenie bylo ostatnia deska ratunku, a nie domyslem: jesli item da
+     * sie zrobic bez paliwa, nie ma po co palic.
+     *
+     * @param heatAvailable czy w sieci jest zasilone zrodlo ciepla
+     */
+    public static List<CraftingEntry> getRecipesFor(Level level, Item item, boolean heatAvailable) {
+        List<CraftingEntry> free = getRecipesFor(level, item);
+        if (!heatAvailable) {
+            return free;
+        }
+        List<CraftingEntry> furnace = getFurnaceRecipesFor(level, item);
+        if (furnace.isEmpty()) {
+            return free;
+        }
+        List<CraftingEntry> out = new ArrayList<>(free.size() + furnace.size());
+        out.addAll(free);
+        out.addAll(furnace);
+        return out;
+    }
+
     /** Czy item da sie w ogole wycraftowac w sieci. */
     public static boolean isCraftable(Level level, Item item) {
         return !getRecipesFor(level, item).isEmpty();
@@ -208,8 +257,7 @@ public final class VeloceRecipeRegistry {
     }
 
     /** Receptury dla itemu, posortowane tak, by pierwsza byla "domyslna". */
-    public static List<CraftingEntry> getOrdered(Level level, Item item, @Nullable ResourceLocation preferred) {
-        List<CraftingEntry> all = getRecipesFor(level, item);
+    public static List<CraftingEntry> getOrdered(Level level, Item item, @Nullable ResourceLocation preferred) {        List<CraftingEntry> all = getRecipesFor(level, item);
         if (all.size() <= 1 || preferred == null) {
             return all;
         }

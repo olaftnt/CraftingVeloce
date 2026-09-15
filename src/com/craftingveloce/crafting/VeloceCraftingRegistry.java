@@ -102,6 +102,22 @@ public final class VeloceCraftingRegistry {
      */
     public static java.util.Set<Item> getAllEnabledItems(ServerLevel level, VelocePipeNetwork network) {
         java.util.Set<Item> craftable = VeloceRecipeRegistry.getAllCraftableItems(level);
+
+        // PIEC DOKLADA SWOJE RECEPTURY - ale tylko gdy jest ZASILONY.
+        //
+        // Bez tego auto-crafter nigdy nie tknąłby itemu, ktory powstaje
+        // WYŁĄCZNIE w piecu (sztabka z rudy, szkło, węgiel drzewny): nie ma go
+        // na liście craftowalnych bez energii, więc wypadał z `enabled` i cała
+        // sciezka piecowa była martwa - mimo że piec stal w sieci i się palił.
+        //
+        // Gdy pieca nie ma albo stoi bez paliwa, lista zostaje bez zmian -
+        // czyli dokladnie tak, jakby pieca w ogole nie było.
+        if (VeloceHeatSources.hasPower(level, network)) {
+            java.util.Set<Item> merged = new java.util.HashSet<>(craftable);
+            merged.addAll(VeloceRecipeRegistry.getAllFurnaceCraftableItems(level));
+            craftable = merged;
+        }
+
         if (craftable.isEmpty()) {
             return java.util.Set.of();
         }
