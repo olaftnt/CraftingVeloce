@@ -11,8 +11,8 @@ import net.minecraft.world.item.crafting.RecipeType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.WeakHashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,9 +33,15 @@ import java.util.Set;
  */
 public final class VeloceRecipeGraph {
 
-    /** Cache per RecipeManager (identity - nowy manager = nowy indeks). */
+    /**
+     * Cache per RecipeManager.
+     *
+     * <p>Slabe klucze - patrz komentarz w {@link VeloceRecipeRegistry}. Ta
+     * mapa miala dokladnie ten sam wyciek: trzymala RecipeManager na sztywno,
+     * wiec kazde wejscie do swiata zostawialo po sobie caly graf receptur.
+     */
     private static final Map<Object, VeloceRecipeGraph> CACHE =
-            Collections.synchronizedMap(new IdentityHashMap<>());
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     /** item skladnik -> id receptur, ktore go uzywaja. */
     private final Map<Item, Set<ResourceLocation>> usedBy = new HashMap<>();

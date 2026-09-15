@@ -17,8 +17,8 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.WeakHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,8 +69,22 @@ public final class VeloceRecipeRegistry {
     private static final Set<String> TRUSTED_MOD_NAMESPACES = Set.of();
 
     /** Cache: RecipeManager -> (wynik Item -> lista receptur). */
+    /**
+     * Indeks receptur per RecipeManager.
+     *
+     * <p><b>Slabe klucze sa tu konieczne.</b> Wczesniej byla to zwykla
+     * IdentityHashMap, ktora trzymala RecipeManager na sztywno. Kazde wejscie
+     * do swiata (i kazde przeladowanie danych) tworzy NOWY RecipeManager, wiec
+     * mapa rosla o pelny indeks receptur za kazdym razem i nic tego nie
+     * sprzatalo - klasyczny wyciek pamieci, ktory konczy sie dlugimi
+     * pauzami GC i lagami.
+     *
+     * <p>WeakHashMap sam usuwa wpis, gdy managera nic juz nie trzyma.
+     * RecipeManager nie nadpisuje equals/hashCode, wiec zachowuje sie
+     * tozsamosciowo jak poprzednio.
+     */
     private static final Map<RecipeManager, Map<Item, List<CraftingEntry>>> CACHE =
-            Collections.synchronizedMap(new IdentityHashMap<>());
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     private VeloceRecipeRegistry() {
     }

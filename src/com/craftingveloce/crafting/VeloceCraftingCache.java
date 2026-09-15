@@ -198,12 +198,28 @@ public final class VeloceCraftingCache {
         return CACHES.computeIfAbsent(network.getId(), id -> new VeloceCraftingCache(network));
     }
 
-    public static void drop(UUID networkId) {
-        CACHES.remove(networkId);
+    /**
+     * Usuwa cache sieci i <b>zwalnia jej force-loady</b>.
+     *
+     * <p>Poprzednia wersja tylko usuwala wpis z mapy. Cache trzymal wtedy
+     * swoje chunki w globalnym loaderze na zawsze: siec znikala, a chunki
+     * zostawaly wymuszone do konca sesji. Przy stawianiu i burzeniu sieci
+     * (albo przy kazdej zmianie ukladu rur) to sie zbieralo.
+     */
+    public static void drop(ServerLevel level, UUID networkId) {
+        VeloceCraftingCache cache = CACHES.remove(networkId);
+        if (cache != null) {
+            cache.release(level);
+        }
     }
 
     public static void clearAll() {
         CACHES.clear();
+    }
+
+    /** Liczba zywych cache'ow - do wykrywania wyciekow. */
+    public static int liveCount() {
+        return CACHES.size();
     }
 
     // ------------------------------------------------------------------

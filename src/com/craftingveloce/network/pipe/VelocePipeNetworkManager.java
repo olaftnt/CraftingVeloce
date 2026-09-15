@@ -185,7 +185,10 @@ public class VelocePipeNetworkManager extends SavedData {
             }
         }
 
-        // Remove old network references
+        // Remove old network references.
+        // Cache MUSI byc zwolniony razem z siecia - inaczej trzyma swoje
+        // force-loady na zawsze (patrz VeloceCraftingCache.drop).
+        com.craftingveloce.crafting.VeloceCraftingCache.drop(level, netId);
         networks.remove(netId);
         for (BlockPos p : oldNet.getPipes()) {
             pipeToNetwork.remove(p);
@@ -400,6 +403,7 @@ public class VelocePipeNetworkManager extends SavedData {
                     }
                 }
                 // Clean up old network
+                com.craftingveloce.crafting.VeloceCraftingCache.drop(level, oldId);
                 networks.remove(oldId);
                 for (BlockPos p : oldNet.getPipes()) {
                     pipeToNetwork.remove(p);
