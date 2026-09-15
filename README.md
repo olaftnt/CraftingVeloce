@@ -242,7 +242,7 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `CraftingTableCycleRecipePKT` | C→S | `BlockPos pos, Item item, ResourceLocation recipeId` |
 | `CraftingTableToggleItemPKT` | C→S | `BlockPos pos, Item item` |
 | `ExtractorToggleCraftingPKT` | C→S | `BlockPos pos, int filterIndex` |
-| `OpenControllerScreenPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Set<Item> craftable, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnaceInNetwork, boolean furnacePowered, Set<Item> furnacePreferred` |
+| `OpenControllerScreenPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnacePowered, Set<Item> furnacePreferred` |
 | `OpenCraftingTableScreenPKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents` |
 | `OpenFilterPKT` | C→S | `BlockPos pos, int filterIndex` |
 | `OpenFilterPickerPKT` | S→C | `BlockPos pos, int filterIndex` |
@@ -312,7 +312,7 @@ została w tyle, tak jak wcześniej lista pakietów i sekcja GUI):
 - `openCraftingTableScreen(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents)`
 - `updateCraftingTableState(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes)`
 - `handleCraftableCounts(BlockPos pos, Map<Item, Long> counts, boolean complete)` — odpowiedź serwera z liczbami "ile da się dorobić"
-- `openControllerScreen(BlockPos pos, Map<Item, Long> stock, Set<Item> craftable, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnaceInNetwork, boolean furnacePowered, Map<Item, Integer> hotbar)`
+- `openControllerScreen(BlockPos pos, Map<Item, Long> stock, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnacePowered, Set<Item> furnacePreferred)`
 
 > Uwaga na `disabledItems`: crafter działa w modelu **opt-out**, więc to zbiór
 > WYJĄTKÓW (wyłączonych), a nie lista włączonych. Odwrócenie tego znaczenia było

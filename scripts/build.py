@@ -201,6 +201,86 @@ def validate_lang_keys():
     print(info + ")   [block./item. pomijam - te tworzy rejestr]")
 
 
+def _balanced(text, open_index):
+    """Zawartosc nawiasow, ktore zaczynaja sie na open_index (poziom 0 w srodku)."""
+    depth = 0
+    for i in range(open_index, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[open_index + 1:i]
+    return None
+
+
+def validate_helper_docs():
+    """
+    Sygnatury metod ClientTerminalHelper w README musza sie zgadzac z kodem.
+
+    README sam o to prosi ("pilnuj, zeby ta lista nie zostala w tyle"), a i tak
+    zostala: `openControllerScreen` jeszcze dlugo opisywal parametr `hotbar`,
+    ktorego nie bylo od dwoch sesji. Dokladnie ta sama klasa bledu, co tabela
+    pakietow - dlatego dostaje ten sam rodzaj kontroli.
+
+    Sprawdzamy:
+      * kazda metoda opisana w README istnieje w kodzie,
+      * liczba parametrow sie zgadza,
+      * gdy README podaje pelne typy - takze same typy.
+    Metody zapisane skrotowo (bez typow, np. `handleSyncCounts(a, b)`) sprawdzamy
+    tylko po liczbie parametrow, bo nie da sie ich porownac doslownie.
+    """
+    readme = "README.md"
+    src = "src/com/craftingveloce/client/ClientTerminalHelper.java"
+    if not os.path.exists(readme) or not os.path.exists(src):
+        return
+    doc = open(readme, encoding="utf-8").read()
+    m = re.search(r"^### ClientTerminalHelper\s*$(.*?)^(?:---|## )", doc,
+                  re.MULTILINE | re.DOTALL)
+    if not m:
+        return
+    section = m.group(1)
+    java = open(src, encoding="utf-8").read()
+
+    methods = {}
+    for mm in re.finditer(r"public static [\w<>,\[\]\. ]+?\s(\w+)\s*\(", java):
+        params = _balanced(java, mm.end() - 1)
+        if params is None:
+            continue
+        methods.setdefault(mm.group(1), []).append(_normalize_signature(params))
+
+    problems = []
+    documented = set()
+    for dm in re.finditer(r"`(\w+)\(([^`]*)\)`", section):
+        name, raw = dm.group(1), dm.group(2)
+        documented.add(name)
+        if name not in methods:
+            problems.append(f"{name}: opisana w README, a nie ma jej w kodzie")
+            continue
+        parts = [p for p in _split_components(raw) if p.strip()]
+        typed = all(" " in p.strip() for p in parts)
+        candidates = [p for p in methods[name]
+                      if len([x for x in _split_components(p) if x.strip()]) == len(parts)]
+        if not candidates:
+            arities = [len([x for x in _split_components(p) if x.strip()])
+                       for p in methods[name]]
+            problems.append(f"{name}: README podaje {len(parts)} parametr(ow), "
+                            f"w kodzie jest {arities}")
+        elif typed and _normalize_signature(raw) not in candidates:
+            problems.append(f"{name}:\n    kod:    {candidates[0]}\n"
+                            f"    README: {_normalize_signature(raw)}")
+
+    missing = sorted(n for n in methods if n not in documented)
+    if missing:
+        problems.append("metody publiczne bez opisu w README: " + ", ".join(missing))
+
+    if problems:
+        fail("ClientTerminalHelper w README rozjechany z kodem:\n  "
+             + "\n  ".join(problems))
+    print(f"    OK (README opisuje {len(documented)} metod ClientTerminalHelper - "
+          f"sygnatury zgodne)")
+
+
 def validate_gui_layout():
     """
     Wspolrzedne GUI zyja w kilku plikach i musza sie zgadzac.
@@ -503,6 +583,7 @@ def main():
     validate_packet_docs()
     validate_lang_keys()
     validate_gui_layout()
+    validate_helper_docs()
     validate_sensor_row()
 
     classes = sum(1 for n in names if n.endswith(".class"))

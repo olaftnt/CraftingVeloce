@@ -224,24 +224,22 @@ public class ClientTerminalHelper {
     /** Otwiera GUI Veloce Controller z obrazem sieci. */
     public static void openControllerScreen(BlockPos pos,
                                             java.util.Map<Item, Long> stock,
-                                            java.util.Set<Item> craftable,
                                             java.util.Set<Item> craftingEnabled,
                                             java.util.Set<Item> furnaceCraftable,
-                                            boolean furnaceInNetwork,
                                             boolean furnacePowered,
                                             java.util.Set<Item> furnacePreferred) {
         Minecraft mc = Minecraft.getInstance();
         com.craftingveloce.util.VeloceLog.Gui.attempt(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                "opening controller screen at %s (stock=%d, craftable=%d, enabled=%d, "
-                        + "furnace=%d inNetwork=%s powered=%s, preferFurnace=%d)",
-                pos, stock.size(), craftable.size(), craftingEnabled.size(),
-                furnaceCraftable.size(), furnaceInNetwork, furnacePowered, furnacePreferred.size());
+                "opening controller screen at %s (stock=%d, enabled=%d, "
+                        + "furnace=%d powered=%s, preferFurnace=%d)",
+                pos, stock.size(), craftingEnabled.size(),
+                furnaceCraftable.size(), furnacePowered, furnacePreferred.size());
         if (mc.player != null) {
             mc.setScreen(new com.craftingveloce.client.gui.VeloceControllerScreen(
                     mc.player, mc.player.connection.enabledFeatures(), true,
-                    pos, stock, craftable, craftingEnabled,
-                    furnaceCraftable, furnaceInNetwork, furnacePowered, furnacePreferred));
+                    pos, stock, craftingEnabled,
+                    furnaceCraftable, furnacePowered, furnacePreferred));
             com.craftingveloce.util.VeloceLog.Gui.success(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,
                     "controller screen opened");

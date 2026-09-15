@@ -75,12 +75,16 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     private final BlockPos controllerPos;
     private final Map<Item, Long> stock;
-    private final Set<Item> craftable;
+    /**
+     * Itemy, ktore crafter REALNIE zrobi (auto-crafting wlaczony) - zielone tlo.
+     *
+     * <p>To nie to samo co "ma recepture": {@code craftable} (receptura jest,
+     * ale crafter moze miec ja wylaczona) nie jest juz potrzebne, bo gracz
+     * kazal usunac teksty o powodach braku dostepnosci.
+     */
     private final Set<Item> craftingEnabled;
     /** Itemy z receptura PIECA (smelting / blasting / smoking). */
     private final Set<Item> furnaceCraftable;
-    /** Czy w sieci stoi jakikolwiek piec (nawet bez paliwa). */
-    private final boolean furnaceInNetwork;
     /** Czy ktorys piec jest zasilony - tylko wtedy receptury pieca sa realne. */
     private final boolean furnacePowered;
     /**
@@ -127,17 +131,15 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     public VeloceControllerScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                   boolean displayOperatorCreativeTab, BlockPos controllerPos,
-                                  Map<Item, Long> stock, Set<Item> craftable,
+                                  Map<Item, Long> stock,
                                   Set<Item> craftingEnabled, Set<Item> furnaceCraftable,
-                                  boolean furnaceInNetwork, boolean furnacePowered,
+                                  boolean furnacePowered,
                                   Set<Item> furnacePreferred) {
         super(player, enabledFeatures, displayOperatorCreativeTab);
         this.controllerPos = controllerPos;
         this.stock = new HashMap<>(stock);
-        this.craftable = new HashSet<>(craftable);
         this.craftingEnabled = new HashSet<>(craftingEnabled);
         this.furnaceCraftable = new HashSet<>(furnaceCraftable);
-        this.furnaceInNetwork = furnaceInNetwork;
         this.furnacePowered = furnacePowered;
         this.furnacePreferred.addAll(furnacePreferred);
     }
@@ -146,35 +148,6 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     private boolean hasStock(Item item) {
         return stock.getOrDefault(item, 0L) > 0;
-    }
-
-    /**
-     * Powod, dla ktorego itemu NIE da sie uzyskac - albo {@code null}, gdy da
-     * sie go uzyskac (jest na stocku, crafter go zrobi albo piec przepali).
-     *
-     * <p><b>Jedno zrodlo prawdy o dostepnosci.</b> Filtr, kolor ikony i
-     * podpowiedz w tooltipie pytaja o to samo, wiec nie moga sie rozjechac.
-     *
-     * <p>Sprawdzamy {@code craftingEnabled}, a nie samo {@code craftable}:
-     * item moze miec recepture, ktorej crafter nie wykonuje. Piec liczy sie
-     * tylko ZASILONY - bez paliwa nic sie nie przepali.
-     */
-    private Blocker blocker(Item item) {
-        if (hasStock(item) || craftingEnabled.contains(item)) {
-            return null;
-        }
-        if (furnaceCanSmelt(item)) {
-            return null;
-        }
-        if (craftable.contains(item)) {
-            return new Blocker("gui.craftingveloce.controller.craftingOff", ChatFormatting.GRAY);
-        }
-        if (furnaceCraftable.contains(item)) {
-            return furnaceInNetwork
-                    ? new Blocker("gui.craftingveloce.controller.smeltingNoFuel", ChatFormatting.DARK_GRAY)
-                    : new Blocker("gui.craftingveloce.controller.smeltingNoFurnace", ChatFormatting.DARK_GRAY);
-        }
-        return new Blocker("gui.craftingveloce.controller.notCraftable", ChatFormatting.RED);
     }
 
     /**
@@ -187,12 +160,18 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         return furnacePowered && furnaceCraftable.contains(item);
     }
 
+    /**
+     * Czy item da sie uzyskac: jest na stocku, crafter go zrobi albo piec przepali.
+     *
+     * <p><b>JEDNO zrodlo prawdy o dostepnosci.</b> Filtr i kolor ikony pytaja
+     * o to samo, wiec nie moga sie rozjechac. Kolejnosc jest ta sama w obu
+     * miejscach: stock, potem crafter, potem piec.
+     *
+     * <p>Sprawdzamy {@code craftingEnabled}, a nie samo "ma recepture":
+     * item moze miec recepture, ktorej crafter nie wykonuje.
+     */
     private boolean isAvailable(Item item) {
-        return blocker(item) == null;
-    }
-
-    /** Powod braku dostepnosci i kolor, w jakim go pokazac. */
-    private record Blocker(String key, ChatFormatting color) {
+        return hasStock(item) || craftingEnabled.contains(item) || furnaceCanSmelt(item);
     }
 
     private boolean passesFilter(Item item) {
@@ -220,20 +199,28 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         return !stack.isEmpty() && passesFilter(stack.getItem());
     }
 
-    /** Kolor tla ikony wg stanu dostepnosci. */
+    /**
+     * Kolor tla ikony wg stanu dostepnosci.
+     *
+     * <p><b>Zielony = crafter to zrobi, zolty = piec to przepali.</b> Wczesniej
+     * crafter mial zolty, a piec pomaranczowy; gracz chcial zielony dla
+     * craftowania (tak jak w innych modach), a zolty zostawil dla "da sie
+     * inaczej", czyli wlasnie dla pieca. Niebieski (stock) i czerwony (nie ma
+     * i nie da sie zrobic) zostaja bez zmian.
+     *
+     * <p>Kolejnosc jest ta sama co w {@link #isAvailable}: stock, crafter, piec.
+     */
     private int colorFor(Item item) {
-        // Kolor "in hotbar" usuniety razem z informacja o hotbarze - gracz
-        // nie chcial, zeby kontroler pokazywal, co ma pod reka.
         if (hasStock(item)) {
             return 0x770000AA;  // niebieski: na stocku
         }
         if (craftingEnabled.contains(item)) {
-            return 0x77AAAA00;  // zolty: crafter to zrobi
+            return 0x7700AA00;  // zielony: crafter to zrobi
         }
         if (furnaceCanSmelt(item)) {
-            return 0x77AA5500;  // pomaranczowy: piec to przepali
+            return 0x77AAAA00;  // zolty: piec to przepali (inna droga)
         }
-        return 0x77AA0000;      // czerwony: niedostepne
+        return 0x77AA0000;      // czerwony: nie ma i nie da sie zrobic
     }
 
     /**
@@ -396,6 +383,15 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         renderInfoTooltip(graphics, mouseX, mouseY);
     }
 
+    /**
+     * Tooltip ikony: nazwa, stock, tempo - i (dla itemow z receptura pieca)
+     * preferencja "crafting czy piec".
+     *
+     * <p><b>Zadnych tekstow o braku dostepnosci.</b> Bylo tu "Crafter cannot
+     * make this" oraz "Build a machine: extractor + chest..." - gracz kazal je
+     * wyrzucic. Brak dostepnosci widac po CZERWONYM tle ikony, a resztę mowi
+     * stock i tempo; teksty tylko zaslanialy ekran.
+     */
     private void renderInfoTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         Slot slot = getSlotUnderMouse();
         if (slot == null || isPlayerInventorySlot(slot) || !slot.hasItem()) {
@@ -410,9 +406,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         lines.add(slot.getItem().getHoverName());
         addStockLines(lines, item);
         addFlowLines(lines, item);
-        addBlockerLines(lines, item);
         addPreferenceLines(lines, item);
-        addUnavailableHint(lines, item);
 
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
     }
@@ -505,20 +499,6 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Dlaczego itemu NIE da sie zrobic - jedna linia i TYLKO gdy cos blokuje.
-     *
-     * <p>Gracz nie chcial komunikatow o stanie, ktory DZIALA ("auto-crafting
-     * wlaczony", "przepalanie wlaczone") - to szum, bo dziala to, co ma
-     * dzialac. Zostaje sam powod, gdy jest problem.
-     */
-    private void addBlockerLines(List<Component> lines, Item item) {
-        Blocker blocker = blocker(item);
-        if (blocker != null) {
-            lines.add(Component.translatable(blocker.key()).withStyle(blocker.color()));
-        }
-    }
-
-    /**
      * Preferencja "crafting czy piec" - tylko dla itemow, ktore MOZNA przepalic.
      *
      * <p>Pokazujemy ja wprost ("Preference: Crafting" / "Preference: Furnace"),
@@ -538,17 +518,6 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
                         ? "gui.craftingveloce.controller.prefer.furnace"
                         : "gui.craftingveloce.controller.prefer.crafting")
                 .withStyle(ChatFormatting.YELLOW));
-    }
-
-    private void addUnavailableHint(List<Component> lines, Item item) {
-        if (isAvailable(item)) {
-            return;
-        }
-        lines.add(Component.empty());
-        lines.add(Component.translatable("gui.craftingveloce.controller.buildMachine")
-                .withStyle(net.minecraft.ChatFormatting.GRAY));
-        lines.add(Component.translatable("gui.craftingveloce.controller.buildMachine2")
-                .withStyle(net.minecraft.ChatFormatting.GRAY));
     }
 
     /**

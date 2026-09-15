@@ -20,24 +20,24 @@ import java.util.Set;
  * <p>Niesie:
  * <ul>
  *   <li>{@code stock} - ile sztuk kazdego itemu jest fizycznie w sieci</li>
- *   <li>{@code craftable} - itemy z receptura wykonywalna bez energii
- *       (crafting / stonecutting / smithing)</li>
  *   <li>{@code craftingEnabled} - itemy, ktore crafter realnie potrafi zrobic
  *       (wlaczone; model opt-out, wiec to jest "wszystko oprocz wylaczonych")</li>
  *   <li>{@code furnaceCraftable} - itemy z receptura PIECA (smelting /
  *       blasting / smoking); niezaleznie od tego, czy piec jest w sieci</li>
- *   <li>{@code furnaceInNetwork} / {@code furnacePowered} - czy w sieci stoi
- *       jakikolwiek piec i czy ktorys jest zasilony. Trzy stany daja trzy
- *       rozne komunikaty: brak pieca, piec bez paliwa, piec gotowy</li>
+ *   <li>{@code furnacePowered} - czy ktorys piec jest zasilony; tylko wtedy
+ *       receptury pieca sa realne (i tylko wtedy item dostaje zolte tlo)</li>
  *   <li>{@code furnacePreferred} - itemy, dla ktorych gracz woli PRZEPALANIE</li>
  * </ul>
+ *
+ * <p><b>Czego tu NIE ma.</b> {@code craftable} ("ma recepture, ale crafter
+ * moze miec wylaczona") i {@code furnaceInNetwork} ("stoi jakikolwiek piec")
+ * sluzyly wylacznie tekstom o powodach braku dostepnosci - gracz kazal je
+ * usunac, wiec zniknely razem z nimi. Dostepnosc widac po kolorze tla ikony.
  */
 public record OpenControllerScreenPKT(BlockPos pos,
                                       Map<Item, Long> stock,
-                                      Set<Item> craftable,
                                       Set<Item> craftingEnabled,
                                       Set<Item> furnaceCraftable,
-                                      boolean furnaceInNetwork,
                                       boolean furnacePowered,
                                       Set<Item> furnacePreferred)
         implements CustomPacketPayload {
@@ -57,14 +57,12 @@ public record OpenControllerScreenPKT(BlockPos pos,
             buf.writeVarLong(e.getValue());
         }
 
-        // Trzy zbiory itemow kodujemy tym samym kodem - wczesniej bylo to
+        // Zbiory itemow kodujemy tym samym kodem - wczesniej bylo to
         // trzy razy przeklejone, wiec kazda zmiana formatu wymagala trzech
         // zgodnych poprawek.
-        writeItems(buf, pkt.craftable);
         writeItems(buf, pkt.craftingEnabled);
         writeItems(buf, pkt.furnaceCraftable);
 
-        buf.writeBoolean(pkt.furnaceInNetwork);
         buf.writeBoolean(pkt.furnacePowered);
 
         buf.writeInt(pkt.furnacePreferred.size());
@@ -86,11 +84,9 @@ public record OpenControllerScreenPKT(BlockPos pos,
             }
         }
 
-        Set<Item> craftable = readItems(buf);
         Set<Item> craftingEnabled = readItems(buf);
         Set<Item> furnaceCraftable = readItems(buf);
 
-        boolean furnaceInNetwork = buf.readBoolean();
         boolean furnacePowered = buf.readBoolean();
 
         int preferredSize = buf.readInt();
@@ -102,8 +98,8 @@ public record OpenControllerScreenPKT(BlockPos pos,
             }
         }
 
-        return new OpenControllerScreenPKT(pos, stock, craftable, craftingEnabled,
-                furnaceCraftable, furnaceInNetwork, furnacePowered, furnacePreferred);
+        return new OpenControllerScreenPKT(pos, stock, craftingEnabled,
+                furnaceCraftable, furnacePowered, furnacePreferred);
     }
 
     private static void writeItems(FriendlyByteBuf buf, Set<Item> items) {
@@ -132,8 +128,8 @@ public record OpenControllerScreenPKT(BlockPos pos,
 
     public static void handle(OpenControllerScreenPKT pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> com.craftingveloce.client.ClientTerminalHelper
-                .openControllerScreen(pkt.pos(), pkt.stock(), pkt.craftable(),
+                .openControllerScreen(pkt.pos(), pkt.stock(),
                         pkt.craftingEnabled(), pkt.furnaceCraftable(),
-                        pkt.furnaceInNetwork(), pkt.furnacePowered(), pkt.furnacePreferred()));
+                        pkt.furnacePowered(), pkt.furnacePreferred()));
     }
 }

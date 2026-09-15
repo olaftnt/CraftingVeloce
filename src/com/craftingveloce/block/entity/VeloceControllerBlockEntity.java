@@ -161,18 +161,15 @@ public class VeloceControllerBlockEntity extends BlockEntity
         }
 
         Map<Item, Long> stock = net == null ? Map.of() : net.getAllItemCounts(sl);
-        Set<Item> craftable = VeloceRecipeRegistry.getAllCraftableItems(sl);
         Set<Item> craftingEnabled = net == null
                 ? Set.of()
                 : VeloceCraftingRegistry.getAllEnabledItems(sl, net);
 
         // PIEC: receptury pieca sa uzywalne TYLKO gdy w sieci stoi ZASILONY piec.
-        // Klient uzywa tego do JEDNEJ rzeczy: gdy itemu nie da sie uzyskac, ma
-        // powiedziec DLACZEGO ("brak pieca" vs "piec bez paliwa"). Stanu
-        // "mozna przepalac" nie wysylamy jako komunikatu - gracz nie chcial
-        // tekstow o tym, co dziala.
+        // Klient uzywa tego do JEDNEJ rzeczy: zolte tlo dla itemow, ktore da sie
+        // przepalic. "Stoi jakikolwiek piec bez paliwa" nie jest juz potrzebne -
+        // te informacje nosily usuniete teksty w tooltipie.
         Set<Item> furnaceCraftable = VeloceRecipeRegistry.getAllFurnaceCraftableItems(sl);
-        boolean furnaceInNetwork = net != null && VeloceHeatSources.hasAnyHeatSource(sl, net);
         boolean furnacePowered = net != null && VeloceHeatSources.hasPower(sl, net);
 
         // Preferencja "crafting czy piec" - z sieci, wiec widzi ja cala siec,
@@ -181,8 +178,8 @@ public class VeloceControllerBlockEntity extends BlockEntity
         Set<Item> furnacePreferred = net == null ? Set.of() : net.getFurnacePreferred();
 
         PacketDistributor.sendToPlayer(player, new OpenControllerScreenPKT(
-                this.getBlockPos(), stock, craftable, craftingEnabled,
-                furnaceCraftable, furnaceInNetwork, furnacePowered, furnacePreferred));
+                this.getBlockPos(), stock, craftingEnabled,
+                furnaceCraftable, furnacePowered, furnacePreferred));
 
         // Tempo przeplywu idzie osobnym, lekkim pakietem. Wysylamy je od razu,
         // zeby gracz nie czekal sekundy na pierwsze liczby - a potem klient
