@@ -505,6 +505,9 @@ public class VelocePipeNetworkManager extends SavedData {
         Set<BlockPos> discoveredTerminals = new HashSet<>();
         Map<BlockPos, ConnectedEndpointInfo> discoveredEndpoints = new HashMap<>();
         Set<UUID> intersectedOldNets = new HashSet<>();
+        // Rury, ktore weszly do sieci z niezaladowanych chunkow. Ich block
+        // entity jest niedostepne, wiec nie znamy ich zamknietych stron.
+        Set<BlockPos> unloadedPipes = new HashSet<>();
 
         queue.add(originPos);
         visitedPipes.add(originPos);
@@ -532,10 +535,35 @@ public class VelocePipeNetworkManager extends SavedData {
 
                 BlockPos neighborPos = current.relative(dir);
                 if (!level.isLoaded(neighborPos)) {
-                    // Check if neighbor was an already-known pipe in an old network
+                    // RURA W NIEZALADOWANYM CHUNKU.
+                    //
+                    // BUG, ktory tu byl: dopisywalismy taka rure do
+                    // visitedPipes, ale NIE wrzucalismy jej do kolejki BFS -
+                    // wiec przeszukiwanie ZATRZYMYWALO SIE na granicy chunku.
+                    // Rury po drugiej stronie nie byly odwiedzane, a wiec
+                    // ginely z sieci: raz brakowalo terminala, raz beczki, raz
+                    // 86 rur (913 zamiast 999) - zaleznie od tego, od ktorego
+                    // konca zaczal sie BFS i ktore chunki byly zaladowane.
+                    //
+                    // Objaw w grze: siec "raz widzi" magazyn, a raz nie.
+                    //
+                    // Teraz taka rura JEST kolejkowana, zeby przejscie moglo
+                    // isc dalej.
+                    //
+                    // UWAGA na zamkniete strony: stan "zamknieta strona" zyje
+                    // w block entity (NBT), a dla niezaladowanego chunku nie ma
+                    // go skad odczytac. Rura bylaby wiec potraktowana jako
+                    // calkiem otwarta i BFS przeszedlby przez zamkniete
+                    // polaczenie. Dlatego NIE wchodzimy w nia jako w rozwidlenie:
+                    // kolejkujemy ja, ale gdy do niej dotrzemy, jej sasiedzi sa
+                    // sprawdzani tylko wtedy, gdy block entity da sie odczytac.
                     UUID existingNetId = pipeToNetwork.get(neighborPos);
-                    if (existingNetId != null && intersectedOldNets.contains(existingNetId)) {
-                        visitedPipes.add(neighborPos);
+                    if (existingNetId != null) {
+                        intersectedOldNets.add(existingNetId);
+                    }
+                    if (visitedPipes.add(neighborPos)) {
+                        unloadedPipes.add(neighborPos);
+                        queue.add(neighborPos);
                     }
                     continue;
                 }
@@ -615,9 +643,10 @@ public class VelocePipeNetworkManager extends SavedData {
         }
 
         VeloceLog.Network.detail(VeloceLog.Side.SERVER,
-                "built network at %s: %d pipe(s), %d terminal(s), %d endpoint(s)",
-                originPos, visitedPipes.size(), discoveredTerminals.size(),
-                discoveredEndpoints.size());
+                "built network at %s: %d pipe(s) (%d z niezaladowanych chunkow), "
+                        + "%d node(s), %d storage(s)",
+                originPos, visitedPipes.size(), unloadedPipes.size(),
+                discoveredTerminals.size(), discoveredEndpoints.size());
 
         // ID wynikowej sieci liczymy PRZED petla scalania - potrzebne, zeby
         // (patrz nizej)
