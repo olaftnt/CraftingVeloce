@@ -198,7 +198,8 @@ public class VeloceVelocityFurnaceScreen
             ItemStack filter = clientFilters.get(i);
             List<Component> lines = new ArrayList<>();
             if (filter.isEmpty()) {
-                lines.add(Component.translatable("gui.craftingveloce.furnace.filterEmpty"));
+                // Numer slotu, jak w ekstraktorze - gracz wie, ktory filtr ustawia.
+                lines.add(Component.translatable("gui.craftingveloce.furnace.filterEmpty", i + 1));
             } else {
                 lines.add(filter.getHoverName());
                 lines.add(Component.translatable("gui.craftingveloce.furnace.filterClear")
@@ -229,6 +230,13 @@ public class VeloceVelocityFurnaceScreen
         if (filterIndex >= 0) {
             ItemStack carried = this.menu.getCarried();
             if (!carried.isEmpty()) {
+                // Z RĘKI: filtr ma sens tylko dla paliwa. Item, ktorego nie da
+                // sie przepalic, NIE zostaje przyjety - akcja po prostu sie nie
+                // dzieje (filtr bez zmian, item zostaje na kursorze).
+                if (com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity
+                        .isUnusableFuelFilter(carried)) {
+                    return;
+                }
                 setFilter(filterIndex, carried);
                 return;
             }

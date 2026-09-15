@@ -286,6 +286,52 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         burnTicksRemaining = burn;
     }
 
+    /**
+     * Czy z tego itemu da sie w ogole przepalac.
+     *
+     * <p>JEDNO miejsce na cale "co jest paliwem" - korzysta z tego serwer
+     * (przyjmowanie paliwa) i klient (filtry, selektor filtrow). Inaczej
+     * klient i serwer moglyby miec dwie rozne odpowiedzi na to samo pytanie.
+     */
+    public static boolean isFuel(ItemStack stack) {
+        return burnTicksOf(stack) > 0;
+    }
+
+    /**
+     * Czy dane o paliwach sa w ogole dostepne po tej stronie.
+     *
+     * <p><b>Kanarek.</b> Pytamy o wegiel - to paliwo w kazdym modpacku. Jesli
+     * odpowiedz brzmi "nie", to znaczy, ze tej stronie brakuje danych o
+     * paliwach i NIE WOLNO na ich podstawie niczego blokowac ani kolorowac:
+     * w selektorze filtrow zrobiloby to na czerwono WSZYSTKIE itemy, a gracz
+     * nie moglby wybrac nawet wegla. W takiej sytuacji po prostu nie
+     * egzekwujemy filtra paliwa (serwer i tak sprawdza je po swojej stronie).
+     */
+    private static Boolean fuelDataAvailable;
+
+    public static boolean fuelDataAvailable() {
+        if (fuelDataAvailable == null) {
+            fuelDataAvailable = burnTicksOf(new ItemStack(net.minecraft.world.item.Items.COAL)) > 0;
+            if (!fuelDataAvailable) {
+                com.craftingveloce.util.VeloceLog.Network.failure(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "brak danych o paliwach po tej stronie (wegiel wyszedl jako nie-paliwo) -"
+                                + " filtr paliwa NIE bedzie egzekwowany w GUI");
+            }
+        }
+        return fuelDataAvailable;
+    }
+
+    /**
+     * Czy tego itemu NIE wolno wlozyc do filtra paliwa.
+     *
+     * <p>Jedno miejsce dla GUI (selektor + ekran pieca): czerwone zaznaczenie
+     * i odrzucenie klikniecia musza pytac o to samo.
+     */
+    public static boolean isUnusableFuelFilter(ItemStack stack) {
+        return fuelDataAvailable() && !isFuel(stack);
+    }
+
     /** Ile tickow palenia daje ten stos (0 = nie jest paliwem). */
     public static long burnTicksOf(ItemStack stack) {
         if (stack.isEmpty()) {

@@ -27,6 +27,16 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
     @Nullable
     private GameType modeBeforeOpen;
 
+    /**
+     * Czy wybieramy filtr do PIECA PALIWOWEGO (wtedy liczy sie tylko paliwo).
+     *
+     * <p>Rozpoznajemy po bloku-gospodarzu, a nie po osobnym pakiecie: selektor
+     * jest JEDEN dla ekstraktora, pieca i czujnika, wiec dokladanie do niego
+     * "rodzaju bloku" znaczyloby trzy miejsca do zsynchronizowania przy kazdym
+     * nowym bloku z filtrem.
+     */
+    private final boolean fuelOnly;
+
     private Map<Item, Long> networkCounts = new HashMap<>();
 
     public void updateNetworkCounts(Map<Item, Long> counts) {
@@ -37,6 +47,28 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
         super(player, enabledFeatures, displayOperatorCreativeTab);
         this.extractorPos = extractorPos;
         this.filterIndex = filterIndex;
+        this.fuelOnly = isFuelOnlyHost(player, extractorPos);
+    }
+
+    /** Czy blok pod ta pozycja to piec paliwowy (filtr = filtr paliwa). */
+    private static boolean isFuelOnlyHost(LocalPlayer player, BlockPos pos) {
+        if (player == null || player.level() == null) {
+            return false;
+        }
+        return player.level().getBlockState(pos).getBlock()
+                instanceof com.craftingveloce.block.VeloceVelocityFurnaceBlock;
+    }
+
+    /** Czy ten stos nadaje sie na filtr (w trybie paliwa: tylko paliwo). */
+    private boolean acceptable(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        // fuelOnly: paliwo. Wspolna regula z ekranem pieca - patrz
+        // VeloceVelocityFurnaceBlockEntity.isUnusableFuelFilter (z kanarkiem).
+        return !fuelOnly
+                || !com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity
+                        .isUnusableFuelFilter(stack);
     }
 
     @Override
@@ -77,9 +109,19 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
             return;
         }
         super.renderSlot(graphics, slot);
-        // Draw count overlay if this item is available in the network
         if (slot.hasItem()) {
             ItemStack stack = slot.getItem();
+
+            // W trybie "tylko paliwo" itemy, ktorych nie da sie przepalic, sa
+            // zaznaczone NA CZERWONO - gracz widzi od razu, czego nie wybierze
+            // (klik na taki item nic nie robi, patrz slotClicked).
+            if (fuelOnly && !acceptable(stack)) {
+                RenderSystem.disableDepthTest();
+                graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 16, 0x77AA0000);
+                RenderSystem.enableDepthTest();
+            }
+
+            // Draw count overlay if this item is available in the network
             long count = networkCounts.getOrDefault(stack.getItem(), 0L);
             if (count > 0) {
                 drawCountOverlay(graphics, this.font, count, slot.x, slot.y);
@@ -144,6 +186,12 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
 
         ItemStack item = slot.getItem();
         if (!item.isEmpty()) {
+            // Nie nadaje sie na filtr w tym oknie (w piecu paliwowym: to nie
+            // jest paliwo). NIC nie robimy - gracz zostaje w selektorze, ekran
+            // sie nie zmienia, a filtr zostaje jaki byl.
+            if (!acceptable(item)) {
+                return;
+            }
             // Selected this item as filter!
             ItemStack filterItem = item.copy();
             filterItem.setCount(1);

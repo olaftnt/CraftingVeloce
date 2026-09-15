@@ -46,7 +46,7 @@
   "gui.craftingveloce.extractor.emptySlot": "Empty filter (left-click to choose an item)",
   "gui.craftingveloce.extractor.filterHelp": "Left-click: clear / choose item. Right-click: toggle auto-crafting.",
   "gui.craftingveloce.furnace.filterClear": "Left-click to clear",
-  "gui.craftingveloce.furnace.filterEmpty": "Empty fuel filter",
+  "gui.craftingveloce.furnace.filterEmpty": "Slot %s: click to choose a fuel",
   "gui.craftingveloce.furnace.filterHint": "With no filters the furnace accepts ANY fuel",
   "gui.craftingveloce.furnace.ticks": "%s/%s",
   "gui.craftingveloce.sensor.count": "In network: %s",
