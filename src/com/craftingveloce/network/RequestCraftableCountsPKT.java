@@ -104,11 +104,14 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                     pkt.pos().getZ() + 0.5) > 64.0) {
                 return;
             }
+            // Rozgalezienie po INTERFEJSIE, nie po konkretnym bloku: dzieki
+            // temu kontroler (i kazdy przyszly ekran z liczbami) dziala bez
+            // zmiany tego pakietu.
             BlockEntity be = player.level().getBlockEntity(pkt.pos());
-            if (!(be instanceof VeloceTomTerminalBlockEntity terminal)) {
+            if (!(be instanceof com.craftingveloce.block.entity.VeloceCraftCountSource source)) {
                 return;
             }
-            var result = terminal.computeCraftableCounts(pkt.items());
+            var result = source.computeCraftableCounts(pkt.items());
             PacketDistributor.sendToPlayer(player,
                     new SyncCraftableCountsPKT(pkt.pos(), result.counts(), result.complete()));
         });

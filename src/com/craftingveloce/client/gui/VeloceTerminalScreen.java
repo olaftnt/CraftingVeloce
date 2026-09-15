@@ -30,8 +30,14 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     private final BlockPos terminalPos;
     private Map<Item, Long> networkCounts = new HashMap<>();
 
-    /** Ile sztuk da sie dorobic auto-craftingiem (zolta liczba "+N"). */
-    private Map<Item, Long> craftableCounts = new HashMap<>();
+    /**
+     * Ile sztuk da sie dorobic auto-craftingiem (zolta liczba "+N").
+     *
+     * <p>Logika zamawiania i sklejania odpowiedzi siedzi we wspolnej klasie,
+     * ktorej uzywa TAKZE kontroler - zeby oba ekrany pokazywaly te same
+     * liczby z tego samego kodu, a nie z dwoch kopii, ktore maja sie zgadzac.
+     */
+    private final VeloceCraftableCounts craftable = new VeloceCraftableCounts();
 
     @Nullable
 
@@ -95,9 +101,7 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         // pusta albo niepelna. Nadpisanie kasowalo wtedy liczby dostarczone
         // przez natychmiastowa odpowiedz - i nie wracaly. Dokladamy wiec tylko
         // to, co przyszlo; precyzyjne czyszczenie robi natychmiastowa sciezka.
-        if (craftable != null && !craftable.isEmpty()) {
-            this.craftableCounts.putAll(craftable);
-        }
+        this.craftable.putAll(craftable);
     }
 
     /**
@@ -117,42 +121,14 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
                 "received instant counts for %d item(s) (complete=%s)",
                 craftable.size(), complete);
-
-        if (complete) {
-            // Serwer przezyl wszystkie zadane itemy, wiec brak wpisu oznacza
-            // faktycznie "nie da sie zrobic" - mozna wyczyscic stare wartosci.
-            for (Item it : lastRequestedItems) {
-                this.craftableCounts.remove(it);
-            }
-            this.craftableCounts.putAll(craftable);
-        } else {
-            // Serwer nie przezyl wszystkiego (siec jeszcze nie gotowa albo
-            // budzet sie skonczyl). Tylko dokladamy to, co przyszlo - NIE
-            // kasujemy poprzednich wartosci. Bez tego liczby znikaly i nie
-            // wracaly.
-            this.craftableCounts.putAll(craftable);
-        }
+        this.craftable.update(craftable, complete);
     }
-
-    /** Itemy z ostatniego zadania - zeby wiedziec, ktore wpisy odswiezyc. */
-    private final java.util.Set<Item> lastRequestedItems = new java.util.HashSet<>();
-
-    /**
-     * Sygnatura ostatnio zamowionej strony.
-     *
-     * <p>Pozwala wykryc zmiane zawartosci ekranu (inna zakladka, przewiniecie)
-     * i zamowic liczby dla nowej strony, bez wysylania zadania co tick.
-     */
-    private int lastPageSignature = 0;
-
-    /** Czy juz zamowiono liczby po otwarciu ekranu. */
-    private boolean initialRequestSent = false;
 
     @Override
     protected void init() {
         super.init();
         // Natychmiast po otwarciu: zamow liczby dla tego, co widac.
-        initialRequestSent = false;
+        craftable.resetRequestState();
         requestVisibleCounts(true);
     }
 
@@ -180,43 +156,7 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         if (this.minecraft == null || this.minecraft.player == null || this.menu == null) {
             return;
         }
-        // HashSet zamiast listy: to leci co tick, a visible.contains() na
-        // ArrayList to skan O(n) przy kazdym slocie - czyli O(n^2) na tick.
-        java.util.List<Item> visible = new java.util.ArrayList<>();
-        java.util.Set<Item> seen = new java.util.HashSet<>();
-        int signature = 1;
-        for (Slot slot : this.menu.slots) {
-            if (slot == null || !slot.hasItem() || isPlayerSlot(slot)) {
-                continue;
-            }
-            Item it = slot.getItem().getItem();
-            if (seen.add(it)) {
-                visible.add(it);
-                // Sygnatura: kolejnosc i sklad widocznych itemow.
-                signature = signature * 31 + it.hashCode();
-            }
-            // Twardy limit: serwer odrzuca zadania wieksze niz MAX_ITEMS.
-            // Widoczna strona to kilkadziesiat pozycji, ale przy nietypowym
-            // ukladzie slotow moze byc wiecej - wtedy lepiej wyslac obcieta
-            // liste niz doprowadzic do odrzucenia CALEGO zadania.
-            if (visible.size() >= com.craftingveloce.network.RequestCraftableCountsPKT.MAX_ITEMS) {
-                break;
-            }
-        }
-        if (visible.isEmpty()) {
-            return;
-        }
-        if (!force && signature == lastPageSignature) {
-            return;
-        }
-        lastPageSignature = signature;
-        lastRequestedItems.clear();
-        lastRequestedItems.addAll(visible);
-        com.craftingveloce.util.VeloceLog.Gui.detail(
-                com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                "requesting instant counts for %d visible item(s)", visible.size());
-        PacketDistributor.sendToServer(
-                new com.craftingveloce.network.RequestCraftableCountsPKT(terminalPos, visible));
+        this.craftable.request(terminalPos, this.menu.slots, this::isPlayerSlot, force);
     }
 
 
@@ -257,14 +197,14 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             ItemStack stack = slot.getItem();
             long count = networkCounts.getOrDefault(stack.getItem(), 0L);
             if (count > 0) {
-                drawCountOverlay(graphics, this.font, count, slot.x, slot.y);
+                VeloceSlotOverlay.drawStock(graphics, this.font, count, slot.x, slot.y);
             }
             // Liczba sztuk, ktore da sie dorobic auto-craftingiem.
             // Pokazywana jako "+N" w lewym gornym rogu - zolta, zeby odroznic
             // od zielonego stocku. Zero nie jest rysowane.
-            long craftable = craftableCounts.getOrDefault(stack.getItem(), 0L);
+            long craftable = this.craftable.get(stack.getItem());
             if (craftable > 0) {
-                drawCraftableOverlay(graphics, this.font, craftable, slot.x, slot.y);
+                VeloceSlotOverlay.drawCraftable(graphics, this.font, craftable, slot.x, slot.y);
             }
         }
     }
@@ -280,90 +220,17 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      *   <li>tak samo dla M -> B.</li>
      * </ul>
      */
-    /**
-     * Ile znakow miesci sie w nakladce na slocie.
-     *
-     * <p>Uzywane przy decyzji, czy dopisac "+" przed liczba: plus ma sens
-     * tylko wtedy, gdy calosc nadal sie miesci.
-     */
-    private static final int MAX_OVERLAY_CHARS = 5;
-
+    /** Zgodnosc: skrocona liczba. Implementacja jest we {@link VeloceSlotOverlay}. */
     public static String formatCount(long number) {
-        if (number < 0) {
-            return "0";
-        }
-        if (number < 1000) {
-            return Long.toString(number);
-        }
-        // Progi sprawdzamy po ZAOKRAGLENIU, inaczej 999999 dawaloby "1000K"
-        // zamiast "1M".
-        if (number < 999_500L) {
-            return trimZero(number / 1000.0) + "K";
-        }
-        if (number < 999_500_000L) {
-            return trimZero(number / 1_000_000.0) + "M";
-        }
-        return trimZero(number / 1_000_000_000.0) + "B";
+        return VeloceSlotOverlay.formatCount(number);
     }
 
-    /** Jedno miejsce po przecinku, ale bez zbednego ".0" przy okraglych. */
-    private static String trimZero(double value) {
-        String s = String.format(java.util.Locale.ROOT, "%.1f", value);
-        if (s.endsWith(".0")) {
-            s = s.substring(0, s.length() - 2);
-        }
-        return s;
-    }
-    private void drawCountOverlay(GuiGraphics graphics, Font font, long count, int x, int y) {
-        float scaleFactor = 0.6f;
-        RenderSystem.disableDepthTest();
-        RenderSystem.disableBlend();
-        String text = formatCount(count);
-        graphics.pose().pushPose();
-        graphics.pose().scale(scaleFactor, scaleFactor, scaleFactor);
-        graphics.pose().translate(0, 0, 450);
-        float inverseScale = 1.0f / scaleFactor;
-        int textX = (int) (((float) x + 16.0f - font.width(text) * scaleFactor) * inverseScale);
-        int textY = (int) (((float) y + 16.0f - 7.0f * scaleFactor) * inverseScale);
-        // Bialy = ile jest fizycznie na stanie (bez cienia, jak w vanilla).
-        graphics.drawString(font, text, textX, textY, 0xFFFFFF, true);
-        graphics.pose().popPose();
-        RenderSystem.enableDepthTest();
-    }
 
     /**
      * Rysuje liczbe mozliwych do wycraftowania sztuk (np. "+12") w lewym gornym
      * rogu slotu. Pokazywane tylko gdy auto-crafting danego itemu jest wlaczony
      * i faktycznie da sie cos dorobic.
      */
-    private void drawCraftableOverlay(GuiGraphics graphics, Font font, long craftable, int x, int y) {
-        if (craftable <= 0) {
-            return;
-        }
-        float scaleFactor = 0.6f;
-        RenderSystem.disableDepthTest();
-        RenderSystem.disableBlend();
-
-        // Plus tylko wtedy, gdy zmiesci sie w 5 znakach RAZEM z liczba.
-        //
-        // Slot ma miejsce na 5 znakow. "+1234" to 5 znakow - wchodzi.
-        // "+12.3K" to 6 - nie wchodzi, wiec pokazujemy samo "12.3K".
-        // Dzieki temu liczba nigdy nie wychodzi poza ikonke, a plus nadal
-        // odroznia "da sie dorobic" od zwyklego stanu, dopoki jest miejsce.
-        String number = formatCount(craftable);
-        String text = (number.length() + 1 <= MAX_OVERLAY_CHARS) ? "+" + number : number;
-
-        graphics.pose().pushPose();
-        graphics.pose().scale(scaleFactor, scaleFactor, scaleFactor);
-        graphics.pose().translate(0, 0, 450);
-        float inverseScale = 1.0f / scaleFactor;
-        int textX = (int) (((float) x + 1.0f) * inverseScale);
-        int textY = (int) (((float) y + 1.0f) * inverseScale);
-        // Pomaranczowy = ile da sie DOROBIC (bez stocku), nie liczba calkowita.
-        graphics.drawString(font, text, textX, textY, 0xFFA500, true);
-        graphics.pose().popPose();
-        RenderSystem.enableDepthTest();
-    }
 
     /**
      * Tooltip slotu magazynu.

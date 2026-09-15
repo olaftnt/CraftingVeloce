@@ -79,6 +79,14 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     private Filter filter = Filter.ALL;
 
+    /**
+     * Ile sztuk da sie jeszcze dorobic - ta sama wspolna logika i ten sam
+     * kod rysujacy co w terminalu. Kontroler mial wlasna, uproszczona wersje,
+     * ktora rysowala liczby bez skalowania czcionki - i dlatego ich nie bylo
+     * widac albo wychodzily poza ikonke.
+     */
+    private final VeloceCraftableCounts craftableCounts = new VeloceCraftableCounts();
+
     private final List<Button> filterButtons = new ArrayList<>();
 
     // ---------- przeplyw (ile na sekunde przybywa / ubywa) ----------
@@ -218,6 +226,8 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         flowRequestCooldown = FLOW_REQUEST_INTERVAL_TICKS;
         net.neoforged.neoforge.network.PacketDistributor.sendToServer(
                 new com.craftingveloce.network.ControllerFlowRequestPKT(controllerPos));
+        // Liczby "do dorobienia" zamawiamy tym samym rytmem - jak terminal.
+        requestVisibleCounts(false);
     }
 
     // ---------- lifecycle ----------
@@ -226,6 +236,22 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     protected void init() {
         super.init();   // baza: tryb creative, ukrycie slotow gracza, filtr itemow
         buildFilterButtons();
+        craftableCounts.resetRequestState();
+        requestVisibleCounts(true);
+    }
+
+    /** Zamawia liczby "do dorobienia" dla widocznej strony - jak terminal. */
+    private void requestVisibleCounts(boolean force) {
+        if (this.minecraft == null || this.minecraft.player == null || this.menu == null) {
+            return;
+        }
+        craftableCounts.request(controllerPos, this.menu.slots,
+                this::isPlayerInventorySlot, force);
+    }
+
+    /** Serwer przysyla policzone liczby - jak w terminalu. */
+    public void updateCraftableCounts(Map<Item, Long> counts, boolean complete) {
+        craftableCounts.update(counts, complete);
     }
 
     /**
@@ -299,16 +325,13 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         graphics.pose().popPose();
         RenderSystem.enableDepthTest();
 
-        // Liczba sztuk na stocku (jesli jest).
-        long n = stock.getOrDefault(item, 0L);
-        if (n > 0) {
-            String txt = VeloceTerminalScreen.formatCount(n);
-            graphics.pose().pushPose();
-            graphics.pose().translate(0, 0, 250);
-            graphics.drawString(this.font, txt, slot.x + 17 - this.font.width(txt),
-                    slot.y + 9, 0xFFFFFF, true);   // bialy = stock (spojnie z terminalem)
-            graphics.pose().popPose();
-        }
+        // Dwie liczby - DOKLADNIE tak jak w terminalu, tym samym kodem:
+        //   biala  = ile jest na stanie (prawy dolny rog),
+        //   zolta  = ile da sie jeszcze dorobic, np. "+12" (lewy gorny rog).
+        VeloceSlotOverlay.drawStock(graphics, this.font,
+                stock.getOrDefault(item, 0L), slot.x, slot.y);
+        VeloceSlotOverlay.drawCraftable(graphics, this.font,
+                craftableCounts.get(item), slot.x, slot.y);
     }
 
 
@@ -329,16 +352,6 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         }
 
         renderInfoTooltip(graphics, mouseX, mouseY);
-
-        // Podsumowanie trybu w prawym gornym rogu.
-        String infoKey = switch (filter) {
-            case ALL -> "gui.craftingveloce.controller.state.all";
-            case AVAILABLE -> "gui.craftingveloce.controller.state.available";
-            case NOT_AVAILABLE -> "gui.craftingveloce.controller.state.notAvailable";
-        };
-        String info = Component.translatable(infoKey).getString();
-        graphics.drawString(this.font, info, this.leftPos + 176 - 8 - this.font.width(info),
-                this.topPos + 6, 0xFFFFFF, true);
     }
 
     private void renderInfoTooltip(GuiGraphics graphics, int mouseX, int mouseY) {

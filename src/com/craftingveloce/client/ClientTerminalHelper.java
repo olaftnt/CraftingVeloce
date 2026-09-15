@@ -180,9 +180,14 @@ public class ClientTerminalHelper {
     }
 
     /** Odpowiedz serwera z liczbami "ile da sie dorobic". */
-    public static void handleCraftableCounts(Map<Item, Long> counts, boolean complete) {
+    public static void handleCraftableCounts(BlockPos pos, Map<Item, Long> counts,
+                                             boolean complete) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof VeloceTerminalScreen screen) {
+            screen.updateCraftableCounts(counts, complete);
+        } else if (mc.screen instanceof com.craftingveloce.client.gui.VeloceControllerScreen screen) {
+            // Ta sama odpowiedz obsluguje kontroler - pyta o DOKLADNIE te same
+            // liczby, wiec korzysta z tego samego pakietu i tej samej sciezki.
             screen.updateCraftableCounts(counts, complete);
         }
     }

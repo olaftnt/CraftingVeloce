@@ -36,7 +36,8 @@ import java.util.Set;
  *   <li>{@code hotbar} - co gracz ma w hotbarze (do kolorowania ikon)</li>
  * </ul>
  */
-public class VeloceControllerBlockEntity extends BlockEntity {
+public class VeloceControllerBlockEntity extends BlockEntity
+        implements VeloceCraftCountSource {
 
     /**
      * Jak blisko musi stac gracz, zeby kontroler obsluzyl jego zapytanie
@@ -92,6 +93,37 @@ public class VeloceControllerBlockEntity extends BlockEntity {
         }
         sampledNetworkId = net.getId();
         flow.sample(now, net.getAllItemCounts(sl));
+    }
+
+    /**
+     * Liczby "ile da sie jeszcze dorobic" dla widocznej strony kontrolera.
+     *
+     * <p>Ta sama logika co w terminalu (i ten sam wspolny interfejs), bo
+     * kontroler ma pokazywac DOKLADNIE te same dwie liczby co terminal -
+     * a nie wlasne, uproszczone przyblizenie.
+     */
+    @Override
+    public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult computeCraftableCounts(
+            java.util.Collection<Item> items) {
+        if (!(level instanceof ServerLevel sl) || items == null || items.isEmpty()) {
+            return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), true);
+        }
+        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                .getNetworkForTerminal(sl, worldPosition);
+        if (net == null) {
+            // Siec jeszcze nie gotowa - NIE mowimy "nic sie nie da zrobic",
+            // bo klient skasowalby wtedy poprawne liczby.
+            return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), false);
+        }
+        Set<Item> enabled = VeloceCraftingRegistry.getAllEnabledItems(sl, net);
+        if (enabled.isEmpty()) {
+            return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), true);
+        }
+        java.util.Map<Item, ResourceLocation> preferred =
+                VeloceCraftingRegistry.getPreferredRecipes(sl, net);
+        return com.craftingveloce.crafting.VeloceAutoCrafter.countCraftableBatchResult(
+                sl, net, items, enabled, preferred,
+                com.craftingveloce.crafting.VeloceAutoCrafter.DEFAULT_ESTIMATE_BUDGET_NS);
     }
 
     /** Wysyla graczowi samo tempo przeplywu (odpowiedz na zapytanie klienta). */

@@ -66,6 +66,6 @@ public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts, boole
 
     public static void handle(SyncCraftableCountsPKT pkt, IPayloadContext context) {
         context.enqueueWork(() -> com.craftingveloce.client.ClientTerminalHelper
-                .handleCraftableCounts(pkt.counts(), pkt.complete()));
+                .handleCraftableCounts(pkt.pos(), pkt.counts(), pkt.complete()));
     }
 }

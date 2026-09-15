@@ -39,7 +39,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
+public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
+        implements com.craftingveloce.block.entity.VeloceCraftCountSource {
 
     private static Field itemCacheField;
     private final List<WeakReference<ServerPlayer>> activeWatchingPlayers = new ArrayList<>();
@@ -134,8 +135,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
      * <p>To NIE jest to samo co tlo: tlo systematycznie przelicza cala siec,
      * a to odpowiada na konkretne zapytanie widoczne na ekranie.
      */
-    public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult
-            computeCraftableCounts(Collection<Item> items) {
+    @Override
+    public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult computeCraftableCounts(Collection<Item> items) {
         if (!(level instanceof ServerLevel sl) || items == null || items.isEmpty()) {
             return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), true);
         }
