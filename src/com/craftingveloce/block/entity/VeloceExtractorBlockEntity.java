@@ -31,7 +31,12 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvider {
+import net.minecraft.core.Direction;
+import net.minecraft.world.WorldlyContainer;
+
+public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvider, WorldlyContainer {
+
+    private static final int[] OUTPUT_SLOTS = new int[]{0, 1, 2, 3, 4, 5, 6, 7, 8};
 
     private final NonNullList<ItemStack> filterSlots = NonNullList.withSize(9, ItemStack.EMPTY);
     private final SimpleContainer outputInventory = new SimpleContainer(9);
@@ -206,5 +211,68 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
         return new VeloceExtractorMenu(containerId, playerInventory, worldPosition, this);
+    }
+
+    // --- WorldlyContainer implementation (for Hoppers & vanilla extraction) ---
+
+    @Override
+    public int[] getSlotsForFace(Direction side) {
+        return OUTPUT_SLOTS;
+    }
+
+    @Override
+    public boolean canPlaceItemThroughFace(int slot, ItemStack stack, @Nullable Direction dir) {
+        return false; // Prevent external insertion into extractor
+    }
+
+    @Override
+    public boolean canTakeItemThroughFace(int slot, ItemStack stack, Direction dir) {
+        return true; // Allow hoppers and pipes to extract items
+    }
+
+    @Override
+    public int getContainerSize() {
+        return outputInventory.getContainerSize();
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return outputInventory.isEmpty();
+    }
+
+    @Override
+    public ItemStack getItem(int slot) {
+        return outputInventory.getItem(slot);
+    }
+
+    @Override
+    public ItemStack removeItem(int slot, int amount) {
+        ItemStack res = outputInventory.removeItem(slot, amount);
+        setChanged();
+        return res;
+    }
+
+    @Override
+    public ItemStack removeItemNoUpdate(int slot) {
+        ItemStack res = outputInventory.removeItemNoUpdate(slot);
+        setChanged();
+        return res;
+    }
+
+    @Override
+    public void setItem(int slot, ItemStack stack) {
+        outputInventory.setItem(slot, stack);
+        setChanged();
+    }
+
+    @Override
+    public boolean stillValid(Player player) {
+        return outputInventory.stillValid(player);
+    }
+
+    @Override
+    public void clearContent() {
+        outputInventory.clearContent();
+        setChanged();
     }
 }

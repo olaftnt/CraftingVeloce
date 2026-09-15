@@ -49,6 +49,14 @@ public class CraftingVeloceMod {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
         });
 
+        modEventBus.addListener(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent.class, event -> {
+            event.registerBlockEntity(
+                    net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
+                    VeloceRegistry.VELOCE_EXTRACTOR_BE.get(),
+                    (be, side) -> new net.neoforged.neoforge.items.wrapper.InvWrapper(be.getOutputInventory())
+            );
+        });
+
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             CVDebugCommand.register(event.getDispatcher());
         });
