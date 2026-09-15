@@ -54,11 +54,8 @@ public final class VeloceRecipeGraph {
     private final Map<ResourceLocation, List<Set<Item>>> ingredients = new HashMap<>();
 
     /** Typy receptur, ktore nas interesuja - te bez infrastruktury. */
-    private static final java.util.Set<RecipeType<?>> FREE_TYPES = java.util.Set.of(
-            RecipeType.CRAFTING,
-            RecipeType.STONECUTTING,
-            RecipeType.SMITHING
-    );
+    /** Jedno zrodlo prawdy o rodzinach - patrz {@link VeloceRecipeFamilies}. */
+    private static final java.util.Set<RecipeType<?>> FREE_TYPES = VeloceRecipeFamilies.FREE;
 
     private VeloceRecipeGraph() {
     }
@@ -109,7 +106,10 @@ public final class VeloceRecipeGraph {
                          net.minecraft.core.HolderLookup.Provider registries) {
         for (RecipeHolder<?> holder : manager.getRecipes()) {
             var recipe = holder.value();
-            if (!FREE_TYPES.contains(recipe.getType()) || recipe.isSpecial()) {
+            // `isSpecial()` sam NIE wystarcza: receptury modow tez tak sie
+            // oznaczaja (Mekanism wszystkie) i byly wycinane z grafu.
+            if (!FREE_TYPES.contains(recipe.getType())
+                    || VeloceRecipeRegistry.isVanillaSpecial(recipe)) {
                 continue;
             }
             ItemStack result;

@@ -55,12 +55,14 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class VeloceRecipeRegistry {
 
-    /** Typy receptur, ktore uznajemy za wykonywalne bez energii/paliwa. */
-    private static final Set<RecipeType<?>> FREE_TYPES = Set.of(
-            RecipeType.CRAFTING,
-            RecipeType.STONECUTTING,
-            RecipeType.SMITHING
-    );
+    /**
+     * Typy receptur bez infrastruktury.
+     *
+     * <p>Definicja zyje w {@link VeloceRecipeFamilies} - JEDNYM miejscu dla
+     * calego moda. Wczesniej ta lista byla tu, a jej kopia w
+     * {@code VeloceRecipeGraph} (i obie mogly sie rozjechac).
+     */
+    private static final Set<RecipeType<?>> FREE_TYPES = VeloceRecipeFamilies.FREE;
 
     /**
      * Typy receptur obslugiwane przez Velocity Furnace.
@@ -79,11 +81,23 @@ public final class VeloceRecipeRegistry {
      * decyduje czas przetwarzania (blasting i smoking 100 t, smelting 200 t),
      * patrz {@link #getFurnaceRecipesFor}.
      */
-    private static final Set<RecipeType<?>> FURNACE_TYPES = Set.of(
-            RecipeType.SMELTING,
-            RecipeType.BLASTING,
-            RecipeType.SMOKING
-    );
+    private static final Set<RecipeType<?>> FURNACE_TYPES = VeloceRecipeFamilies.FURNACE;
+
+    /**
+     * Czy receptura jest "special" w rozumieniu WANILIOWYM.
+     *
+     * <p>Vanilla oznacza tak receptury, ktorych nie da sie sensownie odtworzyc
+     * automatycznie (farbowanie zbroi, klonowanie mapy). Receptury modow czesto
+     * uzywaja tej samej flagi dla zwyklych receptur (Mekanism: wszystkie), wiec
+     * odrzucanie po samym {@code isSpecial()} wycinalo cale mody z indeksu.
+     */
+    public static boolean isVanillaSpecial(net.minecraft.world.item.crafting.Recipe<?> recipe) {
+        if (!recipe.isSpecial()) {
+            return false;
+        }
+        ResourceLocation typeId = BuiltInRegistries.RECIPE_TYPE.getKey(recipe.getType());
+        return typeId != null && "minecraft".equals(typeId.getNamespace());
+    }
 
     /**
      * Czy ten typ receptury wymaga ROZGRZANEGO pieca.
@@ -429,9 +443,14 @@ public final class VeloceRecipeRegistry {
         if (!trusted && !allowedTypes.contains(recipe.getType())) {
             return;
         }
-        // Receptury "special" (np. dye armor, map cloning) nie maja sensownego
-        // przepisu do odtworzenia automatycznie - pomijamy je.
-        if (recipe.isSpecial()) {
+        // Receptury "special" WANILIOWE (np. dye armor, map cloning) nie maja
+        // sensownego przepisu do odtworzenia automatycznie - pomijamy je.
+        //
+        // UWAGA: NIE wolno odrzucac po samym `isSpecial()`. Receptury modow
+        // (Mekanism robi tak ze WSZYSTKIMI swoimi) tez zwracaja true i byly
+        // przez to po cichu wyrzucane z indeksu - zaden modul z innego moda
+        // nie mialby czego liczyc. Sprawdzamy wiec namespace typu receptury.
+        if (isVanillaSpecial(recipe)) {
             return;
         }
         ItemStack result;

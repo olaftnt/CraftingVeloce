@@ -33,7 +33,7 @@ public final class VeloceCraftingRegistry {
      * uruchomieniami. Sortujemy po pozycji, zeby zachowanie bylo powtarzalne:
      * przy kilku crafterach w sieci zawsze wygrywa ten sam.
      */
-    private static java.util.List<VeloceCraftingTableBlockEntity> crafters(
+    static java.util.List<VeloceCraftingTableBlockEntity> crafters(
             ServerLevel level, VelocePipeNetwork network) {
         java.util.List<BlockPos> sorted = new java.util.ArrayList<>(network.getTerminals());
         sorted.sort(java.util.Comparator
@@ -124,47 +124,22 @@ public final class VeloceCraftingRegistry {
      * wylaczonych, czyli dokladna odwrotnosc.
      */
     public static java.util.Set<Item> getAllEnabledItems(ServerLevel level, VelocePipeNetwork network) {
-        java.util.Set<Item> craftable = VeloceRecipeRegistry.getAllCraftableItems(level);
-
-        // PIEC DOKLADA SWOJE RECEPTURY - ale tylko gdy jest ZASILONY.
+        // SUMA MODULOW: kazdy modul przetwarzania mowi, co potrafi - i tylko
+        // wtedy, gdy jego maszyna stoi w sieci i jest zdolna do pracy.
         //
-        // Bez tego auto-crafter nigdy nie tknąłby itemu, ktory powstaje
-        // WYŁĄCZNIE w piecu (sztabka z rudy, szkło, węgiel drzewny): nie ma go
-        // na liście craftowalnych bez energii, więc wypadał z `enabled` i cała
-        // sciezka piecowa była martwa - mimo że piec stal w sieci i się palił.
-        //
-        // Gdy pieca nie ma albo stoi bez paliwa, lista zostaje bez zmian -
-        // czyli dokladnie tak, jakby pieca w ogole nie było.
-        if (VeloceHeatSources.hasPower(level, network)) {
-            java.util.Set<Item> merged = new java.util.HashSet<>(craftable);
-            merged.addAll(VeloceRecipeRegistry.getAllFurnaceCraftableItems(level));
-            craftable = merged;
+        // BUG, ktory to naprawia (zgloszenie gracza): wczesniej ta metoda
+        // wymagala CRAFTERA dla WSZYSTKIEGO - brak craftera zerowal cala liste.
+        // Siec z samym piecem nie umiala wiec zrobic szkla z piasku, choc to
+        // receptura wylacznie piecowa. Teraz modul pieca wystarcza sam, a
+        // crafter jest potrzebny tylko swoim (craftingowym) recepturom.
+        java.util.Set<Item> out = new java.util.HashSet<>();
+        for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
+            if (!module.available(level, network) || !module.powered(level, network)) {
+                continue;   // brak maszyny albo maszyna stoi
+            }
+            out.addAll(module.producible(level, network));
         }
-
-        if (craftable.isEmpty()) {
-            return java.util.Set.of();
-        }
-        // Decyduje PIERWSZY crafter (deterministycznie). Wczesniej laczylismy
-        // wylaczenia ze WSZYSTKICH crafterow, wiec jeden crafter z wylaczonymi
-        // deskami psul auto-crafting deskami dla calej sieci - mimo ze inny
-        // crafter mial je wlaczone.
-        java.util.List<VeloceCraftingTableBlockEntity> crafters = crafters(level, network);
-        if (crafters.isEmpty()) {
-            return java.util.Set.of();
-        }
-        java.util.Set<Item> disabled = new java.util.HashSet<>(
-                crafters.get(0).getDisabledItems());
-
-        // KLUCZOWE: bez craftera w sieci NIE mozna nic zrobic.
-        // Wczesniej, gdy lista wyjatkow byla pusta, zwracalismy wszystkie
-        // craftowalne itemy - wiec terminal pokazywal "+N" mimo braku craftera.
-
-        if (disabled.isEmpty()) {
-            return craftable;
-        }
-        java.util.Set<Item> out = new java.util.HashSet<>(craftable);
-        out.removeAll(disabled);
-        return out;
+        return java.util.Collections.unmodifiableSet(out);
     }
 
     /**
