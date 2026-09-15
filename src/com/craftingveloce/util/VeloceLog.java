@@ -100,6 +100,20 @@ public final class VeloceLog {
         log(logger(), side, LogLevel.DETAIL, tag, "DETAIL", what, args);
     }
 
+    /**
+     * Czy szczegolowe logi w ogole pojda - tanie sprawdzenie przed budowaniem.
+     *
+     * <p>Po to, zeby wolajacy mogl pominac kosztowne zbieranie informacji,
+     * ktore i tak trafilyby do kosza.
+     */
+    public static boolean isDetailEnabled(Side side) {
+        try {
+            return enabled(side) && VeloceConfig.allows(LogLevel.DETAIL);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /** Zmiana stanu (np. wlaczenie auto-craftingu). */
     public static void state(Side side, String tag, String what, Object... args) {
         log(logger(), side, LogLevel.VERBOSE, tag, "STATE", what, args);
@@ -164,6 +178,11 @@ public final class VeloceLog {
 
         public static void detail(Side s, String what, Object... a) {
             if (checkCraft()) VeloceLog.detail(s, TAG, what, a);
+        }
+
+        /** Czy szczegolowe logi tej kategorii w ogole pojda. */
+        public static boolean isDetailEnabled(Side s) {
+            return checkCraft() && VeloceLog.isDetailEnabled(s);
         }
 
         private static boolean checkCraft() {

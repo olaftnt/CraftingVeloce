@@ -462,13 +462,33 @@ public final class VeloceAutoCrafter {
      * i czego brakuje. Wlaczane tylko przy niepowodzeniu, wiec nie zasmieca
      * loga w normalnej pracy.
      */
+    /**
+     * Loguje, dlaczego planowanie sie nie udalo.
+     *
+     * <p>Idzie przez {@link VeloceLog}, a nie prosto do LOGGERa.
+     *
+     * <p><b>Bylo tu zrodlo smieci w logu.</b> Poprzednia wersja pisala przez
+     * {@code CraftingVeloceMod.LOGGER.info(...)} z wlasnym prefiksem "[Veloce]",
+     * wiec omijala i poziom debugowania, i przelaczniki kategorii z configu -
+     * leciala ZAWSZE, przy kazdej nieudanej probie. A ze kazde klikniecie
+     * itemu, ktorego nie da sie zrobic, konczy sie nieudanym planem, log
+     * zapychal sie przy normalnym klikaniu po GUI.
+     *
+     * <p>Dodatkowo pierwszy skladnik kazdej receptury jest niczym wiecej jak
+     * PRZYKLADEM (Ingredient.getItems() zwraca wszystkie akceptowane stosy),
+     * wiec "ma=0" dla niego nie znaczy, ze brakuje wlasnie tego itemu.
+     */
     private static void logPlanFailure(ServerLevel level, Context ctx, Item item,
                                        int missing, Map<Item, Long> stock) {
-        var log = com.craftingveloce.CraftingVeloceMod.LOGGER;
-        log.info("[Veloce] craft {} x{} - PLAN NIEUDANY. Wlaczonych: {}, na stocku: {} roznych itemow",
+        if (!VeloceLog.Craft.isDetailEnabled(VeloceLog.Side.SERVER)) {
+            return;   // tanie sprawdzenie - nie budujemy stringow na darmo
+        }
+        VeloceLog.Craft.why(VeloceLog.Side.SERVER,
+                "craft %s x%d failed: no base ingredients (enabled=%d, %d item type(s) in stock)",
                 item, missing, ctx.enabledItems.size(), stock.size());
         var recipes = VeloceRecipeRegistry.getRecipesFor(level, item);
-        log.info("[Veloce]   receptur znalezionych dla {}: {}", item, recipes.size());
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "  %s has %d recipe(s)", item, recipes.size());
         for (var r : recipes) {
             StringBuilder sb = new StringBuilder();
             for (var ing : r.ingredients()) {
@@ -476,13 +496,18 @@ public final class VeloceAutoCrafter {
                 if (opts.length == 0) {
                     continue;
                 }
-                var first = opts[0];
-                long have = stock.getOrDefault(first.getItem(), 0L);
-                boolean en = ctx.isEnabled(first.getItem());
-                sb.append(first.getItem()).append("[ma=").append(have)
-                  .append(",on=").append(en).append("] ");
+                // Podajemy liczbe AKCEPTOWANYCH opcji, a nie jeden przyklad -
+                // pojedynczy "ma=0" mylil, bo brakowalo innej opcji.
+                int have = 0;
+                for (var opt : opts) {
+                    if (stock.getOrDefault(opt.getItem(), 0L) > 0) {
+                        have++;
+                    }
+                }
+                sb.append(have).append('/').append(opts.length).append(" option(s) available; ");
             }
-            log.info("[Veloce]     {} -> {}", r.id(), sb.toString());
+            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                    "  %s <- %s", r.id(), sb.toString());
         }
     }
 
