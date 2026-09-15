@@ -52,7 +52,20 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     private Map<Item, ResourceLocation> preferredRecipes;
 
     /** Cache: item -> lista receptur (id + wynik + skladniki). */
-    private Map<Item, List<ClientRecipe>> craftableItems = null;
+    /**
+     * Indeks receptur po stronie klienta.
+     *
+     * <p><b>Statyczny, bo budowanie jest drogie.</b> Wczesniej byl to zwykly
+     * field ekranu, a ekran powstaje na nowo przy KAZDYM otwarciu GUI - czyli
+     * indeks (tysiace receptur, kazda z rozwiazanymi skladnikami) budowal sie
+     * od zera za kazdym razem, na watku klienta. Przy duzym modpacku to jest
+     * dokladnie to "okno sie zacielo" przy otwieraniu craftera.
+     *
+     * <p>Kluczujemy po RecipeManagerze, wiec zmiana swiata uniewaznia cache
+     * sama z siebie.
+     */
+    private static Map<Item, List<ClientRecipe>> craftableItems = null;
+    private static Object craftableItemsKey = null;
 
     /**
      * Zawartosc bufora craftera - pokazywana w zakladce "Survival Inventory"
@@ -116,12 +129,13 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
      * Uzywamy tylko typow "bez infrastruktury" - tak samo jak serwerowy rejestr.
      */
     private Map<Item, List<ClientRecipe>> getCraftableItems() {
-        if (craftableItems != null) {
-            return craftableItems;
-        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) {
             return Collections.emptyMap();
+        }
+        Object key = mc.level.getRecipeManager();
+        if (craftableItems != null && craftableItemsKey == key) {
+            return craftableItems;
         }
         Map<Item, List<ClientRecipe>> out = new LinkedHashMap<>();
         var registries = mc.level.registryAccess();
@@ -131,6 +145,7 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         collectType(mc, RecipeType.SMITHING, registries, out);
 
         craftableItems = out;
+        craftableItemsKey = key;
         return craftableItems;
     }
 
@@ -167,11 +182,11 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
                     continue;
                 }
                 any = true;
-                List<ItemStack> list = new ArrayList<>(items.length);
-                for (ItemStack s : items) {
-                    list.add(s.copy());
-                }
-                options.add(list);
+                // Bez s.copy(): te stosy tylko czytamy (tooltip, dopasowanie),
+                // a getItems() zwraca tablice zarzadzana przez sam Ingredient.
+                // Kopiowanie kazdego stosu razem z komponentami, dla kazdej
+                // opcji kazdego skladnika, bylo tu najdrozasza czescia budowy.
+                options.add(java.util.Arrays.asList(items));
             }
             if (!any) {
                 continue;
