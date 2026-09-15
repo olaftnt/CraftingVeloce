@@ -788,59 +788,76 @@ public class VelocePipeNetworkManager extends SavedData {
      * <p>Przegladamy tylko sieci, ktore faktycznie dotykaja tego chunka.
      */
     public void onChunkChanged(ServerLevel level, ChunkPos chunkPos, boolean loaded) {
-        // Przy zamykaniu/zapisie swiata nie ma czego uniewazniac - cache i tak
-        // za chwile znikna. Bez tego kazdy cykl load/unload chunka produkowal
-        // wpis do loga i przebudowywal sieci: w jednym zamknieciu swiata
-        // naliczylo sie 8000+ linii, co samo w sobie zamulalo zapis.
+        // Przy zamykaniu/zapisie swiata nic nie robimy - i tak zaraz koniec.
+        // Bez tego kazdy cykl load/unload chunka produkowal wpis do loga;
+        // w jednym zamknieciu swiata naliczylo sie 8000+ linii, co samo w sobie
+        // zamulalo zapis.
         if (VeloceChunkLoader.isFrozen()) {
             return;
         }
-        // Opisy blokow budujemy TYLKO gdy debug na czacie jest wlaczony
-        // (domyslnie wylaczony). Wczesniej describeBlock() - z nazwa klasy,
-        // nazwa bloku i sklejaniem stringow - lecialo przy KAZDEJ zmianie
-        // chunka, nawet gdy nikt tego nie ogladal.
+
+        // GDY CHUNK SIE LADUJE: odswiez magazyny, ktore w nim stoja.
+        //
+        // To jest jedyny moment, w ktorym mozemy odczytac PRAWDZIWY stan
+        // skrzyni. Bez tego endpoint czekalby na okazjonalny skan z throttlingiem,
+        // a przez ten czas terminal pokazywalby stare liczby.
+        //
+        // Przy ROZLADOWANIU nie robimy nic - i to jest celowe: skoro chunk nie
+        // jest symulowany, nikt tych itemow nie ruszyl, wiec ostatnia znana
+        // zawartosc jest nadal prawdziwa. Dzieki temu terminal widzi zawartosc
+        // skrzyni w niezaladowanym chunku.
+        if (loaded) {
+            for (Map.Entry<BlockPos, ConnectedEndpointInfo> e : knownEndpoints.entrySet()) {
+                if (isInChunk(e.getKey(), chunkPos)) {
+                    e.getValue().refreshIfLoaded(level);
+                }
+            }
+        }
+
+        // Raportowanie - tylko gdy monitor wlaczony albo sledzenie aktywne.
         boolean wantDetails = com.craftingveloce.debug.ChunkDebugNotifier.isEnabled();
+        if (!wantDetails && !com.craftingveloce.debug.ChunkTrace.isEnabled()) {
+            return;
+        }
+
         java.util.List<String> affectedThings = wantDetails
                 ? new java.util.ArrayList<>()
                 : java.util.List.of();
         int affected = 0;
-        for (VelocePipeNetwork net : networks.values()) {
-            if (!net.getTrackedChunks().contains(chunkPos)) {
-                continue;
-            }
-            affected++;
-
-            if (!wantDetails) {
-                continue;
-            }
-
-            // Zbierz CO dokladnie lezy w tym chunku - do raportu na czacie.
-            for (BlockPos p : net.getTerminals()) {
-                if (isInChunk(p, chunkPos)) {
+        for (BlockPos p : knownNodes) {
+            if (isInChunk(p, chunkPos)) {
+                affected++;
+                if (wantDetails) {
                     affectedThings.add(describeBlock(level, p));
                 }
             }
-            for (BlockPos p : net.getEndpoints().keySet()) {
-                if (isInChunk(p, chunkPos)) {
+        }
+        for (BlockPos p : knownEndpoints.keySet()) {
+            if (isInChunk(p, chunkPos)) {
+                affected++;
+                if (wantDetails) {
                     affectedThings.add(describeBlock(level, p));
                 }
             }
-
         }
-        if (affected > 0) {
-            com.craftingveloce.util.VeloceLog.Network.detail(
-                    com.craftingveloce.util.VeloceLog.Side.SERVER,
-                    "chunk %s %s affects %d network(s) - cache invalidated",
-                    chunkPos, loaded ? "loaded" : "unloaded", affected);
-
-            // Zapis do konsoli: pelny cykl load/unload z liczba sieci.
-            // Na czacie tylko gdy monitor wlaczony - czat nie jest do logow.
-            com.craftingveloce.debug.ChunkTrace.event("CHUNK",
-                    "%s chunk[%d,%d] dotyczy %d sieci",
-                    loaded ? "LOAD" : "UNLOAD", chunkPos.x, chunkPos.z, affected);
-            com.craftingveloce.debug.ChunkDebugNotifier.notifyChunkChange(
-                    level, chunkPos, loaded, affectedThings);
+        if (affected == 0) {
+            return;
         }
+
+        // UWAGA: opis MUSI byc zgodny z tym, co robimy. Wczesniej pisalo
+        // "cache invalidated", choc nic nie bylo uniewazniane - i to mylilo
+        // przy diagnozie (szukalismy uniewaznienia, ktorego nie bylo).
+        com.craftingveloce.util.VeloceLog.Network.detail(
+                com.craftingveloce.util.VeloceLog.Side.SERVER,
+                "chunk %s %s: %d element(s) sieci %s",
+                chunkPos, loaded ? "loaded" : "unloaded", affected,
+                loaded ? "(odswiezam magazyny)" : "(zostawiam ostatnia znana zawartosc)");
+
+        com.craftingveloce.debug.ChunkTrace.event("CHUNK",
+                "%s chunk[%d,%d] dotyczy %d elementow",
+                loaded ? "LOAD" : "UNLOAD", chunkPos.x, chunkPos.z, affected);
+        com.craftingveloce.debug.ChunkDebugNotifier.notifyChunkChange(
+                level, chunkPos, loaded, affectedThings);
     }
 
     /** Krotki opis bloku w chunku - do komunikatu debugowego. */
