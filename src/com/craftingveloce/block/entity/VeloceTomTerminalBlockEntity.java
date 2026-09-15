@@ -292,12 +292,26 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         // 1. Veloce Pipe Network extraction (handles live and on-demand unloaded chunk ticketing)
         VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
+        com.craftingveloce.util.VeloceLog.Craft.attempt(
+                com.craftingveloce.util.VeloceLog.Side.SERVER,
+                "player requested %sx %s from terminal at %s",
+                count, requested.getItem(), worldPosition);
         if (net != null) {
+            com.craftingveloce.util.VeloceLog.Network.detail(
+                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                    "network found: %d endpoint(s) for terminal at %s",
+                    net.getEndpoints().size(), worldPosition);
             ItemStack extracted = net.extractItem(sl, requested.getItem(), count);
             if (!extracted.isEmpty()) {
+                com.craftingveloce.util.VeloceLog.Craft.success(
+                        com.craftingveloce.util.VeloceLog.Side.SERVER,
+                        "took %sx %s from stock", extracted.getCount(), extracted.getItem());
                 syncCountsToAllWatchers();
                 return extracted;
             }
+            com.craftingveloce.util.VeloceLog.Craft.why(
+                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                    "%s not in stock, trying auto-crafting", requested.getItem());
             // 1b. Nie ma w sieci - sprobuj auto-craftingu (jesli wlaczony dla tego itemu).
             if (allowCrafting) {
                 ItemStack crafted = craftItemFromNetwork(sl, net, requested, count);

@@ -43,6 +43,13 @@ public class CraftingVeloceMod {
 
     public CraftingVeloceMod(IEventBus modEventBus, ModContainer modContainer) {
         LOGGER.info("CraftingVeloce initializing...");
+        LOGGER.info("[Veloce][INIT] debug logging: {} (level={})",
+                com.craftingveloce.config.VeloceConfig.DEBUG_ENABLED.get(),
+                com.craftingveloce.config.VeloceConfig.DEBUG_LEVEL.get());
+        // Rejestracja configu (config/craftingveloce-common.toml).
+        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.COMMON,
+                com.craftingveloce.config.VeloceConfig.SPEC);
+
         VeloceRegistry.register(modEventBus);
         CREATIVE_TABS.register(modEventBus);
         VelocePacketHandler.register(modEventBus);

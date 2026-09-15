@@ -471,11 +471,16 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         }
 
         // Lewy klik = wlacz/wylacz auto-crafting.
+        boolean turningOff = !disabledItems.contains(clickedItem);
         if (disabledItems.contains(clickedItem)) {
             disabledItems.remove(clickedItem);
         } else {
             disabledItems.add(clickedItem);
         }
+        com.craftingveloce.util.VeloceLog.Gui.success(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "player turned auto-crafting %s for %s",
+                turningOff ? "OFF" : "ON", clickedItem);
         PacketDistributor.sendToServer(new CraftingTableToggleItemPKT(tablePos, clickedItem));
     }
 

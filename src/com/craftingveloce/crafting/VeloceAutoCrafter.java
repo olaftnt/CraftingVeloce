@@ -1,6 +1,7 @@
 package com.craftingveloce.crafting;
 
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
+import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.NonNullList;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -111,6 +112,9 @@ public final class VeloceAutoCrafter {
             return CraftResult.fail("craftingveloce.craft.error.amount");
         }
 
+        VeloceLog.Craft.attempt(VeloceLog.Side.SERVER,
+                "ensure %sx %s (enabled=%s)", count, item, ctx.isEnabled(item));
+
         // 1. Ekwipunek gracza ma priorytet.
         int inInventory = ctx.inventory == null ? 0 : ctx.inventory.count(item);
         if (inInventory >= count) {
@@ -120,6 +124,9 @@ public final class VeloceAutoCrafter {
         // 2. Siec.
         long inNetwork = network.getAllItemCounts(level).getOrDefault(item, 0L);
         long available = inInventory + inNetwork;
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "%s: inventory=%d, network=%d, requested=%d",
+                item, inInventory, inNetwork, count);
         if (available >= count) {
             return CraftResult.ok(count);
         }
@@ -127,6 +134,8 @@ public final class VeloceAutoCrafter {
         // 3. Brakuje - trzeba wycraftowac. Wolno tylko gdy wlaczone.
         int missing = (int) Math.min(Integer.MAX_VALUE, count - available);
         if (!ctx.isEnabled(item)) {
+            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                    "%s has auto-crafting disabled - cannot craft", item);
             return CraftResult.fail("craftingveloce.craft.error.disabled");
         }
 
@@ -139,9 +148,15 @@ public final class VeloceAutoCrafter {
         }
 
         // Faza 2: wykonanie dokladnie tego, co zaplanowano.
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "plan for %s: %d recipe run(s) to execute", item, plan.runs.size());
         if (!execute(level, ctx, plan)) {
+            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                    "execution failed for %s - ingredients vanished mid-craft", item);
             return CraftResult.fail("craftingveloce.craft.error.extract");
         }
+        VeloceLog.Craft.success(VeloceLog.Side.SERVER,
+                "crafted %s x%d successfully", item, count);
         return CraftResult.ok(count);
     }
 

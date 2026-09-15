@@ -94,12 +94,27 @@ def main():
                     imports.add(t)
     missing = []
     for t in imports:
-        p = t.replace(".", "/") + ".class"
-        if p in built:
-            continue
-        if any(c.startswith(p[:-6] + "$") for c in built):
-            continue
-        missing.append(t)
+        # Import a.b.C.D moze oznaczac:
+        #   - klase a/b/C/D.class
+        #   - klase zagniezdzona a/b/C$D.class  (albo glebiej: a/b/C$D$E)
+        # Nie da sie tego rozstrzygnac bez parsowania zrodel, wiec probujemy
+        # wszystkie podzialy: zamieniamy od konca kolejne kropki na '$'.
+        parts = t.split(".")
+        found = False
+        # level = ile ostatnich segmentow traktujemy jako klasy zagniezdzone
+        for level in range(1, len(parts)):
+            pkg = parts[:len(parts) - level]
+            nested = "$".join(parts[len(parts) - level:])
+            cand = "/".join(pkg + [nested]) + ".class"
+            if cand in built:
+                found = True
+                break
+        # Wariant bez zagniezdzen: a/b/C/D.class
+        if not found and t.replace(".", "/") + ".class" in built:
+            found = True
+        if not found:
+            missing.append(t)
+
     if missing:
         fail("kod uzywa klas, ktorych nie ma w wyniku kompilacji:\n  "
              + "\n  ".join(sorted(missing)))

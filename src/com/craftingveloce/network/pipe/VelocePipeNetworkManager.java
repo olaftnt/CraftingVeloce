@@ -4,6 +4,7 @@ import com.craftingveloce.block.VelocePipeBlock;
 import com.craftingveloce.block.VeloceTomTerminalBlock;
 import com.craftingveloce.block.entity.VelocePipeBlockEntity;
 import com.craftingveloce.rs.RefinedStorageHelper;
+import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -272,6 +273,11 @@ public class VelocePipeNetworkManager extends SavedData {
                 }
             }
         }
+
+        VeloceLog.Network.detail(VeloceLog.Side.SERVER,
+                "built network at %s: %d pipe(s), %d terminal(s), %d endpoint(s)",
+                originPos, visitedPipes.size(), discoveredTerminals.size(),
+                discoveredEndpoints.size());
 
         // Preserve cached endpoints from old networks (crucial for unloaded chunks)
         for (UUID oldId : intersectedOldNets) {

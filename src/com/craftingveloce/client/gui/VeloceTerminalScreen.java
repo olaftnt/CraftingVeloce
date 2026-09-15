@@ -280,6 +280,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         }
 
         // Send pull packet to server! Never touch cursor on client to prevent ghost items
+        com.craftingveloce.util.VeloceLog.Gui.attempt(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "player clicked %s in terminal (count=%d, click=%s) - sending pull packet",
+                item.getItem(), count, clickType);
         PacketDistributor.sendToServer(new TerminalPullItemPKT(terminalPos, item, count));
     }
 

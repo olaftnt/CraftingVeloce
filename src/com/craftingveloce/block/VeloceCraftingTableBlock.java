@@ -70,6 +70,10 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityB
     public void setPlacedBy(Level world, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
         super.setPlacedBy(world, pos, state, placer, stack);
         if (!world.isClientSide) {
+            com.craftingveloce.util.VeloceLog.Block.success(
+                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                    "auto-crafter placed at %s by %s (all recipes enabled by default)",
+                    pos, placer == null ? "unknown" : placer.getName().getString());
             InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
             n.markNodeInvalid(pos);
             if (world instanceof ServerLevel sl) {
@@ -83,6 +87,16 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityB
         if (!state.is(newState.getBlock())) {
             // Drop bufora nadwyzki - zeby itemy nie zniknely przy zniszczeniu bloku.
             if (!world.isClientSide && world.getBlockEntity(pos) instanceof VeloceCraftingTableBlockEntity ctBE) {
+                int dropped = 0;
+                for (int i = 0; i < ctBE.getBuffer().getContainerSize(); i++) {
+                    if (!ctBE.getBuffer().getItem(i).isEmpty()) {
+                        dropped++;
+                    }
+                }
+                com.craftingveloce.util.VeloceLog.Block.success(
+                        com.craftingveloce.util.VeloceLog.Side.SERVER,
+                        "auto-crafter removed at %s - dropping %d stack(s) from buffer",
+                        pos, dropped);
                 dropBuffer(world, pos, ctBE);
             }
             super.onRemove(state, world, pos, newState, isMoving);
