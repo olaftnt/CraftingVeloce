@@ -36,6 +36,7 @@
     "craftingveloce.craft.error.disabled": "not in stock (auto-crafting disabled)",
     "craftingveloce.craft.error.extract": "could not take ingredients",
     "craftingveloce.craft.error.amount": "invalid amount",
+    "craftingveloce.craft.error.tooComplex": "recipe tree too complex",
     "craftingveloce.message.terminalNotFound": "Terminal block not found!",
     "craftingveloce.message.itemNotInNetwork": "Item not in network: %s",
     "craftingveloce.message.inventoryFull": "Inventory full!"

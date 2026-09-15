@@ -55,6 +55,9 @@ public final class VeloceCraftingCache {
      */
     private static final long TICK_BUDGET_NS = 10_000_000L;
 
+    /** Powyzej tego czasu tick raportuje przekroczenie budzetu do loga. */
+    private static final long OVERRUN_WARN_NS = 25_000_000L;
+
     /**
      * Awaryjny limit itemow na tick.
      *
@@ -349,6 +352,24 @@ public final class VeloceCraftingCache {
         }
 
         lastTickNanos = System.nanoTime() - start;
+        warnIfOverrun();
+    }
+
+    /**
+     * Krzyczy w logu, gdy tick przekroczy zalozony budzet.
+     *
+     * <p>Staly bezpiecznik po zamrozeniu serwera: kazda operacja, ktora
+     * wymknie sie throttlingowi, jest tu natychmiast widoczna z dokladnym
+     * czasem i liczba zadan, zamiast objawiac sie tylko zamulonym serwerem.
+     */
+    private void warnIfOverrun() {
+        if (lastTickNanos <= OVERRUN_WARN_NS) {
+            return;
+        }
+        VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                "crafting cache TICK OVERRUN: %d ms (budget %d ms) - %d item(s) pending, %d done this tick",
+                lastTickNanos / 1_000_000L, TICK_BUDGET_NS / 1_000_000L,
+                pending.size(), lastBatchSize);
     }
 
     /**

@@ -43,16 +43,23 @@ public final class VeloceAutoCrafter {
     /**
      * Glebokosc rekurencji przy PRAWDZIWYM craftowaniu.
      *
-     * <p>Musi byc hojna: gracz moze chciec cos, co wymaga dlugiego lancucha
-     * posrednich craftow. Craftowanie jest wywolywane rzadko (na zadanie
-     * gracza), wiec moze byc drozsze.
+     * <p>12 to i tak absurdalnie dlugi lancuch dla gracza, a kazdy poziom
+     * mnozy liczbe galezi. Przy 24 drzewo receptur rozrastalo sie wykładniczo
+     * i pojedyncze zadanie potrafilo zamrozic watek serwera na dziesiatki
+     * sekund. Glebsze lancze i tak przegrywaja na budzecie czasowym.
      */
-    private static final int CRAFT_MAX_DEPTH = 24;
+    private static final int CRAFT_MAX_DEPTH = 12;
+
+    /**
+     * Budzet czasu na planowanie PRAWDZIWEGO craftu (50 ms).
+     *
+     * <p>Wczesniej byl tu 0, czyli brak limitu czasu - jedynym bezpiecznikiem
+     * byl licznik operacji, a ten jest o wiele za pozny, zeby uchronic tick.
+     */
+    private static final long CRAFT_PLAN_BUDGET_NS = 50_000_000L;
 
     /** Limit krokow planowania przy prawdziwym craftowaniu. */
     private static final int CRAFT_MAX_STEPS = 8192;
-
-    /**
 
     /**
      * Awaryjny limit operacji w jednym szacowaniu.
@@ -184,13 +191,21 @@ public final class VeloceAutoCrafter {
         }
 
         // Faza 1: planowanie (symulacja na liczbach).
-        // Zerujemy budzet: prawdziwe craftowanie nie moze zostac przerwane
-        // przez termin pozostawiony po szacowaniu w tle.
-        startEstimate(0L);
+        // Ustawiamy twardy budzet czasu - planowanie drzewa receptur nie moze
+        // zamrozic watku serwera, nawet gdy gracz poprosi o cos absurdalnie
+        // zlozonego. Przy przekroczeniu mowimy "za zlozone", a nie "brak
+        // skladnikow" - to dwie rozne sytuacje.
+        startEstimate(CRAFT_PLAN_BUDGET_NS);
         Map<Item, Long> stock = snapshotStock(ctx);
         Plan plan = new Plan();
         if (!plan(level, ctx.enabledItems, ctx.preferred, item, missing, stock, plan, new HashSet<>(), 0)) {
-        logPlanFailure(level, ctx, item, missing, stock);
+            if (estimateAborted()) {
+                VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                        "planning for %s x%d exceeded the %d ms budget - recipe tree too complex",
+                        item, missing, CRAFT_PLAN_BUDGET_NS / 1_000_000L);
+                return CraftResult.fail("craftingveloce.craft.error.tooComplex");
+            }
+            logPlanFailure(level, ctx, item, missing, stock);
             return CraftResult.fail("craftingveloce.craft.error.noBase");
         }
 
@@ -463,13 +478,17 @@ public final class VeloceAutoCrafter {
         if (amount <= 0) {
             return true;
         }
-        if (depth > CRAFT_MAX_DEPTH || plan.runs.size() > CRAFT_MAX_STEPS) {
-        // Budzet czasowy dziala takze tu: szacowanie uzywa planowania jako
-        // testu wykonalnosci, wiec bez tego nie mialoby throttlingu.
-        // Przy prawdziwym craftowaniu termin nie jest ustawiony (0).
+        // Budzet czasowy sprawdzamy ZAWSZE, na samym wejsciu.
+        //
+        // BUG, ktory wisial tu wczesniej: ten warunek byl wciagniety do
+        // srodka bloku "depth/step przekroczony". Czyli wykonywal sie tylko
+        // wtedy, gdy limit juz i tak byl przekroczony - a wtedy zwracalo i
+        // tak false. Efekt: plan() nie mial ZADNEGO throttlingu czasowego i
+        // drzewo receptur rozrastalo sie wykładniczo na watku serwera.
         if (estimateBudgetExceeded()) {
             return false;
         }
+        if (depth > CRAFT_MAX_DEPTH || plan.runs.size() > CRAFT_MAX_STEPS) {
             return false;
         }
         if (!visiting.add(item)) {
