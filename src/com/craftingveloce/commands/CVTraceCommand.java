@@ -32,7 +32,7 @@ public final class CVTraceCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(
-            Commands.literal("cv")
+            CVCommandRoot.root()
                 .then(Commands.literal("trace")
                     // Bez argumentu: przelacza. To ma byc jedna komenda.
                     .executes(CVTraceCommand::toggle)

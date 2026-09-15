@@ -31,7 +31,7 @@ public class CVDebugCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(
-            Commands.literal("cv")
+            CVCommandRoot.root()
                 .then(Commands.literal("debug")
                     .executes(CVDebugCommand::executeDebug))
                 .then(Commands.literal("perf")

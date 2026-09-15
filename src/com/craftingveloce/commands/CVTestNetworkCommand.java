@@ -63,7 +63,7 @@ public final class CVTestNetworkCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(
-            Commands.literal("cv")
+            CVCommandRoot.root()
                 .then(Commands.literal("testnet")
                     .executes(ctx -> build(ctx, DEFAULT_LENGTH))
                     .then(Commands.literal("build")
