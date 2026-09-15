@@ -667,11 +667,16 @@ public final class VeloceCraftingCache {
      */
     public static void onLevelLoaded() {
         shuttingDown = false;
+        com.craftingveloce.network.pipe.VeloceChunkLoader.unfreeze();
     }
 
     /** Zwalnia force-loady wszystkich sieci. Wolane przy zamykaniu serwera. */
     public static void releaseAll(ServerLevel level) {
         shuttingDown = true;
+        // Zamraza WSZYSTKIE force-loady, nie tylko te z cache. Bez tego
+        // awaryjne doladowanie chunku przy pobieraniu itemu (extractItem)
+        // omijalo blokade i zawieszalo zapis swiata.
+        com.craftingveloce.network.pipe.VeloceChunkLoader.freeze();
         int released = 0;
         for (VeloceCraftingCache cache : CACHES.values()) {
             released += cache.forcedChunks.size();

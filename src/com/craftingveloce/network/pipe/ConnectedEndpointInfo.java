@@ -162,6 +162,13 @@ public class ConnectedEndpointInfo {
         boolean wasLoaded = level.isLoaded(pos);
         long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
+            // Podczas zapisu/zamykania swiata NIE wymuszamy chunku. Zrobienie
+            // tego zawiesza zapis: Minecraft probuje chunk rozladowac, my go
+            // znowu ladujemy, i tak w kolko (w logu: tysiace cykli
+            // "loaded/unloaded" w trakcie "Saving worlds").
+            if (VeloceChunkLoader.isFrozen()) {
+                return ItemStack.EMPTY;
+            }
             // Przez globalny loader: surowe setChunkForced(false) w finally
             // zabieralo chunk sieciom, ktore nadal go trzymaly - i napedzalo
             // petle load/unload.
@@ -250,6 +257,10 @@ public class ConnectedEndpointInfo {
         boolean wasLoaded = level.isLoaded(pos);
         long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
+            // Bez wymuszania przy zapisie swiata - patrz extractItem.
+            if (VeloceChunkLoader.isFrozen()) {
+                return false;
+            }
             VeloceChunkLoader.retain(level, chunkKey);
             level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true);
         }

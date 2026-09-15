@@ -38,6 +38,35 @@ public final class VeloceChunkLoader {
     private VeloceChunkLoader() {
     }
 
+    /**
+     * Czy swiat sie zamyka/zapisuje.
+     *
+     * <p><b>Po co to.</b> Podczas zapisu swiata Minecraft rozladowuje chunki.
+     * Jesli w tym momencie cokolwiek je znowu wymusza, zapis nie moze sie
+     * skonczyc: chunk wraca, jest rozladowywany, wraca... W logu widac to jako
+     * tysiace cykli "chunk [x, z] loaded / unloaded" w trakcie "Saving worlds",
+     * czyli zawieszony zapis swiata.
+     *
+     * <p>Flaga zyje tutaj, bo {@link #retain} jest wspolnym wejsciem dla
+     * WSZYSTKICH force-loadow - takze tych awaryjnych z pobierania itemow,
+     * ktore wczesniej omijaly blokade w cache'u craftowalnosci.
+     */
+    private static volatile boolean frozen = false;
+
+    /** Zamraza force-loady (serwer sie zamyka / zapisuje swiat). */
+    public static void freeze() {
+        frozen = true;
+    }
+
+    /** Odmraza force-loady (weszlismy do swiata). */
+    public static void unfreeze() {
+        frozen = false;
+    }
+
+    public static boolean isFrozen() {
+        return frozen;
+    }
+
     /** level -> (chunk -> liczba wlascicieli). Slabe klucze, zeby nie trzymac swiatow. */
     private static final Map<ServerLevel, Map<Long, Integer>> REFS = new WeakHashMap<>();
 
@@ -50,6 +79,10 @@ public final class VeloceChunkLoader {
      * @return true, jesli to wlasnie my fizycznie wymusilismy zaladowanie
      */
     public static boolean retain(ServerLevel level, long chunkKey) {
+        if (frozen) {
+            // Swiat sie zapisuje - wymuszenie chunku zawiesiloby zapis.
+            return false;
+        }
         Map<Long, Integer> refs = REFS.computeIfAbsent(level, k -> new HashMap<>());
         int count = refs.merge(chunkKey, 1, Integer::sum);
         if (count > 1) {
