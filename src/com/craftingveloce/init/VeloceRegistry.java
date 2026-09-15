@@ -2,11 +2,15 @@ package com.craftingveloce.init;
 
 import com.craftingveloce.block.VeloceCableBlock;
 import com.craftingveloce.block.VeloceConnectorBlock;
+import com.craftingveloce.block.VelocePipeBlock;
 import com.craftingveloce.block.VeloceTomTerminalBlock;
 import com.craftingveloce.block.entity.VeloceConnectorBlockEntity;
+import com.craftingveloce.block.entity.VelocePipeBlockEntity;
 import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
+import com.craftingveloce.item.VeloceWrenchItem;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -44,7 +48,30 @@ public class VeloceRegistry {
                     VELOCE_TOM_TERMINAL.get()
             ));
 
-    // 2. Veloce Cable
+    // 2. Veloce Pipe (Pipez-style smart pipe)
+    public static final DeferredBlock<VelocePipeBlock> VELOCE_PIPE = BLOCKS.register(
+            "veloce_pipe",
+            VelocePipeBlock::new
+    );
+
+    public static final DeferredItem<BlockItem> VELOCE_PIPE_ITEM = ITEMS.registerSimpleBlockItem(
+            "veloce_pipe",
+            VELOCE_PIPE
+    );
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VelocePipeBlockEntity>> VELOCE_PIPE_BE =
+            BLOCK_ENTITY_TYPES.register("veloce_pipe", () -> createBEType(
+                    (pos, state) -> new VelocePipeBlockEntity(pos, state),
+                    VELOCE_PIPE.get()
+            ));
+
+    // 3. Veloce Wrench
+    public static final DeferredItem<VeloceWrenchItem> VELOCE_WRENCH = ITEMS.register(
+            "wrench",
+            () -> new VeloceWrenchItem(new Item.Properties())
+    );
+
+    // 4. Legacy/Connector blocks (kept for backwards compatibility)
     public static final DeferredBlock<VeloceCableBlock> VELOCE_CABLE = BLOCKS.register(
             "veloce_cable",
             VeloceCableBlock::new
@@ -55,7 +82,6 @@ public class VeloceRegistry {
             VELOCE_CABLE
     );
 
-    // 3. Veloce Inventory Connector
     public static final DeferredBlock<VeloceConnectorBlock> VELOCE_CONNECTOR = BLOCKS.register(
             "veloce_connector",
             VeloceConnectorBlock::new

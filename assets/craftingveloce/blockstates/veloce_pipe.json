@@ -1,0 +1,41 @@
+{
+    "multipart": [
+        {   "apply": { "model": "craftingveloce:block/veloce_pipe_core" }},
+        {   "when": { "north": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_part", "uvlock": false }
+        },
+        {   "when": { "east": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_part", "y": 90, "uvlock": false }
+        },
+        {   "when": { "south": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_part", "y": 180, "uvlock": false }
+        },
+        {   "when": { "west": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_part", "y": 270, "uvlock": false }
+        },
+        {   "when": { "up": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_part", "x": 270, "uvlock": false }
+        },
+        {   "when": { "down": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_part", "x": 90, "uvlock": false }
+        },
+        {   "when": { "north_extract": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_extract", "uvlock": false }
+        },
+        {   "when": { "east_extract": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_extract", "y": 90, "uvlock": false }
+        },
+        {   "when": { "south_extract": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_extract", "y": 180, "uvlock": false }
+        },
+        {   "when": { "west_extract": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_extract", "y": 270, "uvlock": false }
+        },
+        {   "when": { "up_extract": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_extract", "x": 270, "uvlock": false }
+        },
+        {   "when": { "down_extract": "true" },
+            "apply": { "model": "craftingveloce:block/veloce_pipe_extract", "x": 90, "uvlock": false }
+        }
+    ]
+}

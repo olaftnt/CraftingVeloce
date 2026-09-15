@@ -1,0 +1,7 @@
+{
+	"parent": "craftingveloce:block/pipe_part",
+	"textures": {
+		"0": "craftingveloce:block/veloce_pipe",
+		"particle": "craftingveloce:block/veloce_pipe"
+	}
+}

@@ -22,4 +22,8 @@ public class ClientTerminalHelper {
             screen.updateNetworkCounts(itemCounts);
         }
     }
+
+    public static net.minecraft.world.phys.HitResult getClientHitResult() {
+        return Minecraft.getInstance().hitResult;
+    }
 }
