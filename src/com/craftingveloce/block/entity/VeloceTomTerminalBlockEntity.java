@@ -233,7 +233,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
                 it.remove();
             } else {
                 PacketDistributor.sendToPlayer(sp,
-                        new SyncTerminalCountsPKT(counts, craftable, currentFreeSlots()));
+                        new SyncTerminalCountsPKT(counts, craftable));
             }
         }
     }
@@ -242,22 +242,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         if (level == null || level.isClientSide) return;
         Map<Item, Long> counts = getAllStoredItemCounts();
         PacketDistributor.sendToPlayer(player,
-                new SyncTerminalCountsPKT(counts, Map.of(), currentFreeSlots()));
-    }
-
-    /**
-     * Ile wolnych slotow ma siec tego terminala; {@code -1} gdy nieznane.
-     *
-     * <p>Klient uzywa tego, zeby NATYCHMIAST zablokowac odkladanie do pelnej
-     * sieci - bez wysylania pakietu i cofania stanu po odpowiedzi serwera.
-     */
-    private int currentFreeSlots() {
-        if (!(level instanceof ServerLevel sl)) {
-            return -1;
-        }
-        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
-                .getNetworkForTerminal(sl, worldPosition);
-        return net == null ? -1 : net.getFreeSlots(sl);
+                new SyncTerminalCountsPKT(counts, Map.of()));
     }
 
     /**
@@ -601,19 +586,28 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         if (moved <= 0) {
             // Nic nie weszlo - mowimy o tym graczowi.
             //
-            // Klient zwykle blokuje te akcje ZANIM ja wysle (patrz
-            // storeBlockedReason), ale gdy pojemnosc sieci jest nieznana
-            // (np. Refined Storage), przepuszcza ja i decyduje serwer.
-            // Wtedy gracz MUSI dostac powod, inaczej wyglada to jak
-            // zepsuty przycisk.
+            // Decyzja nalezy do serwera, bo klient nie zna zawartosci
+            // poszczegolnych slotow ani tego, czy jego dane sa swieze (klient
+            // NIE blokuje juz tej akcji - patrz VeloceTerminalScreen).
+            // Gracz MUSI wiec dostac powod, inaczej wyglada to jak zepsuty
+            // przycisk.
+            //
+            // WAZNE: "nic nie weszlo" NIE znaczy jeszcze "siec pelna".
+            // Pytamy wiec cache o pojemnosc DLA KONKRETNEGO ITEMU - i tylko
+            // gdy wynosi ona twarde 0 dla wszystkich jego typow, mowimy
+            // "pelna". Inaczej mowimy "sprobuj za chwile", bo to np. odmowa
+            // przez budzet wczytywania chunkow albo trwajacy zapis swiata.
+            //
             // UWAGA: uzywamy ZAIMPORTOWANYCH nazw (Component, ChatFormatting),
             // a nie `net.minecraft...` - w tej metodzie jest lokalna zmienna
             // `net` (siec rur), ktora PRZESLANIA nazwe pakietu `net`.
             // Zapis `net.minecraft.network.chat.Component` kompilowal sie jako
             // odwolanie do pola `minecraft` zmiennej `net` i nie dzialal.
+            String reason = nothingStoredReason(sl, net, player, mode);
             player.displayClientMessage(
-                    Component.translatable("gui.craftingveloce.terminal.storeFull")
-                            .withStyle(ChatFormatting.RED),
+                    Component.translatable(reason)
+                            .withStyle("gui.craftingveloce.terminal.storeFull".equals(reason)
+                                    ? ChatFormatting.RED : ChatFormatting.YELLOW),
                     true);
             return;
         }
@@ -630,18 +624,63 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
      * przypadki konczyly sie tekstem "network full".
      */
     private boolean hasAnythingToStore(ServerPlayer player, int mode) {
+        return !stacksToStore(player, mode).isEmpty();
+    }
+
+    /**
+     * Stosy, ktore tryb {@code mode} probowalby odlozyc.
+     *
+     * <p>Jedno miejsce decydujace o tym, CO jest kandydatem do odlozenia -
+     * uzywane i przy sprawdzaniu "czy jest co odkladac", i przy ustalaniu
+     * powodu odmowy. Wczesniej te dwa miejsca liczyly sie niezaleznie i mogly
+     * sie rozjechac.
+     */
+    private List<ItemStack> stacksToStore(ServerPlayer player, int mode) {
+        List<ItemStack> out = new ArrayList<>();
         if (mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR) {
-            return !player.inventoryMenu.getCarried().isEmpty();
+            ItemStack carried = player.inventoryMenu.getCarried();
+            if (!carried.isEmpty()) {
+                out.add(carried);
+            }
+            return out;
         }
         boolean includeHotbar = mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_EVERYTHING;
         var inv = player.getInventory();
         // Sloty 0..8 to hotbar - zwykly shift je pomija.
         for (int i = includeHotbar ? 0 : 9; i < inv.getContainerSize(); i++) {
-            if (!inv.getItem(i).isEmpty()) {
-                return true;
+            ItemStack st = inv.getItem(i);
+            if (!st.isEmpty()) {
+                out.add(st);
             }
         }
-        return false;
+        return out;
+    }
+
+    /**
+     * Dlaczego nic nie weszlo - gotowy klucz tlumaczenia.
+     *
+     * <p>Rozrozniamy DWA powody, bo maja rozne konsekwencje dla gracza:
+     * <ul>
+     *   <li>{@code storeFull} - pojemnosc sieci dla KAZDEGO z jego itemow to
+     *       twarde 0. Siec naprawde jest pelna, nie ma co probowac.</li>
+     *   <li>{@code storeBusy} - pojemnosc jest dodatnia albo NIEZNANA
+     *       ({@code -1}). Czyli nie mozemy uczciwie powiedziec "pelna" -
+     *       najczesciej to odmowa przez budzet wczytywania chunkow albo
+     *       trwajacy zapis swiata. Warto sprobowac za chwile.</li>
+     * </ul>
+     *
+     * <p>Bez tego rozroznienia kazda nieudana proba - takze tymczasowa -
+     * konczyla sie tekstem "network full", czyli klamstwem, ktore wysylalo
+     * gracza na szukanie nieistniejacego problemu z pojemmoscia.
+     */
+    private String nothingStoredReason(ServerLevel sl, VelocePipeNetwork net,
+                                       ServerPlayer player, int mode) {
+        for (ItemStack st : stacksToStore(player, mode)) {
+            if (net.capacityFor(sl, st.getItem()) != 0) {
+                return "gui.craftingveloce.terminal.storeBusy";
+            }
+        }
+        return "gui.craftingveloce.terminal.storeFull";
     }
 
     /**

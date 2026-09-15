@@ -275,47 +275,37 @@ public class VelocePipeNetwork {
     }
 
     /**
-     * Ile wolnych slotow ma cala siec; {@code -1} gdy nie wiadomo.
+     * Ile sztuk KONKRETNIE TEGO itemu przyjmie cala siec.
      *
-     * <p>Uzywane przez klienta do NATYCHMIASTOWEGO zablokowania odkladania,
-     * gdy siec jest pelna - zamiast wysylac pakiet i cofac stan po odpowiedzi.
+     * <p>To jest wlasciwe pytanie, gdy chcemy odlozyc item - a nie "ile jest
+     * wolnych slotow". Roznica jest realna: skrzynia wypelniona niedopelnionymi
+     * stosami kamienia ma ZERO pustych slotow, ale przyjmie jeszcze setki
+     * kamieni. Licznik pustych slotow raportowal ja jako pelna i terminal
+     * pokazywal "network full" na stale.
      *
-     * <p>Zwracamy {@code -1} ("nie wiem") w dwoch przypadkach:
-     * <ul>
-     *   <li>magazyn ma z natury nieznana pojemnosc (Refined Storage),</li>
-     *   <li>magazyn stoi w NIEZALADOWANYM chunku - jego ostatnio znana liczba
-     *       wolnych slotow jest przechlodzona i moze byc zerem sprzed godzin.</li>
-     * </ul>
+     * <p>Miejsce w niedopelnionych stosach liczymy PER TYP, wiec kamien i ziemia
+     * maja osobne odpowiedzi - tak jak powinno byc.
      *
-     * <p>To drugie bylo zrodlem uporczywego falszywego "network full": gdy siec
-     * raz byla pelna, magazyn zapisal sobie {@code cachedFreeSlots == 0},
-     * chunk sie wyladowal (force-loadowane sa tylko WEZLY, nie magazyny),
-     * a {@link ConnectedEndpointInfo#refreshIfLoaded} nie mial okazji tego
-     * odswiezyc. Klient dostawal wiec 0 na zawsze, mimo ze miejsca bylo duzo,
-     * i blokowal odkladanie jeszcze PRZED wyslaniem pakietu. Dodawanie skrzyn,
-     * nowy terminal czy reload swiata nic nie dawaly, bo problemem nie byla
-     * pojemnosc, tylko przedawnione zero.
-     *
-     * <p>Zasada: lepiej przepuscic operacje i pozwolic serwerowi zdecydowac,
-     * niz zablokowac cos, co mogloby sie udac.
+     * @return liczba sztuk (0 = naprawde nie wejdzie ani jedna) albo {@code -1}
+     *         gdy nie wiemy. <b>0 to dowod, -1 to brak wiedzy</b> - wolajacy
+     *         nie moze traktowac ich zamiennie.
      */
-    public int getFreeSlots(ServerLevel level) {
-        int total = 0;
+    public long capacityFor(ServerLevel level, Item item) {
+        long total = 0;
         for (ConnectedEndpointInfo ep : endpoints.values()) {
             if (level != null && !level.isLoaded(ep.getPos())) {
-                return -1;   // niezaladowany chunk - liczba nieaktualna, nie zgadujemy
+                return -1;   // niezaladowany chunk - jego pojemnosc jest nieaktualna
             }
-            int free = ep.getCachedFreeSlots();
-            if (free < 0) {
+            long cap = ep.capacityFor(item);
+            if (cap < 0) {
                 return -1;   // nieznana pojemnosc - nie zgadujemy
             }
-            total += free;
+            total += cap;
         }
         return total;
     }
 
-    public ItemStack extractItem(ServerLevel level, Item item, int maxCount) {
-        for (ConnectedEndpointInfo endpoint : endpoints.values()) {
+    public ItemStack extractItem(ServerLevel level, Item item, int maxCount) {    for (ConnectedEndpointInfo endpoint : endpoints.values()) {
             if (endpoint.getCachedCounts().getOrDefault(item, 0L) > 0) {
                 ItemStack extracted = endpoint.extractItem(level, item, maxCount);
                 if (!extracted.isEmpty()) {

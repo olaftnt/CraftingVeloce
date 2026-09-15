@@ -60,6 +60,27 @@ public class ConnectedEndpointInfo {
     private int cachedFreeSlots = -1;
 
     /**
+     * Wolne miejsce w NIEPELNYCH stosach, per typ itemu.
+     *
+     * <p><b>Po co to jest.</b> Sam licznik pustych slotow KŁAMIE. Wyobraz sobie
+     * skrzynie 27 slotow, w ktorej kazdy slot trzyma po 40 kamienia. Pustych
+     * slotow jest ZERO, wiec {@link #cachedFreeSlots} mowi "0" i siec
+     * raportowala sie jako PELNA. A przeciez do kazdego z tych stosow wejdzie
+     * jeszcze po 24 kamienie - czyli 648 sztuk!
+     *
+     * <p>Objaw byl dokladnie taki, jak zgłosił gracz: terminal krzyczy
+     * "network full", choc na koncu sieci stoi skrzynia z wolnym miejscem.
+     * I to na stale, bo dopoki stosy nie zostana dopelnione, pusty slot sie
+     * nie pojawi - wiec licznik nigdy nie drgnie z zera.
+     *
+     * <p>Dlatego pamietamy OSOBNO, ile sztuk kazdego typu jeszcze sie zmiesci,
+     * zanim jego stosy sie dopelnia. Dzieki temu pojemnosc liczymy DLA KONKRETNEGO
+     * ITEMU ({@link #capacityFor}), a nie "w ogole" - bo miejsce po kamieniu
+     * nie pomoze, gdy chcemy wlozyc ziemie.
+     */
+    private final Map<Item, Integer> cachedPartialSpace = new HashMap<>();
+
+    /**
      * Tick, w ktorym ostatnio przeskanowalismy ten inwentarz.
      *
      * <p>Skanowanie polega na przejsciu WSZYSTKICH slotow i wywolaniu
@@ -97,11 +118,6 @@ public class ConnectedEndpointInfo {
 
     public Type getType() {
         return type;
-    }
-
-    /** Wolne sloty z ostatniego skanu; -1 gdy nieznane. */
-    public int getCachedFreeSlots() {
-        return cachedFreeSlots;
     }
 
     public Map<Item, Long> getCachedCounts() {
@@ -166,8 +182,39 @@ public class ConnectedEndpointInfo {
     public void invalidateCache(ServerLevel level) {
         if (level == null || level.isLoaded(pos)) {
             cachedCounts.clear();
+            // Liczniki czyscimy RAZEM - inaczej wolne miejsce liczyloby sie
+            // wzgledem stosow, ktorych juz nie pamietamy.
+            cachedPartialSpace.clear();
         }
         lastScanTick = Long.MIN_VALUE;
+    }
+
+    /**
+     * Ile sztuk KONKRETNIE TEGO itemu ten magazyn jeszcze przyjmie.
+     *
+     * <p>Liczymy dwie rzeczy, bo kazda osobno jest bledna:
+     * <ul>
+     *   <li>puste sloty - kazdy z nich przyjmie pelny stos (szacujemy
+     *       {@link Item#getDefaultMaxStackSize()}; nadmiarowy szacunek jest
+     *       bezpieczny, bo wtedy tylko nie zablokujemy za wczesnie),</li>
+     *   <li>wolne miejsce w NIEPELNYCH stosach TEGO SAMEGO itemu - to jest
+     *       wlasnie przypadek "skrzynia niby pelna, a jednak wejdzie".</li>
+     * </ul>
+     *
+     * <p>Miejsce po innym itemu swiadomie POMIJAMY: 10 wolnych sztuk w stosie
+     * kamienia nie pomoze, gdy wkladamy ziemie.
+     *
+     * @return liczba sztuk (moze byc 0 = naprawde pelny) albo {@code -1} gdy
+     *         nie wiemy (chunk niezaladowany, Refined Storage, brak odczytu).
+     *         Wolajacy MUSI odroznic 0 od -1: 0 to dowod, -1 to brak wiedzy.
+     */
+    public long capacityFor(Item item) {
+        if (cachedFreeSlots < 0) {
+            return -1;
+        }
+        long total = (long) cachedFreeSlots * item.getDefaultMaxStackSize();
+        total += cachedPartialSpace.getOrDefault(item, 0);
+        return total;
     }
 
     /**
@@ -231,6 +278,7 @@ public class ConnectedEndpointInfo {
             // magazyn raportuje 0 typow.
             boolean sawContainer = false;
             int freeSlots = 0;
+            Map<Item, Integer> partialSpace = new HashMap<>();
             if (handler != null) {
                 sawContainer = true;
                 for (int i = 0; i < handler.getSlots(); i++) {
@@ -239,6 +287,10 @@ public class ConnectedEndpointInfo {
                         freeSlots++;
                     } else {
                         newCounts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
+                        int room = stack.getMaxStackSize() - stack.getCount();
+                        if (room > 0) {
+                            partialSpace.merge(stack.getItem(), room, Integer::sum);
+                        }
                     }
                 }
             } else if (be instanceof Container container) {
@@ -249,6 +301,10 @@ public class ConnectedEndpointInfo {
                         freeSlots++;
                     } else {
                         newCounts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
+                        int room = stack.getMaxStackSize() - stack.getCount();
+                        if (room > 0) {
+                            partialSpace.merge(stack.getItem(), room, Integer::sum);
+                        }
                     }
                 }
             }
@@ -264,6 +320,8 @@ public class ConnectedEndpointInfo {
             cachedCounts.clear();
             cachedCounts.putAll(newCounts);
             cachedFreeSlots = freeSlots;
+            cachedPartialSpace.clear();
+            cachedPartialSpace.putAll(partialSpace);
             scanFailureLogged = false;
             notReadableLogged = false;
         } catch (Throwable t) {

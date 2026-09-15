@@ -69,12 +69,6 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     }
 
     public void updateNetworkCounts(Map<Item, Long> counts, Map<Item, Long> craftable) {
-        updateNetworkCounts(counts, craftable, -1);
-    }
-
-    public void updateNetworkCounts(Map<Item, Long> counts, Map<Item, Long> craftable,
-                                    int freeSlots) {
-        this.networkFreeSlots = freeSlots;
         Map<Item, Long> previous = this.networkCounts;
         this.networkCounts = new HashMap<>(counts);
 
@@ -478,17 +472,29 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             mode = com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR;
         }
 
-        // WALIDACJA PO STRONIE KLIENTA - zanim cokolwiek wyslemy.
+        // NIE BLOKujemy akcji po stronie klienta.
         //
-        // Gdy siec jest pelna, akcja jest blokowana NATYCHMIAST: nie wysylamy
-        // pakietu i nie ruszamy kursora. Gracz widzi komunikat zamiast
-        // migajacego itemu.
-        String blocked = storeBlockedReason(mode);
-        if (blocked != null) {
-            storeFeedback(blocked);
-            return;
-        }
-
+        // BUG, ktory tu byl (zrodlo trwalego falszywego "network full"):
+        // klient liczyl wolne sloty z OSTATNIEJ synchronizacji i gdy wyszlo 0,
+        // odmawial wyslania pakietu:
+        //
+        //     String blocked = storeBlockedReason(mode);
+        //     if (blocked != null) { storeFeedback(blocked); return; }
+        //
+        // Tyle ze "0 wolnych slotow" NIE znaczy "siec pelna":
+        //   1. licznik pustych slotow ignoruje miejsce w NIEDOPELNIONYCH
+        //      stosach - skrzynia wypelniona stosami po 40 sztuk ma 0 pustych
+        //      slotow, a przyjmie jeszcze setki,
+        //   2. dane klienta moga byc NIEAKTUALNE (ktos dopelnil skrzynie,
+        //      hopper cos dosypal) - a wtedy klient blokuje NA ZAWSZE, bo
+        //      sam z siebie nigdy nie odswiezy tego zero.
+        //
+        // Klient nie ma dosc informacji, zeby rozstrzygnac to rzetelnie:
+        // nie zna zawartosci poszczegolnych slotow ani tego, czy dane sa
+        // swieze. Decyzja nalezy do SERWERA, ktory ma pelny obraz (i moze
+        // nawet doczytac chunk). Wysylamy wiec zadanie ZAWSZE, a serwer
+        // odpowiada prawda - komunikatem, gdy naprawde nic nie weszlo.
+        //
         PacketDistributor.sendToServer(
                 new com.craftingveloce.network.TerminalStoreItemPKT(terminalPos, mode));
 
@@ -509,67 +515,6 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         // przeniosl. Dzieki temu item nigdy nie opuszcza swojego miejsca,
         // jesli nie ma go gdzie wlozyc - i nie ma czego cofac.
     }
-
-    /**
-     * Czy odkladanie jest z gory niemozliwe? Zwraca powod albo {@code null}.
-     *
-     * <p>Sprawdzamy tylko przypadek PEWNY: siec nie ma ani jednego wolnego
-     * slotu i nie trzyma tego itemu. Wtedy nie ma szans, ze cokolwiek sie
-     * zmiesci. Jesli item juz jest w sieci, przepuszczamy - moze dopelnic
-     * czesciowo zapelniony stos, a tego nie da sie rozstrzygnac po stronie
-     * klienta bez dokladnej znajomosci slotow.
-     */
-    private String storeBlockedReason(int mode) {
-        if (networkFreeSlots > 0) {
-            return null;   // jest wolne miejsce - na pewno sie zmiesci
-        }
-        if (mode != com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR) {
-            // Dla calego ekwipunku sprawdzamy, czy CHOC JEDEN item jest juz
-            // w sieci - tylko wtedy ma szanse wejsc na czesciowy stos.
-            if (this.minecraft == null || this.minecraft.player == null) {
-                return null;
-            }
-            var inv = this.minecraft.player.getInventory();
-            for (int i = 0; i < inv.getContainerSize(); i++) {
-                ItemStack st = inv.getItem(i);
-                if (!st.isEmpty() && networkCounts.getOrDefault(st.getItem(), 0L) > 0) {
-                    return null;
-                }
-            }
-            return "gui.craftingveloce.terminal.storeFull";
-        }
-        if (this.menu == null) {
-            return null;
-        }
-        ItemStack carried = this.menu.getCarried();
-        if (carried.isEmpty()) {
-            return null;
-        }
-        if (networkCounts.getOrDefault(carried.getItem(), 0L) > 0) {
-            return null;   // moze dopelnic czesciowy stos
-        }
-        return "gui.craftingveloce.terminal.storeFull";
-    }
-
-    /** Krotki komunikat nad hotbarem - bez otwierania czatu. */
-    private void storeFeedback(String translatableKey) {
-        if (this.minecraft == null || this.minecraft.player == null) {
-            return;
-        }
-        this.minecraft.player.displayClientMessage(
-                net.minecraft.network.chat.Component.translatable(translatableKey)
-                        .withStyle(net.minecraft.ChatFormatting.RED),
-                true);   // true = action bar
-    }
-
-    /**
-     * Ile wolnych slotow ma siec (z ostatniej synchronizacji).
-     *
-     * <p>Wartosc {@code -1} oznacza "nie wiem" - wtedy NIE blokujemy akcji,
-     * bo wolimy przepuscic operacje i pozwolic serwerowi zdecydowac, niz
-     * zablokowac cos, co mogloby sie udac.
-     */
-    private int networkFreeSlots = -1;
 
     private void clickViaInventoryMenu(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         if (this.minecraft == null || this.minecraft.player == null || this.minecraft.gameMode == null) {
