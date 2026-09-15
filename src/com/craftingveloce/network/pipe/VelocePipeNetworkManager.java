@@ -85,6 +85,16 @@ public class VelocePipeNetworkManager extends SavedData {
      */
     private final Map<BlockPos, ConnectedEndpointInfo> knownEndpoints = new HashMap<>();
 
+    /**
+     * Trwaly rejestr wezlow (terminal, crafter, extractor, kontroler).
+     *
+     * <p>Ten sam powod co {@code knownEndpoints}: cache komponentu zamraza
+     * zbior wezlow w chwili budowy, wiec wezel dodany pozniej nie bylby
+     * widziany przez sciezke cache'owana. Tutaj trzymamy je niezaleznie
+     * i przynaleznosc liczymy przez sasiedztwo z rurami.
+     */
+    private final Set<BlockPos> knownNodes = new HashSet<>();
+
     /** Tick ostatniej przebudowy - do odstepu miedzy nimi. */
     private long lastRebuildTick = Long.MIN_VALUE;
 
@@ -342,7 +352,7 @@ public class VelocePipeNetworkManager extends SavedData {
         // Teraz opis liczymy raz, a kolejne pytania dostaja gotowy wynik.
         VelocePipeWorld.Component cached = world.cachedComponent(seed);
         if (cached != null) {
-            return toNetwork(seed, cached);
+            return toNetwork(level, seed, cached);
         }
 
         Set<BlockPos> members = world.componentMembers(seed);
@@ -387,25 +397,59 @@ public class VelocePipeNetworkManager extends SavedData {
     }
 
     /** Buduje obiekt sieci z zapisanego opisu komponentu (bez dotykania swiata). */
-    private VelocePipeNetwork toNetwork(BlockPos seed, VelocePipeWorld.Component component) {
+    private VelocePipeNetwork toNetwork(ServerLevel level, BlockPos seed, VelocePipeWorld.Component component) {
         BlockPos root = world.componentOf(seed);
         UUID id = root != null
                 ? UUID.nameUUIDFromBytes(root.toShortString().getBytes())
                 : UUID.randomUUID();
         VelocePipeNetwork net = new VelocePipeNetwork(id);
         net.getPipes().addAll(component.pipes);
-        net.getTerminals().addAll(component.nodes);
 
-        // Magazyny: bierzemy zapamietane wpisy razem z ich zawartoscia.
-        // Dla chunkow zaladowanych odswiezamy je przy okazji, dla
-        // niezaladowanych zostaje ostatnia znana zawartosc.
+        // Wezly: tak samo jak magazyny - przez sasiedztwo z rurami tego
+        // komponentu, a nie po zamrozonym component.nodes. Inaczej wezel
+        // dodany po zbudowaniu cache nie bylby widziany przez terminal.
+        Set<BlockPos> nodeCandidates = new HashSet<>(component.nodes);
+        nodeCandidates.addAll(knownNodes);
+        for (BlockPos n : nodeCandidates) {
+            if (component.nodes.contains(n) || touchesAnyPipe(n, new HashSet<>(component.pipes))) {
+                net.getTerminals().add(n);
+            }
+        }
+
+        // Magazyny: przynaleznosc ustalamy przez SASIEDZTWO z rurami tego
+        // komponentu, a nie po zamrozonym zbiorze component.storages.
+        //
+        // BUG, ktory tu byl: component.storages jest migawka z chwili budowy
+        // cache. Jesli wtedy beczka byla w niezaladowanym chunku (albo cache
+        // powstal zanim ja postawiono), zbior byl PUSTY - i to na zawsze.
+        // Skutek: rura widziala magazyn (sciezka scanAndBuildNetwork), ale
+        // TERMINAL nie (sciezka cache'owana), bo toNetwork odsiewalo endpoint.
+        //
+        // Teraz: endpoint nalezy do komponentu, jesli lezy obok jakiejkolwiek
+        // jego rury. Koszt to 6 sprawdzen na zapamietany magazyn - a tych jest
+        // malo (po jednym na skrzynie).
+        Set<BlockPos> pipes = new HashSet<>(component.pipes);
         for (Map.Entry<BlockPos, ConnectedEndpointInfo> e : knownEndpoints.entrySet()) {
-            if (component.storages.contains(e.getKey())) {
-                net.getEndpoints().put(e.getKey(), e.getValue());
+            BlockPos ep = e.getKey();
+            if (component.storages.contains(ep) || touchesAnyPipe(ep, pipes)) {
+                // Chunk zaladowany -> odswiez, zeby liczby byly aktualne.
+                // Niezaladowany -> zostaje ostatnia znana zawartosc.
+                e.getValue().refreshIfLoaded(level);
+                net.getEndpoints().put(ep, e.getValue());
             }
         }
         net.updateTrackedChunks();
         return net;
+    }
+
+    /** Czy ta pozycja sasiaduje z ktorakolwiek rura z podanego zbioru. */
+    private static boolean touchesAnyPipe(BlockPos pos, Set<BlockPos> pipes) {
+        for (Direction d : Direction.values()) {
+            if (pipes.contains(pos.relative(d))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -471,14 +515,17 @@ public class VelocePipeNetworkManager extends SavedData {
             if (nb instanceof VeloceTomTerminalBlock t) {
                 if (t.canConnectFrom(ns, d.getOpposite())) {
                     net.getTerminals().add(np);
+                    knownNodes.add(np.immutable());
                 }
             } else if (nb instanceof com.craftingveloce.block.VeloceExtractorBlock e) {
                 if (e.canConnectFrom(ns, d.getOpposite())) {
                     net.getTerminals().add(np);
+                    knownNodes.add(np.immutable());
                 }
             } else if (nb instanceof com.craftingveloce.block.VeloceCraftingTableBlock c) {
                 if (c.canConnectFrom(ns, d.getOpposite())) {
                     net.getTerminals().add(np);
+                    knownNodes.add(np.immutable());
                     net.getEndpoints().put(np, new CraftingBufferEndpoint(np, d.getOpposite()));
                 }
             } else if (RefinedStorageHelper.hasRSNetwork(level, np, d.getOpposite())) {
@@ -806,6 +853,7 @@ public class VelocePipeNetworkManager extends SavedData {
     }
 
     public void onTerminalRemoved(ServerLevel level, BlockPos terminalPos) {
+        knownNodes.remove(terminalPos);
         UUID netId = terminalToNetwork.remove(terminalPos);
         if (netId != null) {
             VelocePipeNetwork net = networks.get(netId);
@@ -1125,6 +1173,7 @@ public class VelocePipeNetworkManager extends SavedData {
         // rozladowany) - terminal pytal buildFromComponent, ktory bral z
         // knownEndpoints, ale tam byl stary pusty endpoint z NBT-load.
         // Terminal widzial 0 typow mimo ze beczka miala itemy.
+        knownNodes.addAll(discoveredTerminals);
         for (Map.Entry<BlockPos, ConnectedEndpointInfo> e : discoveredEndpoints.entrySet()) {
             if (level.isLoaded(e.getKey())) {
                 // Swiezy odczyt z zaladowanego chunku - zastepuje stary.
@@ -1204,8 +1253,10 @@ public class VelocePipeNetworkManager extends SavedData {
         // wiec po restarcie swiata od razu widzimy magazyny w niezaladowanych
         // chunkach - bez czekania, az gracz do nich podejdzie.
         knownEndpoints.clear();
+        knownNodes.clear();
         for (VelocePipeNetwork net : networks.values()) {
             knownEndpoints.putAll(net.getEndpoints());
+            knownNodes.addAll(net.getTerminals());
         }
 
         // Druga faza: polaczenia. Rura laczy sie z sasiadem, jesli obie sa
