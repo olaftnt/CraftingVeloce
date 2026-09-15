@@ -517,6 +517,19 @@ public final class VeloceAutoCrafter {
         }
 
         plan.add(recipe, times);
+
+        // KLUCZOWE: zalicz wyprodukowane itemy do symulowanego stocku.
+        //
+        // Bez tego planowanie nie widzialo wlasnych wynikow posrednich.
+        // Przyklad: plotek potrzebuje 4 desek i 2 patykow. Deski zostaja
+        // zaplanowane z klod (4 sztuki), ale stock[deski] dalej wynosil 0,
+        // wiec kolejne sloty desek w recepturze nie mogly ich znalezc i plan
+        // padal z "brak bazowych skladnikow" - mimo ze klody byly w sieci.
+        // To bylo zrodlo bledu "nie moge zrobic fence a mam logi w skrzynce".
+        ItemStack result = recipe.result();
+        if (!result.isEmpty()) {
+            stock.merge(result.getItem(), times * perCraft, Long::sum);
+        }
         return true;
     }
 
