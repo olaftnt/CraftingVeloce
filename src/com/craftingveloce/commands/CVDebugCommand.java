@@ -31,30 +31,23 @@ public class CVDebugCommand {
                     .executes(CVDebugCommand::executeDebug))
                 .then(Commands.literal("perf")
                     .executes(CVDebugCommand::executePerf))
-                .then(Commands.literal("chunkdebug")
-                    .executes(ctx -> setChunkDebug(ctx, null))
+                // JEDEN przelacznik do monitorowania chunkow.
+                //
+                // Wczesniej bylo tego trzy osobne komendy (chunkdebug, jego
+                // podkomendy i chunks). Przy testowaniu to przeszkadzalo: trzeba
+                // bylo pamietac, ktora co wlacza, a i tak nie bylo jasne, czy
+                // mechanizm w ogole dziala.
+                //
+                // Teraz: jedno polecenie, dziala jak przelacznik, wlacza CALY
+                // monitor. Bez argumentu przelacza, z "on"/"off" ustawia wprost.
+                .then(Commands.literal("chunk")
+                    .executes(ctx -> toggleChunkMonitor(ctx, null))
                     .then(Commands.literal("on")
-                        .executes(ctx -> setChunkDebug(ctx, true)))
+                        .executes(ctx -> toggleChunkMonitor(ctx, true)))
                     .then(Commands.literal("off")
-                        .executes(ctx -> setChunkDebug(ctx, false)))
-                    .then(Commands.literal("verbose")
-                        .executes(ctx -> setChunkVerbose(ctx, null))
-                        .then(Commands.literal("on")
-                            .executes(ctx -> setChunkVerbose(ctx, true)))
-                        .then(Commands.literal("off")
-                            .executes(ctx -> setChunkVerbose(ctx, false))))
-                    // Operacje na itemach w niezaladowanych chunkach.
-                    .then(Commands.literal("ops")
-                        .executes(ctx -> setChunkOps(ctx, null))
-                        .then(Commands.literal("on")
-                            .executes(ctx -> setChunkOps(ctx, true)))
-                        .then(Commands.literal("off")
-                            .executes(ctx -> setChunkOps(ctx, false)))))
-                // Lista chunkow, ktore trzymamy w pamieci - z powodem i blokiem.
-                .then(Commands.literal("chunks")
-                    .executes(CVDebugCommand::executeListChunks)
-                    .then(Commands.literal("strict")
-                        .executes(CVDebugCommand::executeCheckStrict)))
+                        .executes(ctx -> toggleChunkMonitor(ctx, false)))
+                    .then(Commands.literal("status")
+                        .executes(CVDebugCommand::executeChunkStatus)))
         );
     }
 
@@ -96,53 +89,59 @@ public class CVDebugCommand {
     }
 
     /**
-     * Wlacza/wylacza debug chunkow na czacie.
+     * JEDEN przelacznik calego monitora chunkow.
      *
-     * <p>Bez argumentu przelacza stan. To niezalezne od glownego debugowania
-     * w configu - sluzy do testowania zachowania sieci bez ciaglego ladowania
-     * chunkow.
+     * <p>Wlacza naraz wszystko, co potrzebne do testu:
+     * <ul>
+     *   <li>komunikat przy KAZDYM rozladowaniu chunka (z koordynatami),</li>
+     *   <li>raport operacji na itemach w niezaladowanych chunkach,</li>
+     *   <li>listy blokow sieci w chunku, ktory sie rozladowuje.</li>
+     * </ul>
+     *
+     * <p>To NIE jest zwykly debug z configu - dziala niezaleznie, bo sluzy do
+     * konkretnego testu: sprawdzenia, czy dany chunk w ogole probuje sie
+     * rozladowac. Bez tego latwo testowac obszar, ktory w rzeczywistosci
+     * caly czas siedzi w pamieci i nie dowiedziec sie niczego.
+     *
+     * <p>Bez argumentu przelacza stan (on <-> off).
      */
-    private static int setChunkDebug(CommandContext<CommandSourceStack> context, Boolean value) {
+    private static int toggleChunkMonitor(CommandContext<CommandSourceStack> context, Boolean value) {
         boolean target = value == null
                 ? !com.craftingveloce.debug.ChunkDebugNotifier.isEnabled()
                 : value;
         com.craftingveloce.debug.ChunkDebugNotifier.setEnabled(target);
-
-        String state = target ? "§aON" : "§cOFF";
-        context.getSource().sendSuccess(() -> Component.literal(
-                "§8[§6Veloce§8] chunk debug: " + state), false);
-        if (target) {
-            context.getSource().sendSuccess(() -> Component.literal(
-                    "§7Chunki z elementami sieci beda raportowane na czacie."), false);
-        }
-        return 1;
-    }
-
-    /** Steruje szczegolowoscia raportu (czy listowac bloki). */
-    private static int setChunkVerbose(CommandContext<CommandSourceStack> context, Boolean value) {
-        boolean target = value == null
-                ? !com.craftingveloce.debug.ChunkDebugNotifier.isVerbose()
-                : value;
-        com.craftingveloce.debug.ChunkDebugNotifier.setVerbose(target);
-        String state = target ? "§aON" : "§cOFF";
-        context.getSource().sendSuccess(() -> Component.literal(
-                "§8[§6Veloce§8] chunk debug verbose: " + state), false);
-        return 1;
-    }
-
-    /** Wlacza/wylacza raport operacji na niezaladowanych chunkach. */
-    private static int setChunkOps(CommandContext<CommandSourceStack> context, Boolean value) {
-        boolean target = value == null
-                ? !com.craftingveloce.debug.ChunkOpNotifier.isEnabled()
-                : value;
+        // Operacje na itemach ida razem z monitorem - to jeden mechanizm,
+        // nie dwa niezalezne przelaczniki do zapamietania.
         com.craftingveloce.debug.ChunkOpNotifier.setEnabled(target);
+
         String state = target ? "§aON" : "§cOFF";
         context.getSource().sendSuccess(() -> Component.literal(
-                "§8[§6Veloce§8] chunk ops debug: " + state), false);
+                "§8[§6Veloce§8] monitor chunkow: " + state), false);
         if (target) {
             context.getSource().sendSuccess(() -> Component.literal(
-                    "§7Operacje na itemach w niezaladowanych chunkach beda raportowane."), false);
+                    "§7Kazde rozladowanie chunka -> komunikat z koordynatami."), false);
+            context.getSource().sendSuccess(() -> Component.literal(
+                    "§7Operacje na itemach w niezaladowanych chunkach -> raport."), false);
+            context.getSource().sendSuccess(() -> Component.literal(
+                    "§7Uzyj §f/cv chunk status§7, aby zobaczyc trzymane chunki."), false);
+        } else {
+            context.getSource().sendSuccess(() -> Component.literal(
+                    "§7Monitor wylaczony - czat zostaje czysty."), false);
         }
+        return 1;
+    }
+
+    /** Krotki status: czy monitor dziala i ile chunkow trzymamy. */
+    private static int executeChunkStatus(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        boolean on = com.craftingveloce.debug.ChunkDebugNotifier.isEnabled();
+        source.sendSuccess(() -> Component.literal("§6=== [CraftingVeloce] Monitor chunkow ==="), false);
+        source.sendSuccess(() -> Component.literal(
+                "§7Stan: " + (on ? "§aON" : "§cOFF")
+                        + " §7| operacje: " + (com.craftingveloce.debug.ChunkOpNotifier.isEnabled()
+                        ? "§aON" : "§cOFF")), false);
+        // Pelna lista trzymanych chunkow - od razu, bez drugiej komendy.
+        executeListChunks(context);
         return 1;
     }
 

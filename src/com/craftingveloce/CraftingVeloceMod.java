@@ -193,8 +193,18 @@ public class CraftingVeloceMod {
         });
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.ChunkEvent.Unload.class, event -> {
             if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
+                var chunkPos = event.getChunk().getPos();
+                // Komunikat o FAKTYCZNYM rozladowaniu - wpiety dokladnie w to
+                // zdarzenie, a nie zgadywany z odleglosci gracza.
+                //
+                // Po co: bez tego nie da sie ustalic, czy testowany obszar w
+                // ogole sie rozladowuje. Obszar moze byc trzymany przez inny
+                // mod, przez spawn-chunks albo przez nasze wlasne force-loady -
+                // i wtedy "test" nie dowodzi niczego, bo chunk nigdy nie wypada.
+                com.craftingveloce.debug.ChunkDebugNotifier.notifyUnload(
+                        sl, chunkPos, com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl));
                 com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
-                        .onChunkChanged(sl, event.getChunk().getPos(), false);
+                        .onChunkChanged(sl, chunkPos, false);
             }
         });
 
