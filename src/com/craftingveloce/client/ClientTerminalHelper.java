@@ -5,6 +5,7 @@ import com.craftingveloce.client.gui.VeloceTerminalScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.client.gui.screens.Screen;
+import javax.annotation.Nullable;
 import net.minecraft.world.item.Item;
 
 import java.util.Map;
@@ -46,125 +47,69 @@ public class ClientTerminalHelper {
         }
     }
 
+    /**
+     * Ekran, z ktorego otwarto wybor filtra - tu wracamy po wybraniu itemu.
+     *
+     * <p><b>Dlaczego pamietamy EKRAN, a nie pytamy o typ menu.</b> Poprzednia
+     * wersja czytala {@code mc.player.containerMenu.getType()} i szukala ekranu
+     * w rejestrze. To WYWALALO GRE: ekran wyboru filtra dziedziczy po ekranie
+     * creative, a ten podmienia menu gracza na waniliowe {@code ItemPickerMenu},
+     * ktore ma typ {@code null}. {@code getType()} rzuca wtedy
+     * {@code UnsupportedOperationException("Unable to construct this menu by
+     * type")} - crash przy KAZDYM wybraniu itemu w filtrze.
+     *
+     * <p>Zapamietanie ekranu-hosta jest prostsze i niczego nie zaklada o menu:
+     * wracamy dokladnie tam, skad przyszliśmy.
+     */
+    @Nullable
+    private static Screen filterPickerReturnScreen;
+
     public static void openFilterPickerScreen(BlockPos pos, int filterIndex) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
+            filterPickerReturnScreen = mc.screen;   // zapamietaj, gdzie wrocic
             mc.setScreen(new com.craftingveloce.client.gui.VeloceFilterPickerScreen(
                     mc.player, mc.player.connection.enabledFeatures(), true, pos, filterIndex));
         }
     }
 
     /**
-     * Wraca z wyboru filtra do GUI tego bloku, z ktorego picker zostal otwarty.
+     * Wraca z wyboru filtra do GUI, z ktorego picker zostal otwarty.
      *
-     * <p><b>Skad wiemy, do ktorego.</b> Nie trzeba tym nigdzie podrozowac:
-     * pytamy ZYWE menu gracza, ktore serwer naprawde ma otwarte. Picker jest
-     * otwierany przez {@code setScreen}, wiec menu kontenera caly czas zyje -
-     * a jego typ mowi wprost, czy wracamy do ekstraktora, czy do pieca.
-     *
-     * <p>Dzieki temu jeden pakiet filtrow i jedna sciezka powrotu obsluguja
-     * wszystkie bloki z filtrami. Wersja z osobnym "rodzajem bloku" w pakiecie
-     * wymagalaby trzech zgodnych zmian przy kazdym nowym bloku.
+     * <p>Nie zgadujemy po typie menu (patrz {@link #filterPickerReturnScreen}) -
+     * przywracamy zapamietany ekran. Dzieki temu obsluguje kazdy blok z filtrami
+     * bez listy warunkow i bez pytania o typ menu.
      */
-    @SuppressWarnings("unchecked")
     public static void reopenFilterHostScreen(BlockPos pos) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
             return;
         }
+        Screen back = filterPickerReturnScreen;
+        filterPickerReturnScreen = null;
 
-        // KLUCZOWE: bierzemy MENU, ktore serwer NAPRAWDE ma otwarte.
-        //
-        // BUG, ktory tu byl: tworzone bylo zupelnie nowe menu z
-        // `inventoryMenu.containerId`, czyli z ID 0. Ale serwer nadal mial
-        // otwarte prawdziwe menu bloku (o ID 1..100) - picker byl otwierany
-        // przez setScreen, wiec zadne zamkniecie kontenera nie poszlo do
-        // serwera. Skutek: ID menu klienta (0) nie zgadzalo sie z ID kontenera
-        // na serwerze, wiec KAZDE klikniecie lecialo z ID 0 i bylo ignorowane -
-        // gracz wracal z wyboru filtra i nie mogl juz nic wyjac.
-        net.minecraft.world.inventory.AbstractContainerMenu open = mc.player.containerMenu;
-
-        // MENU GRACZA to nie jest menu bloku - czyli kontener naprawde zniknal
-        // (gracz odszedl, blok zostal zburzony). Wtedy NIE otwieramy niczego:
-        // kazdy ekran bylby zgadywaniem, a wczesniej otwieral sie tu ekstraktor
-        // nawet dla zupelnie innego bloku.
-        if (open == null || open == mc.player.inventoryMenu) {
+        if (back == null) {
+            // Nie wiemy, skad otwarto picker (np. po przeladowaniu zasobow).
+            // Lepiej nie otworzyc NICZEGO, niz otworzyc ekran przypadkowego
+            // bloku - tak wlasnie kiedys konczylo sie ekstraktorem dla czujnika.
+            com.craftingveloce.util.VeloceLog.Gui.detail(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "filter picked, but no host screen remembered - staying in the world");
             return;
         }
 
-        // EKRAN Z REJESTRU, A NIE Z LISTY WARUNKOW.
-        //
-        // Trzeci raz trafilismy na to samo: nowy blok z filtrami (czujnik progu)
-        // nie zostal dopisany do ponizszej listy `instanceof`, wiec po wyborze
-        // itemu gracz wracal do GUI EKSTRAKTORA. Zamiast dopisywac czwarty
-        // warunek - i czekac na nastepny blok - pytamy rejestr ekranow, ten sam,
-        // ktory wypelnia RegisterMenuScreensEvent. Dzieki temu ekran, ktory
-        // gdziekolwiek zarejestrowano, jest tu obslugiwany automatycznie.
-        Screen restored = screenFor(open, mc.player.getInventory(), titleFor(open));
-        if (restored != null) {
-            mc.setScreen(restored);
+        // OSŁONA: to dzieje sie na ekranie gracza, wiec wyjatek tutaj wywalilby
+        // CALA gre (dokladnie tak sie stalo). Nawet gdyby przywracanie ekranu
+        // kiedys sie zepsulo, gracz ma wrocic do swiata, a nie do pulpitu.
+        try {
+            mc.setScreen(back);
+        } catch (Throwable t) {
+            com.craftingveloce.util.VeloceLog.Gui.error(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT, t,
+                    "nie udalo sie wrocic z wyboru filtra do ekranu %s - zostaje w swiecie",
+                    back.getClass().getSimpleName());
+            mc.setScreen(null);
         }
-    }
-
-    /**
-     * Buduje ekran zarejestrowany dla tego typu menu.
-     *
-     * <p>Typowane parametry sa tu konieczne: przy surowym
-     * {@code ScreenConstructor} javac gubi metode {@code create}, bo jej typ
-     * zwracany jest przecieciem klasy i interfejsu. Wersja z {@code T} dziala
-     * i nie wymaga zadnych rzutowan na ekran.
-     */
-    @SuppressWarnings("unchecked")
-    private static <T extends net.minecraft.world.inventory.AbstractContainerMenu> Screen screenFor(
-            T menu, net.minecraft.world.entity.player.Inventory inv,
-            net.minecraft.network.chat.Component title) {
-        net.minecraft.world.inventory.MenuType<T> type =
-                (net.minecraft.world.inventory.MenuType<T>) menu.getType();
-        return net.minecraft.client.gui.screens.MenuScreens.getScreenFactory(type)
-                .map(f -> f.create(menu, inv, title))
-                .orElse(null);   // menu bez ekranu - nie ma do czego wracac
-    }
-
-    /**
-     * Tytul okna dla odtwarzanego ekranu.
-     *
-     * <p>Menu zna juz swoj typ, wiec bierzemy tytul z bloku, ktory to menu
-     * otworzyl - a nie ze sztywnej listy nazw.
-     */
-    private static net.minecraft.network.chat.Component titleFor(
-            net.minecraft.world.inventory.AbstractContainerMenu menu) {
-        net.minecraft.core.BlockPos pos = posOf(menu);
-        if (pos != null && Minecraft.getInstance().level != null) {
-            net.minecraft.world.level.block.state.BlockState state =
-                    Minecraft.getInstance().level.getBlockState(pos);
-            if (!state.isAir()) {
-                return state.getBlock().getName();
-            }
-        }
-        return net.minecraft.network.chat.Component.empty();
-    }
-
-    /** Pozycja bloku, ktorego dotyczy menu - po znanych typach. */
-    private static net.minecraft.core.BlockPos posOf(
-            net.minecraft.world.inventory.AbstractContainerMenu menu) {
-        if (menu instanceof com.craftingveloce.inventory.VeloceExtractorMenu m) {
-            return m.getPos();
-        }
-        if (menu instanceof com.craftingveloce.inventory.VeloceVelocityFurnaceMenu m) {
-            return m.getPos();
-        }
-        if (menu instanceof com.craftingveloce.inventory.VeloceElectricFurnaceMenu m) {
-            return m.getPos();
-        }
-        if (menu instanceof com.craftingveloce.inventory.VeloceThresholdSensorMenu m) {
-            return m.getPos();
-        }
-        return null;
-    }
-
-    private static net.minecraft.network.chat.Component title(String blockName) {
-        return net.minecraft.network.chat.Component.translatable(
-                "block.craftingveloce." + blockName);
     }
 
     public static void handleSyncExtractorFilters(BlockPos pos,
