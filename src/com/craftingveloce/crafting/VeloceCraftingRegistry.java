@@ -25,6 +25,31 @@ public final class VeloceCraftingRegistry {
     }
 
     /**
+     * Craftery w sieci, w DETERMINISTYCZNEJ kolejnosci.
+     *
+     * <p>{@code network.getTerminals()} to zbior bez okreslonej kolejnosci, wiec
+     * wybor "pierwszego craftera" byl przypadkowy i mogl sie zmieniac miedzy
+     * uruchomieniami. Sortujemy po pozycji, zeby zachowanie bylo powtarzalne:
+     * przy kilku crafterach w sieci zawsze wygrywa ten sam.
+     */
+    private static java.util.List<VeloceCraftingTableBlockEntity> crafters(
+            ServerLevel level, VelocePipeNetwork network) {
+        java.util.List<BlockPos> sorted = new java.util.ArrayList<>(network.getTerminals());
+        sorted.sort(java.util.Comparator
+                .comparingInt((BlockPos p) -> p.getX())
+                .thenComparingInt(p -> p.getY())
+                .thenComparingInt(p -> p.getZ()));
+        java.util.List<VeloceCraftingTableBlockEntity> out = new java.util.ArrayList<>();
+        for (BlockPos pos : sorted) {
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be instanceof VeloceCraftingTableBlockEntity crafter) {
+                out.add(crafter);
+            }
+        }
+        return out;
+    }
+
+    /**
      * Znajduje crafter w sieci, ktory ma wlaczone auto-craftowanie dla danego itemu.
      *
      * @return pierwszy taki block entity albo {@code null}
@@ -33,9 +58,8 @@ public final class VeloceCraftingRegistry {
     public static VeloceCraftingTableBlockEntity findEnabledCrafter(ServerLevel level,
                                                                     VelocePipeNetwork network,
                                                                     Item item) {
-        for (BlockPos pos : network.getTerminals()) {
-            BlockEntity be = level.getBlockEntity(pos);
-            if (be instanceof VeloceCraftingTableBlockEntity crafter && crafter.isEnabled(item)) {
+        for (VeloceCraftingTableBlockEntity crafter : crafters(level, network)) {
+            if (crafter.isEnabled(item)) {
                 return crafter;
             }
         }
@@ -55,12 +79,9 @@ public final class VeloceCraftingRegistry {
     public static Map<Item, ResourceLocation> getPreferredRecipes(ServerLevel level,
                                                                   VelocePipeNetwork network) {
         Map<Item, ResourceLocation> out = new HashMap<>();
-        for (BlockPos pos : network.getTerminals()) {
-            BlockEntity be = level.getBlockEntity(pos);
-            if (be instanceof VeloceCraftingTableBlockEntity crafter) {
-                for (Map.Entry<Item, ResourceLocation> e : crafter.getPreferredRecipes().entrySet()) {
-                    out.putIfAbsent(e.getKey(), e.getValue());
-                }
+        for (VeloceCraftingTableBlockEntity crafter : crafters(level, network)) {
+            for (Map.Entry<Item, ResourceLocation> e : crafter.getPreferredRecipes().entrySet()) {
+                out.putIfAbsent(e.getKey(), e.getValue());
             }
         }
         return out;
@@ -84,13 +105,21 @@ public final class VeloceCraftingRegistry {
         if (craftable.isEmpty()) {
             return java.util.Set.of();
         }
-        java.util.Set<Item> disabled = new java.util.HashSet<>();
-        for (BlockPos pos : network.getTerminals()) {
-            BlockEntity be = level.getBlockEntity(pos);
-            if (be instanceof VeloceCraftingTableBlockEntity crafter) {
-                disabled.addAll(crafter.getDisabledItems());
-            }
+        // Decyduje PIERWSZY crafter (deterministycznie). Wczesniej laczylismy
+        // wylaczenia ze WSZYSTKICH crafterow, wiec jeden crafter z wylaczonymi
+        // deskami psul auto-crafting deskami dla calej sieci - mimo ze inny
+        // crafter mial je wlaczone.
+        java.util.List<VeloceCraftingTableBlockEntity> crafters = crafters(level, network);
+        if (crafters.isEmpty()) {
+            return java.util.Set.of();
         }
+        java.util.Set<Item> disabled = new java.util.HashSet<>(
+                crafters.get(0).getDisabledItems());
+
+        // KLUCZOWE: bez craftera w sieci NIE mozna nic zrobic.
+        // Wczesniej, gdy lista wyjatkow byla pusta, zwracalismy wszystkie
+        // craftowalne itemy - wiec terminal pokazywal "+N" mimo braku craftera.
+
         if (disabled.isEmpty()) {
             return craftable;
         }
@@ -106,11 +135,8 @@ public final class VeloceCraftingRegistry {
     public static java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> getBuffers(
             ServerLevel level, VelocePipeNetwork network) {
         java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> out = new java.util.ArrayList<>();
-        for (BlockPos pos : network.getTerminals()) {
-            BlockEntity be = level.getBlockEntity(pos);
-            if (be instanceof VeloceCraftingTableBlockEntity crafter) {
-                out.add(crafter.getBuffer());
-            }
+        for (VeloceCraftingTableBlockEntity crafter : crafters(level, network)) {
+            out.add(crafter.getBuffer());
         }
         return out;
     }
