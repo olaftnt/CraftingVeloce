@@ -163,10 +163,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        filterSlots.clear();
-        for (int i = 0; i < 9; i++) {
-            filterSlots.add(ItemStack.EMPTY);
-        }
+        java.util.Collections.fill(filterSlots, ItemStack.EMPTY);
         ListTag filterList = tag.getList("Filters", Tag.TAG_COMPOUND);
         for (int i = 0; i < filterList.size(); i++) {
             CompoundTag itemTag = filterList.getCompound(i);
