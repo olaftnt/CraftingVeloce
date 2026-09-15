@@ -99,12 +99,10 @@ public class VeloceThresholdSensorScreen
         this.thresholdField.setMaxLength(10);
         // Tylko cyfry - pole jest liczbowe, wiec nie ma po co wpuszczac liter.
         this.thresholdField.setFilter(s -> s.isEmpty() || s.chars().allMatch(Character::isDigit));
-        // Podpowiedz pola: naglowek + jedno zdanie, co ta liczba znaczy.
+        // Podpowiedz pola: samo "Amount". Gracz kazal usunac zdanie
+        // "Network count to compare against" - etykieta wystarcza.
         this.thresholdField.setTooltip(Tooltip.create(
-                Component.translatable("gui.craftingveloce.sensor.threshold")
-                        .append(Component.literal("\n"))
-                        .append(Component.translatable("gui.craftingveloce.sensor.threshold.tip")
-                                .withStyle(ChatFormatting.DARK_GRAY))));
+                Component.translatable("gui.craftingveloce.sensor.threshold")));
         addRenderableWidget(this.thresholdField);
 
         addRenderableWidget(Button.builder(Component.literal("+"), b -> step(1))

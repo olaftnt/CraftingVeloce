@@ -49,7 +49,6 @@
   "gui.craftingveloce.sensor.step.plus": "+",
   "gui.craftingveloce.sensor.step.minus": "-",
   "gui.craftingveloce.sensor.threshold": "Amount",
-  "gui.craftingveloce.sensor.threshold.tip": "Network count to compare against",
   "gui.craftingveloce.terminal.storeBusy": "Network busy - try again in a moment",
   "gui.craftingveloce.terminal.storeFull": "Network is full - no room for these items",
   "gui.craftingveloce.terminal.storeHint": "Click to store held item",
