@@ -307,8 +307,19 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
 
     @Override
     public void updateServer() {
-        // Keep the item cache alive and actively polling network
-        getStacks();
+        // NIE wolamy tu getStacks().
+        //
+        // getStacks() ustawia u Toma flage updateItems, przez co Tom przy KAZDEJ
+        // zmianie zawartosci sieci przebudowywal cala mape itemow terminala:
+        // pelny skan wszystkich inwentarzy + alokacja TerminalItemStack per stos
+        // + grupowanie i scalanie. To mapa, ktora nasz mod CZYTA NIGDZIE - nasze
+        // liczby pochodza z VelocePipeNetwork.getAllItemCounts.
+        //
+        // Tom sam nie ustawia tej flagi - robi to jego menu (StorageTerminalMenu)
+        // przy odpytywaniu. My otwieramy wlasny ekran, wiec ta praca byla
+        // wykonywana wylacznie dla nas i wylacznie na marne.
+        //
+        // Z tego samego powodu nie polegamy na slotCount/freeCount/beaconLevel.
         super.updateServer();
 
         // Cache craftowalnosci pracuje w tle: wykrywa zmiany stocku i przelicza
