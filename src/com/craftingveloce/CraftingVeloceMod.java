@@ -36,6 +36,13 @@ public class CraftingVeloceMod {
                         output.accept(VeloceRegistry.VELOCE_CRAFTING_TABLE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CONTROLLER_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_PIPE_ITEM.get());
+                        // BUG, ktory to naprawia: piece byly zarejestrowane, ale
+                        // NIE bylo ich w zakladce - czyli nie dalo sie ich
+                        // zdobyc inaczej niz komenda. Nowy blok latwo o to
+                        // przyprawic, bo rejestracja i zakladka to dwa miejsca.
+                        output.accept(VeloceRegistry.VELOCITY_FURNACE_ITEM.get());
+                        output.accept(VeloceRegistry.ELECTRIC_FURNACE_ITEM.get());
+                        output.accept(VeloceRegistry.THRESHOLD_SENSOR_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_WRENCH.get());
                     })
                     .build()
@@ -72,6 +79,8 @@ public class CraftingVeloceMod {
                     com.craftingveloce.client.gui.VeloceVelocityFurnaceScreen::new);
             event.register(VeloceRegistry.ELECTRIC_FURNACE_MENU.get(),
                     com.craftingveloce.client.gui.VeloceElectricFurnaceScreen::new);
+            event.register(VeloceRegistry.THRESHOLD_SENSOR_MENU.get(),
+                    com.craftingveloce.client.gui.VeloceThresholdSensorScreen::new);
         });
 
         // Wyjscie ze swiata czysci zapamietane widoki terminali.

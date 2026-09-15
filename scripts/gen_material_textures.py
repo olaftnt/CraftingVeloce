@@ -188,7 +188,30 @@ def mod_accent(rel_dir, name):
     return build
 
 
+def sensor_base(on):
+    """Czujnik: waniliowy observer + dioda w kolorze akcentu materialu."""
+    def build(mat):
+        img = recolor_to_material(load_vanilla("observer_front"),
+                                  [hex_rgb(c) for c in mat["ramp"]])
+        px = img.load()
+        acc = mat["accent"]
+        if on:
+            px[7, 7] = tuple(min(255, int(c + (255 - c) * 0.5)) for c in acc) + (255,)
+            for (x, y) in ((8, 7), (7, 8), (8, 8)):
+                px[x, y] = acc + (255,)
+        else:
+            dim = tuple(int(c * 0.35) for c in acc)
+            px[7, 7] = dim + (255,)
+            for (x, y) in ((8, 7), (7, 8), (8, 8)):
+                px[x, y] = tuple(int(c * 0.22) for c in acc) + (255,)
+        return img
+    return build
+
+
 TEXTURES = {
+    # Czujnik progu - ten sam korpus, dioda swieci albo nie.
+    "block/threshold_sensor": sensor_base(False),
+    "block/threshold_sensor_on": sensor_base(True),
     # Waniliowe podstawy - kazdy blok wyglada jak to, czym jest.
     "block/veloce_crafting_table": vanilla_base("crafting_table_top"),
     "block/veloce_extractor": vanilla_base("dropper_front"),

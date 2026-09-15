@@ -4,6 +4,7 @@ import com.craftingveloce.block.VeloceControllerBlock;
 import com.craftingveloce.block.VeloceCraftingTableBlock;
 import com.craftingveloce.block.VeloceElectricFurnaceBlock;
 import com.craftingveloce.block.VeloceExtractorBlock;
+import com.craftingveloce.block.VeloceThresholdSensorBlock;
 import com.craftingveloce.block.VeloceTomTerminalBlock;
 import com.craftingveloce.block.VeloceVelocityFurnaceBlock;
 import net.minecraft.core.Direction;
@@ -50,7 +51,8 @@ public final class VeloceNodeBlocks {
                 || block instanceof VeloceCraftingTableBlock
                 || block instanceof VeloceExtractorBlock
                 || block instanceof VeloceVelocityFurnaceBlock
-                || block instanceof VeloceElectricFurnaceBlock;
+                || block instanceof VeloceElectricFurnaceBlock
+                || block instanceof VeloceThresholdSensorBlock;
     }
 
     /**
@@ -77,6 +79,9 @@ public final class VeloceNodeBlocks {
         }
         if (block instanceof VeloceExtractorBlock extractor) {
             return extractor.canConnectFrom(state, towardPipe);
+        }
+        if (block instanceof VeloceThresholdSensorBlock sensor) {
+            return sensor.canConnectFrom(state, towardPipe);
         }
         // Piece nie maja wlasciwosci kierunku (nie maja FACING), wiec lacza sie
         // kazda strona - tak samo jak pozostale maszyny w modzie.

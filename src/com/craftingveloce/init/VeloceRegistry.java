@@ -175,6 +175,28 @@ public class VeloceRegistry {
             ));
 
 
+    // 7. Veloce Threshold Sensor (redstone zalezny od stanu sieci)
+    public static final DeferredBlock<com.craftingveloce.block.VeloceThresholdSensorBlock> THRESHOLD_SENSOR =
+            BLOCKS.register("threshold_sensor",
+                    com.craftingveloce.block.VeloceThresholdSensorBlock::new);
+
+    public static final DeferredItem<BlockItem> THRESHOLD_SENSOR_ITEM = ITEMS.registerSimpleBlockItem(
+            "threshold_sensor",
+            THRESHOLD_SENSOR);
+
+    public static final DeferredHolder<BlockEntityType<?>,
+            BlockEntityType<com.craftingveloce.block.entity.VeloceThresholdSensorBlockEntity>> THRESHOLD_SENSOR_BE =
+            BLOCK_ENTITY_TYPES.register("threshold_sensor", () -> createBEType(
+                    (pos, state) -> new com.craftingveloce.block.entity.VeloceThresholdSensorBlockEntity(pos, state),
+                    THRESHOLD_SENSOR.get()));
+
+    public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>,
+            net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceThresholdSensorMenu>> THRESHOLD_SENSOR_MENU =
+            MENU_TYPES.register("threshold_sensor_menu",
+                    () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(
+                            (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceThresholdSensorMenu(
+                                    windowId, inv, data.readBlockPos())));
+
     @FunctionalInterface
     public interface BlockEntityFactory<T extends BlockEntity> {
         T create(net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state);
