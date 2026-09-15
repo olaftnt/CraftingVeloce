@@ -41,6 +41,20 @@ public class ConnectedEndpointInfo {
     private final Type type;
     private final Map<Item, Long> cachedCounts = new HashMap<>();
 
+    /**
+     * Tick, w ktorym ostatnio przeskanowalismy ten inwentarz.
+     *
+     * <p>Skanowanie polega na przejsciu WSZYSTKICH slotow i wywolaniu
+     * {@code getStackInSlot} na kazdym. Dla moddowanych magazynow to potrafi
+     * kopiowac stosy razem z NBT, wiec jest to operacja droga. Wczesniej
+     * odswiezalismy sie przy KAZDYM zapytaniu o stan sieci (a to leci
+     * kilka razy na sekunde), co zamulalo watek serwera.
+     */
+    private long lastScanTick = Long.MIN_VALUE;
+
+    /** Minimalny odstep miedzy skanami tego samego inwentarza, w tickach. */
+    public static final int SCAN_INTERVAL_TICKS = 10;
+
     public ConnectedEndpointInfo(BlockPos pos, Direction accessSide, Type type) {
         this.pos = pos;
         this.accessSide = accessSide;
@@ -66,6 +80,28 @@ public class ConnectedEndpointInfo {
 
     public Map<Item, Long> getCachedCounts() {
         return cachedCounts;
+    }
+
+    /**
+     * Odswieza liczniki, ale nie czesciej niz raz na
+     * {@link #SCAN_INTERVAL_TICKS} tickow.
+     *
+     * <p>To wariant dla WSZYSTKICH odczytow tla (cache, GUI, wyswietlacze).
+     * Stan starszy o pol sekundy jest dla nich w zupelnosci wystarczajacy,
+     * a oszczedza skanowanie calej sieci kilka razy na sekunde.
+     */
+    public void refreshIfLoadedThrottled(ServerLevel level, long gameTime) {
+        if (lastScanTick != Long.MIN_VALUE && gameTime - lastScanTick < SCAN_INTERVAL_TICKS) {
+            return;
+        }
+        lastScanTick = gameTime;
+        refreshIfLoaded(level);
+    }
+
+    /** Wymusza skan teraz (do operacji, ktore musza widziec stan na zywo). */
+    public void forceRefresh(ServerLevel level, long gameTime) {
+        lastScanTick = gameTime;
+        refreshIfLoaded(level);
     }
 
     public void refreshIfLoaded(ServerLevel level) {
@@ -124,8 +160,12 @@ public class ConnectedEndpointInfo {
 
         // INVENTORY
         boolean wasLoaded = level.isLoaded(pos);
+        long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
-            level.setChunkForced(chunkPos.x, chunkPos.z, true);
+            // Przez globalny loader: surowe setChunkForced(false) w finally
+            // zabieralo chunk sieciom, ktore nadal go trzymaly - i napedzalo
+            // petle load/unload.
+            VeloceChunkLoader.retain(level, chunkKey);
             level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true);
         }
 
@@ -178,7 +218,7 @@ public class ConnectedEndpointInfo {
             t.printStackTrace();
         } finally {
             if (!wasLoaded) {
-                level.setChunkForced(chunkPos.x, chunkPos.z, false);
+                VeloceChunkLoader.release(level, chunkKey);
             }
         }
 
@@ -208,8 +248,9 @@ public class ConnectedEndpointInfo {
         }
 
         boolean wasLoaded = level.isLoaded(pos);
+        long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
-            level.setChunkForced(chunkPos.x, chunkPos.z, true);
+            VeloceChunkLoader.retain(level, chunkKey);
             level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true);
         }
 
@@ -246,7 +287,7 @@ public class ConnectedEndpointInfo {
             t.printStackTrace();
         } finally {
             if (!wasLoaded) {
-                level.setChunkForced(chunkPos.x, chunkPos.z, false);
+                VeloceChunkLoader.release(level, chunkKey);
             }
         }
         return remaining.isEmpty();

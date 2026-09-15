@@ -172,8 +172,9 @@ public final class VeloceAutoCrafter {
             return CraftResult.ok(count);
         }
 
-        // 2. Siec.
-        long inNetwork = network.getAllItemCounts(level).getOrDefault(item, 0L);
+        // 2. Siec. Wymuszamy swiezy skan - za chwile podejmujemy decyzje
+        //    o pobraniu itemow, wiec nie mozemy pracowac na nieaktualnym stanie.
+        long inNetwork = network.getAllItemCounts(level, true).getOrDefault(item, 0L);
         long available = inInventory + inNetwork;
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
                 "%s: inventory=%d, network=%d, requested=%d",
@@ -871,7 +872,7 @@ public final class VeloceAutoCrafter {
      * <p>Kolejnosc zrodel: siec + ekwipunek + bufory crafterow.
      */
     private static Map<Item, Long> snapshotStock(Context ctx) {
-        Map<Item, Long> stock = new HashMap<>(ctx.network.getAllItemCounts(ctx.level));
+        Map<Item, Long> stock = new HashMap<>(ctx.network.getAllItemCounts(ctx.level, true));
         if (ctx.inventory != null) {
             for (Item it : ctx.inventory.allItems()) {
                 stock.merge(it, (long) ctx.inventory.count(it), Long::sum);

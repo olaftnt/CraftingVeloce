@@ -146,6 +146,11 @@ public final class VeloceCraftingCache {
     /** Ile razy dany item wracal do kolejki, bo nie zmiescil sie w budzecie. */
     private final Map<Item, Integer> retries = new HashMap<>();
 
+    /** Rozbicie ostatniego ticku na fazy, do logu watchdoga. */
+    private long phaseScanNanos;
+    private long phaseChunksNanos;
+    private long phaseItemsNanos;
+
     /** Po tylu nieudanych probach odpuszczamy item (zostaje stara liczba). */
     private static final int MAX_RETRIES = 3;
 
@@ -251,6 +256,12 @@ public final class VeloceCraftingCache {
                      Map<Item, ResourceLocation> preferred) {
         long start = System.nanoTime();
         lastBatchSize = 0;
+        // Rozbicie czasu na fazy - bez tego watchdog mowi tylko "wolno",
+        // a nie gdzie. Kolejny taki bug znajdujemy wtedy od razu.
+        long phaseStart = start;
+        phaseScanNanos = 0L;
+        phaseChunksNanos = 0L;
+        phaseItemsNanos = 0L;
 
         // 0. Karencja startowa. Ladowanie save'a to najgorszy moment na
         //    jakakolwiek prace - czekamy, az serwer sie ustabilizuje.
@@ -279,9 +290,12 @@ public final class VeloceCraftingCache {
         if (firstScan || forceStockScan || now - lastFullStockScan >= interval) {
             forceStockScan = false;
             lastFullStockScan = now;
+            phaseStart = System.nanoTime();
             detectStockChanges(level);
+            phaseScanNanos = System.nanoTime() - phaseStart;
             if (System.nanoTime() - start > TICK_BUDGET_NS) {
                 lastTickNanos = System.nanoTime() - start;
+                warnIfOverrun();
                 return;
             }
         }
@@ -289,7 +303,9 @@ public final class VeloceCraftingCache {
         // 1b. Utrzymuj chunki z blokami sieci (rzadko - co sekunde).
         //     NIE robimy tego przy zamykaniu serwera - inaczej blokujemy zapis.
         if (!shuttingDown && now % 20 == 0) {
+            phaseStart = System.nanoTime();
             maintainForcedChunks(level);
+            phaseChunksNanos = System.nanoTime() - phaseStart;
         }
 
         // 2. Pierwszy skan: kolejkujemy itemy obecne w sieci (to widzi GUI)
@@ -305,6 +321,7 @@ public final class VeloceCraftingCache {
         }
 
         // 3. Przeliczaj porcje, dopoki starcza budzetu.
+        phaseStart = System.nanoTime();
         while (!pending.isEmpty() && lastBatchSize < MAX_ITEMS_PER_TICK) {
             if (System.nanoTime() - start > TICK_BUDGET_NS) {
                 break;   // budzet wyczerpany - reszta w nastepnym ticku
@@ -343,6 +360,7 @@ public final class VeloceCraftingCache {
             lastBatchSize++;
             totalComputed++;
         }
+        phaseItemsNanos = System.nanoTime() - phaseStart;
 
         if (pending.isEmpty() && !fullScanDone) {
             fullScanDone = true;
@@ -367,8 +385,13 @@ public final class VeloceCraftingCache {
             return;
         }
         VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
-                "crafting cache TICK OVERRUN: %d ms (budget %d ms) - %d item(s) pending, %d done this tick",
-                lastTickNanos / 1_000_000L, TICK_BUDGET_NS / 1_000_000L,
+                "crafting cache TICK OVERRUN: %d ms total = scan %d ms + chunks %d ms + items %d ms "
+                        + "(budget %d ms) - %d item(s) pending, %d done this tick",
+                lastTickNanos / 1_000_000L,
+                phaseScanNanos / 1_000_000L,
+                phaseChunksNanos / 1_000_000L,
+                phaseItemsNanos / 1_000_000L,
+                TICK_BUDGET_NS / 1_000_000L,
                 pending.size(), lastBatchSize);
     }
 
@@ -514,10 +537,11 @@ public final class VeloceCraftingCache {
             wanted.add(ChunkPos.asLong(p.getX() >> 4, p.getZ() >> 4));
         }
 
-        // Zwalniamy to, czego juz nie chcemy.
+        // Zwalniamy to, czego juz nie chcemy. Przez globalny loader - inaczej
+        // zabralibysmy chunk innej sieci, ktora nadal go potrzebuje.
         for (long key : new HashSet<>(forcedChunks)) {
             if (!wanted.contains(key)) {
-                level.setChunkForced(ChunkPos.getX(key), ChunkPos.getZ(key), false);
+                com.craftingveloce.network.pipe.VeloceChunkLoader.release(level, key);
                 forcedChunks.remove(key);
             }
         }
@@ -525,7 +549,7 @@ public final class VeloceCraftingCache {
         int added = 0;
         for (long key : wanted) {
             if (forcedChunks.add(key)) {
-                level.setChunkForced(ChunkPos.getX(key), ChunkPos.getZ(key), true);
+                com.craftingveloce.network.pipe.VeloceChunkLoader.retain(level, key);
                 added++;
             }
         }
@@ -560,6 +584,9 @@ public final class VeloceCraftingCache {
             released += cache.forcedChunks.size();
             cache.release(level);
         }
+        // Sprzatanie na poziomie loadera: lapie tez chunki wymuszone poza
+        // naszymi zbiorami (np. awaryjne doladowanie przy pobieraniu itemu).
+        com.craftingveloce.network.pipe.VeloceChunkLoader.releaseAll(level);
         VeloceLog.Network.success(VeloceLog.Side.SERVER,
                 "server stopping: released %d forced chunk(s) across %d network(s)",
                 released, CACHES.size());
@@ -569,7 +596,7 @@ public final class VeloceCraftingCache {
     /** Zwalnia wszystkie chunki trzymane przez te siec. */
     public void release(ServerLevel level) {
         for (long key : forcedChunks) {
-            level.setChunkForced(ChunkPos.getX(key), ChunkPos.getZ(key), false);
+            com.craftingveloce.network.pipe.VeloceChunkLoader.release(level, key);
         }
         VeloceLog.Network.detail(VeloceLog.Side.SERVER,
                 "released %d forced chunk(s) for network", forcedChunks.size());
