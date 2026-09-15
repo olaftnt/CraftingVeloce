@@ -20,7 +20,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
  */
 public class VeloceElectricFurnaceMenu extends AbstractContainerMenu {
 
-    private static final int PLAYER_X = 8;
+    /** Ekwipunek gracza w x=26 - tak samo jak w ekstraktorze. */
+    private static final int PLAYER_X = 26;
     private static final int PLAYER_Y = 84;
 
     private final VeloceElectricFurnaceBlockEntity furnace;

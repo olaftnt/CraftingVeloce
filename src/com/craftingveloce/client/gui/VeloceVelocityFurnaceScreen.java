@@ -62,9 +62,13 @@ public class VeloceVelocityFurnaceScreen
     public VeloceVelocityFurnaceScreen(VeloceVelocityFurnaceMenu menu,
                                        Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        this.imageWidth = 176;
+        // Wymiary i etykiety DOKLADNIE jak w ekstraktorze - oba ekrany maja
+        // wygladac jak jedna rodzina, a nie jak dwa rozne mody.
+        this.imageWidth = 212;
         this.imageHeight = 166;
         this.inventoryLabelY = this.imageHeight - 94;
+        this.inventoryLabelX = 26;
+        this.titleLabelX = 26;
         for (int i = 0; i < clientFilters.size(); i++) {
             clientFilters.set(i, menu.getFilter(i));
         }
@@ -122,8 +126,9 @@ public class VeloceVelocityFurnaceScreen
     // Polozenie pol - JEDNO zrodlo, uzywane i do rysowania, i do klikania.
     private static final int FILTER_X = 26;
     private static final int FILTER_Y = 18;
-    private static final int FLAME_X = 100;
-    private static final int FLAME_Y = 40;
+    // Pozycja musi sie zgadzac z wglebieniem w teksturze (gen_furnace_gui.py).
+    private static final int FLAME_X = 150;
+    private static final int FLAME_Y = 30;
 
     private static int filterX(int index) {
         return FILTER_X + (index % 3) * 18;

@@ -30,10 +30,11 @@ public class VeloceElectricFurnaceScreen
             CraftingVeloceMod.MODID, "textures/gui/electric_furnace.png");
 
     /** Pole paska energii w teksturze GUI. */
-    private static final int BAR_X = 80;
-    private static final int BAR_Y = 20;
-    private static final int BAR_W = 16;
-    private static final int BAR_H = 52;
+    // Pozycja musi sie zgadzac z wglebieniem w teksturze (gen_furnace_gui.py).
+    private static final int BAR_X = 150;
+    private static final int BAR_Y = 30;
+    private static final int BAR_W = 18;
+    private static final int BAR_H = 54;
 
     private int energy;
     private int maxEnergy;
@@ -41,9 +42,12 @@ public class VeloceElectricFurnaceScreen
     public VeloceElectricFurnaceScreen(VeloceElectricFurnaceMenu menu,
                                        Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        this.imageWidth = 176;
+        // Wymiary i etykiety DOKLADNIE jak w ekstraktorze.
+        this.imageWidth = 212;
         this.imageHeight = 166;
         this.inventoryLabelY = this.imageHeight - 94;
+        this.inventoryLabelX = 26;
+        this.titleLabelX = 26;
         this.energy = menu.getEnergy();
         this.maxEnergy = menu.getMaxEnergy();
     }

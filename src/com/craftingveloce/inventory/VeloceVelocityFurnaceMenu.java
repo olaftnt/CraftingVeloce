@@ -30,7 +30,14 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
     private static final int FILTER_Y = 18;
     private static final int FUEL_X = 26;
     private static final int FUEL_Y = 60;
-    private static final int PLAYER_X = 8;
+    /**
+     * Ekwipunek gracza w x=26 - TAK SAMO jak w ekstraktorze.
+     *
+     * <p>Bylo tu 8 (domyslna wartosc vanilli), przez co ekwipunek kleil sie do
+     * lewej krawedzi panelu, a etykieta "Inventory" (rysowana od x=26) nie
+     * pasowala do slotow pod nia. Cala reszta moda ustawia to na 26.
+     */
+    private static final int PLAYER_X = 26;
     private static final int PLAYER_Y = 84;
 
     private final VeloceVelocityFurnaceBlockEntity furnace;
