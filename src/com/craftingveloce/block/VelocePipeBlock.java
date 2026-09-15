@@ -16,6 +16,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -150,30 +151,45 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     }
 
     public boolean canConnectDirection(Level level, BlockPos pos, Direction dir, @Nullable VelocePipeBlockEntity pipeBE) {
+        return canConnectDirection(level, pos, dir, pipeBE, null);
+    }
+
+    public boolean canConnectDirection(Level level, BlockPos pos, Direction dir, @Nullable VelocePipeBlockEntity pipeBE, @Nullable BlockState neighborStateOverride) {
         if (pipeBE != null && pipeBE.isDisconnected(dir)) {
             return false;
         }
         BlockPos neighborPos = pos.relative(dir);
-        BlockState neighborState = level.getBlockState(neighborPos);
+        BlockState neighborState = (neighborStateOverride != null) ? neighborStateOverride : level.getBlockState(neighborPos);
 
-        if (neighborState.getBlock() instanceof IInventoryCable cable) {
-            if (cable.canConnectFrom(neighborState, dir.getOpposite())) {
-                BlockEntity nbe = level.getBlockEntity(neighborPos);
-                if (nbe instanceof VelocePipeBlockEntity otherPipe && otherPipe.isDisconnected(dir.getOpposite())) {
-                    return false;
-                }
-                return true;
+        // 1. Another Veloce Pipe - connect directly unless the other side was disconnected
+        if (neighborState.getBlock() instanceof VelocePipeBlock) {
+            BlockEntity nbe = level.getBlockEntity(neighborPos);
+            if (nbe instanceof VelocePipeBlockEntity otherPipe && otherPipe.isDisconnected(dir.getOpposite())) {
+                return false;
             }
+            return true;
         }
+
+        // 2. Another IInventoryCable (Tom's Storage cable, Veloce cable, etc.)
+        if (neighborState.getBlock() instanceof IInventoryCable cable) {
+            return cable.canConnectFrom(neighborState, dir.getOpposite());
+        }
+
+        // 3. Inventory block
         return canConnectToInventory(level, neighborPos, dir.getOpposite());
     }
 
     public BlockState updateConnections(Level level, BlockPos pos, BlockState state) {
+        return updateConnections(level, pos, state, null, null);
+    }
+
+    public BlockState updateConnections(Level level, BlockPos pos, BlockState state, @Nullable Direction changedFacing, @Nullable BlockState changedNeighborState) {
         BlockEntity be = level.getBlockEntity(pos);
         VelocePipeBlockEntity pipeBE = (be instanceof VelocePipeBlockEntity p) ? p : null;
 
         for (Direction dir : Direction.values()) {
-            boolean connected = canConnectDirection(level, pos, dir, pipeBE);
+            BlockState neighborOverride = (dir == changedFacing) ? changedNeighborState : null;
+            boolean connected = canConnectDirection(level, pos, dir, pipeBE, neighborOverride);
             boolean extracting = (pipeBE != null && pipeBE.isExtracting(dir)) && connected;
             state = state.setValue(PipeBlock.PROPERTY_BY_DIRECTION.get(dir), connected);
             state = state.setValue(EXTRACT_BY_DIRECTION[dir.ordinal()], extracting);
@@ -187,7 +203,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         BlockPos pos = context.getClickedPos();
         FluidState fluid = level.getFluidState(pos);
         BlockState state = defaultBlockState().setValue(WATERLOGGED, fluid.getType() == Fluids.WATER);
-        return updateConnections(level, pos, state);
+        return updateConnections(level, pos, state, null, null);
     }
 
     @Override
@@ -196,7 +212,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             world.scheduleTick(pos, Fluids.WATER, Fluids.WATER.getTickDelay(world));
         }
         if (world instanceof Level level) {
-            return updateConnections(level, pos, state);
+            return updateConnections(level, pos, state, facing, facingState);
         }
         return state;
     }
@@ -245,6 +261,9 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                 BlockEntity nbe = world.getBlockEntity(neighborPos);
                 if (nbe instanceof VelocePipeBlockEntity otherPipe) {
                     otherPipe.setDisconnected(side.getOpposite(), !disconnected);
+                    BlockState otherState = updateConnections(world, neighborPos, world.getBlockState(neighborPos));
+                    world.setBlockAndUpdate(neighborPos, otherState);
+                    InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
                 }
             }
         } else {
@@ -315,8 +334,14 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     }
 
     @Override
-    public boolean canConnectFrom(BlockState state, Direction dir) {
-        return state.getValue(PipeBlock.PROPERTY_BY_DIRECTION.get(dir));
+    public void setPlacedBy(Level world, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
+        super.setPlacedBy(world, pos, state, placer, stack);
+        if (!world.isClientSide) {
+            InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
+            for (Direction d : Direction.values()) {
+                InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos.relative(d));
+            }
+        }
     }
 
     @Override
