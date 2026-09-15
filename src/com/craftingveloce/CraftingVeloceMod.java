@@ -101,6 +101,14 @@ public class CraftingVeloceMod {
                     VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(),
                     (be, side) -> new net.neoforged.neoforge.items.wrapper.InvWrapper(be.getBuffer())
             );
+            // Velocity Electric Furnace przyjmuje Forge Energy z kabli.
+            // Akumulator jest WEWNETRZNY, wiec extractEnergy zwraca 0 - kabel
+            // nie moze "wyssac" pieca.
+            event.registerBlockEntity(
+                    net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                    VeloceRegistry.ELECTRIC_FURNACE_BE.get(),
+                    (be, side) -> be
+            );
         });
 
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {

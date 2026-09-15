@@ -538,6 +538,22 @@ public class VelocePipeNetworkManager extends SavedData {
                     knownNodes.add(np.immutable());
                     net.getEndpoints().put(np, new CraftingBufferEndpoint(np, d.getOpposite()));
                 }
+            } else if (nb instanceof com.craftingveloce.block.VeloceVelocityFurnaceBlock) {
+                // Velocity Furnace: WEZEL, ale NIE magazyn.
+                //
+                // Wazel jest konieczny z dwoch powodow:
+                //   1. crafter musi go znalezc, zeby uzyc receptur pieca,
+                //   2. jego chunk jest utrzymywany, wiec piec pali sie CALY
+                //      CZAS takze wtedy, gdy gracz jest daleko - a to jest
+                //      wlasnie koszt instant craftowania.
+                // Magazynem nie jest: nie oddajemy do niego itemow sieci,
+                // on sam zaciaga z niej paliwo wg wlasnych filtrow.
+                net.getTerminals().add(np);
+                knownNodes.add(np.immutable());
+            } else if (nb instanceof com.craftingveloce.block.VeloceElectricFurnaceBlock) {
+                // To samo dla wersji elektrycznej - tez wezel, tez nie magazyn.
+                net.getTerminals().add(np);
+                knownNodes.add(np.immutable());
             } else if (RefinedStorageHelper.hasRSNetwork(level, np, d.getOpposite())) {
                 ConnectedEndpointInfo ep = new ConnectedEndpointInfo(np, d.getOpposite(),
                         ConnectedEndpointInfo.Type.REFINED_STORAGE);

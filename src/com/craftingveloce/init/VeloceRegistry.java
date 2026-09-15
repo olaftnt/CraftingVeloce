@@ -110,6 +110,23 @@ public class VeloceRegistry {
                             (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceVelocityFurnaceMenu(
                                     windowId, inv, data.readBlockPos())));
 
+    // 3c. Velocity Electric Furnace (zrodlo ciepla na Forge Energy)
+    public static final DeferredBlock<com.craftingveloce.block.VeloceElectricFurnaceBlock> ELECTRIC_FURNACE =
+            BLOCKS.register("electric_furnace",
+                    () -> new com.craftingveloce.block.VeloceElectricFurnaceBlock(
+                            net.minecraft.world.level.block.state.BlockBehaviour.Properties.of()
+                                    .strength(3.5f)
+                                    .requiresCorrectToolForDrops()));
+
+    public static final DeferredItem<BlockItem> ELECTRIC_FURNACE_ITEM = ITEMS.registerSimpleBlockItem(
+            "electric_furnace", ELECTRIC_FURNACE);
+
+    public static final DeferredHolder<BlockEntityType<?>,
+            BlockEntityType<com.craftingveloce.block.entity.VeloceElectricFurnaceBlockEntity>> ELECTRIC_FURNACE_BE =
+            BLOCK_ENTITY_TYPES.register("electric_furnace", () -> createBEType(
+                    (pos, state) -> new com.craftingveloce.block.entity.VeloceElectricFurnaceBlockEntity(pos, state),
+                    ELECTRIC_FURNACE.get()));
+
     // 4. Veloce Wrench
     public static final DeferredItem<VeloceWrenchItem> VELOCE_WRENCH = ITEMS.register(
             "wrench",
