@@ -141,9 +141,20 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             this.minecraft.gameMode.setLocalMode(GameType.CREATIVE);
         }
         super.init();
+
+        // KOLEJNOSC JEST KRYTYCZNA. Vanilla {@code selectTab(CreativeModeTab)}
+        // (dla zakladki INVENTORY) robi {@code menu.slots.clear()} i odbudowuje
+        // sloty od zera - czyli KASUJE nasze ukrywanie slotow gracza.
+        //
+        // BUG, ktory tu byl: suppressPlayerSlots() latalo PRZED
+        // restoreViewState(), a to wlasnie restoreViewState wybiera zakladke
+        // (przez selectTab). Efekt: nasze ukrywanie bylo natychmiast kasowane,
+        // a sloty ekwipunku gracza wracaly do GUI.
+        //
+        // Teraz: najpierw zakladka, potem ukrywanie.
+        restoreViewState();
         disableVanillaTrashSlot();
         suppressPlayerSlots();
-        restoreViewState();
         applyItemFilter();
         // Dopiero teraz, gdy zakladka i fraza sa ustawione - inaczej lista
         // bywa pusta przy pierwszym otwarciu (zakladka INVENTORY).
@@ -313,73 +324,87 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     // ------------------------------------------------------------------
 
     /**
-     * Wylacza vanillaowy slot niszczenia przedmiotow.
+     * Wylacza vanillaowy tooltip "Destroy Item".
      *
-     * <p><b>Dlaczego refleksja.</b> Vanilla trzyma ten slot w prywatnym polu
-     * {@code destroyItemSlot} i w {@code render()} rysuje na jego podstawie
-     * wlasny tooltip ("Destroy Item") - ZUPELNIE z pominięciem
+     * <p><b>Dlaczego w ogole.</b> Vanilla trzyma slot kosza w prywatnym polu
+     * {@code destroyItemSlot} i w swoim {@code render()} rysuje na jego
+     * podstawie wlasny tooltip - ZUPELNIE z pominięciem
      * {@code getTooltipFromContainerItem}, wiec nadpisanie samego tooltipa nic
-     * nie dawalo (sprawdzone w bajtkodzie). Ustawienie pola na {@code null}
-     * wylacza cala te obsluge: i tooltip, i rysowanie ikonki.
+     * nie dawalo (potwierdzone w bajtkocie):
+     * <pre>
+     *   if (destroyItemSlot != null
+     *           &amp;&amp; selectedTab.getType() == Type.INVENTORY
+     *           &amp;&amp; isHovering(...)) {
+     *       renderTooltip(font, TRASH_SLOT_TOOLTIP, mouseX, mouseY);
+     *   }
+     * </pre>
+     * Ustawienie pola na {@code null} wylacza caly ten blok.
      *
-     * <p>Nasz wlasny slot zostaje w {@code menu.slots}, wiec klikanie dziala
-     * dalej - obslugujemy je w {@link #slotClicked} podklas.
+     * <p><b>DLACZEGO ZERUJEMY TO CO KLATKE.</b> To byl prawdziwy powod, dla
+     * ktorego "Destroy Item" nie znikal mimo zerowania w {@code init()}.
+     * Pole jest przypisywane w metodzie <b>{@code selectTab(CreativeModeTab)}</b>
+     * (nie w {@code init()}): gdy wybrana zakladka jest typu INVENTORY, vanilla
+     * tworzy tam NOWY slot kosza i dodaje go do menu.
+     *
+     * <p>A nasz {@code restoreViewState()} wola {@code selectTab} przy KAZDYM
+     * otwarciu ekranu (zeby przywrocic zapamietana zakladke). Czyli kolejnosc
+     * byla taka:
+     * <pre>
+     *   super.init()            - vanilla tworzy destroyItemSlot
+     *   disableVanillaTrashSlot - my zerujemy pole
+     *   restoreViewState()      - selectTab OD TWARZA destroyItemSlot
+     * </pre>
+     * i tooltip wracal. Zerowanie przed kazdym {@code super.render()} zamyka
+     * te luke niezaleznie od tego, co i kiedy odtworzy pole.
+     *
+     * <p><b>Dlaczego po TYPIE, a nie po nazwie.</b> Refleksja po nazwie jest
+     * krucha (w srodowisku produkcyjnym nazwy moga byc zmapowane inaczej),
+     * a jej awaria byla wczesniej polykana po cichu. Szukamy wiec jedynego
+     * NIEstatycznego pola typu {@code Slot} - {@code originalSlots} to lista,
+     * wiec nie pasuje.
      */
-    /**
-     * Wylacza vanillaowy slot niszczenia przedmiotow.
-     *
-     * <p><b>Dlaczego w ogole.</b> Vanilla trzyma ten slot w prywatnym polu
-     * {@code destroyItemSlot} i w {@code render()} rysuje na jego podstawie
-     * wlasny tooltip ("Destroy Item") - ZUPELNIE z pominięciem
-     * {@code getTooltipFromContainerItem}, wiec nadpisanie samego tooltipa nic
-     * nie dawalo (sprawdzone w bajtkocie). Ustawienie pola na {@code null}
-     * wylacza cala te obsluge.
-     *
-     * <p><b>Dlaczego po TYPIE, a nie po nazwie.</b> Poprzednia wersja szukala
-     * pola po nazwie ({@code "destroyItemSlot"}) i <b>polykala blad</b>.
-     * W srodowisku produkcyjnym nazwy moga byc zmapowane inaczej, wiec
-     * refleksja po nazwie jest krucha - a gdy zawodzila, "Destroy Item"
-     * zostawal na ekranie i nie bylo po czym poznac, ze cos nie zadzialalo.
-     *
-     * <p>Szukamy wiec po typie: jedyne NIEstatyczne pole typu {@code Slot}
-     * w tym ekranie to wlasnie kosz ({@code originalSlots} to lista, nie Slot).
-     * To dziala niezaleznie od nazewnictwa.
-     */
-    private void disableVanillaTrashSlot() {
-        int cleared = 0;
-        try {
-            for (java.lang.reflect.Field f : CreativeModeInventoryScreen.class.getDeclaredFields()) {
-                if (f.getType() != net.minecraft.world.inventory.Slot.class) {
-                    continue;
+    private static java.lang.reflect.Field trashSlotField;
+    private static boolean trashSlotResolveTried;
+    private boolean trashSlotMissingLogged;
+
+    protected void disableVanillaTrashSlot() {
+        if (!trashSlotResolveTried) {
+            trashSlotResolveTried = true;
+            try {
+                for (java.lang.reflect.Field f : CreativeModeInventoryScreen.class.getDeclaredFields()) {
+                    if (f.getType() != net.minecraft.world.inventory.Slot.class) {
+                        continue;
+                    }
+                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                        continue;
+                    }
+                    f.setAccessible(true);
+                    trashSlotField = f;
+                    break;
                 }
-                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
-                    continue;
-                }
-                f.setAccessible(true);
-                f.set(this, null);
-                cleared++;
+            } catch (Throwable t) {
+                trashSlotField = null;
             }
-        } catch (Throwable t) {
-            com.craftingveloce.util.VeloceLog.Gui.failure(
-                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                    "nie udalo sie wylaczyc vanillaowego slotu kosza: %s", t);
-            return;
         }
-        if (cleared == 0) {
-            // Nie ma czego wylaczac albo zmienila sie implementacja - mowimy
-            // o tym raz, zamiast milczec i zostawic gracza z dwoma tooltipami.
+        if (trashSlotField == null) {
             if (!trashSlotMissingLogged) {
                 trashSlotMissingLogged = true;
                 com.craftingveloce.util.VeloceLog.Gui.failure(
                         com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                        "nie znaleziono pola slotu kosza w CreativeModeInventoryScreen "
-                                + "- vanilla tooltip 'Destroy Item' moze byc widoczny");
+                        "nie znaleziono pola slotu kosza - vanilla 'Destroy Item' "
+                                + "moze byc widoczny");
             }
+            return;
+        }
+        try {
+            // Sprawdzamy najpierw, bo set() na tym samym obiekcie co klatke
+            // to niepotrzebna praca; pole i tak czesto jest juz null.
+            if (trashSlotField.get(this) != null) {
+                trashSlotField.set(this, null);
+            }
+        } catch (Throwable ignored) {
         }
     }
-
-    /** Czy juz ostrzegalismy, ze nie ma pola kosza. */
-    private boolean trashSlotMissingLogged;
 
     /**
      * Czy patrzymy na zakladke Survival Inventory.
@@ -480,7 +505,13 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // PRZED super.render(): to wlasnie tam vanilla sprawdza destroyItemSlot
+        // i rysuje "Destroy Item". Pole bywa odtworzone przez selectTab, wiec
+        // zerujemy je tuz przed rysowaniem.
+        disableVanillaTrashSlot();
+
         super.render(graphics, mouseX, mouseY, partialTick);
+
         // Po super, wiec na wierzchu wszystkiego co narysowala vanilla.
         drawStoreSlotIcon(graphics);
         drawStoreSlotTooltip(graphics, mouseX, mouseY);
@@ -505,8 +536,27 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     @Override
     public void containerTick() {
         super.containerTick();
+
+        // ZMIANA ZAKLADKI PRZEZ GRACZA.
+        //
+        // Gracz moze kliknac inna zakladke, a vanilla robi to samo co przy
+        // otwarciu: {@code selectTab} czysci {@code menu.slots} i odbudowuje je
+        // od zera. To kasuje i nasze ukrywanie slotow gracza, i wylaczenie
+        // kosza. Wykrywamy wiec zmiane zakladki i nakladamy nasze poprawki
+        // od nowa.
+        CreativeModeTab current = VeloceTerminalViewState.currentTab();
+        if (current != lastSeenTab) {
+            lastSeenTab = current;
+            suppressPlayerSlots();
+            disableVanillaTrashSlot();
+        }
+
         applyItemFilter();
     }
+
+    /** Zakladka widziana w poprzednim ticku - do wykrywania zmian. */
+    @Nullable
+    private CreativeModeTab lastSeenTab;
 
     /**
      * Usuwa z listy itemy odrzucone przez {@link #acceptItem}.

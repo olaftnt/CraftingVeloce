@@ -150,13 +150,40 @@ public final class VeloceTerminalViewState {
     /** Czy juz logowalismy awarie odczytu zakladki. */
     private static boolean currentTabFailureLogged;
 
+    /**
+     * Pole {@code selectedTab} - rozwiazywane RAZ.
+     *
+     * <p>Ta metoda jest wolana co tick z {@code containerTick} (wykrywanie
+     * zmiany zakladki przez gracza), a {@code getDeclaredField} przy kazdym
+     * wywolaniu to zbedny koszt - wyszukiwanie pola nie jest darmowe.
+     */
+    private static java.lang.reflect.Field selectedTabField;
+    private static boolean selectedTabResolveTried;
+
     /** Biezaca zakladka (moze byc null, gdy refleksja zawiedzie). */
     static CreativeModeTab currentTab() {
+        if (!selectedTabResolveTried) {
+            selectedTabResolveTried = true;
+            try {
+                selectedTabField = CreativeModeInventoryScreen.class
+                        .getDeclaredField("selectedTab");
+                selectedTabField.setAccessible(true);
+            } catch (Throwable t) {
+                selectedTabField = null;
+            }
+        }
+        if (selectedTabField == null) {
+            if (!currentTabFailureLogged) {
+                currentTabFailureLogged = true;
+                com.craftingveloce.util.VeloceLog.Gui.failure(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "nie moge znalezc pola selectedTab - pamiec zakladek "
+                                + "i widocznosc slotu odkladania nie beda dzialac");
+            }
+            return null;
+        }
         try {
-            var f = CreativeModeInventoryScreen.class.getDeclaredField("selectedTab");
-            f.setAccessible(true);
-            Object v = f.get(null);
-            currentTabFailureLogged = false;
+            Object v = selectedTabField.get(null);
             return v instanceof CreativeModeTab tab ? tab : null;
         } catch (Throwable t) {
             // Nie polykamy po cichu: od tego zalezy m.in. widocznosc slotu
