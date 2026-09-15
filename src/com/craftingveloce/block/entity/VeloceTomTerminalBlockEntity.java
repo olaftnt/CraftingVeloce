@@ -350,7 +350,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
         if (net != null) {
             player.sendSystemMessage(Component.literal("§a[Pipe Network Found] §7ID: §e" + net.getId()));
-            player.sendSystemMessage(Component.literal("  §7Pipes Count: §f" + net.getPipes().size() + "§7, Terminals: §f" + net.getTerminals().size()));
+            // "Nodes", nie "Terminals": getTerminals() zwraca takze craftery
+            // i extractory, wiec stara etykieta klamala o tym, co liczy.
+            player.sendSystemMessage(Component.literal("  §7Pipes: §f" + net.getPipes().size() + "§7, Nodes (terminal/crafter/extractor): §f" + net.getTerminals().size()));
             player.sendSystemMessage(Component.literal("  §bTracked Chunks (" + net.getTrackedChunks().size() + "):"));
             for (ChunkPos cp : net.getTrackedChunks()) {
                 boolean loaded = sl.isLoaded(cp.getWorldPosition());

@@ -21,6 +21,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
 import java.util.Map;
+import java.util.UUID;
 
 public class CVDebugCommand {
 
@@ -270,6 +271,150 @@ public class CVDebugCommand {
                                 Component.literal("Kliknij, aby sie teleportowac"))));
     }
 
+    /**
+     * Pelny raport sieci: WSZYSTKIE podpięte bloki, z typem i stanem.
+     *
+     * <p><b>Po co tak szczegolowo.</b> Bez tego nie da sie odpowiedziec na
+     * podstawowe pytanie: co jest czescia tej sieci i co przez to trzyma jej
+     * chunki w pamieci. Wczesniej raport pokazywal tylko liczby ("Pipes: 218,
+     * Terminals: 2"), z ktorych nie wynikało, gdzie te bloki sa ani czym sa.
+     *
+     * <p>Rozrozniamy cztery rodzaje wpisow, bo kazdy znaczy cos innego:
+     * <ul>
+     *   <li><b>WEZEL</b> - terminal, crafter, extractor. Ma block entity,
+     *       ktore PRACUJE, wiec jego chunk MUSI byc trzymany.</li>
+     *   <li><b>MAGAZYN</b> - skrzynia, beczka, RS. To tylko pojemnik; jego
+     *       chunk NIE jest trzymany na stale, tylko doladowywany na czas
+     *       operacji i puszczany.</li>
+     *   <li><b>RURA</b> - lacznik bez logiki. Nie trzyma niczego.</li>
+     * </ul>
+     */
+    private static void reportNetwork(ServerPlayer player, ServerLevel sl,
+                                      VelocePipeNetwork net, BlockPos pipePos) {
+        UUID id = net.getId();
+        player.sendSystemMessage(Component.literal("§aNetwork ID: §e" + id));
+        player.sendSystemMessage(Component.literal(
+                "§7Pipes: §f" + net.getPipes().size()
+                        + " §7| Nodes: §f" + net.getTerminals().size()
+                        + " §7| Storages: §f" + net.getEndpoints().size()));
+
+        // --- WEZLY: to one trzymaja chunki na stale ---
+        player.sendSystemMessage(Component.literal("§b--- Nodes (trzymaja chunk na stale) ---"));
+        if (net.getTerminals().isEmpty()) {
+            player.sendSystemMessage(Component.literal("  §7(brak - siec nie ma czym pracowac)"));
+        }
+        for (BlockPos p : sorted(net.getTerminals())) {
+            player.sendSystemMessage(Component.literal(
+                    "  §a" + describeNode(sl, p) + " §7at " + shortPos(p)
+                            + " §8" + chunkTag(p) + " " + loadedTag(sl, p)));
+            player.sendSystemMessage(coordsLine(p));
+        }
+
+        // --- MAGAZYNY: doladowywane tylko na czas operacji ---
+        player.sendSystemMessage(Component.literal("§b--- Storages (doladowywane tylko na czas operacji) ---"));
+        if (net.getEndpoints().isEmpty()) {
+            player.sendSystemMessage(Component.literal("  §7(brak)"));
+        }
+        for (Map.Entry<BlockPos, ConnectedEndpointInfo> e : sortedEntries(net.getEndpoints())) {
+            BlockPos epPos = e.getKey();
+            ConnectedEndpointInfo ep = e.getValue();
+            player.sendSystemMessage(Component.literal(
+                    "  §e" + ep.getType() + " §7at " + shortPos(epPos)
+                            + " §8" + chunkTag(epPos) + " " + loadedTag(sl, epPos)
+                            + " §7(item types: §f" + ep.getCachedCounts().size() + "§7)"));
+            player.sendSystemMessage(coordsLine(epPos));
+        }
+
+        // --- CHUNKI: ktore REALNIE sa wymuszone i dlaczego ---
+        player.sendSystemMessage(Component.literal("§b--- Chunks faktycznie wymuszone przez te siec ---"));
+        var held = com.craftingveloce.network.pipe.VeloceChunkLoader.listHeld(sl);
+        String prefix = "net:" + id.toString().substring(0, 8);
+        int mine = 0;
+        for (var hc : held) {
+            boolean ours = hc.tickets().stream().anyMatch(t -> t.owner().equals(prefix));
+            if (!ours) {
+                continue;
+            }
+            mine++;
+            player.sendSystemMessage(Component.literal(
+                    "  §f[" + hc.x() + ", " + hc.z() + "] §7powod: NETWORK"));
+        }
+        player.sendSystemMessage(Component.literal("  §7razem: §f" + mine + " §7chunk(ow)"));
+
+        // --- ZASOBY: co siec widzi ---
+        Map<Item, Long> netCounts = net.getAllItemCounts(sl);
+        player.sendSystemMessage(Component.literal("§6Resources (" + netCounts.size() + " types):"));
+        for (Map.Entry<Item, Long> itemEntry : netCounts.entrySet()) {
+            player.sendSystemMessage(Component.literal(
+                    "  §e" + itemEntry.getKey().getDescription().getString()
+                            + " §7x§a" + itemEntry.getValue()));
+        }
+    }
+
+    /** Typ bloku-wezla po nazwie klasy (terminal / crafter / extractor). */
+    private static String describeNode(ServerLevel sl, BlockPos p) {
+        var be = sl.getBlockEntity(p);
+        if (be == null) {
+            return "PUSTE(?)";
+        }
+        String n = be.getClass().getSimpleName();
+        if (n.contains("Terminal")) {
+            return "TERMINAL";
+        }
+        if (n.contains("CraftingTable")) {
+            return "CRAFTER";
+        }
+        if (n.contains("Extractor")) {
+            return "EXTRACTOR";
+        }
+        return n.toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private static String shortPos(BlockPos p) {
+        return "[" + p.getX() + ", " + p.getY() + ", " + p.getZ() + "]";
+    }
+
+    private static String chunkTag(BlockPos p) {
+        return "chunk[" + (p.getX() >> 4) + ", " + (p.getZ() >> 4) + "]";
+    }
+
+    private static String loadedTag(ServerLevel sl, BlockPos p) {
+        return sl.isLoaded(p) ? "§a[LOADED]" : "§c[UNLOADED]";
+    }
+
+    /** Klikalne wspolrzedne bloku - klik teleportuje. */
+    private static Component coordsLine(BlockPos pos) {
+        String plain = pos.getX() + " " + pos.getY() + " " + pos.getZ();
+        return Component.literal("§8      /tp " + plain)
+                .withStyle(style -> style
+                        .withClickEvent(new net.minecraft.network.chat.ClickEvent(
+                                net.minecraft.network.chat.ClickEvent.Action.RUN_COMMAND,
+                                "/tp @s " + plain))
+                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
+                                net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                                Component.literal("Kliknij, aby sie teleportowac"))));
+    }
+
+    /** Posortowane pozycje - zeby raport byl powtarzalny. */
+    private static java.util.List<BlockPos> sorted(java.util.Collection<BlockPos> in) {
+        java.util.List<BlockPos> out = new java.util.ArrayList<>(in);
+        out.sort(java.util.Comparator.comparingInt((BlockPos p) -> p.getX())
+                .thenComparingInt((BlockPos p) -> p.getZ())
+                .thenComparingInt((BlockPos p) -> p.getY()));
+        return out;
+    }
+
+    private static java.util.List<Map.Entry<BlockPos, ConnectedEndpointInfo>> sortedEntries(
+            Map<BlockPos, ConnectedEndpointInfo> in) {
+        java.util.List<Map.Entry<BlockPos, ConnectedEndpointInfo>> out =
+                new java.util.ArrayList<>(in.entrySet());
+        out.sort(java.util.Comparator.comparingInt(
+                (Map.Entry<BlockPos, ConnectedEndpointInfo> e) -> e.getKey().getX())
+                .thenComparingInt(e -> e.getKey().getZ())
+                .thenComparingInt(e -> e.getKey().getY()));
+        return out;
+    }
+
     private static int executeDebug(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         if (!(source.getEntity() instanceof ServerPlayer player)) {
@@ -312,27 +457,10 @@ public class CVDebugCommand {
             player.sendSystemMessage(Component.literal("§7Pipe Pos: §f[" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]"));
             if (net == null) {
                 player.sendSystemMessage(Component.literal("§cPipe is not currently assigned to any active network."));
-            } else {
-                player.sendSystemMessage(Component.literal("§aNetwork ID: §e" + net.getId()));
-                player.sendSystemMessage(Component.literal("§7Pipes in network: §f" + net.getPipes().size() + "§7, Terminals: §f" + net.getTerminals().size()));
-                player.sendSystemMessage(Component.literal("§bTracked Chunks (" + net.getTrackedChunks().size() + "):"));
-                for (ChunkPos cp : net.getTrackedChunks()) {
-                    boolean loaded = sl.isLoaded(cp.getWorldPosition());
-                    player.sendSystemMessage(Component.literal("  §7Chunk [" + cp.x + ", " + cp.z + "]: " + (loaded ? "§a[LOADED]" : "§c[UNLOADED]")));
-                }
-                player.sendSystemMessage(Component.literal("§bConnected Endpoints (" + net.getEndpoints().size() + "):"));
-                for (Map.Entry<BlockPos, ConnectedEndpointInfo> entry : net.getEndpoints().entrySet()) {
-                    BlockPos epPos = entry.getKey();
-                    ConnectedEndpointInfo ep = entry.getValue();
-                    boolean loaded = sl.isLoaded(epPos);
-                    player.sendSystemMessage(Component.literal("  §e" + ep.getType() + " §7at [" + epPos.getX() + ", " + epPos.getY() + ", " + epPos.getZ() + "] " + (loaded ? "§a[LOADED]" : "§c[UNLOADED]") + " §7(cached types: §f" + ep.getCachedCounts().size() + "§7)"));
-                }
-                Map<Item, Long> netCounts = net.getAllItemCounts(sl);
-                player.sendSystemMessage(Component.literal("§6Total Network Resources (" + netCounts.size() + " types):"));
-                for (Map.Entry<Item, Long> itemEntry : netCounts.entrySet()) {
-                    player.sendSystemMessage(Component.literal("  §e" + itemEntry.getKey().getDescription().getString() + " §7x§a" + itemEntry.getValue()));
-                }
+                player.sendSystemMessage(Component.literal("§6==================================="));
+                return 1;
             }
+            reportNetwork(player, sl, net, pos);
             player.sendSystemMessage(Component.literal("§6==================================="));
             return 1;
         } else {

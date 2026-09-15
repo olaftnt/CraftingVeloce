@@ -7,7 +7,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -52,13 +54,19 @@ public final class VeloceCraftingCache {
     private static final int STARTUP_GRACE_TICKS = 200;   // 10 s
 
     /**
-     * Maksymalna liczba chunkow, ktore force-loadujemy dla jednej sieci.
+     * Maksymalna liczba CHUNKOW, ktore force-loadujemy dla jednej sieci.
      *
      * <p>Bezpiecznik: rozlegla siec (setki rur) nie moze wymusic zaladowania
      * calej mapy. Powyzej limitu ladujemy tylko chunki z wezlami
      * (terminale, craftery, extractory) - to one musza dzialac.
+     *
+     * <p><b>Liczy CHUNKI, nie pozycje blokow.</b> To rozroznienie jest istotne:
+     * 218 rur stojacych w linii to 218 pozycji, ale az 14 chunkow - a siec
+     * rozciagnieta po bazie potrafi dac kilkadziesiat chunkow przy limicie
+     * wygladajacym na bezpieczny. Wczesniej limit liczyl pozycje, wiec
+     * przepuszczal dokladnie te przypadki, ktore mial blokowac.
      */
-    private static final int MAX_FORCED_CHUNKS = 256;
+    private static final int MAX_FORCED_CHUNKS = 64;
 
     private static final Map<UUID, VeloceCraftingCache> CACHES = new HashMap<>();
 
@@ -222,13 +230,8 @@ public final class VeloceCraftingCache {
         }
 
         // Mapa: chunk -> blok, ktory jest powodem trzymania (do raportu).
-        Set<BlockPos> toLoad = collectChunksToKeep();
-
-        Map<Long, BlockPos> wanted = new HashMap<>();
-        for (BlockPos p : toLoad) {
-            // putIfAbsent: wezly sa dodawane pierwsze, wiec to one opisuja chunk.
-            wanted.putIfAbsent(ChunkPos.asLong(p.getX() >> 4, p.getZ() >> 4), p);
-        }
+        // Limit jest juz nalozony na CHUNKI w collectChunksToKeep.
+        Map<Long, BlockPos> wanted = collectChunksToKeep();
 
         releaseUnwantedChunks(level, wanted.keySet());
         int added = retainWantedChunks(level, wanted);
@@ -241,22 +244,57 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Co powinno zostac zaladowane: najpierw wezly sieci, potem rury w limicie.
+     * Chunki, ktore ta siec powinna trzymac w pamieci.
      *
-     * <p>Kolejnosc jest istotna - wezly (terminal, crafter, extractor) musza
-     * dzialac, a rur moze byc dowolnie duzo.
+     * <p><b>Trzymamy TYLKO chunki z wezlami.</b> Wczesniej ladowalismy kazdy
+     * chunk, w ktorym stala RURA - i to byl blad projektowy.
+     *
+     * <p>Rura to zwykly blok-lacznik. Nie ma wlasnego block entity z logika,
+     * ktora musi tykac, i nic nie traci, gdy jej chunk wypadnie z symulacji:
+     * polaczenia sieci trzymamy we WLASNYCH strukturach w pamieci
+     * ({@code VelocePipeNetwork.pipes}), a nie w swiecie. Rozladowanie chunku
+     * z rura nie rozrywa sieci ani nie gubi danych.
+     *
+     * <p>Trzymac trzeba natomiast chunki z tym, co faktycznie PRACUJE:
+     * terminalem, crafterem i extractorem. One maja block entity, ktore bez
+     * symulacji przestaje dzialac - i dokladnie po to jest ten mechanizm.
+     *
+     * <p>Skutek poprzedniej wersji widac bylo golym okiem: rura pociagnieta
+     * daleko od bazy, z jedna beczka na koncu, trzymala caly swoj chunk
+     * zaladowany - mimo ze w tym chunku nie bylo niczego, co wymaga symulacji.
+     * Przy dlugiej sieci (218 rur w logu) dawalo to kilkanascie chunkow
+     * sforsowanych "przy okazji", w dodatku bez ani jednej operacji na itemach.
+     *
+     * <p>Wezly maja priorytet absolutny; limit {@link #MAX_FORCED_CHUNKS}
+     * ucina tylko przypadki skrajne (baza z setkami wezlow).
      */
-    private Set<BlockPos> collectChunksToKeep() {
-        Set<BlockPos> toLoad = new HashSet<>();
-        toLoad.addAll(network.getTerminals());
-        for (BlockPos p : network.getPipes()) {
-            if (toLoad.size() >= MAX_FORCED_CHUNKS) {
+    private Map<Long, BlockPos> collectChunksToKeep() {
+        List<BlockPos> nodes = new java.util.ArrayList<>(network.getTerminals());
+        nodes.sort(POSITION_ORDER);
+
+        Map<Long, BlockPos> chosen = new LinkedHashMap<>();
+        for (BlockPos p : nodes) {
+            if (chosen.size() >= MAX_FORCED_CHUNKS) {
+                VeloceLog.Network.failure(VeloceLog.Side.SERVER,
+                        "network %s has more than %d node chunk(s) - rest NOT force-loaded",
+                        network.getId().toString().substring(0, 8), MAX_FORCED_CHUNKS);
                 break;
             }
-            toLoad.add(p);
+            chosen.putIfAbsent(chunkKeyOf(p), p);
         }
-        return toLoad;
+        return chosen;
     }
+
+    /** Klucz chunku dla pozycji bloku. */
+    private static long chunkKeyOf(BlockPos p) {
+        return ChunkPos.asLong(p.getX() >> 4, p.getZ() >> 4);
+    }
+
+    /** Stala kolejnosc pozycji - zeby wynik byl powtarzalny. */
+    private static final java.util.Comparator<BlockPos> POSITION_ORDER =
+            java.util.Comparator.comparingInt((BlockPos p) -> p.getX())
+                    .thenComparingInt((BlockPos p) -> p.getZ())
+                    .thenComparingInt((BlockPos p) -> p.getY());
 
     /**
      * Zwalnia to, czego juz nie chcemy ALBO czego loader juz nie trzyma.

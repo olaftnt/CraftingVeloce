@@ -64,6 +64,17 @@ public class VelocePipeNetwork {
         return pipes;
     }
 
+    /**
+     * Wezly sieci: terminale, craftery ORAZ extractory.
+     *
+     * <p><b>Uwaga na nazwe.</b> Metoda nazywa sie "terminals" historycznie, ale
+     * zwraca WSZYSTKIE bloki-wezly, nie tylko terminale. W raportach liczba
+     * "Terminals: 2" oznaczala wiec czesto crafter + extractor, a nie dwa
+     * terminale - co mylilo takze przy diagnozie.
+     *
+     * <p>To wlasnie te bloki maja dzialajace block entity, wiec ich chunki sa
+     * trwale force-loadowane (patrz {@code VeloceCraftingCache}).
+     */
     public Set<BlockPos> getTerminals() {
         return terminals;
     }
