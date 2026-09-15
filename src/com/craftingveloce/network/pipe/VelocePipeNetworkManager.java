@@ -163,6 +163,27 @@ public class VelocePipeNetworkManager extends SavedData {
         // nie byl nigdy zwalniany - jego chunki zostawaly wymuszone NA ZAWSZE.
         reconcileCaches(level);
 
+        // SPRZATANIE MARTWYCH MAGAZYNOW.
+        //
+        // knownEndpoints nie mialo ZADNEGO usuwania pojedynczych wpisow -
+        // jedyne czyszczenie to nadpisanie calej mapy przy odbudowie swiata.
+        // Skutki byly dwa:
+        //   1. wyciek pamieci - wpis po kazdym magazynie, jakiego kiedykolwiek
+        //      dotknela rura, zostawal na zawsze,
+        //   2. WIDMO W SIECI - zniszczona skrzynia nadal sasiadowala z rura,
+        //      wiec toNetwork dalej wciagalo ja do sieci z OSTATNIMI znanymi
+        //      liczbami. Terminal pokazywal itemy, ktorych juz nie ma, a gracz
+        //      nie mogl ich wyciagnac (bo w swiecie nie ma kontenera).
+        // Robimy to raz na 5 sekund i tylko dla chunkow zaladowanych: dla
+        // rozladowanych nie da sie sprawdzic, czy blok jeszcze stoi, a wpis
+        // z ostatnia zawartoscia jest tam zalozeniem projektu.
+        long pruneNow = level.getGameTime();
+        if (com.craftingveloce.util.VeloceTick.every(
+                pruneNow, lastEndpointPruneTick, ENDPOINT_PRUNE_INTERVAL_TICKS)) {
+            lastEndpointPruneTick = pruneNow;
+            pruneDeadEndpoints(level);
+        }
+
         if (VeloceChunkLoader.isFrozen()) {
             pendingRebuilds.clear();
             return;
@@ -633,6 +654,86 @@ public class VelocePipeNetworkManager extends SavedData {
         if (block instanceof com.craftingveloce.block.VeloceCraftingTableBlock) {
             net.getEndpoints().put(pos, new CraftingBufferEndpoint(pos, towardPipe));
         }
+    }
+
+    /** Co ile tickow sprzatamy martwe magazyny z rejestru (5 sekund). */
+    private static final long ENDPOINT_PRUNE_INTERVAL_TICKS = 100L;
+
+    private long lastEndpointPruneTick = Long.MIN_VALUE;
+
+    /**
+     * Usuwa z rejestru magazyny, ktorych juz nie ma w swiecie.
+     *
+     * <p>Sprawdzamy WYLACZNIE chunki zaladowane. Dla rozladowanego chunku nie
+     * da sie odczytac swiata, a cala idea rejestru jest to, ze pamieta
+     * zawartosc magazynow poza symulacja - wiec taki wpis zostaje.
+     *
+     * <p>Sprawdzamy tym SAMYM warunkiem, ktory decyduje o rejestracji
+     * ({@code canConnectToInventory} / {@code hasRSNetwork}). Inny warunek
+     * znaczylby, ze wpis moze byc jednoczesnie "za stary" i "za nowy" -
+     * zaleznie od tego, kto pyta.
+     *
+     * <p>Wpisy typy {@code CRAFTING_BUFFER} to bufory crafterow, ktore NIE sa
+     * magazynami w swiecie - dlatego maja wlasny warunek (crafter nadal stoi),
+     * a nie test na inventory.
+     */
+    private void pruneDeadEndpoints(ServerLevel level) {
+        if (knownEndpoints.isEmpty()) {
+            return;
+        }
+        int removed = 0;
+        java.util.Iterator<Map.Entry<BlockPos, ConnectedEndpointInfo>> it =
+                knownEndpoints.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<BlockPos, ConnectedEndpointInfo> e = it.next();
+            BlockPos pos = e.getKey();
+            if (!level.isLoaded(pos)) {
+                continue;   // nie wiemy - zostawiamy ostatnia znana zawartosc
+            }
+            if (endpointStillExists(level, pos, e.getValue())) {
+                continue;
+            }
+            it.remove();
+            removed++;
+        }
+        if (removed > 0) {
+            VeloceLog.Network.detail(VeloceLog.Side.SERVER,
+                    "pruned %d dead storage(s) from the known-endpoint registry", removed);
+        }
+    }
+
+    /**
+     * Czy magazyn spod tego wpisu nadal istnieje w swiecie.
+     *
+     * <p><b>Warunek celowo ZACHOWAWCZY.</b> Nie pytamy "czy da sie tu jeszcze
+     * podlaczyc rure" (jak przy rejestracji), bo ta odpowiedz zalezy od strony
+     * i od typu bloku - a pomylka w ta strone kosztowalaby WYCIELEM zywego
+     * magazynu z sieci: terminal przestalby widziec skrzynie, ktora stoi.
+     * Wolimy nie usunac niz usunac za duzo.
+     *
+     * <p>Usuwamy wiec tylko wtedy, gdy w tym miejscu naprawde nic nie ma:
+     * powietrze albo blok bez block entity i bez zdolnosci przechowywania.
+     * Skrzynia zamieniona na kamien wypada, a skrzynia nadal stoi - zostaje.
+     */
+    private static boolean endpointStillExists(ServerLevel level, BlockPos pos,
+                                               ConnectedEndpointInfo ep) {
+        return switch (ep.getType()) {
+            case REFINED_STORAGE ->
+                    RefinedStorageHelper.hasRSNetwork(level, pos, ep.getAccessSide());
+            // Bufor craftera nie jest magazynem w swiecie - ma wlasny warunek.
+            case CRAFTING_BUFFER -> level.getBlockEntity(pos)
+                    instanceof com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity;
+            case INVENTORY -> {
+                net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
+                if (state.isAir()) {
+                    yield false;
+                }
+                net.minecraft.world.level.block.entity.BlockEntity be = level.getBlockEntity(pos);
+                yield be != null
+                        || net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK
+                        .getCapability(level, pos, state, null, ep.getAccessSide()) != null;
+            }
+        };
     }
 
     /**
