@@ -88,6 +88,11 @@ public class VelocePipeNetworkManager extends SavedData {
         pendingRebuilds.clear();
     }
 
+    /** Ile przebudow czeka w kolejce (diagnostyka). */
+    public int pendingRebuildCount() {
+        return pendingRebuilds.size();
+    }
+
     public static SavedData.Factory<VelocePipeNetworkManager> factory() {
         return new SavedData.Factory<>(
                 VelocePipeNetworkManager::new,

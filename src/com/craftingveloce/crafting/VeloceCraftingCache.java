@@ -153,6 +153,9 @@ public final class VeloceCraftingCache {
     /** Ile razy dany item wracal do kolejki, bo nie zmiescil sie w budzecie. */
     private final Map<Item, Integer> retries = new HashMap<>();
 
+    /** Ile razy tick przekroczyl budzet - liczone dla /cv perf. */
+    private long overruns;
+
     /** Rozbicie ostatniego ticku na fazy, do logu watchdoga. */
     private long phaseScanNanos;
     private long phaseChunksNanos;
@@ -222,6 +225,16 @@ public final class VeloceCraftingCache {
         return CACHES.size();
     }
 
+    /** Czas ostatniego ticku w milisekundach (diagnostyka). */
+    public long lastTickMillis() {
+        return lastTickNanos / 1_000_000L;
+    }
+
+    /** Ile razy tick przekroczyl budzet w calej sesji (diagnostyka). */
+    public long overrunCount() {
+        return overruns;
+    }
+
     // ------------------------------------------------------------------
     // Odczyt (GUI) - zawsze natychmiastowy, nic nie liczy
     // ------------------------------------------------------------------
@@ -257,10 +270,6 @@ public final class VeloceCraftingCache {
 
     public int lastBatchSize() {
         return lastBatchSize;
-    }
-
-    public long lastTickMillis() {
-        return lastTickNanos / 1_000_000L;
     }
 
     public int scanCount() {
@@ -459,6 +468,7 @@ public final class VeloceCraftingCache {
         if (lastTickNanos <= OVERRUN_WARN_NS) {
             return;
         }
+        overruns++;
         VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                 "crafting cache TICK OVERRUN: %d ms total = scan %d ms + chunks %d ms + items %d ms "
                         + "(budget %d ms) - %d item(s) pending, %d done this tick",

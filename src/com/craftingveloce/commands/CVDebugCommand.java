@@ -29,6 +29,8 @@ public class CVDebugCommand {
             Commands.literal("cv")
                 .then(Commands.literal("debug")
                     .executes(CVDebugCommand::executeDebug))
+                .then(Commands.literal("perf")
+                    .executes(CVDebugCommand::executePerf))
                 .then(Commands.literal("chunkdebug")
                     .executes(ctx -> setChunkDebug(ctx, null))
                     .then(Commands.literal("on")
@@ -42,6 +44,46 @@ public class CVDebugCommand {
                         .then(Commands.literal("off")
                             .executes(ctx -> setChunkVerbose(ctx, false)))))
         );
+    }
+
+    /**
+     * Jednym poleceniem wypisuje wszystko, co potrzebne do diagnozy lagow.
+     *
+     * <p>Po to, zeby jeden test w grze dawal komplet liczb zamiast zgadywania:
+     * ile cache'ow zyje (wyciek?), ile chunkow realnie trzymamy, ile przebudow
+     * czeka, jak dlugo trwal ostatni tick cache i czy kiedykolwiek go
+     * przekroczylismy.
+     */
+    private static int executePerf(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerLevel sl = source.getLevel();
+        var manager = VelocePipeNetworkManager.get(sl);
+
+        source.sendSuccess(() -> Component.literal("§6=== [CraftingVeloce Perf] ==="), false);
+        source.sendSuccess(() -> Component.literal(
+                "§7Live crafting caches: §f" + com.craftingveloce.crafting.VeloceCraftingCache.liveCount()),
+                false);
+        source.sendSuccess(() -> Component.literal(
+                "§7Forced chunks (loader, this level): §f"
+                        + com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(sl)),
+                false);
+        source.sendSuccess(() -> Component.literal(
+                "§7Pending network rebuilds: §f" + manager.pendingRebuildCount()
+                        + " §7| networks: §f" + manager.getAllNetworks().size()),
+                false);
+        source.sendSuccess(() -> Component.literal(
+                "§7Ticking server: §fyes §7| gameTime: §f" + sl.getGameTime()), false);
+        for (VelocePipeNetwork net : manager.getAllNetworks()) {
+            var cache = com.craftingveloce.crafting.VeloceCraftingCache.get(net);
+            source.sendSuccess(() -> Component.literal(
+                    "  §8net §7" + net.getId().toString().substring(0, 8)
+                            + " §7pipes=§f" + net.getPipes().size()
+                            + " §7endpoints=§f" + net.getEndpoints().size()
+                            + " §7cache: lastTick=§f" + cache.lastTickMillis() + "ms"
+                            + " §7overruns=§f" + cache.overrunCount()), false);
+        }
+        source.sendSuccess(() -> Component.literal("§6======================================="), false);
+        return 1;
     }
 
     /**
