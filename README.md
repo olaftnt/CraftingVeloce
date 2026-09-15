@@ -335,3 +335,25 @@ slotow. **Nie** robic tego przez podmiane slotow ani przez drugi ekran.
   więc wzór może się rozjeżdżać na zakrętach. Próby naprawy (commity `f3feac1`–`8553ae5`)
   zostały wycofane razem z przezroczystością.
 - **src/moze_intel/** — patchowane klasy InventoryExchange moda, logika wyłączenia EMC tooltipów — trzeba zdecydować jak czysto to rozwiązać (osobny JAR patch?)
+- **Crafter: przełączanie CAŁEJ kategorii (prawy klik na ikonce zakładki)** —
+  **USUNIĘTE Z KODU na życzenie** (2026-09-15). Działało jako „round robin":
+  prawy klik na ikonce zakładki włączał albo wyłączał wszystkie itemy tej
+  kategorii naraz. Wycięte razem z podpowiedzią w tooltipie, bo dla kategorii
+  typu „Building Blocks" (setki itemów) jeden gest zmieniał stan połowy sieci
+  i nie dawał się cofnąć jednym kliknięciem.
+
+  Usunięte elementy, gdyby ktoś chciał to przywrócić:
+  - `VeloceCreativeScreen.mouseClicked` (gałąź `button == 1`)
+  - `VeloceCreativeScreen.tabUnderMouse`
+  - `VeloceCreativeScreen.renderTabTooltip` (istniał WYŁĄCZNIE dla tej podpowiedzi)
+  - `VeloceCreativeScreen.toggleWholeTab`
+  - klucze lang `category.hint`, `category.willDisable`, `category.willEnable`,
+    `crafter.category.hint`
+
+  **Zostaje** przełączanie pojedynczego itemu lewym klikiem
+  (`isToggleable` / `isToggledOn` / `applyToggle` w `VeloceCraftingTableScreen`)
+  — to działa i tego nie ruszamy.
+
+  Gdyby wracać do tematu, sensowniejszy wariant: przełączanie tylko
+  **widocznej strony** zamiast całej zakładki. Samo „cała kategoria" bez
+  zabezpieczenia jest zbyt szerokie.

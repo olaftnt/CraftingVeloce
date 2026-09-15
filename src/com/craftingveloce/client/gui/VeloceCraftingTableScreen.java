@@ -247,7 +247,6 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         super.render(graphics, mouseX, mouseY, partialTick);
         drawHotbarCover(graphics, 0xFFC6C6C6);
         renderRecipeTooltip(graphics, mouseX, mouseY);
-        renderTabTooltip(graphics, mouseX, mouseY);
     }
 
     // ------------------------------------------------------------------
@@ -351,8 +350,6 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
                 ? "gui.craftingveloce.crafter.toggle.on"
                 : "gui.craftingveloce.crafter.toggle.off")
                 .withStyle(net.minecraft.ChatFormatting.GRAY));
-        lines.add(Component.translatable("gui.craftingveloce.crafter.category.hint")
-                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
 
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
     }

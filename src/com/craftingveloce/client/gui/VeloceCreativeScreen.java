@@ -850,61 +850,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         return super.checkTabClicked(tab, mouseX, mouseY);
     }
 
-    /**
-     * Prawy klik na ikonke zakladki = przelacz wszystkie itemy tej kategorii.
-     *
-     * <p>Jesli w kategorii jest cokolwiek wlaczone - wylaczamy wszystko.
-     * Jesli nic nie jest wlaczone - wlaczamy wszystko, co da sie wlaczyc.
-     * Dzieki temu jeden gest dziala jako "round robin": kolejne klikniecia
-     * przelaczaja cala grupe tam i z powrotem.
-     *
-     * <p>Działa niezaleznie od tego, gdzie jestes na liscie (takze po
-     * przewinieciu dlugiej zakladki moda), bo patrzymy na ikonke zakladki,
-     * a nie na widoczne sloty.
-     */
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 1 && this.minecraft != null && this.minecraft.player != null) {
-            net.minecraft.world.item.CreativeModeTab tab = tabUnderMouse(mouseX, mouseY);
-            if (tab != null && acceptTab(tab)) {
-                toggleWholeTab(tab);
-                return true;
-            }
-        }
-        return super.mouseClicked(mouseX, mouseY, button);
-    }
-
     /** Znajduje zakladke, ktorej ikonka jest pod kursorem. */
-    @Nullable
-    /**
-     * Zakladka pod kursorem - TYLKO taka, ktora jest u nas faktycznie widoczna.
-     *
-     * <p><b>Bylo tu zrodlo duchow.</b> Metoda sprawdzala wylacznie geometrie
-     * ({@code super.checkTabClicked}) po calej liscie zakladek vanilla, wiec
-     * trafiala takze w zakladki, ktorych NIE rysujemy (operator utilities,
-     * saved hotbars, survival inventory). Ikonek tam nie ma, ale obszar nadal
-     * istnieje - dlatego tooltip o prawym kliku pojawial sie w pustym miejscu.
-     *
-     * <p>Filtr {@link #acceptTab} musi byc sprawdzony TUTAJ, a nie tylko przy
-     * rysowaniu i w tooltipie, bo inaczej kazdy konsument tej metody dostaje
-     * zakladki-widma.
-     */
-    private net.minecraft.world.item.CreativeModeTab tabUnderMouse(double mouseX, double mouseY) {
-        for (net.minecraft.world.item.CreativeModeTab tab
-                : net.minecraft.world.item.CreativeModeTabs.tabs()) {
-            if (!acceptTab(tab)) {
-                continue;   // tej zakladki u nas nie ma - nie ma tez tooltipa
-            }
-            try {
-                if (super.checkTabClicked(tab, mouseX, mouseY)) {
-                    return tab;
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-        return null;
-    }
-
     /**
      * Tooltip na ikonce zakladki - podpowiada, ze prawy klik przelacza
      * cala kategorie. Pokazywany tylko gdy podkursorem jest zakladka i gdy
@@ -913,75 +859,11 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      * <p>Wywoływane z {@link #render} podklas. Vanilla nie rysuje zadnego
      * tooltipa dla zakladek, wiec dodajemy go sami.
      */
-    protected void renderTabTooltip(net.minecraft.client.gui.GuiGraphics graphics,
-                                    int mouseX, int mouseY) {
-        if (this.minecraft == null) {
-            return;
-        }
-        net.minecraft.world.item.CreativeModeTab tab = tabUnderMouse(mouseX, mouseY);
-        if (tab == null || !acceptTab(tab)) {
-            return;
-        }
-        // Sprawdzamy, czy w zakladce jest cokolwiek, co da sie przelaczyc.
-        int toggleable = 0;
-        boolean anyOn = false;
-        for (ItemStack st : tab.getDisplayItems()) {
-            if (st.isEmpty() || !isToggleable(st)) {
-                continue;
-            }
-            toggleable++;
-            if (isToggledOn(st.getItem())) {
-                anyOn = true;
-            }
-        }
-        if (toggleable == 0) {
-            return;
-        }
-
-        List<Component> lines = new ArrayList<>();
-        lines.add(tab.getDisplayName());
-        lines.add(Component.translatable("gui.craftingveloce.category.hint")
-                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
-        lines.add(Component.translatable(anyOn
-                ? "gui.craftingveloce.category.willDisable"
-                : "gui.craftingveloce.category.willEnable", toggleable)
-                .withStyle(net.minecraft.ChatFormatting.GRAY));
-
-        graphics.renderTooltip(this.font, lines,
-                java.util.Optional.empty(), mouseX, mouseY);
-    }
 
     /**
      * Przelacza wszystkie craftowalne itemy z danej zakladki.
      * Podklasy decyduja, co zrobic z pojedynczym itemem.
      */
-    private void toggleWholeTab(net.minecraft.world.item.CreativeModeTab tab) {
-        List<ItemStack> stacks = new ArrayList<>(tab.getDisplayItems());
-
-        // Zbierz itemy, ktore w ogole kwalifikuja sie do przelaczenia.
-        List<net.minecraft.world.item.Item> candidates = new ArrayList<>();
-        boolean anyOn = false;
-        for (ItemStack st : stacks) {
-            if (st.isEmpty() || !isToggleable(st)) {
-                continue;
-            }
-            candidates.add(st.getItem());
-            if (isToggledOn(st.getItem())) {
-                anyOn = true;
-            }
-        }
-        if (candidates.isEmpty()) {
-            return;
-        }
-
-        // Round robin: cokolwiek wlaczone -> wylacz wszystko; inaczej wlacz wszystko.
-        boolean target = !anyOn;
-        for (net.minecraft.world.item.Item it : candidates) {
-            if (isToggledOn(it) != target) {
-                applyToggle(it);
-            }
-        }
-    }
 
     // ------------------------------------------------------------------
     // Przelaczanie pojedynczych itemow - do nadpisania w podklasach
