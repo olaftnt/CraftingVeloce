@@ -196,8 +196,15 @@ public final class VeloceRecipeRegistry {
         Map<Item, List<CraftingEntry>> index = new HashMap<>();
         HolderLookup.Provider registries = level.registryAccess();
 
-        for (RecipeType<?> type : FREE_TYPES) {
-            collectType(manager, type, registries, index);
+        // JEDNO przejscie po recepturach, nie jedno na typ.
+        // Poprzednia wersja wolala collectType() dla kazdego z 3 typow, a kazde
+        // collectType przechodzilo CALA liste receptur i odsiewalo reszte po
+        // getType(). Przy duzym modpacku to bylo 3x wiecej pracy niz trzeba -
+        // i to na watku serwera, przy pierwszym uzyciu indeksu.
+        for (RecipeHolder<?> holder : manager.getRecipes()) {
+            if (FREE_TYPES.contains(holder.value().getType())) {
+                addHolder(holder, registries, index, false);
+            }
         }
 
         // Mody: tylko jesli jawnie zaufane (na razie brak).
@@ -219,20 +226,6 @@ public final class VeloceRecipeRegistry {
             result.put(e.getKey(), List.copyOf(list));
         }
         return result;
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private static void collectType(RecipeManager manager, RecipeType<?> type,
-                                    HolderLookup.Provider registries,
-                                    Map<Item, List<CraftingEntry>> index) {
-        // getRecipes() zwraca wszystkie receptury niezaleznie od typu; filtrujemy
-        // po getType(), zeby uniknac problemow z generykami RecipeType<?>.
-        for (RecipeHolder<?> holder : manager.getRecipes()) {
-            if (holder.value().getType() != type) {
-                continue;
-            }
-            addHolder(holder, registries, index, false);
-        }
     }
 
     private static void addHolder(RecipeHolder<?> holder, HolderLookup.Provider registries,
