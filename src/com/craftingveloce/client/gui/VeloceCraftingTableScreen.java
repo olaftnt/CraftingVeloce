@@ -222,8 +222,6 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // Przed rysowaniem: jesli gracz wybral zakladke ekwipunku, pokaz tam bufor.
-        applyBufferToInventoryTab();
         super.render(graphics, mouseX, mouseY, partialTick);
         drawHotbarCover(graphics, 0xFFC6C6C6);
         renderRecipeTooltip(graphics, mouseX, mouseY);
@@ -231,15 +229,13 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     // ------------------------------------------------------------------
-    // Zakladka "Survival Inventory" = bufor craftera
+    // Zakladka "Survival Inventory" = osobny ekran magazynu
     // ------------------------------------------------------------------
 
     /**
-     * Czy aktualnie wybrana jest zakladka ekwipunku (Survival Inventory).
+     * Czy wybrana jest zakladka ekwipunku (Survival Inventory).
      *
-     * <p>Vanilla rozpoznaje ja po {@code CreativeModeTab.Type.INVENTORY} i przy
-     * jej wyborze podmienia sloty na zwykly ekwipunek gracza (armor, offhand,
-     * crafting 2x2). My chcemy tam pokazac bufor craftera zamiast tego.
+     * <p>Vanilla rozpoznaje ja po {@code CreativeModeTab.Type.INVENTORY}.
      */
     private boolean isInventoryTabSelected() {
         try {
@@ -255,52 +251,43 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         return false;
     }
 
-    /** Czy slot nalezy do zwyklego ekwipunku gracza (a nie do siatki creative). */
-    private boolean isVanillaInventorySlot(Slot slot) {
-        if (slot == null || this.minecraft == null || this.minecraft.player == null) {
-            return false;
-        }
-        for (Slot s : this.minecraft.player.inventoryMenu.slots) {
-            if (s == slot) {
+    /**
+     * Klikniecie zakladki ekwipunku otwiera OSOBNY ekran magazynu craftera
+     * (jak skrzynia ze scrollbarem), zamiast podmieniac sloty w creative
+     * inventory.
+     *
+     * <p>Poprzednia proba podmieniala sloty w miejscu, co konczylo sie itemami
+     * na slocie glowy i zepsutym ukladem - walczylismy z vanilla. Osobny ekran
+     * daje pelna kontrole i nie ma w nim zbednych slotow.
+     */
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        // Klikniecie w zakladke ekwipunku -> otworz magazyn.
+        if (button == 0 && this.minecraft != null && this.minecraft.player != null) {
+            CreativeModeTab tab = tabUnderMouse(mouseX, mouseY);
+            if (tab != null && tab.getType() == CreativeModeTab.Type.INVENTORY) {
+                com.craftingveloce.util.VeloceLog.Gui.attempt(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "inventory tab clicked - opening crafter storage at %s", tablePos);
+                PacketDistributor.sendToServer(
+                        new com.craftingveloce.network.OpenStorageRequestPKT(tablePos));
                 return true;
             }
         }
-        return slot.container == this.minecraft.player.getInventory();
+        return super.mouseClicked(mouseX, mouseY, button);
     }
 
-    /**
-     * Podmienia sloty ekwipunku na sloty bufora craftera.
-     *
-     * <p>Vanilla przy wyborze zakladki INVENTORY kopiuje do menu sloty z
-     * {@code player.inventoryMenu}. My nadpisujemy ich zawartosc zawartoscia
-     * bufora, a sloty bez odpowiednika w buforze zostaja puste.
-     *
-     * <p>Wkładanie jest zablokowane - {@link #slotClicked} obsluguje tylko
-     * wyciaganie. Bufor ma byc pamiecia produkcji, nie kolejna skrzynia.
-     */
-    private void applyBufferToInventoryTab() {
-        if (this.menu == null || this.minecraft == null || this.minecraft.player == null) {
-            return;
-        }
-        if (!isInventoryTabSelected()) {
-            return;
-        }
-        // Gdy widoczna jest siatka creative, nie ruszamy slotow.
-        if (this.menu.slots.size() < 9) {
-            return;
-        }
-        int shown = 0;
-        for (Slot slot : this.menu.slots) {
-            if (!isVanillaInventorySlot(slot)) {
-                continue;
-            }
-            if (shown < bufferContents.size()) {
-                slot.set(bufferContents.get(shown));
-                shown++;
-            } else {
-                slot.set(ItemStack.EMPTY);
+    /** Znajduje zakladke pod kursorem. */
+    private CreativeModeTab tabUnderMouse(double mouseX, double mouseY) {
+        for (CreativeModeTab tab : net.minecraft.world.item.CreativeModeTabs.tabs()) {
+            try {
+                if (checkTabClicked(tab, mouseX, mouseY)) {
+                    return tab;
+                }
+            } catch (Throwable ignored) {
             }
         }
+        return null;
     }
 
     // ------------------------------------------------------------------
@@ -437,23 +424,6 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         if (this.minecraft == null || this.minecraft.player == null) return;
-
-        // W zakladce ekwipunku pokazujemy bufor craftera - klikniecie wyciaga
-        // item do gracza. Wkładanie jest zablokowane, wiec nie przekazujemy
-        // zdarzenia dalej do vanilla (inaczej graliby na prawdziwym EQ).
-        if (isInventoryTabSelected() && slot != null && isVanillaInventorySlot(slot)) {
-            ItemStack inSlot = slot.getItem();
-            if (inSlot.isEmpty()) {
-                return;
-            }
-            int count = (clickType == ClickType.QUICK_MOVE || mouseButton == 1)
-                    ? inSlot.getMaxStackSize()
-                    : inSlot.getCount();
-            PacketDistributor.sendToServer(
-                    new com.craftingveloce.network.BufferPullItemPKT(
-                            tablePos, inSlot, count));
-            return;
-        }
 
         if (slot == null || isPlayerInventorySlot(slot) || isTrashSlot(slot)) return;
 

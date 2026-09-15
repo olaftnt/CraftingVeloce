@@ -87,6 +87,23 @@ public class VeloceRegistry {
                     (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceExtractorMenu(windowId, inv, data.readBlockPos())
             ));
 
+    // 3b. Menu magazynu auto-craftera (siatka ze scrollbarem)
+    public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>, net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceCrafterStorageMenu>> VELOCE_CRAFTER_STORAGE_MENU =
+            MENU_TYPES.register("veloce_crafter_storage_menu", () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(
+                    (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceCrafterStorageMenu(
+                            windowId, inv, readBuffer(data.readBlockPos(), inv))
+            ));
+
+    /** Znajduje bufor craftera po pozycji (uzywane przy otwieraniu menu). */
+    private static com.craftingveloce.inventory.VeloceCraftingBuffer readBuffer(
+            net.minecraft.core.BlockPos pos, net.minecraft.world.entity.player.Inventory inv) {
+        var level = inv.player.level();
+        if (level.getBlockEntity(pos) instanceof com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity be) {
+            return be.getBuffer();
+        }
+        return new com.craftingveloce.inventory.VeloceCraftingBuffer();
+    }
+
     // 4. Veloce Wrench
     public static final DeferredItem<VeloceWrenchItem> VELOCE_WRENCH = ITEMS.register(
             "wrench",

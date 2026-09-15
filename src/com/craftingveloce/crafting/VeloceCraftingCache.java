@@ -92,6 +92,17 @@ public final class VeloceCraftingCache {
 
     private boolean fullScanDone = false;
 
+    /**
+     * Czy wstepny skan zostal juz zakolejkowany.
+     *
+     * <p>Osobne od {@link #fullScanDone}, bo tamto oznacza "skonczone", a to
+     * "rozpoczęte". Bez rozroznienia kolejka byla zakolejkowana wielokrotnie
+     * albo - jak w poprzedniej wersji - oznaczana jako skonczona, gdy byla
+     * pusta, przez co cache nigdy sie nie wypelnial i GUI nie pokazywalo
+     * zadnych liczb "+N".
+     */
+    private boolean initialScanQueued = false;
+
     /** Migawka stocku do wykrywania zmian. */
     private final Map<Item, Long> lastStock = new HashMap<>();
 
@@ -213,10 +224,12 @@ public final class VeloceCraftingCache {
                     level.getGameTime() - firstSeenTick);
         }
 
-        // 1. Rzadki pelny skan stocku - wylapuje zmiany, ktorych nie zgloszono
-        //    (np. rura innego moda przesunela itemy).
+        // 1. Pelny skan stocku. Na poczatku MUSI sie wykonac natychmiast -
+        //    inaczej initial scan nie ma z czego wziac itemow (lastStock pusty).
+        //    Potem juz rzadko, bo to jedyne miejsce czytajace cala siec.
         long now = level.getGameTime();
-        if (now - lastFullStockScan >= FULL_STOCK_SCAN_INTERVAL) {
+        boolean firstScan = lastFullStockScan == Long.MIN_VALUE;
+        if (firstScan || now - lastFullStockScan >= FULL_STOCK_SCAN_INTERVAL) {
             lastFullStockScan = now;
             detectStockChanges(level);
             if (System.nanoTime() - start > TICK_BUDGET_NS) {
@@ -230,9 +243,11 @@ public final class VeloceCraftingCache {
             maintainForcedChunks(level);
         }
 
-        // 2. Pierwszy skan: TYLKO itemy faktycznie obecne w sieci.
-        //    Reszta (ktorej nikt nie ma) jest dolaczana pozniej, leniwie.
-        if (!fullScanDone && pending.isEmpty()) {
+        // 2. Pierwszy skan. Kolejkujemy itemy obecne w sieci (to widzi GUI)
+        //    oraz - w ramach limitu - reszte wlaczonych, zeby liczby byly
+        //    dostepne takze dla itemow, ktorych chwilowo nie ma.
+        if (!initialScanQueued && pending.isEmpty()) {
+            initialScanQueued = true;
             queueInitialScan(enabledItems);
         }
 
@@ -261,7 +276,7 @@ public final class VeloceCraftingCache {
         if (pending.isEmpty() && !fullScanDone) {
             fullScanDone = true;
             VeloceLog.Craft.success(VeloceLog.Side.SERVER,
-                    "crafting cache: initial full scan done (%d items computed, %d ms last tick)",
+                    "crafting cache: initial scan done (%d items computed, %d ms last tick)",
                     totalComputed, lastTickMillis());
         }
 
@@ -332,6 +347,7 @@ public final class VeloceCraftingCache {
      */
     private void queueInitialScan(Set<Item> enabled) {
         int fromStock = 0;
+        // Priorytet 1: itemy obecne w sieci - to one sa widoczne w GUI.
         for (var e : lastStock.entrySet()) {
             if (e.getValue() <= 0 || fromStock >= MAX_FULL_SCAN) {
                 continue;
@@ -341,10 +357,20 @@ public final class VeloceCraftingCache {
                 fromStock++;
             }
         }
-
+        // Priorytet 2: reszta wlaczonych, w ramach limitu i limitu kolejki.
+        int fromEnabled = 0;
+        for (Item it : enabled) {
+            if (fromStock + fromEnabled >= MAX_FULL_SCAN || pending.size() >= MAX_QUEUE) {
+                break;
+            }
+            if (queued.add(it)) {
+                pending.add(it);
+                fromEnabled++;
+            }
+        }
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "crafting cache: initial scan queued %d item(s) (from stock, cap %d)",
-                pending.size(), MAX_FULL_SCAN);
+                "crafting cache: initial scan queued %d item(s) (%d from stock, %d from enabled)",
+                pending.size(), fromStock, fromEnabled);
     }
 
     // ------------------------------------------------------------------
