@@ -36,9 +36,11 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
-public class VeloceExtractorBlock extends BaseEntityBlock implements EntityBlock, IInventoryCable {
+public class VeloceExtractorBlock extends BaseEntityBlock
+        implements EntityBlock, IInventoryCable, VeloceNetworkNode {
 
     public static final MapCodec<VeloceExtractorBlock> CODEC = ChestBlock.simpleCodec(properties -> new VeloceExtractorBlock());
 

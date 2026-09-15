@@ -32,9 +32,11 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
-public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityBlock, IInventoryCable {
+public class VeloceCraftingTableBlock extends BaseEntityBlock
+        implements EntityBlock, IInventoryCable, VeloceNetworkNode {
 
     public static final MapCodec<VeloceCraftingTableBlock> CODEC = ChestBlock.simpleCodec(properties -> new VeloceCraftingTableBlock());
 
@@ -135,6 +137,19 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityB
 
     @Override
     public boolean canConnectFrom(BlockState state, Direction dir) {
+        return true;
+    }
+
+    /**
+     * Bufor craftera jest endpointem sieci.
+     *
+     * <p>Dzieki temu nadwyzka produkcji (np. 3 deski z 1 logu, gdy gracz
+     * chcial 1) jest widoczna dla calej sieci i mozna ja wyciagnac terminalem,
+     * rura czy hopperem. Wczesniej rozpoznawalo to reczne {@code instanceof}
+     * w petli BFS - teraz mowi o tym sam wezel.
+     */
+    @Override
+    public boolean exposesCraftingBuffer() {
         return true;
     }
 

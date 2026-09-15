@@ -459,6 +459,50 @@ def validate_sensor_row():
           f"{above} px nad i {below} px pod)")
 
 
+def validate_node_blocks():
+    """
+    Kto jest wezlem sieci, musi to mowic JEDNYM sposobem - interfejsem.
+
+    Wezel sieci rur ma dwa obowiazki, ktore musza isc w parze:
+      * implementowac {@code VeloceNetworkNode} (inaczej rdzen go nie
+        rozpozna: nie trafi do terminali i jego chunk nie bedzie utrzymywany),
+      * wolac {@code VeloceNodeBlocks.onNodePlaced} / {@code onNodeRemoved}
+        (inaczej siec nie dowie sie o postawieniu/zniszczeniu bloku).
+
+    Ta para juz sie raz rozjechala: kontroler nie byl rozpoznawany jako wezel,
+    wiec jego GUI pokazywalo pusty stock, a gniazda filtrów mogly zostac
+    wystawione sieci jako zwykly magazyn. Oba bledy sa niewidoczne dla
+    kompilatora - dlatego pilnuje ich build.
+    """
+    block_dir = "src/com/craftingveloce/block"
+    if not os.path.isdir(block_dir):
+        return
+    nodes, hooked = [], []
+    for name in sorted(os.listdir(block_dir)):
+        if not name.endswith(".java"):
+            continue
+        text = open(os.path.join(block_dir, name), encoding="utf-8").read()
+        is_interface = re.search(r"class\s+\w+[^{]*\bimplements\b[^{]*\bVeloceNetworkNode\b",
+                                 text) is not None
+        has_hook = "VeloceNodeBlocks.onNodePlaced(" in text
+        has_remove = "VeloceNodeBlocks.onNodeRemoved(" in text
+        if is_interface:
+            nodes.append(name)
+            if not (has_hook and has_remove):
+                fail(f"{name} implementuje VeloceNetworkNode, ale nie wola "
+                     f"{'onNodePlaced' if not has_hook else 'onNodeRemoved'} - "
+                     f"siec nie dowie sie o zmianie tego bloku")
+        elif has_hook or has_remove:
+            hooked.append(name)
+    if hooked:
+        fail("te bloki zglaszaja sie do sieci, ale nie sa wezlami "
+             "(brak VeloceNetworkNode):\n  " + "\n  ".join(hooked))
+    if not nodes:
+        fail("zaden blok nie implementuje VeloceNetworkNode - "
+             "rozpoznawanie wezlow sieci jest zepsute")
+    print(f"    OK ({len(nodes)} wezlow sieci: interfejs + hooki parami)")
+
+
 def game_running():
     """
     Czy Minecraft z tego profilu wlasnie dziala?
@@ -623,6 +667,7 @@ def main():
     validate_gui_layout()
     validate_helper_docs()
     validate_sensor_row()
+    validate_node_blocks()
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "

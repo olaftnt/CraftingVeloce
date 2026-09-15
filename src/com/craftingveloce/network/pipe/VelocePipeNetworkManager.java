@@ -1,7 +1,6 @@
 package com.craftingveloce.network.pipe;
 
 import com.craftingveloce.block.VelocePipeBlock;
-import com.craftingveloce.block.VeloceTomTerminalBlock;
 import com.craftingveloce.block.entity.VelocePipeBlockEntity;
 import com.craftingveloce.rs.RefinedStorageHelper;
 import com.craftingveloce.util.VeloceLog;
@@ -763,7 +762,7 @@ public class VelocePipeNetworkManager extends SavedData {
     private void registerNode(VelocePipeNetwork net, BlockPos pos, Block block, Direction towardPipe) {
         net.getTerminals().add(pos);
         knownNodes.add(pos.immutable());
-        if (block instanceof com.craftingveloce.block.VeloceCraftingTableBlock) {
+        if (block instanceof VeloceNetworkNode node && node.exposesCraftingBuffer()) {
             net.getEndpoints().put(pos, new CraftingBufferEndpoint(pos, towardPipe));
         }
     }
@@ -1488,28 +1487,27 @@ public class VelocePipeNetworkManager extends SavedData {
                     continue;
                 }
 
-                // 2. Neighbor is VeloceTomTerminalBlock or VeloceExtractorBlock
-                if (neighborState.getBlock() instanceof VeloceTomTerminalBlock terminalBlock) {
-                    if (terminalBlock.canConnectFrom(neighborState, dir.getOpposite())) {
-                        discoveredTerminals.add(neighborPos);
-                    }
-                    continue;
-                }
-                if (neighborState.getBlock() instanceof com.craftingveloce.block.VeloceExtractorBlock extractorBlock) {
-                    if (extractorBlock.canConnectFrom(neighborState, dir.getOpposite())) {
-                        discoveredTerminals.add(neighborPos);
-                    }
-                    continue;
-                }
-                if (neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock craftingTableBlock) {
-                    if (craftingTableBlock.canConnectFrom(neighborState, dir.getOpposite())) {
+                // 2. WEZEL SIECI - terminal, ekstraktor, crafter, kontroler,
+                //    sensor, piec albo wezel z modulu compat/*.
+                //
+                // BUG, ktory to naprawia: ta petla miala RECZNIE wpisane trzy
+                // typy (terminal, ekstraktor, crafter). Kontroler, sensor i
+                // piece nie byly tu rozpoznawane jako wezly, wiec pelny skan
+                // sieci nie dodawal ich do terminali - mimo ze sasiednia,
+                // lokalna sciezka (collectNeighbours) juz je znala. Teraz obie
+                // pytaja ten sam interfejs, wiec nie moga sie rozjechac, a nowy
+                // wezel z compat/* dziala bez zmiany w rdzeniu.
+                if (neighborState.getBlock() instanceof VeloceNetworkNode node) {
+                    if (node.canConnectFrom(neighborState, dir.getOpposite())) {
                         discoveredTerminals.add(neighborPos);
                         // Bufor auto-craftera jest dodatkowo endpointem magazynu:
                         // dzieki temu nadwyzka produkcji (np. 3 deski z 1 logu,
                         // gdy gracz chcial 1) jest widoczna dla calej sieci i
                         // mozna ja wyciagnac terminalem, rura czy hopperem.
-                        discoveredEndpoints.put(neighborPos, new CraftingBufferEndpoint(
-                                neighborPos, dir.getOpposite()));
+                        if (node.exposesCraftingBuffer()) {
+                            discoveredEndpoints.put(neighborPos, new CraftingBufferEndpoint(
+                                    neighborPos, dir.getOpposite()));
+                        }
                     }
                     continue;
                 }

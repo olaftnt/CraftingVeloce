@@ -1,7 +1,9 @@
 package com.craftingveloce.block;
 
 import com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity;
+import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.MenuProvider;
@@ -27,10 +29,20 @@ import com.craftingveloce.network.pipe.VeloceNodeBlocks;
  * postawiony obok rury, wtedy siec go widzi i utrzymuje jego chunk, zeby
  * piec mogl palic sie CALY CZAS - nawet gdy gracz jest daleko.
  */
-public class VeloceVelocityFurnaceBlock extends BaseEntityBlock implements EntityBlock {
+public class VeloceVelocityFurnaceBlock extends BaseEntityBlock
+        implements EntityBlock, VeloceNetworkNode {
 
     public VeloceVelocityFurnaceBlock(Properties properties) {
         super(properties);
+    }
+
+    /**
+     * Piec paliwowy nie ma przodu ani tylu, wiec laczy sie z rura z kazdej
+     * strony - tak samo jak pozostale maszyny w modzie.
+     */
+    @Override
+    public boolean canConnectFrom(BlockState state, Direction towardPipe) {
+        return true;
     }
 
     @Override

@@ -34,9 +34,11 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
-public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock implements EntityBlock, IInventoryCable {
+public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock
+        implements EntityBlock, IInventoryCable, VeloceNetworkNode {
     public static final MapCodec<VeloceTomTerminalBlock> CODEC = ChestBlock.simpleCodec(properties -> new VeloceTomTerminalBlock());
 
     public VeloceTomTerminalBlock() {

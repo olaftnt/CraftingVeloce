@@ -33,6 +33,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
@@ -46,7 +47,8 @@ import com.craftingveloce.network.pipe.VeloceNodeBlocks;
  *       dla nich maszyne (extractor + skrzynia), zeby staly sie dostepne</li>
  * </ul>
  */
-public class VeloceControllerBlock extends BaseEntityBlock implements EntityBlock, IInventoryCable {
+public class VeloceControllerBlock extends BaseEntityBlock
+        implements EntityBlock, IInventoryCable, VeloceNetworkNode {
 
     public static final MapCodec<VeloceControllerBlock> CODEC =
             ChestBlock.simpleCodec(properties -> new VeloceControllerBlock());

@@ -1,7 +1,9 @@
 package com.craftingveloce.block;
 
 import com.craftingveloce.block.entity.VeloceElectricFurnaceBlockEntity;
+import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -28,10 +30,20 @@ import com.craftingveloce.network.pipe.VeloceNodeBlocks;
  * {@code EnergyStorage}, a zuzywa sie wylacznie przy przepalaniu w crafterze.
  * Dzieki temu piec nic nie robi, gdy nikt nie craftuje.
  */
-public class VeloceElectricFurnaceBlock extends BaseEntityBlock implements EntityBlock {
+public class VeloceElectricFurnaceBlock extends BaseEntityBlock
+        implements EntityBlock, VeloceNetworkNode {
 
     public VeloceElectricFurnaceBlock(Properties properties) {
         super(properties);
+    }
+
+    /**
+     * Piec elektryczny nie ma przodu ani tylu, wiec laczy sie z rura z kazdej
+     * strony - tak samo jak pozostale maszyny w modzie.
+     */
+    @Override
+    public boolean canConnectFrom(BlockState state, Direction towardPipe) {
+        return true;
     }
 
     @Override

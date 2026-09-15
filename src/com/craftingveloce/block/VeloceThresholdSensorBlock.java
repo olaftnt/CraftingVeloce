@@ -33,6 +33,7 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
@@ -58,7 +59,8 @@ import com.craftingveloce.network.pipe.VeloceNodeBlocks;
  * przewod polozony przy sensorze. Slabsze wyjscie zmuszaloby gracza do
  * zgadywania, gdzie wolno postawic przewod.
  */
-public class VeloceThresholdSensorBlock extends BaseEntityBlock implements EntityBlock, IInventoryCable {
+public class VeloceThresholdSensorBlock extends BaseEntityBlock
+        implements EntityBlock, IInventoryCable, VeloceNetworkNode {
 
     /** Czy sensor wystawia teraz prad. */
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;

@@ -1,12 +1,5 @@
 package com.craftingveloce.network.pipe;
 
-import com.craftingveloce.block.VeloceControllerBlock;
-import com.craftingveloce.block.VeloceCraftingTableBlock;
-import com.craftingveloce.block.VeloceElectricFurnaceBlock;
-import com.craftingveloce.block.VeloceExtractorBlock;
-import com.craftingveloce.block.VeloceThresholdSensorBlock;
-import com.craftingveloce.block.VeloceTomTerminalBlock;
-import com.craftingveloce.block.VeloceVelocityFurnaceBlock;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -30,8 +23,9 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>Dodatkowo kontroler nie trafial do {@code network.getTerminals()}, wiec
  * jego chunk nie byl utrzymywany w pamieci.
  *
- * <p>Teraz oba miejsca pytaja TE KLASE. Dodanie nowego wezla to jedna linia
- * w {@link #isNode} - i nie da sie juz zapomniec o drugim miejscu.
+ * <p>Teraz oba miejsca pytaja TE KLASE, a ta pyta JEDEN interfejs
+ * ({@link VeloceNetworkNode}). Dodanie nowego wezla to implementacja tego
+ * interfejsu w jego bloku - bez dotykania rdzenia i bez importu obcego moda.
  */
 public final class VeloceNodeBlocks {
 
@@ -43,16 +37,10 @@ public final class VeloceNodeBlocks {
      *
      * <p>Wezel to blok z wlasnym block entity, ktory musi byc symulowany
      * (dlatego jego chunk jest force-loadowany) albo ktory dostarcza sieci
-     * funkcji: terminal, kontroler, crafter, ekstraktor, piece.
+     * funkcji: terminal, kontroler, crafter, ekstraktor, sensor, piece.
      */
     public static boolean isNode(Block block) {
-        return block instanceof VeloceTomTerminalBlock
-                || block instanceof VeloceControllerBlock
-                || block instanceof VeloceCraftingTableBlock
-                || block instanceof VeloceExtractorBlock
-                || block instanceof VeloceVelocityFurnaceBlock
-                || block instanceof VeloceElectricFurnaceBlock
-                || block instanceof VeloceThresholdSensorBlock;
+        return block instanceof VeloceNetworkNode;
     }
 
     /**
@@ -68,28 +56,8 @@ public final class VeloceNodeBlocks {
      * @param towardPipe kierunek od wezla w strone rury
      */
     public static boolean connectsFrom(BlockState state, Block block, Direction towardPipe) {
-        if (block instanceof VeloceTomTerminalBlock terminal) {
-            return terminal.canConnectFrom(state, towardPipe);
-        }
-        if (block instanceof VeloceControllerBlock controller) {
-            return controller.canConnectFrom(state, towardPipe);
-        }
-        if (block instanceof VeloceCraftingTableBlock crafter) {
-            return crafter.canConnectFrom(state, towardPipe);
-        }
-        if (block instanceof VeloceExtractorBlock extractor) {
-            return extractor.canConnectFrom(state, towardPipe);
-        }
-        if (block instanceof VeloceThresholdSensorBlock sensor) {
-            return sensor.canConnectFrom(state, towardPipe);
-        }
-        // Piece nie maja wlasciwosci kierunku (nie maja FACING), wiec lacza sie
-        // kazda strona - tak samo jak pozostale maszyny w modzie.
-        if (block instanceof VeloceVelocityFurnaceBlock
-                || block instanceof VeloceElectricFurnaceBlock) {
-            return true;
-        }
-        return false;
+        return block instanceof VeloceNetworkNode node
+                && node.canConnectFrom(state, towardPipe);
     }
     /**
      * Wspolny hook: wezel wlasnie stanal w swiecie.
