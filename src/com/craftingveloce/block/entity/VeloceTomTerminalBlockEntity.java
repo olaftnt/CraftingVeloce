@@ -17,6 +17,7 @@ import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -29,6 +30,7 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Set;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -75,6 +77,42 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         syncCountsToPlayer(player);
     }
 
+    /**
+     * Liczy, ile sztuk ktorego itemu da sie jeszcze dorobic auto-craftingiem
+     * z obecnego stanu sieci. Uzywane do zoltej liczby "+N" w terminalu.
+     *
+     * <p>Zwraca tylko itemy z wlaczonym auto-craftingiem, dla ktorych wynik > 0.
+     * Gdy nie da sie nic dorobic (brak bazowych skladnikow), itemu nie ma w mapie
+     * - czyli wyswietla sie zero.
+     */
+    private Map<Item, Long> computeCraftableCounts() {
+        if (!(level instanceof ServerLevel sl)) {
+            return Map.of();
+        }
+        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                .getNetworkForTerminal(sl, worldPosition);
+        if (net == null) {
+            return Map.of();
+        }
+        Set<Item> enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getAllEnabledItems(sl, net);
+        if (enabled.isEmpty()) {
+            return Map.of();
+        }
+        Map<Item, ResourceLocation> preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getPreferredRecipes(sl, net);
+
+        Map<Item, Long> out = new HashMap<>();
+        for (Item item : enabled) {
+            long n = com.craftingveloce.crafting.VeloceAutoCrafter
+                    .countCraftableNow(sl, net, item, enabled, preferred);
+            if (n > 0) {
+                out.put(item, n);
+            }
+        }
+        return out;
+    }
+
     public void syncCountsToAllWatchers() {
         if (level == null || level.isClientSide || activeWatchingPlayers.isEmpty()) return;
         Map<Item, Long> counts = getAllStoredItemCounts();
@@ -84,7 +122,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
             if (sp == null || sp.hasDisconnected() || sp.distanceToSqr(worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5) > 64.0) {
                 it.remove();
             } else {
-                PacketDistributor.sendToPlayer(sp, new SyncTerminalCountsPKT(counts));
+                PacketDistributor.sendToPlayer(sp, new SyncTerminalCountsPKT(counts, computeCraftableCounts()));
             }
         }
     }
@@ -315,25 +353,27 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
                                            ItemStack requested, int count) {
         Item item = requested.getItem();
 
-        // Sprawdz, czy jakikolwiek crafter w tej sieci ma wlaczona recepture
-        // dla tego itemu. Bez tego nie craftujemy - gracz musi swiadomie wlaczyc.
-        var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
-                .findEnabledCrafter(sl, net, item);
-        if (enabled == null) {
+        // Craftujemy tylko to, co ma wlaczony auto-crafting w jakims crafterze sieci.
+        if (com.craftingveloce.crafting.VeloceCraftingRegistry
+                .findEnabledCrafter(sl, net, item) == null) {
             return ItemStack.EMPTY;
         }
 
-        // Preferowana receptura: ta, ktora gracz wybral dla danego klocka.
+        var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getAllEnabledItems(sl, net);
         var preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getPreferredRecipes(sl, net);
 
-        var result = com.craftingveloce.crafting.VeloceAutoCrafter.ensureAvailable(
-                sl, net, item, count, null, preferred);
+        var buffers = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getBuffers(sl, net);
+        var ctx = new com.craftingveloce.crafting.VeloceAutoCrafter.Context(
+                sl, net, enabled, preferred, null, buffers);
+
+        var result = com.craftingveloce.crafting.VeloceAutoCrafter
+                .ensureAvailable(sl, net, item, count, ctx);
         if (!result.success()) {
             return ItemStack.EMPTY;
         }
-
-        // Wynik zostal wlozony do sieci - wyciagnij go teraz dla gracza.
         return net.extractItem(sl, item, count);
     }
 }

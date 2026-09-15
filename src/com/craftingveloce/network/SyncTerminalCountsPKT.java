@@ -13,7 +13,20 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import java.util.HashMap;
 import java.util.Map;
 
-public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts) implements CustomPacketPayload {
+/**
+ * S→C: liczby itemow w sieci.
+ *
+ * <p>Niesie DWIE mapy:
+ * <ul>
+ *   <li>{@code itemCounts} - ile sztuk fizycznie jest w sieci (zielona liczba)</li>
+ *   <li>{@code craftableCounts} - ile sztuk da sie jeszcze dorobic
+ *       auto-craftingiem z tego, co jest (zolta liczba "+N").
+ *       Zero/brak wpisu = nie da sie nic dorobic.</li>
+ * </ul>
+ */
+public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts,
+                                    Map<Item, Long> craftableCounts)
+        implements CustomPacketPayload {
 
     public static final CustomPacketPayload.Type<SyncTerminalCountsPKT> TYPE =
             new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(CraftingVeloceMod.MODID, "sync_terminal_counts"));
@@ -21,6 +34,18 @@ public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts) implements Custo
     public static final StreamCodec<RegistryFriendlyByteBuf, SyncTerminalCountsPKT> STREAM_CODEC = new StreamCodec<>() {
         @Override
         public SyncTerminalCountsPKT decode(RegistryFriendlyByteBuf buf) {
+            Map<Item, Long> counts = readMap(buf);
+            Map<Item, Long> craftable = readMap(buf);
+            return new SyncTerminalCountsPKT(counts, craftable);
+        }
+
+        @Override
+        public void encode(RegistryFriendlyByteBuf buf, SyncTerminalCountsPKT pkt) {
+            writeMap(buf, pkt.itemCounts());
+            writeMap(buf, pkt.craftableCounts());
+        }
+
+        private Map<Item, Long> readMap(RegistryFriendlyByteBuf buf) {
             int size = buf.readVarInt();
             Map<Item, Long> map = new HashMap<>(size);
             for (int i = 0; i < size; i++) {
@@ -31,20 +56,22 @@ public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts) implements Custo
                     map.put(item, count);
                 }
             }
-            return new SyncTerminalCountsPKT(map);
+            return map;
         }
 
-        @Override
-        public void encode(RegistryFriendlyByteBuf buf, SyncTerminalCountsPKT pkt) {
-            Map<Item, Long> map = pkt.itemCounts();
+        private void writeMap(RegistryFriendlyByteBuf buf, Map<Item, Long> map) {
             buf.writeVarInt(map.size());
             for (Map.Entry<Item, Long> entry : map.entrySet()) {
-                int itemId = BuiltInRegistries.ITEM.getId(entry.getKey());
-                buf.writeVarInt(itemId);
+                buf.writeVarInt(BuiltInRegistries.ITEM.getId(entry.getKey()));
                 buf.writeVarLong(entry.getValue());
             }
         }
     };
+
+    /** Wsteczna zgodnosc: sam stock, bez craftable. */
+    public SyncTerminalCountsPKT(Map<Item, Long> itemCounts) {
+        this(itemCounts, Map.of());
+    }
 
     @Override
     public Type<? extends CustomPacketPayload> type() {
@@ -52,8 +79,7 @@ public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts) implements Custo
     }
 
     public static void handle(SyncTerminalCountsPKT pkt, IPayloadContext context) {
-        context.enqueueWork(() -> {
-            ClientTerminalHelper.handleSyncCounts(pkt.itemCounts());
-        });
+        context.enqueueWork(() -> ClientTerminalHelper.handleSyncCounts(
+                pkt.itemCounts(), pkt.craftableCounts()));
     }
 }

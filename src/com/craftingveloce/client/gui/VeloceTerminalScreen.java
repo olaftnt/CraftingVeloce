@@ -31,6 +31,9 @@ public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
     private final BlockPos terminalPos;
     private Map<Item, Long> networkCounts = new HashMap<>();
 
+    /** Ile sztuk da sie dorobic auto-craftingiem (zolta liczba "+N"). */
+    private Map<Item, Long> craftableCounts = new HashMap<>();
+
     @Nullable
     private GameType modeBeforeShop;
 
@@ -64,7 +67,12 @@ public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
     }
 
     public void updateNetworkCounts(Map<Item, Long> counts) {
+        updateNetworkCounts(counts, Map.of());
+    }
+
+    public void updateNetworkCounts(Map<Item, Long> counts, Map<Item, Long> craftable) {
         this.networkCounts = new HashMap<>(counts);
+        this.craftableCounts = new HashMap<>(craftable);
     }
 
     @Override
@@ -96,6 +104,13 @@ public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
             if (count > 0) {
                 drawCountOverlay(graphics, this.font, count, slot.x, slot.y);
             }
+            // Liczba sztuk, ktore da sie dorobic auto-craftingiem.
+            // Pokazywana jako "+N" w lewym gornym rogu - zolta, zeby odroznic
+            // od zielonego stocku. Zero nie jest rysowane.
+            long craftable = craftableCounts.getOrDefault(stack.getItem(), 0L);
+            if (craftable > 0) {
+                drawCraftableOverlay(graphics, this.font, craftable, slot.x, slot.y);
+            }
         }
     }
 
@@ -125,6 +140,31 @@ public class VeloceTerminalScreen extends CreativeModeInventoryScreen {
         int textX = (int) (((float) x + 16.0f - font.width(text) * scaleFactor) * inverseScale);
         int textY = (int) (((float) y + 16.0f - 7.0f * scaleFactor) * inverseScale);
         graphics.drawString(font, text, textX, textY, 0x55FF55, true); // bright green
+        graphics.pose().popPose();
+        RenderSystem.enableDepthTest();
+    }
+
+    /**
+     * Rysuje liczbe mozliwych do wycraftowania sztuk (np. "+12") w lewym gornym
+     * rogu slotu. Pokazywane tylko gdy auto-crafting danego itemu jest wlaczony
+     * i faktycznie da sie cos dorobic.
+     */
+    private void drawCraftableOverlay(GuiGraphics graphics, Font font, long craftable, int x, int y) {
+        if (craftable <= 0) {
+            return;
+        }
+        float scaleFactor = 0.6f;
+        RenderSystem.disableDepthTest();
+        RenderSystem.disableBlend();
+        String text = "+" + formatCount(craftable);
+        graphics.pose().pushPose();
+        graphics.pose().scale(scaleFactor, scaleFactor, scaleFactor);
+        graphics.pose().translate(0, 0, 450);
+        float inverseScale = 1.0f / scaleFactor;
+        int textX = (int) (((float) x + 1.0f) * inverseScale);
+        int textY = (int) (((float) y + 1.0f) * inverseScale);
+        // Zolty = dorobione auto-craftingiem (odroznienie od zielonego stocku).
+        graphics.drawString(font, text, textX, textY, 0xFFD700, true);
         graphics.pose().popPose();
         RenderSystem.enableDepthTest();
     }

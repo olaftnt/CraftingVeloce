@@ -160,10 +160,16 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
             return ItemStack.EMPTY;
         }
 
+        var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getAllEnabledItems(sl, net);
         var preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getPreferredRecipes(sl, net);
-        var result = com.craftingveloce.crafting.VeloceAutoCrafter.ensureAvailable(
-                sl, net, item, count, null, preferred);
+        var buffers = com.craftingveloce.crafting.VeloceCraftingRegistry
+                .getBuffers(sl, net);
+        var ctx = new com.craftingveloce.crafting.VeloceAutoCrafter.Context(
+                sl, net, enabled, preferred, null, buffers);
+        var result = com.craftingveloce.crafting.VeloceAutoCrafter
+                .ensureAvailable(sl, net, item, count, ctx);
         if (!result.success()) {
             return ItemStack.EMPTY;
         }

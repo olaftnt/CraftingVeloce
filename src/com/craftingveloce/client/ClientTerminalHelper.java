@@ -17,9 +17,14 @@ public class ClientTerminalHelper {
     }
 
     public static void handleSyncCounts(Map<Item, Long> itemCounts) {
+        handleSyncCounts(itemCounts, Map.of());
+    }
+
+    public static void handleSyncCounts(Map<Item, Long> itemCounts,
+                                        Map<Item, Long> craftableCounts) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof VeloceTerminalScreen screen) {
-            screen.updateNetworkCounts(itemCounts);
+            screen.updateNetworkCounts(itemCounts, craftableCounts);
         } else if (mc.screen instanceof com.craftingveloce.client.gui.VeloceFilterPickerScreen screen) {
             screen.updateNetworkCounts(itemCounts);
         }

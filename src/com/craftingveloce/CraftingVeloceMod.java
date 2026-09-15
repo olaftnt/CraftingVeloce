@@ -68,6 +68,13 @@ public class CraftingVeloceMod {
                     VeloceRegistry.VELOCE_EXTRACTOR_BE.get(),
                     (be, side) -> new net.neoforged.neoforge.items.wrapper.InvWrapper(be.getOutputInventory())
             );
+            // Bufor auto-craftera - dzieki temu nadwyzka produkcji jest normalnie
+            // widoczna dla sieci (rury, terminal, extractor).
+            event.registerBlockEntity(
+                    net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
+                    VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(),
+                    (be, side) -> new net.neoforged.neoforge.items.wrapper.InvWrapper(be.getBuffer())
+            );
         });
 
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {

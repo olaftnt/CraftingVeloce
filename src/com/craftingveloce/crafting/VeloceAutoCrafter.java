@@ -19,37 +19,33 @@ import java.util.Set;
 /**
  * Silnik auto-craftowania Veloce.
  *
- * <p>Potrafi wyprodukowac item "z niczego" (z punktu widzenia gracza), o ile
- * wszystkie skladniki sa dostepne w sieci lub da sie je wycraftowac rekurencyjnie
- * z tego, co w sieci jest. Craftowanie jest <b>natychmiastowe</b> - nie ma
- * fizycznego bloku posredniego, przez ktory przechodza itemy. Auto crafter
- * dziala "w tle" sieci, dokladnie tak jak opisano w zalozeniach projektu.
+ * <p><b>Zasada nadrzedna:</b> craftujemy TYLKO to, co gracz swiadomie wlaczyl
+ * (auto-crafting ON dla danego itemu). Rekursja schodzi w dol wylacznie po
+ * itemach z wlaczonym auto-craftingiem. Skladnik bez wlaczonego auto-craftingu
+ * musi po prostu byc na stocku - inaczej cala operacja konczy sie
+ * niepowodzeniem i <b>nic</b> nie jest craftowane.
  *
- * <p>Algorytm:
+ * <p>Dzieki temu nie powstaja "itemy nie wiadomo skad" (np. patyczki przy
+ * wylaczonym craftowaniu patyczkow).
+ *
+ * <p>Algorytm jest dwufazowy:
  * <ol>
- *   <li>Sprawdz, czy item jest juz w sieci w wystarczajacej ilosci.</li>
- *   <li>Jesli nie - wybierz recepture (z uwzglednieniem priorytetu gracza)
- *       i sprobuj zapewnic kazdy skladnik rekurencyjnie.</li>
- *   <li>Jesli receptura jest niewykonalna (brakuje bazowego surowca), sprobuj
- *       nastepna recepture tego itemu.</li>
- *   <li>Wykonaj recepture: pobierz skladniki z sieci, wstaw wynik do sieci.</li>
+ *   <li><b>Planowanie</b> - czysta symulacja na liczbach, bez ruszania itemow.</li>
+ *   <li><b>Wykonanie</b> - dopiero gdy plan sie zgadza, fizycznie pobiera
+ *       skladniki i wklada wyniki.</li>
  * </ol>
+ * Dzieki rozdzieleniu faz nie ma sytuacji, w ktorej czesc skladnikow zostala
+ * juz zuzyta, a craftowanie sie nie udalo.
  */
 public final class VeloceAutoCrafter {
 
-    /** Maksymalna glebokosc rekurencji - zabezpieczenie przed petlami receptur. */
-    private static final int MAX_DEPTH = 16;
-
-    /**
-     * Limit pracy na jedno zadanie, zeby zle zadanie nie zamrozilo serwera.
-     * Liczy kazda probe craftu.
-     */
-    private static final int MAX_OPERATIONS = 4096;
+    private static final int MAX_DEPTH = 24;
+    private static final int MAX_PLAN_STEPS = 8192;
 
     private VeloceAutoCrafter() {
     }
 
-    /** Wynik proby craftowania. */
+    /** Wynik operacji. */
     public record CraftResult(boolean success, int produced, String reason) {
         static CraftResult ok(int produced) {
             return new CraftResult(true, produced, "");
@@ -61,23 +57,62 @@ public final class VeloceAutoCrafter {
     }
 
     /**
+     * Kontekst operacji: co gracz wlaczyl, jakie receptury preferuje,
+     * oraz co jest dostepne.
+     */
+    public static final class Context {
+        final ServerLevel level;
+        final VelocePipeNetwork network;
+        /** Itemy z wlaczonym auto-craftingiem (tylko te wolno craftowac). */
+        final Set<Item> enabledItems;
+        /** Preferowane receptury (item -> recipe id). */
+        final Map<Item, ResourceLocation> preferred;
+        /** Ekwipunek gracza (moze byc null) - ma priorytet przy pobieraniu. */
+        @Nullable
+        final ItemInventory inventory;
+
+        /**
+         * Bufory crafterow (pamiec podreczna). Nadwyzka produkcji trafia tutaj
+         * i jest normalnie dostepna dla sieci.
+         */
+        @Nullable
+        final List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers;
+
+        public Context(ServerLevel level, VelocePipeNetwork network,
+                       Set<Item> enabledItems, Map<Item, ResourceLocation> preferred,
+                       @Nullable ItemInventory inventory) {
+            this(level, network, enabledItems, preferred, inventory, null);
+        }
+
+        public Context(ServerLevel level, VelocePipeNetwork network,
+                       Set<Item> enabledItems, Map<Item, ResourceLocation> preferred,
+                       @Nullable ItemInventory inventory,
+                       @Nullable List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers) {
+            this.level = level;
+            this.network = network;
+            this.enabledItems = enabledItems;
+            this.preferred = preferred;
+            this.inventory = inventory;
+            this.buffers = buffers;
+        }
+
+        boolean isEnabled(Item item) {
+            return enabledItems.contains(item);
+        }
+    }
+
+    /**
      * Zapewnia, ze w sieci bedzie co najmniej {@code count} sztuk {@code item}.
-     * Jesli trzeba - dotwarza brakujaca ilosc.
-     *
-     * @param network   siec, z ktorej korzystamy (i do ktorej wkladamy wynik)
-     * @param inventory dodatkowe zrodlo/przeznaczenie - ekwipunek gracza
-     *                  (priorytet wyciagania: ekwipunek -> siec -> crafting)
+     * Craftuje brakujaca ilosc, jesli item ma wlaczony auto-crafting.
      */
     public static CraftResult ensureAvailable(ServerLevel level, VelocePipeNetwork network,
-                                              Item item, int count,
-                                              @Nullable ItemInventory inventory,
-                                              @Nullable Map<Item, ResourceLocation> preferredRecipes) {
+                                              Item item, int count, Context ctx) {
         if (count <= 0) {
             return CraftResult.fail("niepoprawna ilosc");
         }
 
-        // 1. Ekwipunek gracza ma priorytet (nie marnujemy sieci).
-        int inInventory = inventory == null ? 0 : inventory.count(item);
+        // 1. Ekwipunek gracza ma priorytet.
+        int inInventory = ctx.inventory == null ? 0 : ctx.inventory.count(item);
         if (inInventory >= count) {
             return CraftResult.ok(count);
         }
@@ -89,89 +124,106 @@ public final class VeloceAutoCrafter {
             return CraftResult.ok(count);
         }
 
-        // 3. Brakuje - trzeba wycraftowac.
+        // 3. Brakuje - trzeba wycraftowac. Wolno tylko gdy wlaczone.
         int missing = (int) Math.min(Integer.MAX_VALUE, count - available);
-        Set<Item> visiting = new HashSet<>();
-        Map<Item, Integer> budget = new HashMap<>();
-        int[] operations = {0};
+        if (!ctx.isEnabled(item)) {
+            return CraftResult.fail("brak na stocku (auto-crafting wyłączony)");
+        }
 
-        List<ResourceLocation> order = preferredOrder(level, item, preferredRecipes);
-        boolean crafted = craftItem(level, network, item, missing, inventory,
-                preferredRecipes, visiting, budget, operations, order, 0);
+        // Faza 1: planowanie (symulacja na liczbach).
+        Map<Item, Long> stock = snapshotStock(ctx);
+        Plan plan = new Plan();
+        if (!plan(level, ctx, item, missing, stock, plan, new HashSet<>(), 0)) {
+            return CraftResult.fail("brak bazowych składników");
+        }
 
-        if (!crafted) {
-            return CraftResult.fail("brak skladnikow do wycraftowania");
+        // Faza 2: wykonanie dokladnie tego, co zaplanowano.
+        if (!execute(level, ctx, plan)) {
+            return CraftResult.fail("nie udało się pobrać składników");
         }
         return CraftResult.ok(count);
     }
 
-    /** Kolejnosc receptur dla itemu - najpierw preferowana przez gracza. */
-    private static List<ResourceLocation> preferredOrder(ServerLevel level, Item item,
-                                                         @Nullable Map<Item, ResourceLocation> preferred) {
-        List<ResourceLocation> order = new ArrayList<>();
-        ResourceLocation pref = preferred == null ? null : preferred.get(item);
-        if (pref != null) {
-            order.add(pref);
+    /**
+     * Ile sztuk danego itemu da sie uzyskac z tego, co jest obecnie dostepne.
+     * Bierze pod uwage rekurencyjne craftowanie (tylko itemow wlaczonych).
+     *
+     * @return przewidywana liczba sztuk (0 gdy nic nie da sie zrobic)
+     */
+    public static long countCraftableNow(ServerLevel level, VelocePipeNetwork network,
+                                         Item item, Set<Item> enabledItems,
+                                         Map<Item, ResourceLocation> preferred) {
+        if (!enabledItems.contains(item)) {
+            return network.getAllItemCounts(level).getOrDefault(item, 0L);
         }
-        for (VeloceRecipeRegistry.CraftingEntry e : VeloceRecipeRegistry.getRecipesFor(level, item)) {
-            if (pref == null || !e.id().equals(pref)) {
-                order.add(e.id());
-            }
+        Map<Item, Long> stock = new HashMap<>(network.getAllItemCounts(level));
+        return maxCraftable(level, item, stock, enabledItems, new HashSet<>(), 0);
+    }
+
+    // ------------------------------------------------------------------
+    // Faza planowania - czysta arytmetyka na liczbach
+    // ------------------------------------------------------------------
+
+    /** Plan: ile razy wykonac ktora recepture, w kolejnosci wykonania. */
+    static final class Plan {
+        final List<PlannedRun> runs = new ArrayList<>();
+
+        void add(VeloceRecipeRegistry.CraftingEntry recipe, long times) {
+            runs.add(new PlannedRun(recipe, times));
         }
-        return order;
+    }
+
+    record PlannedRun(VeloceRecipeRegistry.CraftingEntry recipe, long times) {
     }
 
     /**
-     * Probuje wycraftowac {@code amount} sztuk itemu, rekurencyjnie zapewniajac
-     * skladniki. Zwraca true, jesli udalo sie osiagnac cel.
+     * Planuje uzyskanie {@code amount} sztuk {@code item}.
+     * Modyfikuje {@code stock} (symulacja zuzycia). Nie rusza swiata.
      */
-    private static boolean craftItem(ServerLevel level, VelocePipeNetwork network,
-                                     Item item, int amount,
-                                     @Nullable ItemInventory inventory,
-                                     @Nullable Map<Item, ResourceLocation> preferred,
-                                     Set<Item> visiting, Map<Item, Integer> budget,
-                                     int[] operations, List<ResourceLocation> order,
-                                     int depth) {
+    private static boolean plan(ServerLevel level, Context ctx, Item item, long amount,
+                                Map<Item, Long> stock, Plan plan, Set<Item> visiting, int depth) {
         if (amount <= 0) {
             return true;
         }
-        if (depth > MAX_DEPTH) {
+        if (depth > MAX_DEPTH || plan.runs.size() > MAX_PLAN_STEPS) {
             return false;
         }
-        if (operations[0]++ > MAX_OPERATIONS) {
-            return false;
-        }
-        // Ochrona przed cyklami (A wymaga B, B wymaga A).
         if (!visiting.add(item)) {
-            return false;
+            return false;   // cykl receptur
         }
         try {
-            List<VeloceRecipeRegistry.CraftingEntry> recipes = VeloceRecipeRegistry.getRecipesFor(level, item);
+            // Najpierw zuzyj to, co juz jest na stanie.
+            long have = stock.getOrDefault(item, 0L);
+            long fromStock = Math.min(have, amount);
+            stock.put(item, have - fromStock);
+            long remaining = amount - fromStock;
+            if (remaining <= 0) {
+                return true;
+            }
+
+            // Rekursja tylko dla wlaczonych itemow.
+            if (!ctx.isEnabled(item)) {
+                return false;
+            }
+
+            List<VeloceRecipeRegistry.CraftingEntry> recipes =
+                    orderRecipes(level, item, ctx.preferred);
             if (recipes.isEmpty()) {
                 return false;
             }
 
-            // Ustaw receptury w kolejnosci preferencji gracza.
-            List<VeloceRecipeRegistry.CraftingEntry> ordered = new ArrayList<>();
-            for (ResourceLocation id : order) {
-                for (VeloceRecipeRegistry.CraftingEntry e : recipes) {
-                    if (e.id().equals(id)) {
-                        ordered.add(e);
-                    }
-                }
-            }
-            for (VeloceRecipeRegistry.CraftingEntry e : recipes) {
-                if (!ordered.contains(e)) {
-                    ordered.add(e);
-                }
-            }
-
-            // Sprobuj kolejne receptury - jesli pierwsza jest niewykonalna
-            // (brak skladnikow), przechodzimy do nastepnej.
-            for (VeloceRecipeRegistry.CraftingEntry recipe : ordered) {
-                if (tryRecipe(level, network, recipe, amount, inventory, preferred,
-                        visiting, budget, operations, depth)) {
+            // Probuj kolejne receptury - pierwsza wykonalna wygrywa.
+            for (VeloceRecipeRegistry.CraftingEntry recipe : recipes) {
+                Map<Item, Long> snapshot = new HashMap<>(stock);
+                int planMark = plan.runs.size();
+                if (planRecipe(level, ctx, recipe, remaining, stock, plan, visiting, depth)) {
                     return true;
+                }
+                // Receptura nie wyszla - cofnij symulacje.
+                stock.clear();
+                stock.putAll(snapshot);
+                while (plan.runs.size() > planMark) {
+                    plan.runs.remove(plan.runs.size() - 1);
                 }
             }
             return false;
@@ -180,116 +232,176 @@ public final class VeloceAutoCrafter {
         }
     }
 
-    /** Proba wykonania jednej konkretnej receptury {@code runs} razy. */
-    private static boolean tryRecipe(ServerLevel level, VelocePipeNetwork network,
-                                     VeloceRecipeRegistry.CraftingEntry recipe, int amount,
-                                     @Nullable ItemInventory inventory,
-                                     @Nullable Map<Item, ResourceLocation> preferred,
-                                     Set<Item> visiting, Map<Item, Integer> budget,
-                                     int[] operations, int depth) {
-        int perCraft = Math.max(1, recipe.result().getCount());
-        int runs = (amount + perCraft - 1) / perCraft;
+    /**
+     * Planuje wykonanie jednej receptury tyle razy, by uzyskac {@code amount}.
+     * Dla kazdego skladnika wybiera JEDNA opcje i zapewnia jej pelna ilosc.
+     */
+    private static boolean planRecipe(ServerLevel level, Context ctx,
+                                      VeloceRecipeRegistry.CraftingEntry recipe, long amount,
+                                      Map<Item, Long> stock, Plan plan,
+                                      Set<Item> visiting, int depth) {
+        long perCraft = Math.max(1, recipe.result().getCount());
+        long times = (amount + perCraft - 1) / perCraft;
+        if (times <= 0 || times > MAX_PLAN_STEPS) {
+            return false;
+        }
 
-        // Zapewnij wszystkie skladniki.
+        // Najpierw zaplanuj skladniki (rekurencja), potem zapisz siebie.
         for (Ingredient ing : recipe.ingredients()) {
-            ItemStack[] options = ing.getItems();
-            if (options.length == 0) {
+            List<ItemStack> options = nonEmpty(ing);
+            if (options.isEmpty()) {
                 continue;
             }
-            // Wybierz opcje, ktorej mamy najwiecej / ktora da sie zapewnic.
-            if (!ensureIngredient(level, network, ing, runs, inventory, preferred,
-                    visiting, budget, operations, depth + 1)) {
+            Map<Item, Long> snapshot = new HashMap<>(stock);
+            int planMark = plan.runs.size();
+
+            boolean supplied = false;
+            for (ItemStack opt : options) {
+                Item optItem = opt.getItem();
+                long avail = stock.getOrDefault(optItem, 0L);
+                long need = times;
+                if (avail >= need) {
+                    stock.put(optItem, avail - need);
+                    supplied = true;
+                    break;
+                }
+                // Sprobuj dotworzyc brakujaca czesc.
+                long lacking = need - avail;
+                Map<Item, Long> snap2 = new HashMap<>(stock);
+                int mark2 = plan.runs.size();
+                stock.put(optItem, 0L);
+                if (plan(level, ctx, optItem, lacking, stock, plan, visiting, depth + 1)) {
+                    supplied = true;
+                    break;
+                }
+                stock.clear();
+                stock.putAll(snap2);
+                while (plan.runs.size() > mark2) {
+                    plan.runs.remove(plan.runs.size() - 1);
+                }
+            }
+            if (!supplied) {
+                stock.clear();
+                stock.putAll(snapshot);
+                while (plan.runs.size() > planMark) {
+                    plan.runs.remove(plan.runs.size() - 1);
+                }
                 return false;
             }
         }
 
-        // Wykonaj craftowanie: pobierz skladniki i wstaw wynik.
-        for (int i = 0; i < runs; i++) {
-            if (operations[0]++ > MAX_OPERATIONS) {
-                return false;
+        plan.add(recipe, times);
+        return true;
+    }
+
+    /**
+     * Maksymalna liczba sztuk itemu mozliwa do uzyskania z danego stanu
+     * (symulacja, bez wykonywania). Uwzglednia rekursje dla wlaczonych itemow.
+     */
+    private static long maxCraftable(ServerLevel level, Item item, Map<Item, Long> stock,
+                                     Set<Item> enabled, Set<Item> visiting, int depth) {
+        if (depth > MAX_DEPTH || !visiting.add(item)) {
+            return 0L;
+        }
+        try {
+            long fromStock = stock.getOrDefault(item, 0L);
+            if (!enabled.contains(item)) {
+                return fromStock;
             }
-            NonNullList<ItemStack> consumed = NonNullList.create();
-            boolean ok = true;
-            for (Ingredient ing : recipe.ingredients()) {
-                ItemStack taken = takeOne(level, network, ing, inventory);
-                if (taken.isEmpty()) {
-                    ok = false;
-                    break;
+            var recipes = VeloceRecipeRegistry.getRecipesFor(level, item);
+            if (recipes.isEmpty()) {
+                return fromStock;
+            }
+            long best = fromStock;
+            for (var recipe : recipes) {
+                long runs = maxRuns(level, recipe, stock, enabled, visiting, depth);
+                if (runs > 0) {
+                    long produced = fromStock + runs * Math.max(1, recipe.result().getCount());
+                    best = Math.max(best, produced);
                 }
-                consumed.add(taken);
             }
-            if (!ok) {
-                // Zwroc to, co juz zabralismy, zeby nie zgubic itemow.
-                for (ItemStack s : consumed) {
-                    deposit(level, network, s);
+            return best;
+        } finally {
+            visiting.remove(item);
+        }
+    }
+
+    /** Ile razy da sie wykonac recepture, majac dany stan (z rekursja). */
+    private static long maxRuns(ServerLevel level, VeloceRecipeRegistry.CraftingEntry recipe,
+                                Map<Item, Long> stock, Set<Item> enabled,
+                                Set<Item> visiting, int depth) {
+        long limit = Long.MAX_VALUE;
+        for (Ingredient ing : recipe.ingredients()) {
+            List<ItemStack> options = nonEmpty(ing);
+            if (options.isEmpty()) {
+                continue;
+            }
+            long bestForIng = 0;
+            for (ItemStack opt : options) {
+                Item optItem = opt.getItem();
+                long avail = stock.getOrDefault(optItem, 0L);
+                long total = avail;
+                if (enabled.contains(optItem) && depth < MAX_DEPTH && !visiting.contains(optItem)) {
+                    Map<Item, Long> copy = new HashMap<>(stock);
+                    long withCrafting = maxCraftable(level, optItem, copy, enabled, visiting, depth + 1);
+                    total = Math.max(total, withCrafting);
                 }
-                return false;
+                bestForIng = Math.max(bestForIng, total);
             }
-            ItemStack result = recipe.result().copy();
-            deposit(level, network, result);
+            if (bestForIng <= 0) {
+                return 0L;
+            }
+            limit = Math.min(limit, bestForIng);
+        }
+        return limit == Long.MAX_VALUE ? 0L : limit;
+    }
+
+    // ------------------------------------------------------------------
+    // Faza wykonania - fizyczne ruszanie itemow
+    // ------------------------------------------------------------------
+
+    private static boolean execute(ServerLevel level, Context ctx, Plan plan) {
+        // Plan jest w kolejnosci post-order: skladniki produkowane przed uzyciem.
+        for (PlannedRun run : plan.runs) {
+            for (long i = 0; i < run.times(); i++) {
+                if (!runOnce(level, ctx, run.recipe())) {
+                    return false;
+                }
+            }
         }
         return true;
     }
 
-    /** Zapewnia, ze skladnik jest dostepny w potrzebnej ilosci. */
-    private static boolean ensureIngredient(ServerLevel level, VelocePipeNetwork network,
-                                            Ingredient ing, int runs,
-                                            @Nullable ItemInventory inventory,
-                                            @Nullable Map<Item, ResourceLocation> preferred,
-                                            Set<Item> visiting, Map<Item, Integer> budget,
-                                            int[] operations, int depth) {
-        int needed = runs;
-        ItemStack[] options = ing.getItems();
-        if (options.length == 0) {
-            return true;
-        }
-
-        // Ile juz mamy lacznie (ekwipunek + siec) sposrod wszystkich opcji?
-        int have = 0;
-        for (ItemStack opt : options) {
-            if (opt.isEmpty()) {
-                continue;
+    /** Jedno wykonanie receptury: pobierz skladniki, wstaw wynik. */
+    private static boolean runOnce(ServerLevel level, Context ctx,
+                                   VeloceRecipeRegistry.CraftingEntry recipe) {
+        NonNullList<ItemStack> consumed = NonNullList.create();
+        for (Ingredient ing : recipe.ingredients()) {
+            ItemStack taken = takeOne(level, ctx, ing);
+            if (taken.isEmpty()) {
+                // Zwrot pobranych - nie gubimy itemow.
+                for (ItemStack s : consumed) {
+                    deposit(level, ctx, s);
+                }
+                return false;
             }
-            have += inventory == null ? 0 : inventory.count(opt.getItem());
-            have += network.getAllItemCounts(level).getOrDefault(opt.getItem(), 0L);
+            consumed.add(taken);
         }
-        if (have >= needed) {
-            return true;
-        }
-
-        // Brakuje - probujemy dotworzyc kazda z opcji po kolei.
-        int missing = needed - have;
-        for (ItemStack opt : options) {
-            if (opt.isEmpty()) {
-                continue;
-            }
-            Item optItem = opt.getItem();
-            List<ResourceLocation> order = preferredOrder(level, optItem, preferred);
-            if (craftItem(level, network, optItem, missing, inventory, preferred,
-                    visiting, budget, operations, order, depth)) {
-                return true;
-            }
-        }
-        return false;
+        ItemStack result = recipe.result().copy();
+        deposit(level, ctx, result);
+        return true;
     }
 
-    /**
-     * Pobiera jedna sztuke pasujaca do skladnika.
-     * Priorytet: ekwipunek gracza -> siec.
-     */
-    private static ItemStack takeOne(ServerLevel level, VelocePipeNetwork network,
-                                     Ingredient ing, @Nullable ItemInventory inventory) {
-        for (ItemStack opt : ing.getItems()) {
-            if (opt.isEmpty()) {
-                continue;
-            }
-            if (inventory != null) {
-                ItemStack fromInv = inventory.extract(opt.getItem(), 1);
+    /** Pobiera jedna sztuke pasujaca do skladnika. Priorytet: ekwipunek -> siec. */
+    private static ItemStack takeOne(ServerLevel level, Context ctx, Ingredient ing) {
+        for (ItemStack opt : nonEmpty(ing)) {
+            if (ctx.inventory != null) {
+                ItemStack fromInv = ctx.inventory.extract(opt.getItem(), 1);
                 if (!fromInv.isEmpty()) {
                     return fromInv;
                 }
             }
-            ItemStack fromNet = network.extractItem(level, opt.getItem(), 1);
+            ItemStack fromNet = ctx.network.extractItem(level, opt.getItem(), 1);
             if (!fromNet.isEmpty()) {
                 return fromNet;
             }
@@ -297,25 +409,93 @@ public final class VeloceAutoCrafter {
         return ItemStack.EMPTY;
     }
 
-    /** Wklada wynik do sieci (do pierwszego endpointu, ktory go przyjmie). */
-    private static void deposit(ServerLevel level, VelocePipeNetwork network, ItemStack stack) {
+    /**
+     * Wklada wynik do sieci.
+     *
+     * <p>Kolejnosc: najpierw bufor craftera (pamiec podreczna na nadwyzke),
+     * potem zwykle endpointy sieci (skrzynie). Dzieki temu gdy z 1 logu
+     * powstana 4 deski, a gracz chcial 1 - pozostale 3 zostaja w buforze
+     * craftera i sa normalnie dostepne dla calej sieci.
+     */
+    private static void deposit(ServerLevel level, Context ctx, ItemStack stack) {
         if (stack.isEmpty()) {
             return;
         }
-        for (var endpoint : network.getEndpoints().values()) {
+        // 1. Bufor crafterow (pamiec podreczna).
+        if (ctx.buffers != null) {
+            for (var buf : ctx.buffers) {
+                stack = buf.insert(stack);
+                if (stack.isEmpty()) {
+                    return;
+                }
+            }
+        }
+        // 2. Zwykle endpointy sieci.
+        for (var endpoint : ctx.network.getEndpoints().values()) {
             if (endpoint.insertItem(level, stack)) {
                 return;
             }
         }
     }
 
-    /**
-     * Abstrakcja ekwipunku gracza - zeby silnik nie zalezal bezposrednio
-     * od klasy gracza i dal sie testowac.
-     */
+    // ------------------------------------------------------------------
+    // Pomocnicze
+    // ------------------------------------------------------------------
+
+    private static List<ItemStack> nonEmpty(Ingredient ing) {
+        List<ItemStack> out = new ArrayList<>();
+        for (ItemStack s : ing.getItems()) {
+            if (!s.isEmpty()) {
+                out.add(s);
+            }
+        }
+        return out;
+    }
+
+    /** Receptury w kolejnosci preferencji gracza. */
+    private static List<VeloceRecipeRegistry.CraftingEntry> orderRecipes(
+            ServerLevel level, Item item, Map<Item, ResourceLocation> preferred) {
+        List<VeloceRecipeRegistry.CraftingEntry> all =
+                VeloceRecipeRegistry.getRecipesFor(level, item);
+        if (all.size() <= 1) {
+            return all;
+        }
+        ResourceLocation pref = preferred.get(item);
+        if (pref == null) {
+            return all;
+        }
+        List<VeloceRecipeRegistry.CraftingEntry> ordered = new ArrayList<>(all.size());
+        for (var e : all) {
+            if (e.id().equals(pref)) {
+                ordered.add(e);
+            }
+        }
+        for (var e : all) {
+            if (!e.id().equals(pref)) {
+                ordered.add(e);
+            }
+        }
+        return ordered;
+    }
+
+    /** Migawka stanu sieci + ekwipunku do symulacji. */
+    private static Map<Item, Long> snapshotStock(Context ctx) {
+        Map<Item, Long> stock = new HashMap<>(ctx.network.getAllItemCounts(ctx.level));
+        if (ctx.inventory != null) {
+            for (Item it : ctx.inventory.allItems()) {
+                stock.merge(it, (long) ctx.inventory.count(it), Long::sum);
+            }
+        }
+        return stock;
+    }
+
+    /** Abstrakcja ekwipunku gracza - zeby silnik dal sie testowac. */
     public interface ItemInventory {
         int count(Item item);
 
         ItemStack extract(Item item, int max);
+
+        /** Wszystkie itemy w ekwipunku (do symulacji dostepnosci). */
+        Set<Item> allItems();
     }
 }

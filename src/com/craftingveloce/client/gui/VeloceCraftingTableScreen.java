@@ -260,12 +260,15 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
         graphics.pose().popPose();
         RenderSystem.enableDepthTest();
 
-        // Znacznik wielu receptur w prawym gornym rogu.
+        // Znacznik wielu receptur: maly symbol "⌥N" w prawym gornym rogu.
+        // Wczesniej byla tam sama cyfra, co bylo niejasne - teraz wiadomo,
+        // ze to liczba receptur, a nie sztuk.
         if (recipes.size() > 1) {
             graphics.pose().pushPose();
             graphics.pose().translate(0, 0, 250);
-            graphics.drawString(this.font, String.valueOf(recipes.size()),
-                    slot.x + 12, slot.y + 1, 0xFFFFFF, true);
+            String badge = "§e" + recipes.size() + "r";
+            graphics.drawString(this.font, badge, slot.x + 16 - this.font.width(badge),
+                    slot.y + 1, 0xFFFFFF, true);
             graphics.pose().popPose();
         }
     }
@@ -310,7 +313,7 @@ public class VeloceCraftingTableScreen extends CreativeModeInventoryScreen {
 
         lines.add(Component.empty());
         if (recipes.size() > 1) {
-            lines.add(Component.literal("§eShift+scroll §7zmienia recepture"));
+            lines.add(Component.literal("§e" + recipes.size() + " receptury §7- shift+scroll zmienia"));
         }
         lines.add(Component.literal("§7Klik: " + (enabledItems.contains(item)
                 ? "§cWYLACZ §7auto-crafting"

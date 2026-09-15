@@ -81,8 +81,25 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock implements EntityB
     @Override
     public void onRemove(BlockState state, Level world, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!state.is(newState.getBlock())) {
+            // Drop bufora nadwyzki - zeby itemy nie zniknely przy zniszczeniu bloku.
+            if (!world.isClientSide && world.getBlockEntity(pos) instanceof VeloceCraftingTableBlockEntity ctBE) {
+                dropBuffer(world, pos, ctBE);
+            }
             super.onRemove(state, world, pos, newState, isMoving);
         }
+    }
+
+    /** Wyrzuca cala zawartosc bufora na ziemie. */
+    private static void dropBuffer(Level world, BlockPos pos, VeloceCraftingTableBlockEntity be) {
+        var buffer = be.getBuffer();
+        for (int i = 0; i < buffer.getContainerSize(); i++) {
+            ItemStack stack = buffer.getItem(i);
+            if (!stack.isEmpty()) {
+                net.minecraft.world.Containers.dropItemStack(world,
+                        pos.getX(), pos.getY(), pos.getZ(), stack);
+            }
+        }
+        buffer.clearContent();
     }
 
     @Override

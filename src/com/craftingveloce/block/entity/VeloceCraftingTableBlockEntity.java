@@ -46,6 +46,23 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
     /** Item -> id receptury, ktora ma priorytet przy auto-craftowaniu. */
     private Map<Item, ResourceLocation> preferredRecipes = new HashMap<>();
 
+    /**
+     * Bufor nadwyzki produkcji - dostepny normalnie dla calej sieci.
+     * Gdy craftowanie daje wiecej niz gracz pobral (np. 1 log -> 4 deski,
+     * a chcial 1), reszta ladauje tutaj i mozna ja wyciagnac z terminala.
+     */
+    private final com.craftingveloce.inventory.VeloceCraftingBuffer buffer =
+            new com.craftingveloce.inventory.VeloceCraftingBuffer() {
+                @Override
+                public void setChanged() {
+                    VeloceCraftingTableBlockEntity.this.setChanged();
+                }
+            };
+
+    public com.craftingveloce.inventory.VeloceCraftingBuffer getBuffer() {
+        return buffer;
+    }
+
     public VeloceCraftingTableBlockEntity(BlockPos pos, BlockState state) {
         super(VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(), pos, state);
     }
@@ -151,6 +168,9 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
             }
         }
         tag.put("PreferredRecipes", prefs);
+
+        // Bufor nadwyzki produkcji.
+        tag.put("Buffer", buffer.saveTo(registries));
     }
 
     @Override
@@ -181,5 +201,8 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
                 }
             }
         }
+
+        // Bufor nadwyzki produkcji.
+        buffer.loadFrom(tag.getList("Buffer", Tag.TAG_COMPOUND), registries);
     }
 }

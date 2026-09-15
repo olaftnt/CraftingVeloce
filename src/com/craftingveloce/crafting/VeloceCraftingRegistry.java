@@ -77,4 +77,20 @@ public final class VeloceCraftingRegistry {
         }
         return out;
     }
+
+    /**
+     * Bufory wszystkich crafterow w sieci - pamiec podreczna na nadwyzke produkcji.
+     * Kolejnosc stabilna (kolejnosc terminali), zeby wyniki byly przewidywalne.
+     */
+    public static java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> getBuffers(
+            ServerLevel level, VelocePipeNetwork network) {
+        java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> out = new java.util.ArrayList<>();
+        for (BlockPos pos : network.getTerminals()) {
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be instanceof VeloceCraftingTableBlockEntity crafter) {
+                out.add(crafter.getBuffer());
+            }
+        }
+        return out;
+    }
 }
