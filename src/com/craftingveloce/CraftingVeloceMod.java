@@ -163,11 +163,6 @@ public class CraftingVeloceMod {
                         // na kazde przelaczenie itemu.
                         com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity
                                 .flushPendingSyncs(sl);
-                        // Zadania na zawartosci chunkow poza symulacja.
-                        // Wykonujemy je TU, a nie synchronicznie w miejscu
-                        // wywolania - wczytanie chunku z dysku nie moze
-                        // blokowac ticku tego, kto o item poprosil.
-                        com.craftingveloce.network.pipe.VeloceChunkTaskQueue.tick(sl);
                     }
                 });
 
@@ -198,9 +193,6 @@ public class CraftingVeloceMod {
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                         com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
                                 .clearPendingRebuilds();
-                        // Zadania chunkowe tez - bez tego po powrocie do swiata
-                        // wykonalyby sie na nieaktualnych pozycjach.
-                        com.craftingveloce.network.pipe.VeloceChunkTaskQueue.clear();
                         // Rozladowanie wymiaru != zamkniecie serwera. Uzywamy
                         // lżejszej sciezki, zeby nie wylaczyc force-loadingu
                         // pozostalym swiatom na stale.

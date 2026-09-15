@@ -395,51 +395,10 @@ public class ConnectedEndpointInfo {
     }
 
     /**
-     * Kolejkuje fizyczne zabranie itemu z tego magazynu.
-     *
-     * <p>Wolane, gdy magazyn jest w chunku poza symulacja. Zadanie trafi do
-     * {@link VeloceChunkTaskQueue}, ktora w swoim ticku zaladuje chunk,
-     * zabierze itemy i OD RAZU zwolni chunk - zeby gra mogla go rozladowac.
-     */
-    private void scheduleExtract(ServerLevel level, Item item, int maxCount) {
-        ConnectedEndpointInfo self = this;
-        VeloceChunkTaskQueue.submit(new VeloceChunkTaskQueue.Task() {
-            @Override
-            public long chunkKey() {
-                return ChunkPos.asLong(chunkPos.x, chunkPos.z);
-            }
-
-            @Override
-            public net.minecraft.core.BlockPos pos() {
-                return pos;
-            }
-
-            @Override
-            public VeloceChunkTaskQueue.Kind kind() {
-                return VeloceChunkTaskQueue.Kind.EXTRACT;
-            }
-
-            @Override
-            public String describe() {
-                return maxCount + "x " + item;
-            }
-
-            @Override
-            public ItemStack run(ServerLevel lvl) {
-                // Chunk jest juz zaladowany przez kolejke - robimy to samo,
-                // co sciezka synchroniczna, i odswiezamy cache.
-                ItemStack taken = self.extractNow(lvl, item, maxCount);
-                refreshIfLoaded(lvl);
-                return taken;
-            }
-        });
-    }
-
-    /**
      * Fizyczne zabranie itemu - BEZ sprawdzania i ladowania chunku.
      *
-     * <p>Wydzielone z {@link #extractItem}, zeby kolejka mogla wykonac sama
-     * czynnosc, gdy chunk jest juz zaladowany.
+     * <p>Wydzielone z {@link #extractItem} jako sciezka "chunk jest juz
+     * zaladowany" - nie sprawdza i nie wczytuje chunku samodzielnie.
      */
     public ItemStack extractNow(ServerLevel level, Item item, int maxCount) {
         if (type == Type.REFINED_STORAGE) {
@@ -500,8 +459,11 @@ public class ConnectedEndpointInfo {
             return ItemStack.EMPTY;
         }
 
+        // JEDNO miejsce, ktore fizycznie zabiera itemy - {@link #extractNow}.
+        // Wczesniej ta metoda miala wlasna, przeklejona kopie tej samej petli,
+        // wiec poprawka w jednej z nich nie docierala do drugiej.
         if (type == Type.REFINED_STORAGE) {
-            ItemStack extracted = RefinedStorageHelper.extractItem(level, pos, accessSide, new ItemStack(item), maxCount);
+            ItemStack extracted = extractNow(level, item, maxCount);
             if (!extracted.isEmpty()) {
                 refreshIfLoaded(level);
             }
@@ -512,99 +474,66 @@ public class ConnectedEndpointInfo {
         boolean wasLoaded = level.isLoaded(pos);
         long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
-            // CHUNK POZA SYMULACJA -> KOLEJKUJEMY, NIE LADUJEMY.
+            // WYCIAGANIE MUSI BYC SYNCHRONICZNE - i to jest krytyczne.
             //
-            // BUG, ktory tu byl: wolalismy getChunk(..., true), czyli
-            // BLOKUJACE, synchroniczne wczytanie chunku z dysku w srodku
-            // ticku serwera. Jedno wyciagniecie itemu z odleglej skrzyni to
-            // kilka do kilkudziesieciu milisekund zamulenia; przy serii
-            // operacji (auto-crafting, extractor w petli) tick sie rozjezdzal.
+            // ============================================================
+            // BUG, ktory tu byl (DUPLIKACJA): wersja z kolejka zwracala
+            // wolajacemu STOS OD RAZU, "na kredyt":
             //
-            // Teraz: decyzje podejmujemy na cache (skoro chunk jest
-            // rozladowany, jego zawartosc sie nie zmienila - wiec zapamietane
-            // liczby sa nadal prawdziwe), a fizyczne zabranie itemu robi
-            // kolejka zadan w swoim ticku.
+            //     scheduleExtract(...);                  // zrob to pozniej
+            //     return new ItemStack(item, cached);    // a tu wez teraz
+            //
+            // a kolejka, gdy juz fizycznie zabrala itemy, WYRZUCALA wynik
+            // (byl tylko logowany). Dopoki wszystko szlo zgodnie z zalozeniem,
+            // suma sie zgadzala. Wystarczylo jednak, ze obietnica nie zostala
+            // dotrzymana, i itemy mnozyly sie z niczego:
+            //   - kolejka byla pelna (MAX_QUEUE) i zadanie zostalo ODRZUCONE,
+            //   - chunku nie dalo sie wczytac,
+            //   - w skrzyni bylo mniej, niz mowil cache (hopper, inny gracz,
+            //     maszyna z innego moda) - obietnica wieksza od stanu,
+            //   - kontener zniknal.
+            // W kazdym z tych przypadkow gracz, crafter albo piec dostawal
+            // itemy, ktore NIE zostaly nikomu zabrane.
+            //
+            // Wolajacy MUSI znac prawdziwy wynik - inaczej nie da sie zachowac
+            // zasady "zabierz dokladnie tyle, ile wydales". Dlatego chunk
+            // wczytujemy tu i teraz, dokladnie tak samo jak przy wkladaniu.
+            // ============================================================
+            //
+            // Bez force-loadu: getChunk(..., true) wczytuje chunk na czas tego
+            // wywolania, a operacja konczy sie w tym samym ticku, wiec chunk
+            // wypada pozniej NORMALNYM mechanizmem gry. Budzet na tick chroni
+            // przed zamuleniem, gdy wolajacy idzie w petli (crafter, extractor).
             if (VeloceChunkLoader.isFrozen()) {
+                return ItemStack.EMPTY;
+            }
+            if (!VeloceChunkLoader.tryReserveOpLoad(level)) {
+                com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
+                        "budzet loadow wyczerpany (%d/tick) -> nic nie zabrano",
+                        VeloceChunkLoader.MAX_OP_LOADS_PER_TICK);
                 return ItemStack.EMPTY;
             }
             com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
                     com.craftingveloce.debug.ChunkOpNotifier.Op.EXTRACT);
-            long cached = cachedCounts.getOrDefault(item, 0L);
             com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
-                    "chunk UNLOADED -> kolejka; item=%s zadane=%d w cache=%d",
-                    item, maxCount, cached);
-            scheduleExtract(level, item, maxCount);
-            // Gracz widzi skutek od razu (item zniknie z listy), a serwer
-            // doważa go w tle.
-            return new ItemStack(item, Math.min(maxCount, (int) Math.min(
-                    Integer.MAX_VALUE, cached)));
+                    "chunk UNLOADED -> wczytuje na czas operacji (bez force); item=%s zadane=%d",
+                    item, maxCount);
+            level.getChunkSource().getChunk(
+                    chunkPos.x, chunkPos.z,
+                    net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true);
+        } else {
+            // Chunk byl juz zaladowany - liczymy to jako uzycie, zeby czesto
+            // odwiedzane chunki zostawaly w pamieci dluzej.
+            VeloceChunkLoader.noteUse(level, chunkKey);
+            com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
+                    "chunk LOADED -> zabranie natychmiast; item=%s zadane=%d w cache=%d",
+                    item, maxCount, cachedCounts.getOrDefault(item, 0L));
         }
-        // Chunk byl juz zaladowany - liczymy to jako uzycie, zeby czesto
-        // odwiedzane chunki zostawaly w pamieci dluzej.
-        VeloceChunkLoader.noteUse(level, chunkKey);
-        com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
-                "chunk LOADED -> zabranie natychmiast; item=%s zadane=%d w cache=%d",
-                item, maxCount, cachedCounts.getOrDefault(item, 0L));
 
-        ItemStack result = ItemStack.EMPTY;
-        try {
-            BlockState state = level.getBlockState(pos);
-            BlockEntity be = level.getBlockEntity(pos);
-            IItemHandler handler = Capabilities.ItemHandler.BLOCK.getCapability(level, pos, state, be, accessSide);
-            if (handler != null) {
-                int needed = maxCount;
-                for (int i = 0; i < handler.getSlots(); i++) {
-                    ItemStack inSlot = handler.getStackInSlot(i);
-                    if (!inSlot.isEmpty() && inSlot.getItem() == item) {
-                        ItemStack extracted = handler.extractItem(i, needed, false);
-                        if (!extracted.isEmpty()) {
-                            if (result.isEmpty()) {
-                                result = extracted.copy();
-                            } else {
-                                result.grow(extracted.getCount());
-                            }
-                            needed -= extracted.getCount();
-                            if (needed <= 0) break;
-                        }
-                    }
-                }
-            } else {
-                if (be instanceof Container container) {
-                    int needed = maxCount;
-                    for (int i = 0; i < container.getContainerSize(); i++) {
-                        ItemStack inSlot = container.getItem(i);
-                        if (!inSlot.isEmpty() && inSlot.getItem() == item) {
-                            int toTake = Math.min(needed, inSlot.getCount());
-                            ItemStack taken = container.removeItem(i, toTake);
-                            if (!taken.isEmpty()) {
-                                if (result.isEmpty()) {
-                                    result = taken.copy();
-                                } else {
-                                    result.grow(taken.getCount());
-                                }
-                                needed -= taken.getCount();
-                                if (needed <= 0) break;
-                            }
-                        }
-                    }
-                }
-            }
-
+        ItemStack result = extractNow(level, item, maxCount);
+        if (!result.isEmpty()) {
             refreshIfLoaded(level);
-        } catch (Throwable t) {
-            t.printStackTrace();
         }
-        // UWAGA: nie ma tu zadnego release("op:extract").
-        //
-        // Bylo - jako resztka po wersji, ktora wymuszala chunk synchronicznie.
-        // Gdy wprowadzono kolejke zadan, retain zniknal, a release zostal.
-        // Nie robil niczego zlego tylko dlatego, ze jest nieosiagalny: przy
-        // rozladowanym chunku metoda wychodzi wczesniej (zadanie do kolejki),
-        // wiec `!wasLoaded` w finally bylo zawsze falszywe. Martwy kod, ktory
-        // wygladal jak zywy - i dokladnie taki sam mechanizm (retain/release
-        // wokol jednorazowej operacji) powodowal petle load/unload przy
-        // wkladaniu.
-
         return result;
     }
 

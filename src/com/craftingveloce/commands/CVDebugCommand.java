@@ -176,19 +176,13 @@ public class CVDebugCommand {
                 "§7Stan: " + (on ? "§aON" : "§cOFF")
                         + " §7| operacje: " + (com.craftingveloce.debug.ChunkOpNotifier.isEnabled()
                         ? "§aON" : "§cOFF")), false);
-        // Kolejka zadan chunkowych - to ona robi operacje na odleglych
-        // magazynach BEZ blokowania ticku. Jesli rosnie, znaczy ze operacji
-        // jest wiecej niz jestesmy w stanie obsluzyc.
-        var queue = com.craftingveloce.network.pipe.VeloceChunkTaskQueue.pending();
+        // Budzet wczytywania chunkow na tick - teraz to JEDYNE ograniczenie
+        // tempa operacji na odleglych magazynach (kolejka zadan zniknela,
+        // bo zwracala itemy "na kredyt" i przy nieudanym zadaniu duplikowala).
         source.sendSuccess(() -> Component.literal(
-                "§7Kolejka zadan chunkowych: §f" + queue
-                        + " §7| wykonane: §f" + com.craftingveloce.network.pipe.VeloceChunkTaskQueue.completed()
-                        + " §7| odrzucone: §f" + com.craftingveloce.network.pipe.VeloceChunkTaskQueue.dropped()), false);
-        if (queue > 0) {
-            for (String line : com.craftingveloce.network.pipe.VeloceChunkTaskQueue.describePending(5)) {
-                source.sendSuccess(() -> Component.literal("  §8- §7" + line), false);
-            }
-        }
+                "§7Blocking chunk loads: §fmax "
+                        + com.craftingveloce.network.pipe.VeloceChunkLoader.MAX_OP_LOADS_PER_TICK
+                        + " §7/tick"), false);
         // Pelna lista trzymanych chunkow - od razu, bez drugiej komendy.
         executeListChunks(context);
         return 1;
@@ -321,16 +315,6 @@ public class CVDebugCommand {
         }
 
         // --- KOLEJKA ZADAN ---
-        var queue = com.craftingveloce.network.pipe.VeloceChunkTaskQueue.pending();
-        source.sendSuccess(() -> Component.literal(
-                "§b--- Kolejka zadan chunkowych: §f" + queue
-                        + " §7| wykonane: §f"
-                        + com.craftingveloce.network.pipe.VeloceChunkTaskQueue.completed()
-                        + " §7| odrzucone: §f"
-                        + com.craftingveloce.network.pipe.VeloceChunkTaskQueue.dropped()), false);
-        for (String line : com.craftingveloce.network.pipe.VeloceChunkTaskQueue.describePending(5)) {
-            source.sendSuccess(() -> Component.literal("  §8- §7" + line), false);
-        }
 
         source.sendSuccess(() -> Component.literal(
                 "§7Kliknij wspolrzedne bloku, aby sie teleportowac."), false);
