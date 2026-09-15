@@ -325,27 +325,73 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      * <p>Nasz wlasny slot zostaje w {@code menu.slots}, wiec klikanie dziala
      * dalej - obslugujemy je w {@link #slotClicked} podklas.
      */
-    private static java.lang.reflect.Field destroySlotField;
-    private static boolean destroySlotReflectionTried;
-
-    protected void disableVanillaTrashSlot() {
-        if (!destroySlotReflectionTried) {
-            destroySlotReflectionTried = true;
-            try {
-                destroySlotField = CreativeModeInventoryScreen.class
-                        .getDeclaredField("destroyItemSlot");
-                destroySlotField.setAccessible(true);
-            } catch (Throwable t) {
-                destroySlotField = null;
+    /**
+     * Wylacza vanillaowy slot niszczenia przedmiotow.
+     *
+     * <p><b>Dlaczego w ogole.</b> Vanilla trzyma ten slot w prywatnym polu
+     * {@code destroyItemSlot} i w {@code render()} rysuje na jego podstawie
+     * wlasny tooltip ("Destroy Item") - ZUPELNIE z pominięciem
+     * {@code getTooltipFromContainerItem}, wiec nadpisanie samego tooltipa nic
+     * nie dawalo (sprawdzone w bajtkocie). Ustawienie pola na {@code null}
+     * wylacza cala te obsluge.
+     *
+     * <p><b>Dlaczego po TYPIE, a nie po nazwie.</b> Poprzednia wersja szukala
+     * pola po nazwie ({@code "destroyItemSlot"}) i <b>polykala blad</b>.
+     * W srodowisku produkcyjnym nazwy moga byc zmapowane inaczej, wiec
+     * refleksja po nazwie jest krucha - a gdy zawodzila, "Destroy Item"
+     * zostawal na ekranie i nie bylo po czym poznac, ze cos nie zadzialalo.
+     *
+     * <p>Szukamy wiec po typie: jedyne NIEstatyczne pole typu {@code Slot}
+     * w tym ekranie to wlasnie kosz ({@code originalSlots} to lista, nie Slot).
+     * To dziala niezaleznie od nazewnictwa.
+     */
+    private void disableVanillaTrashSlot() {
+        int cleared = 0;
+        try {
+            for (java.lang.reflect.Field f : CreativeModeInventoryScreen.class.getDeclaredFields()) {
+                if (f.getType() != net.minecraft.world.inventory.Slot.class) {
+                    continue;
+                }
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    continue;
+                }
+                f.setAccessible(true);
+                f.set(this, null);
+                cleared++;
             }
-        }
-        if (destroySlotField == null) {
+        } catch (Throwable t) {
+            com.craftingveloce.util.VeloceLog.Gui.failure(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "nie udalo sie wylaczyc vanillaowego slotu kosza: %s", t);
             return;
         }
-        try {
-            destroySlotField.set(this, null);
-        } catch (Throwable ignored) {
+        if (cleared == 0) {
+            // Nie ma czego wylaczac albo zmienila sie implementacja - mowimy
+            // o tym raz, zamiast milczec i zostawic gracza z dwoma tooltipami.
+            if (!trashSlotMissingLogged) {
+                trashSlotMissingLogged = true;
+                com.craftingveloce.util.VeloceLog.Gui.failure(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "nie znaleziono pola slotu kosza w CreativeModeInventoryScreen "
+                                + "- vanilla tooltip 'Destroy Item' moze byc widoczny");
+            }
         }
+    }
+
+    /** Czy juz ostrzegalismy, ze nie ma pola kosza. */
+    private boolean trashSlotMissingLogged;
+
+    /**
+     * Czy patrzymy na zakladke Survival Inventory.
+     *
+     * <p>Tylko tam vanilla pokazuje swoj kosz (warunek w jej {@code render()}:
+     * {@code selectedTab.getType() == Type.INVENTORY}), wiec tylko tam ma sens
+     * nasz slot odkladania. W pozostalych zakladkach tego miejsca po prostu
+     * nie ma i rysowanie tam strzalki wygladalo jak blad.
+     */
+    protected boolean isSurvivalInventoryTab() {
+        CreativeModeTab tab = VeloceTerminalViewState.currentTab();
+        return tab != null && tab.getType() == CreativeModeTab.Type.INVENTORY;
     }
 
     /**
@@ -366,37 +412,70 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      * w teksturze creative inventory.
      */
     private void drawStoreSlotIcon(GuiGraphics graphics) {
+        if (!isSurvivalInventoryTab()) {
+            return;   // poza Survival Inventory to miejsce nie istnieje
+        }
         int x = this.leftPos + 173;
         int y = this.topPos + 112;
 
-        // Tlo slotu - zaslania krzyzyk z tekstury.
+        // Tlo slotu - zaslania krzyzyk wypalony w teksturze creative inventory.
         graphics.fill(x, y, x + 16, y + 16, 0xFFC6C6C6);
         graphics.fill(x, y, x + 16, y + 1, 0xFF8B8B8B);
         graphics.fill(x, y, x + 1, y + 16, 0xFF8B8B8B);
 
-        // Strzalka w prawo, ciemnozielona.
-        int cx = x + 3;
-        int cy = y + 7;
-        int color = 0xFF2F6B2F;
-        for (int i = 0; i < 5; i++) {
-            graphics.fill(cx + i, cy + i, cx + i + 1, cy + i + 1, color);
-            graphics.fill(cx + i, cy + 8 - i, cx + i + 1, cy + 9 - i, color);
+        drawArrowRight(graphics, x + 3, y + 4);
+    }
+
+    /**
+     * Strzalka w prawo: "odloz to do sieci".
+     *
+     * <p>Rysowana jako plaska figura (plaszcz + trojkatny gro), zeby byla
+     * czytelna w 16-pikselowym slocie. Poprzednia wersja skladala gro
+     * z pojedynczych pikseli po przekatnej, co wygladalo jak przypadkowe
+     * kleksy.
+     */
+    private static void drawArrowRight(GuiGraphics graphics, int x, int y) {
+        int color = 0xFF2E7D32;      // ciemna zielen - "siec"
+        int shadow = 0xFF1B5E20;
+
+        // Plaszcz strzalki: 2 px wysokosci.
+        graphics.fill(x, y + 3, x + 5, y + 5, color);
+        graphics.fill(x, y + 5, x + 5, y + 6, shadow);
+
+        // Gro: trojkat o podstawie 7 px, zwężajacy sie do czubka w prawo.
+        for (int i = 0; i < 4; i++) {
+            int half = 3 - i;
+            graphics.fill(x + 4 + i, y + 4 - half, x + 5 + i, y + 5 + half, color);
         }
-        graphics.fill(cx + 5, cy + 4, cx + 11, cy + 5, color);
+        // Cien pod grotem - tylko dolna krawedz, dla glebi.
+        for (int i = 0; i < 4; i++) {
+            int half = 3 - i;
+            graphics.fill(x + 4 + i, y + 4 + half, x + 5 + i, y + 5 + half, shadow);
+        }
     }
 
     /** Tooltip slotu odkladania - zamiast vanillaowego "Destroy Item". */
     private void drawStoreSlotTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!isSurvivalInventoryTab()) {
+            return;
+        }
         if (!this.isHovering(173, 112, 16, 16, mouseX, mouseY)) {
             return;
         }
-        graphics.renderTooltip(this.font, java.util.List.of(
-                Component.translatable("gui.craftingveloce.terminal.storeSlot"),
-                Component.translatable("gui.craftingveloce.terminal.storeHint")
-                        .withStyle(net.minecraft.ChatFormatting.GRAY),
-                Component.translatable("gui.craftingveloce.terminal.storeHintShift")
-                        .withStyle(net.minecraft.ChatFormatting.GRAY)
-        ), java.util.Optional.empty(), mouseX, mouseY);
+        // JEDEN Component z przejsciem do nowej linii - dokladnie ta sama
+        // sygnatura renderTooltip, ktorej vanilla uzywa dla kosza. Dzieki temu
+        // tooltip jest pozycjonowany IDENTYCZNIE (normalnie po prawej stronie
+        // kursora), a nie "gdzies po lewej".
+        //
+        // BUG, ktory tu byl: trzy osobne, BARDZO dlugie linie (jedna miala 61
+        // znakow) nie miescily sie po prawej stronie ekranu, wiec domyslny
+        // positioner odwracal tooltip na lewo. Krotki "Destroy Item" miescil sie
+        // i zostawal po prawej - dlatego widac bylo DWA tooltipy naraz.
+        Component tooltip = Component.translatable("gui.craftingveloce.terminal.storeSlot")
+                .append(Component.literal("\n"))
+                .append(Component.translatable("gui.craftingveloce.terminal.storeHint")
+                        .withStyle(net.minecraft.ChatFormatting.GRAY));
+        graphics.renderTooltip(this.font, tooltip, mouseX, mouseY);
     }
 
     @Override

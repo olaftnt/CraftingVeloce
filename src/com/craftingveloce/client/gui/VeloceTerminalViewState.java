@@ -147,13 +147,27 @@ public final class VeloceTerminalViewState {
     }
 
     /** Zakladka aktualnie wybrana w ekranie (moze byc null). */
+    /** Czy juz logowalismy awarie odczytu zakladki. */
+    private static boolean currentTabFailureLogged;
+
+    /** Biezaca zakladka (moze byc null, gdy refleksja zawiedzie). */
     static CreativeModeTab currentTab() {
         try {
             var f = CreativeModeInventoryScreen.class.getDeclaredField("selectedTab");
             f.setAccessible(true);
             Object v = f.get(null);
+            currentTabFailureLogged = false;
             return v instanceof CreativeModeTab tab ? tab : null;
         } catch (Throwable t) {
+            // Nie polykamy po cichu: od tego zalezy m.in. widocznosc slotu
+            // odkladania (rysujemy go tylko w Survival Inventory), wiec awaria
+            // tutaj objawialaby sie "zniknieta strzalka" bez sladu w logu.
+            if (!currentTabFailureLogged) {
+                currentTabFailureLogged = true;
+                com.craftingveloce.util.VeloceLog.Gui.failure(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "nie moge odczytac biezacej zakladki creative: %s", t);
+            }
             return null;
         }
     }

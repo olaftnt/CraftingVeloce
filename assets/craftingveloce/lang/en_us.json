@@ -45,6 +45,6 @@
     "gui.craftingveloce.extractor.filterHelp": "Left-click: clear / choose item. Right-click: toggle auto-crafting.",
     "gui.craftingveloce.extractor.emptySlot": "Empty filter (left-click to choose an item)",
     "gui.craftingveloce.terminal.storeSlot": "Store item",
-    "gui.craftingveloce.terminal.storeHint": "Click: store held item into the network",
-    "gui.craftingveloce.terminal.storeHintShift": "Shift-click: store inventory (Shift-right-click: everything)"
+    "gui.craftingveloce.terminal.storeHint": "Click to store held item",
+    "gui.craftingveloce.terminal.storeHintShift": "Shift: store whole inventory"
 }
