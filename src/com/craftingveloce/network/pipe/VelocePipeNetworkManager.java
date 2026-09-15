@@ -435,10 +435,19 @@ public class VelocePipeNetworkManager extends SavedData {
         // Wezly: tak samo jak magazyny - przez sasiedztwo z rurami tego
         // komponentu, a nie po zamrozonym component.nodes. Inaczej wezel
         // dodany po zbudowaniu cache nie bylby widziany przez terminal.
+        // Zbior rur komponentu liczymy RAZ. Wczesniej powstawal w kazdym
+        // obiegu petli po wezlach - przy 1000 rur i kilku wezlach to tysiace
+        // zbednych wstawien na jedno zbudowanie sieci.
+        Set<BlockPos> componentPipes = new HashSet<>(component.pipes);
+
         Set<BlockPos> nodeCandidates = new HashSet<>(component.nodes);
         nodeCandidates.addAll(knownNodes);
         for (BlockPos n : nodeCandidates) {
-            if (component.nodes.contains(n) || touchesAnyPipe(n, new HashSet<>(component.pipes))) {
+            // Ten sam warunek co dla magazynow: sama bliskosc rury nie znaczy,
+            // ze polaczenie istnieje. Strona ustawiona na "Disconnected" nie
+            // wciaga wezla do sieci - tak samo jak nie wciaga magazynu.
+            if ((component.nodes.contains(n) || touchesAnyPipe(n, componentPipes))
+                    && hasOpenPipeAdjacent(level, n, componentPipes)) {
                 net.getTerminals().add(n);
             }
         }
@@ -455,10 +464,21 @@ public class VelocePipeNetworkManager extends SavedData {
         // Teraz: endpoint nalezy do komponentu, jesli lezy obok jakiejkolwiek
         // jego rury. Koszt to 6 sprawdzen na zapamietany magazyn - a tych jest
         // malo (po jednym na skrzynie).
-        Set<BlockPos> pipes = new HashSet<>(component.pipes);
+        Set<BlockPos> pipes = componentPipes;
         for (Map.Entry<BlockPos, ConnectedEndpointInfo> e : knownEndpoints.entrySet()) {
             BlockPos ep = e.getKey();
-            if (component.storages.contains(ep) || touchesAnyPipe(ep, pipes)) {
+            // DRUGI WARUNEK JEST KONIECZNY, NIE OZDOBNY.
+            //
+            // Sama sasiedztwo z rura nie wystarcza: strona rury moze byc
+            // ustawiona wrenchem na "Disconnected", a wtedy polaczenia NIE MA.
+            // Bez tego sprawdzenia poprawka w collectNeighbours nic by nie
+            // dala - ta sciezka (z cache komponentu) chodzi w praktyce i dalej
+            // wciagalaby odlaczony magazyn do sieci, z jego zawartoscia.
+            //
+            // To ta sama lekcja, co przy trybie Pull: sa DWIE drogi budowy
+            // sieci i obie musza znac tryb strony.
+            if ((component.storages.contains(ep) || touchesAnyPipe(ep, pipes))
+                    && hasOpenPipeAdjacent(level, ep, pipes)) {
                 // Chunk zaladowany -> odswiez, zeby liczby byly aktualne.
                 // Niezaladowany -> zostaje ostatnia znana zawartosc.
                 e.getValue().refreshIfLoaded(level);
@@ -476,6 +496,37 @@ public class VelocePipeNetworkManager extends SavedData {
     private static boolean touchesAnyPipe(BlockPos pos, Set<BlockPos> pipes) {
         for (Direction d : Direction.values()) {
             if (pipes.contains(pos.relative(d))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Czy endpoint ma obok rure, ktora NIE jest od niego odlaczona.
+     *
+     * <p>Odpowiada na pytanie "czy to polaczenie w ogole istnieje" - a nie
+     * "czy wolno do niego wstawiac" (to drugie rozstrzyga
+     * {@code refreshInsertModes}, dokladajac tryb Pull).
+     *
+     * <p>Gdy rura stoi w niezaladowanym chunku, NIE wiemy, jaki ma tryb -
+     * i wtedy odpowiadamy "tak". Wolimy zostawic magazyn widoczny na podstawie
+     * braku danych, niz wyciac go z sieci na podstawie domyslu.
+     */
+    private boolean hasOpenPipeAdjacent(ServerLevel level, BlockPos endpointPos, Set<BlockPos> pipes) {
+        for (Direction d : Direction.values()) {
+            BlockPos pipePos = endpointPos.relative(d);
+            if (!pipes.contains(pipePos)) {
+                continue;
+            }
+            if (!level.isLoaded(pipePos)) {
+                return true;   // nie wiemy - nie wycinamy
+            }
+            if (!(level.getBlockEntity(pipePos) instanceof VelocePipeBlockEntity be)) {
+                return true;   // brak block entity - nie nasza sprawa
+            }
+            // Strona rury PATRZACA NA endpoint to d.getOpposite().
+            if (!be.isDisconnected(d.getOpposite())) {
                 return true;
             }
         }
