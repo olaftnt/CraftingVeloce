@@ -71,6 +71,12 @@ public class VelocePipeNetworkManager extends SavedData {
         if (pendingRebuilds.isEmpty()) {
             return;
         }
+        if (VeloceChunkLoader.isFrozen()) {
+            // Serwer sie zamyka - przebudowy sieci sa wtedy bez sensu i tylko
+            // przeszkadzaja w zapisie.
+            pendingRebuilds.clear();
+            return;
+        }
         long now = level.getGameTime();
         if (lastRebuildTick != Long.MIN_VALUE && now - lastRebuildTick < REBUILD_COOLDOWN_TICKS) {
             return;
@@ -169,6 +175,13 @@ public class VelocePipeNetworkManager extends SavedData {
      * <p>Przegladamy tylko sieci, ktore faktycznie dotykaja tego chunka.
      */
     public void onChunkChanged(ServerLevel level, ChunkPos chunkPos, boolean loaded) {
+        // Przy zamykaniu/zapisie swiata nie ma czego uniewazniac - cache i tak
+        // za chwile znikna. Bez tego kazdy cykl load/unload chunka produkowal
+        // wpis do loga i przebudowywal sieci: w jednym zamknieciu swiata
+        // naliczylo sie 8000+ linii, co samo w sobie zamulalo zapis.
+        if (VeloceChunkLoader.isFrozen()) {
+            return;
+        }
         java.util.List<String> affectedThings = new java.util.ArrayList<>();
         int affected = 0;
         for (VelocePipeNetwork net : networks.values()) {
