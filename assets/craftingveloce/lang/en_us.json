@@ -25,7 +25,6 @@
   "gui.craftingveloce.controller.flow.hour": "1 hour: %s",
   "gui.craftingveloce.controller.flow.minute": "1 min: %s",
   "gui.craftingveloce.controller.flow.steady": "no change",
-  "gui.craftingveloce.controller.stock": "Stock: %s",
   "gui.craftingveloce.crafter.ingredients": "from: %s",
   "gui.craftingveloce.crafter.recipe.cycle": "Right-click to change recipe",
   "gui.craftingveloce.crafter.toggle.off": "Left-click: DISABLE auto-crafting",

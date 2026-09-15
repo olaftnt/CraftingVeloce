@@ -1114,6 +1114,33 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
+     * Tooltip itemu BEZ linii kategorii i tagow, ktore dokleja creative.
+     *
+     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> W zakladkach
+     * CATEGORY i SEARCH wanilia dokleja do tooltipa nazwe kategorii
+     * ("Building Blocks") oraz tagi. W kontrolerze dochodzil do tego drugi,
+     * wlasny tooltip - i napisy nachodzily na siebie, przykrywajac liczby przy
+     * ikonach. Gracz nie chce tam kategorii: "wszędzie indziej jest ukryte".
+     *
+     * <p>Zwracamy wiec CZYSTY tooltip itemu (nazwa, opis, atrybuty). Trzymamy
+     * to w klasie bazowej, zeby terminal, kontroler, crafter i selektor filtra
+     * mialy DOKLADNIE to samo - a nie cztery wlasne wersje, ktore sie rozjada.
+     */
+    @Override
+    public List<net.minecraft.network.chat.Component> getTooltipFromContainerItem(
+            net.minecraft.world.item.ItemStack stack) {
+        if (this.minecraft == null || this.minecraft.player == null) {
+            return super.getTooltipFromContainerItem(stack);
+        }
+        return stack.getTooltipLines(
+                net.minecraft.world.item.Item.TooltipContext.of(this.minecraft.level),
+                this.minecraft.player,
+                this.minecraft.options.advancedItemTooltips
+                        ? net.minecraft.world.item.TooltipFlag.Default.ADVANCED
+                        : net.minecraft.world.item.TooltipFlag.Default.NORMAL);
+    }
+
+    /**
      * Czy gracz wlasnie pisze w polu tekstowym (wyszukiwarka).
      *
      * <p>Po to, zeby klawisze skrotow (E, Esc, Enter) nie zabieraly znakow

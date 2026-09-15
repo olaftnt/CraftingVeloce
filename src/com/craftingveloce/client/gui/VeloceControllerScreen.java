@@ -43,10 +43,15 @@ import java.util.Set;
  *   <li>czerwony - niedostepny (brak stocku, craftingu i przepalania)</li>
  * </ul>
  *
- * <p>Tooltip pokazuje TYLKO to, co jest potrzebne: nazwe, stock, tempo
- * (minuta i godzina), powod braku dostepnosci - i preferencje "crafting czy
- * piec". Komunikaty o stanie, ktory DZIALA ("auto-crafting wlaczony",
- * "przepalanie wlaczone"), zostaly usuniete na zyczenie gracza.
+ * <p>Tooltip pokazuje TYLKO to, co jest potrzebne: nazwe, tempo (minuta
+ * i godzina) oraz - dla itemow z receptura pieca - preferencje "crafting czy
+ * piec". Stocku w nim NIE ma (liczba jest na ikonie), nie ma powodow braku
+ * dostepnosci ani komunikatow o stanie, ktory dziala - gracz kazal je usunac.
+ *
+ * <p>Tooltip budujemy w {@link #getTooltipFromContainerItem(ItemStack)}, czyli
+ * podmieniamy liste linii wanilii, zamiast rysowac wlasny obok - inaczej
+ * powstawaly DWA tooltipy naraz, a waniliowy dokleja na zakladce SEARCH nazwe
+ * kategorii, ktora nachodzila na liczby.
  */
 public class VeloceControllerScreen extends VeloceCreativeScreen {
 
@@ -398,35 +403,37 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
             b.render(graphics, mouseX, mouseY, partialTick);
         }
 
-        renderInfoTooltip(graphics, mouseX, mouseY);
     }
 
     /**
-     * Tooltip ikony: nazwa, stock, tempo - i (dla itemow z receptura pieca)
-     * preferencja "crafting czy piec".
+     * Tooltip ikony: nazwa, tempo (minuta i godzina) i preferencja "crafting
+     * czy piec" - dla itemow z receptura pieca.
      *
-     * <p><b>Zadnych tekstow o braku dostepnosci.</b> Bylo tu "Crafter cannot
-     * make this" oraz "Build a machine: extractor + chest..." - gracz kazal je
-     * wyrzucic. Brak dostepnosci widac po CZERWONYM tle ikony, a resztę mowi
-     * stock i tempo; teksty tylko zaslanialy ekran.
+     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> Kontroler rysowal
+     * WLASNY tooltip, a waniliowy rysowal sie obok - dwa naraz. Waniliowy na
+     * zakladce SEARCH dokleja jeszcze nazwe kategorii ("Building Blocks"),
+     * wiec napisy nachodzily na siebie, a kategoria przykrywala liczby.
+     * Terminal robil to dobrze od poczatku: nadpisuje te metode, wiec rysuje
+     * sie DOKLADNIE jedna lista linii - bez kategorii i bez tagow.
+     *
+     * <p><b>Stock zniknal z tooltipa</b> na zyczenie gracza: liczba jest juz
+     * narysowana na ikonie (prawy dolny rog), wiec linia "Stock: N" byla
+     * powtorzeniem.
      */
-    private void renderInfoTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
-        Slot slot = getSlotUnderMouse();
-        if (slot == null || isPlayerInventorySlot(slot) || !slot.hasItem()) {
-            return;
+    @Override
+    public List<Component> getTooltipFromContainerItem(ItemStack stack) {
+        if (this.minecraft == null || this.minecraft.player == null || stack.isEmpty()) {
+            return super.getTooltipFromContainerItem(stack);
         }
-        Item item = slot.getItem().getItem();
-        if (!passesFilter(item)) {
-            return;
+        Slot hovered = getSlotUnderMouse();
+        if (hovered != null && isPlayerInventorySlot(hovered)) {
+            return super.getTooltipFromContainerItem(stack);   // sloty gracza bez zmian
         }
-
         List<Component> lines = new ArrayList<>();
-        lines.add(slot.getItem().getHoverName());
-        addStockLines(lines, item);
-        addFlowLines(lines, item);
-        addPreferenceLines(lines, item);
-
-        graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
+        lines.add(stack.getHoverName());
+        addFlowLines(lines, stack.getItem());
+        addPreferenceLines(lines, stack.getItem());
+        return lines;
     }
 
     /**
@@ -504,25 +511,12 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Stock w sieci - ZAWSZE jako liczba.
-     *
-     * <p>Gracz chcial konkretna liczbe takze przy zerze ("0", a nie "none"):
-     * "brak" i "0" to dla niego to samo, a liczba jest jednoznaczna.
-     * Informacja "in hotbar" zostala usunieta - nie byla potrzebna.
-     */
-    private void addStockLines(List<Component> lines, Item item) {
-        long n = stock.getOrDefault(item, 0L);
-        lines.add(Component.translatable("gui.craftingveloce.controller.stock", n)
-                .withStyle(n > 0 ? ChatFormatting.AQUA : ChatFormatting.DARK_GRAY));
-    }
-
-    /**
      * Czy item da sie zrobic OBIEMA drogami: crafterem i piecem.
      *
      * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> Preferencje
-     * pokazywalismy kazdemu itemowi z receptura pieca - takze szkłu, ktore
+     * pokazywalismy kazdemu itemowi z receptura pieca - takze szklu, ktore
      * powstaje WYLACZNIE w piecu i nie ma receptury craftingowej. Gracz widzial
-     * wiec wybor "Preference: Crafting / Furnace" dla itemu, ktory craftingiem
+     * wiec wybor "Preference: Crafting / Furnace" dla itemu, ktorego craftingiem
      * nie da sie zrobic, i slusznie pytal, po co ten wybor jest. Preferencja ma
      * sens tylko wtedy, gdy jest miedzy czym wybierac.
      *

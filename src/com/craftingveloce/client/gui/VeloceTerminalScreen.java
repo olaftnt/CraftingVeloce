@@ -243,13 +243,9 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                     .withStyle(net.minecraft.ChatFormatting.GRAY));
             return lines;
         }
-        return stack.getTooltipLines(
-                net.minecraft.world.item.Item.TooltipContext.of(this.minecraft.level),
-                this.minecraft.player,
-                this.minecraft.options.advancedItemTooltips
-                        ? net.minecraft.world.item.TooltipFlag.Default.ADVANCED
-                        : net.minecraft.world.item.TooltipFlag.Default.NORMAL
-        );
+        // Czysty tooltip itemu buduje klasa bazowa (bez kategorii i tagow
+        // creative) - jedno zrodlo dla wszystkich czterech ekranow.
+        return super.getTooltipFromContainerItem(stack);
     }
 
     /**
