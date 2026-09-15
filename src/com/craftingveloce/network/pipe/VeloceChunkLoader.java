@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import javax.annotation.Nullable;
 
 /**
  * Globalny, referencyjnie liczony wlasciciel force-loadowanych chunkow.
@@ -632,6 +633,36 @@ public final class VeloceChunkLoader {
      * Bez tego sprawdzenia albo nie wymusilbysmy go ponownie, albo - gorzej -
      * doliczylibysmy druga referencje do chunku, ktora nigdy nie zniknie.
      */
+    /**
+     * Block entity TYLKO jesli chunk jest zaladowany - inaczej {@code null},
+     * BEZ wczytywania chunku.
+     *
+     * <p><b>Po co to istnieje.</b> Na serwerze {@code Level.getBlockEntity(pos)}
+     * NIE jest bezpiecznym odczytem "tylko jesli jest": on WCZYTUJE chunk
+     * (bajtkod wanilii: getBlockEntity -> getChunkAt -> getChunk(x, z) ->
+     * ChunkStatus.FULL, requireChunk = TRUE). To samo dotyczy
+     * {@code getBlockState(pos)}.
+     *
+     * <p>Z tego wyniknela prawdziwa petla load/unload: nasz raport diagnostyczny
+     * opisywal bloki w chunku, ktory wlasnie sie rozladowal, a sam opis
+     * wczytywal go z powrotem. Dlatego kazdy odczyt pozycji, ktora moze byc
+     * w niezaladowanym chunku (a wiec kazda pozycja z sieci rur), MUSI isc
+     * przez te metody - wtedy regula jest w jednym miejscu, a nie w kilkunastu
+     * warunkach do zapamietania.
+     */
+    @Nullable
+    public static net.minecraft.world.level.block.entity.BlockEntity blockEntityIfLoaded(
+            net.minecraft.world.level.Level level, BlockPos pos) {
+        return level.isLoaded(pos) ? level.getBlockEntity(pos) : null;
+    }
+
+    /** Block state TYLKO jesli chunk jest zaladowany - inaczej {@code null}. */
+    @Nullable
+    public static net.minecraft.world.level.block.state.BlockState blockStateIfLoaded(
+            net.minecraft.world.level.Level level, BlockPos pos) {
+        return level.isLoaded(pos) ? level.getBlockState(pos) : null;
+    }
+
     public static boolean isHeld(ServerLevel level, long chunkKey) {
         Set<Long> applied = APPLIED.get(level);
         return applied != null && applied.contains(chunkKey);

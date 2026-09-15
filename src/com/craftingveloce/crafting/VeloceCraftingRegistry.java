@@ -43,7 +43,11 @@ public final class VeloceCraftingRegistry {
         java.util.List<VeloceCraftingTableBlockEntity> out = new java.util.ArrayList<>();
         int unreadable = 0;
         for (BlockPos pos : sorted) {
-            BlockEntity be = level.getBlockEntity(pos);
+            // blockEntityIfLoaded, a NIE getBlockEntity: na serwerze ten drugi
+            // WCZYTALBY chunk wezla, ktory stoi daleko i jest rozladowany -
+            // czyli kazde zadanie liczb z GUI wczytywaloby go w kolle.
+            BlockEntity be = com.craftingveloce.network.pipe.VeloceChunkLoader
+                    .blockEntityIfLoaded(level, pos);
             if (be instanceof VeloceCraftingTableBlockEntity crafter) {
                 out.add(crafter);
             } else if (be == null) {

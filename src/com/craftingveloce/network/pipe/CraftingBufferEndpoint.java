@@ -31,7 +31,11 @@ public class CraftingBufferEndpoint extends ConnectedEndpointInfo {
 
     /** Bufor spod tego endpointu, albo null gdy blok zniknal. */
     private VeloceCraftingBuffer buffer(ServerLevel level) {
-        BlockEntity be = level.getBlockEntity(getPos());
+        // Bez wczytywania chunku: ten bufor bywa wolany przy KAZDEJ probie
+        // wyciagniecia/wlozenia, wiec getBlockEntity na rozladowanym chunku
+        // zrobilby petle load/unload (patrz VeloceChunkLoader.blockEntityIfLoaded).
+        BlockEntity be = com.craftingveloce.network.pipe.VeloceChunkLoader
+                .blockEntityIfLoaded(level, getPos());
         if (be instanceof VeloceCraftingTableBlockEntity crafter) {
             return crafter.getBuffer();
         }

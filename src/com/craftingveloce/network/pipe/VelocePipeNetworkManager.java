@@ -250,7 +250,12 @@ public class VelocePipeNetworkManager extends SavedData {
      *                 przy iterowaniu kierunkow z pozycji wezla)
      */
     public static boolean nodeConnectsToPipe(ServerLevel level, BlockPos nodePos, Direction pipeSide) {
-        BlockState state = level.getBlockState(nodePos);
+        // Oslona prewencyjna: getBlockState na serwerze WCZYTUJE chunk.
+        // Nie wiemy - nie wycinamy (ta sama zasada co w hasOpenPipeAdjacent).
+        BlockState state = VeloceChunkLoader.blockStateIfLoaded(level, nodePos);
+        if (state == null) {
+            return true;
+        }
         // Cala wiedza o typach wezlow mieszka w VeloceNodeBlocks - tutaj tylko
         // przekazujemy pytanie. Wczesniej byl tu recznie pisany lancuch
         // instanceof, ktory nie znal kontrolera ani piecow, przez co kontroler
@@ -564,7 +569,11 @@ public class VelocePipeNetworkManager extends SavedData {
      */
     private void collectNeighbours(ServerLevel level, VelocePipeNetwork net, BlockPos pipePos) {
         // Tryb tej rury (wrench): odlaczone strony i tryb Pull. Czytamy RAZ.
-        VelocePipeBlockEntity pipeBe = level.getBlockEntity(pipePos)
+        //
+        // blockEntityIfLoaded, a nie getBlockEntity: wolajacy juz sprawdza
+        // isLoaded, ale ta metoda jest zbyt latwa do wywolania z nowego
+        // miejsca - a getBlockEntity na serwerze WCZYTALBY chunk.
+        VelocePipeBlockEntity pipeBe = VeloceChunkLoader.blockEntityIfLoaded(level, pipePos)
                 instanceof VelocePipeBlockEntity p ? p : null;
 
         for (Direction d : Direction.values()) {
@@ -787,6 +796,12 @@ public class VelocePipeNetworkManager extends SavedData {
      */
     private static boolean endpointStillExists(ServerLevel level, BlockPos pos,
                                                ConnectedEndpointInfo ep) {
+        // Oslona wewnetrzna (wolajacy tez sprawdza): bez tego odczyt bloku
+        // w niezaladowanym chunku wczytalby go, a ta metoda chodzi w petli
+        // po wszystkich zapamietanych magazynach sieci.
+        if (!level.isLoaded(pos)) {
+            return true;   // nie wiemy - zostawiamy (zasada zachowawcza)
+        }
         return switch (ep.getType()) {
             case REFINED_STORAGE ->
                     RefinedStorageHelper.hasRSNetwork(level, pos, ep.getAccessSide());
@@ -1378,7 +1393,12 @@ public class VelocePipeNetworkManager extends SavedData {
                 intersectedOldNets.add(oldNetAtPos);
             }
 
-            BlockEntity curBE = level.getBlockEntity(current);
+            // Bez wczytywania chunku: BFS celowo kolejkuje takze rury
+            // z niezaladowanych chunkow, wiec getBlockEntity wczytalby kazda
+            // z nich (a to wlasnie ta petla load/unload, ktora zglaszal
+            // uzytkownik). Dla niezaladowanej rury po prostu nie znamy jej
+            // zamknietych stron - i tak zaklada to komentarz nizej.
+            BlockEntity curBE = VeloceChunkLoader.blockEntityIfLoaded(level, current);
             VelocePipeBlockEntity curPipeBE = (curBE instanceof VelocePipeBlockEntity p) ? p : null;
 
             for (Direction dir : Direction.values()) {
