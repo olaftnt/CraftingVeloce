@@ -74,15 +74,10 @@ public class CVDebugCommand {
         source.sendSuccess(() -> Component.literal(
                 "§7Ticking server: §fyes §7| gameTime: §f" + sl.getGameTime()), false);
         for (VelocePipeNetwork net : manager.getAllNetworks()) {
-            var cache = com.craftingveloce.crafting.VeloceCraftingCache.get(net);
             source.sendSuccess(() -> Component.literal(
                     "  §8net §7" + net.getId().toString().substring(0, 8)
                             + " §7pipes=§f" + net.getPipes().size()
-                            + " §7endpoints=§f" + net.getEndpoints().size()
-                            + " §7cache: " + (cache.isIdle(sl) ? "§8idle" : "§aBUSY")
-                            + " §7queue=§f" + cache.pendingCount()
-                            + " §7lastTick=§f" + cache.lastTickMillis() + "ms"
-                            + " §7overruns=§f" + cache.overrunCount()), false);
+                            + " §7endpoints=§f" + net.getEndpoints().size()), false);
         }
         source.sendSuccess(() -> Component.literal("§6======================================="), false);
         return 1;

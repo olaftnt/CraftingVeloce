@@ -325,8 +325,6 @@ public class VelocePipeNetworkManager extends SavedData {
                 // Wezel zniknal - jego dane nie sa juz aktualne. Cache dostanie
                 // pelny skan przy najblizszym ticku (lastFullStockScan).
                 net.invalidateEndpointCache();
-                com.craftingveloce.crafting.VeloceCraftingCache.get(net)
-                        .forceRefreshOnNextTick();
                 net.updateTrackedChunks();
                 setDirty();
             }

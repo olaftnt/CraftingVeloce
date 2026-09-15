@@ -132,7 +132,8 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
         float inverseScale = 1.0f / scaleFactor;
         int textX = (int) (((float) x + 16.0f - font.width(text) * scaleFactor) * inverseScale);
         int textY = (int) (((float) y + 16.0f - 7.0f * scaleFactor) * inverseScale);
-        graphics.drawString(font, text, textX, textY, 0x55FF55, true);
+        // Bialy = ile jest na stanie (spojnie z terminalem).
+        graphics.drawString(font, text, textX, textY, 0xFFFFFF, true);
         graphics.pose().popPose();
         RenderSystem.enableDepthTest();
     }

@@ -240,8 +240,6 @@ public class VeloceExtractorBlockEntity extends BlockEntity implements MenuProvi
      * budzetu cyklu. Wczesniej kazdy slot szedl ta sciezka bezwarunkowo.
      */
     private ItemStack craftFromNetwork(ServerLevel sl, VelocePipeNetwork net, Item item, int count) {
-        com.craftingveloce.crafting.VeloceCraftingCache.get(net).markBusy(sl);
-
         // Auto-crafting: tylko jesli jakis crafter ma wlaczona recepture dla itemu.
         var crafter = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .findEnabledCrafter(sl, net, item);

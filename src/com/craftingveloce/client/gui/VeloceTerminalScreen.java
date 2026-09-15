@@ -256,7 +256,8 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         float inverseScale = 1.0f / scaleFactor;
         int textX = (int) (((float) x + 16.0f - font.width(text) * scaleFactor) * inverseScale);
         int textY = (int) (((float) y + 16.0f - 7.0f * scaleFactor) * inverseScale);
-        graphics.drawString(font, text, textX, textY, 0x55FF55, true); // bright green
+        // Bialy = ile jest fizycznie na stanie (bez cienia, jak w vanilla).
+        graphics.drawString(font, text, textX, textY, 0xFFFFFF, true);
         graphics.pose().popPose();
         RenderSystem.enableDepthTest();
     }
@@ -280,8 +281,8 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         float inverseScale = 1.0f / scaleFactor;
         int textX = (int) (((float) x + 1.0f) * inverseScale);
         int textY = (int) (((float) y + 1.0f) * inverseScale);
-        // Zolty = dorobione auto-craftingiem (odroznienie od zielonego stocku).
-        graphics.drawString(font, text, textX, textY, 0xFFD700, true);
+        // Pomaranczowy = ile da sie DOROBIC (bez stocku), nie liczba calkowita.
+        graphics.drawString(font, text, textX, textY, 0xFFA500, true);
         graphics.pose().popPose();
         RenderSystem.enableDepthTest();
     }

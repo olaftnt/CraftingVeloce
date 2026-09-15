@@ -242,57 +242,19 @@ public final class VeloceCraftingCache {
         return CACHES.size();
     }
 
-    /** Czas ostatniego ticku w milisekundach (diagnostyka). */
-    public long lastTickMillis() {
-        return lastTickNanos / 1_000_000L;
-    }
 
-    /** Ile razy tick przekroczyl budzet w calej sesji (diagnostyka). */
-    public long overrunCount() {
-        return overruns;
-    }
 
 
     // ------------------------------------------------------------------
     // Odczyt (GUI) - zawsze natychmiastowy, nic nie liczy
     // ------------------------------------------------------------------
 
-    /** Gotowe liczby dla podanych itemow. */
-    public Map<Item, Long> lookup(Set<Item> items) {
-        Map<Item, Long> out = new HashMap<>();
-        for (Item it : items) {
-            Long v = craftable.get(it);
-            if (v != null && v > 0) {
-                out.put(it, v);
-            }
-        }
-        return out;
-    }
 
-    /** Wszystkie gotowe liczby. */
-    public Map<Item, Long> snapshot() {
-        return new HashMap<>(craftable);
-    }
 
-    public boolean isFullScanDone() {
-        return fullScanDone;
-    }
 
-    public int computedCount() {
-        return totalComputed;
-    }
 
-    public int pendingCount() {
-        return pending.size();
-    }
 
-    public int lastBatchSize() {
-        return lastBatchSize;
-    }
 
-    public int scanCount() {
-        return scanCount;
-    }
 
     // ------------------------------------------------------------------
     // Praca w tle - z budzetem czasowym
@@ -337,11 +299,6 @@ public final class VeloceCraftingCache {
         if (claimTick(level)) {
             return;
         }
-        long start = System.nanoTime();
-        phaseScanNanos = 0L;
-        phaseChunksNanos = 0L;
-        phaseItemsNanos = 0L;
-        lastBatchSize = 0;
 
         if (!startupGracePassed) {
             if (firstSeenTick < 0) {
@@ -354,160 +311,14 @@ public final class VeloceCraftingCache {
             startupGracePassed = true;
         }
 
-        long now = level.getGameTime();
-        if (!shuttingDown && now % 20 == 0) {
+        // Jedyne, co ten cache teraz robi: trzyma wymuszone chunki z blokami
+        // sieci. Bez tego ekstraktory i craftery przestalyby pracowac, gdy
+        // gracz odejdzie od bazy. Rzadko (co sekunde), bo to i tak tanie.
+        if (!shuttingDown && level.getGameTime() % 20 == 0) {
             maintainForcedChunks(level);
         }
-        lastTickNanos = System.nanoTime() - start;
     }
 
-    /**
-     * Jeden krok pracy. Wolane z ticku, ale robi co najwyzej
-     * {@link #TICK_BUDGET_NS} nanosekund roboty.
-     */
-    public void tick(ServerLevel level, Set<Item> enabledItems,
-                     Map<Item, ResourceLocation> preferred) {
-        if (claimTick(level)) {
-            return;
-        }
-        long start = System.nanoTime();
-        lastBatchSize = 0;
-        // Rozbicie czasu na fazy - bez tego watchdog mowi tylko "wolno",
-        // a nie gdzie. Kolejny taki bug znajdujemy wtedy od razu.
-        long phaseStart = start;
-        phaseScanNanos = 0L;
-        phaseChunksNanos = 0L;
-        phaseItemsNanos = 0L;
-
-        // 0. Karencja startowa. Ladowanie save'a to najgorszy moment na
-        //    jakakolwiek prace - czekamy, az serwer sie ustabilizuje.
-        if (!startupGracePassed) {
-            if (firstSeenTick < 0) {
-                firstSeenTick = level.getGameTime();
-                VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                        "crafting cache: first tick seen (gameTime=%d), waiting %d ticks",
-                        firstSeenTick, STARTUP_GRACE_TICKS);
-            }
-            // `>= firstSeenTick` jak w pozostalych bramkach czasowych: przy
-            // cofnietym czasie swiata roznica bylaby ujemna, wiec karencja
-            // startowa nigdy by sie nie skonczyla i cache nie ruszylby wcale.
-            if (level.getGameTime() >= firstSeenTick
-                    && level.getGameTime() - firstSeenTick < STARTUP_GRACE_TICKS) {
-                return;
-            }
-            startupGracePassed = true;
-            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                    "crafting cache: startup grace passed after %d ticks, beginning scan",
-                    level.getGameTime() - firstSeenTick);
-        }
-
-        long now = level.getGameTime();
-
-        // 0b. Utrzymuj chunki z blokami sieci - to MUSI dzialac nawet gdy nikt
-        //     nie patrzy, bo bez tego ekstraktory przestaja pracowac, gdy gracz
-        //     odejdzie. Rzadko (co sekunde) i tanie po zmianie na VeloceChunkLoader.
-        if (!shuttingDown && now % 20 == 0) {
-            phaseStart = System.nanoTime();
-            maintainForcedChunks(level);
-            phaseChunksNanos = System.nanoTime() - phaseStart;
-        }
-
-        // 0c. NIKT NIE PATRZY = NIE MA DLA KOGO LICZYC.
-        //
-        // Gracz widzi jedna strone terminala (ok. 45 itemow) i dostaje dla niej
-        // dokladne liczby na zadanie. Liczenie setek itemow "na zapas" tylko
-        // po to, zeby lezaly w mapie, bylo czysta strata - i to ona blokowala
-        // watek serwera. Gdy nikt nie patrzy, cache nie robi NIC (poza
-        // utrzymaniem chunkow wyzej).
-        if (now >= busyUntil) {
-            lastTickNanos = System.nanoTime() - start;
-            return;
-        }
-
-        // 1. Skan stocku. Na poczatku MUSI sie wykonac natychmiast -
-        //    inaczej initial scan nie ma z czego wziac itemow (lastStock pusty).
-        //    Potem rzadko - VelocePipeNetwork trzyma wlasny agregat z TTL,
-        //    wiec nawet kilka wywolan w jednym ticku nie skanuje sieci w kolko.
-        boolean firstScan = lastFullStockScan == Long.MIN_VALUE;
-        int interval = BUSY_SCAN_INTERVAL;
-        if (firstScan || forceStockScan || now - lastFullStockScan >= interval) {
-            forceStockScan = false;
-            lastFullStockScan = now;
-            phaseStart = System.nanoTime();
-            detectStockChanges(level);
-            phaseScanNanos = System.nanoTime() - phaseStart;
-            if (System.nanoTime() - start > TICK_BUDGET_NS) {
-                lastTickNanos = System.nanoTime() - start;
-                warnIfOverrun();
-                return;
-            }
-        }
-
-        // 2. Pierwszy skan: kolejkujemy itemy obecne w sieci (to widzi GUI)
-        //    oraz - w ramach limitu - reszte wlaczonych.
-        //
-        //    UWAGA: zmiana skladu sieci NIE robi juz pelnego reskanu (patrz
-        //    onEndpointChanged) - obsluguje ja diff stocku z punktu 1.
-        if (!initialScanQueued && pending.isEmpty()) {
-            initialScanQueued = true;
-            queueInitialScan(enabledItems);
-            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                    "crafting cache: initial scan starting");
-        }
-
-        // 3. Przeliczaj porcje, dopoki starcza budzetu.
-        //    (Doszlibysmy tu tylko gdy ktos patrzy - patrz punkt 0c.)
-        phaseStart = System.nanoTime();
-        while (!pending.isEmpty() && lastBatchSize < MAX_ITEMS_PER_TICK) {
-            if (System.nanoTime() - start > TICK_BUDGET_NS) {
-                break;   // budzet wyczerpany - reszta w nastepnym ticku
-            }
-            Item item = pending.poll();
-            queued.remove(item);
-            if (!enabledItems.contains(item)) {
-                craftable.remove(item);
-                continue;
-            }
-            // Budzet na ten jeden item: nie wiecej niz zostalo do konca ticku.
-            long remaining = TICK_BUDGET_NS - (System.nanoTime() - start);
-            long n = VeloceAutoCrafter.countCraftableFromStock(
-                    level, item, lastStock, enabledItems, preferred,
-                    Math.max(1_000_000L, remaining));
-            if (n == VeloceAutoCrafter.UNKNOWN_COUNT) {
-                // Budzet sie skonczyl w polowie - nie kasujemy starej liczby,
-                // tylko wracamy z itemem w nastepnym ticku. Po kilku probach
-                // odpuszczamy, zeby nie krecic sie w kolko w nieskonczonosc.
-                int tries = retries.merge(item, 1, Integer::sum);
-                queued.remove(item);
-                if (tries <= MAX_RETRIES && pending.size() < MAX_QUEUE) {
-                    queued.add(item);
-                    pending.add(item);
-                } else {
-                    retries.remove(item);
-                }
-                continue;
-            }
-            retries.remove(item);
-            if (n > 0) {
-                craftable.put(item, n);
-            } else {
-                craftable.remove(item);
-            }
-            lastBatchSize++;
-            totalComputed++;
-        }
-        phaseItemsNanos = System.nanoTime() - phaseStart;
-
-        if (pending.isEmpty() && !fullScanDone) {
-            fullScanDone = true;
-            VeloceLog.Craft.success(VeloceLog.Side.SERVER,
-                    "crafting cache: initial scan done (%d items computed, %d ms last tick)",
-                    totalComputed, lastTickMillis());
-        }
-
-        lastTickNanos = System.nanoTime() - start;
-        warnIfOverrun();
-    }
 
     /**
      * Krzyczy w logu, gdy tick przekroczy zalozony budzet.
@@ -532,89 +343,8 @@ public final class VeloceCraftingCache {
                 pending.size(), lastBatchSize);
     }
 
-    /**
-     * Wykrywa zmiany stocku i kolejkuje tylko dotkniety lancuch.
-     *
-     * <p>To jedyne miejsce, ktore czyta caly stock sieci. Wolane rzadko
-     * (raz na {@link #FULL_STOCK_SCAN_INTERVAL} tickow), nie co tick.
-     */
-    private void detectStockChanges(ServerLevel level) {
-        Map<Item, Long> stock = network.getAllItemCounts(level);
-        scanCount++;
 
-        if (stock.isEmpty() && lastStock.isEmpty()) {
-            return;
-        }
-        Set<Item> changed = new HashSet<>();
-        for (Map.Entry<Item, Long> e : stock.entrySet()) {
-            Long prev = lastStock.get(e.getKey());
-            if (prev == null || !prev.equals(e.getValue())) {
-                changed.add(e.getKey());
-            }
-        }
-        for (Item prev : lastStock.keySet()) {
-            if (!stock.containsKey(prev)) {
-                changed.add(prev);
-            }
-        }
-        lastStock.clear();
-        lastStock.putAll(stock);
 
-        if (changed.isEmpty()) {
-            return;
-        }
-        queueChain(level, changed);
-    }
-
-    /** Kolejkuje dotkniete itemy i ich lancuch "w gore". */
-    private void queueChain(ServerLevel level, Set<Item> changed) {
-        Set<Item> affected = VeloceRecipeGraph.get(level).affectedBy(changed, MAX_CHAIN);
-        int added = 0;
-        for (Item it : affected) {
-            if (pending.size() >= MAX_QUEUE) {
-                VeloceLog.Craft.why(VeloceLog.Side.SERVER,
-                        "crafting cache: queue full (%d), skipping rest of chain", MAX_QUEUE);
-                break;
-            }
-            if (queued.add(it)) {
-                pending.add(it);
-                added++;
-            }
-        }
-        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "crafting cache: %d changed -> %d queued (%d new)",
-                changed.size(), affected.size(), added);
-    }
-
-    /**
-     * Kolejkuje wstepny skan: TYLKO itemy faktycznie obecne w sieci.
-     *
-     * <p><b>Dlaczego nie ma tu juz "reszty wlaczonych".</b> Poprzednia wersja
-     * dorzucala do kolejki wszystkie wlaczone itemy (ok. 500), bo "moze sie
-     * przydadza". Gracz nigdy nie zobaczy wiekszosci z nich - w terminalu
-     * widzi jedna strone, okolo 45 itemow - a kazdy policzony na zapas item
-     * to pelne planowanie drzewa receptur. To bylo marnowanie calego budzetu
-     * ticku na przedmioty, ktorych nikt nie oglada.
-     *
-     * <p>Liczby dla widocznej strony i tak sa liczone na zadanie klienta
-     * ({@code RequestCraftableCountsPKT}), wiec nie ma tu czego pre-liczyc.
-     * Zostaje tylko stock: to on trafia do GUI jako zielone liczby.
-     */
-    private void queueInitialScan(Set<Item> enabled) {
-        int fromStock = 0;
-        for (var e : lastStock.entrySet()) {
-            if (e.getValue() <= 0 || fromStock >= MAX_FULL_SCAN) {
-                continue;
-            }
-            if (queued.add(e.getKey())) {
-                pending.add(e.getKey());
-                fromStock++;
-            }
-        }
-        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "crafting cache: initial scan queued %d item(s) (stock only, network has %d type(s))",
-                fromStock, lastStock.size());
-    }
 
     // ------------------------------------------------------------------
     // Force-load chunkow z blokami sieci
@@ -824,52 +554,10 @@ public final class VeloceCraftingCache {
                 "crafting cache: network composition changed - stock diff scheduled");
     }
 
-    /**
-     * Wymus pelny skan stocku przy najblizszym ticku.
-     *
-     * <p>Uzywane gdy zmienil sie uklad sieci (wezel postawiony albo usuniety).
-     * Nie robimy skanu natychmiast - to by oznaczalo prace w losowym momencie,
-     * np. podczas ladowania swiata. Zamiast tego przyspieszamy najblizszy tick.
-     */
-    public void forceRefreshOnNextTick() {
-        lastFullStockScan = Long.MIN_VALUE;
-    }
 
-    /**
-     * Gracz wlasnie wyciagnal albo wlozyl itemy - przyspiesz odswiezanie.
-     *
-     * <p>Wywolywane po operacji na terminalu, hopperze czy rurze. Przez
-     * kilkanascie tickow cache skanuje stock czesciej, zeby liczby "+N"
-     * zaktualizowaly sie od razu, a nie po sekundzie.
-     */
-    public void markBusy(ServerLevel level) {
-        busyUntil = level.getGameTime() + 40;   // 2 s przyspieszonego skanowania
-    }
 
-    /**
-     * Czy ktos w ogole patrzy (czy jest dla kogo liczyc).
-     *
-     * <p>Wolajacy powinien sprawdzic to PRZED przygotowaniem argumentow dla
-     * {@link #tick}. Przygotowanie ich kosztuje: {@code getAllEnabledItems}
-     * kopiuje wtedy zbior wszystkich craftowalnych itemow (tysiace wpisow),
-     * a {@code getPreferredRecipes} buduje mape - i to wszystko tylko po to,
-     * zeby {@code tick} wyszedl w pierwszej instrukcji, gdy nikt nie patrzy.
-     */
-    public boolean isIdle(ServerLevel level) {
-        return level.getGameTime() >= busyUntil;
-    }
 
-    /** Item zmienil sie lokalnie (np. po craftowaniu). */
-    public void invalidateChain(ServerLevel level, Set<Item> changed) {
-        queueChain(level, changed);
-    }
 
-    /** Wymus przeliczenie jednego itemu. */
-    public void invalidate(Item item) {
-        if (queued.add(item)) {
-            pending.add(item);
-        }
-    }
 
 
 }

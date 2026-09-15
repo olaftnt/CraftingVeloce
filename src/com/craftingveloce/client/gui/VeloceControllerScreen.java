@@ -236,7 +236,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
             graphics.pose().pushPose();
             graphics.pose().translate(0, 0, 250);
             graphics.drawString(this.font, txt, slot.x + 17 - this.font.width(txt),
-                    slot.y + 9, 0x55FF55, true);
+                    slot.y + 9, 0xFFFFFF, true);   // bialy = stock (spojnie z terminalem)
             graphics.pose().popPose();
         }
     }

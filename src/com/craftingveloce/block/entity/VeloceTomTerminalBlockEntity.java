@@ -105,15 +105,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
      */
     /** Gotowe liczby craftowalnosci z cache sieci (bez liczenia). */
     private Map<Item, Long> craftableSnapshot() {
-        if (!(level instanceof ServerLevel sl)) {
-            return Map.of();
-        }
-        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
-                .getNetworkForTerminal(sl, worldPosition);
-        if (net == null) {
-            return Map.of();
-        }
-        return com.craftingveloce.crafting.VeloceCraftingCache.get(net).snapshot();
+        // Liczby "+N" nie sa juz nigdzie utrzymywane w tle. Klient zamawia je
+        // dla widocznej strony (RequestCraftableCountsPKT) i dostaje swieze.
+        return Map.of();
     }
 
     /**
@@ -162,8 +156,6 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         // Ktos patrzy na terminal - obudz cache w tle (patrz punkt 0c w
         // VeloceCraftingCache). Bez tego cache spalby, bo domyslnie liczy
         // wylacznie wtedy, gdy gracz ma otwarte GUI.
-        com.craftingveloce.crafting.VeloceCraftingCache.get(net).markBusy(sl);
-
         long start = System.nanoTime();
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
                 .countCraftableBatchResult(sl, net, items, enabled, preferred,
@@ -183,26 +175,21 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
      * <p>Wolane z ticku: cache sam wykrywa zmiany stocku i przelicza tylko
      * dotkniete lancuchy. Dzieki temu liczby sa gotowe zanim gracz otworzy GUI.
      */
+    /**
+     * Utrzymuje siec przy zyciu (force-load chunkow).
+     *
+     * <p><b>Liczenie craftowalnosci zostalo usuniete.</b> Ten cache liczyl
+     * kiedys w tle, w porcjach, "na zapas" - i to bylo zrodlem zamulania,
+     * bo nie sposob zgadnac, co gracz za chwile otworzy. Teraz liczby "+N"
+     * powstaja WYLACZNIE na zadanie klienta, dla itemow widocznych na ekranie
+     * ({@link #computeCraftableCounts}), a nie ma czego trzymac na zapas.
+     *
+     * <p>Cache zostaje, bo ma druga, niezbedna funkcje: trzyma wymuszone
+     * chunki z blokami sieci. Bez tego ekstraktory i craftery przestalyby
+     * pracowac, gdy gracz odejdzie od bazy.
+     */
     private void tickCraftingCache(ServerLevel sl, VelocePipeNetwork net) {
-        var cache = com.craftingveloce.crafting.VeloceCraftingCache.get(net);
-
-        // Najpierw sprawdzamy, czy jest dla kogo liczyc. Przygotowanie
-        // argumentow nie jest darmowe: getAllEnabledItems kopiuje zbior
-        // wszystkich craftowalnych itemow (tysiace wpisow), a to leci co
-        // 5 tickow na kazdy terminal - takze gdy nikt nie patrzy, a cache
-        // i tak wychodzi od razu.
-        if (cache.isIdle(sl)) {
-            // Nikt nie patrzy - zostaje samo utrzymanie chunkow, zeby
-            // ekstraktory pracowaly dalej.
-            cache.tickIdle(sl);
-            return;
-        }
-
-        var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
-                .getAllEnabledItems(sl, net);
-        var preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
-                .getPreferredRecipes(sl, net);
-        cache.tick(sl, enabled, preferred);
+        com.craftingveloce.crafting.VeloceCraftingCache.get(net).tickIdle(sl);
     }
 
     /**
@@ -224,9 +211,13 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
         // zadlawialo serwer (patrz computeCraftableCounts). Zolta liczba "+N"
         // jest doliczana osobno, na zadanie, tylko dla widocznych itemow.
         Map<Item, Long> counts = getAllStoredItemCounts();
-        // Dokladamy gotowe liczby craftowalnosci z cache - sa juz przeliczone
-        // w tle, wiec GUI dostaje je od razu przy otwarciu, bez czekania.
-        Map<Item, Long> craftable = craftableSnapshot();
+        // BEZ liczb craftowalnosci z cache.
+        //
+        // Bylo tu doklejanie gotowej migawki z tla. Teraz tlo nic nie liczy:
+        // liczby "+N" powstaja WYLACZNIE na zadanie klienta, dla itemow
+        // widocznych na ekranie. Doklejanie starej migawki tylko mieszalo
+        // swieze odpowiedzi z nieaktualnymi.
+        Map<Item, Long> craftable = Map.of();
         Iterator<WeakReference<ServerPlayer>> it = activeWatchingPlayers.iterator();
         while (it.hasNext()) {
             ServerPlayer sp = it.next().get();
@@ -438,7 +429,6 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
                     "network found: %d endpoint(s) for terminal at %s",
                     net.getEndpoints().size(), worldPosition);
             // Gracz wlasnie cos wyciagnal - przyspiesz odswiezanie liczb.
-            com.craftingveloce.crafting.VeloceCraftingCache.get(net).markBusy(sl);
 
             ItemStack extracted = net.extractItem(sl, requested.getItem(), count);
             if (!extracted.isEmpty()) {
@@ -455,10 +445,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
             if (allowCrafting) {
                 ItemStack crafted = craftItemFromNetwork(sl, net, requested, count);
                 if (!crafted.isEmpty()) {
-                    // Craftowanie zmienilo stock: przelicz TYLKO lancuch
-                    // dotknietych itemow, nie wszystko.
-                    com.craftingveloce.crafting.VeloceCraftingCache.get(net)
-                            .invalidateChain(sl, java.util.Set.of(requested.getItem()));
+                    // Craftowanie zmienilo stock. Klient sam poprosi o nowe
+                    // liczby dla widocznej strony po dostaniu nowego stocku -
+                    // nie ma tu czego uniewazniac, bo nic nie jest cache'owane.
                     syncCountsToAllWatchers();
                     return crafted;
                 }
