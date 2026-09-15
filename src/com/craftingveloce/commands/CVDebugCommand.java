@@ -42,7 +42,19 @@ public class CVDebugCommand {
                         .then(Commands.literal("on")
                             .executes(ctx -> setChunkVerbose(ctx, true)))
                         .then(Commands.literal("off")
-                            .executes(ctx -> setChunkVerbose(ctx, false)))))
+                            .executes(ctx -> setChunkVerbose(ctx, false))))
+                    // Operacje na itemach w niezaladowanych chunkach.
+                    .then(Commands.literal("ops")
+                        .executes(ctx -> setChunkOps(ctx, null))
+                        .then(Commands.literal("on")
+                            .executes(ctx -> setChunkOps(ctx, true)))
+                        .then(Commands.literal("off")
+                            .executes(ctx -> setChunkOps(ctx, false)))))
+                // Lista chunkow, ktore trzymamy w pamieci - z powodem i blokiem.
+                .then(Commands.literal("chunks")
+                    .executes(CVDebugCommand::executeListChunks)
+                    .then(Commands.literal("strict")
+                        .executes(CVDebugCommand::executeCheckStrict)))
         );
     }
 
@@ -116,6 +128,147 @@ public class CVDebugCommand {
         context.getSource().sendSuccess(() -> Component.literal(
                 "§8[§6Veloce§8] chunk debug verbose: " + state), false);
         return 1;
+    }
+
+    /** Wlacza/wylacza raport operacji na niezaladowanych chunkach. */
+    private static int setChunkOps(CommandContext<CommandSourceStack> context, Boolean value) {
+        boolean target = value == null
+                ? !com.craftingveloce.debug.ChunkOpNotifier.isEnabled()
+                : value;
+        com.craftingveloce.debug.ChunkOpNotifier.setEnabled(target);
+        String state = target ? "§aON" : "§cOFF";
+        context.getSource().sendSuccess(() -> Component.literal(
+                "§8[§6Veloce§8] chunk ops debug: " + state), false);
+        if (target) {
+            context.getSource().sendSuccess(() -> Component.literal(
+                    "§7Operacje na itemach w niezaladowanych chunkach beda raportowane."), false);
+        }
+        return 1;
+    }
+
+    /**
+     * Wypisuje liste chunkow trzymanych w pamieci.
+     *
+     * <p>Dla kazdego chunku: wspolrzedne, siec, blok ktory go trzyma i powod.
+     * Wspolrzedne sa KLIKALNE (teleport), bo inaczej taka lista jest bezuzyteczna
+     * - nie da sie sprawdzic, co siedzi w srodku.
+     */
+    private static int executeListChunks(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerLevel sl = source.getLevel();
+
+        var held = com.craftingveloce.network.pipe.VeloceChunkLoader.listHeld(sl);
+        source.sendSuccess(() -> Component.literal(
+                "§6=== [CraftingVeloce] Trzymane chunki: §f" + held.size()
+                        + " §6w §f" + sl.dimension().location() + " §6==="), false);
+
+        if (held.isEmpty()) {
+            source.sendSuccess(() -> Component.literal(
+                    "§7Brak. Zaden chunk nie jest aktualnie wymuszony."), false);
+            return 1;
+        }
+
+        var manager = VelocePipeNetworkManager.get(sl);
+        for (var hc : held) {
+            boolean loaded = sl.isLoaded(new ChunkPos(hc.x(), hc.z()).getWorldPosition());
+            source.sendSuccess(() -> Component.literal(
+                    "§8- §f[" + hc.x() + ", " + hc.z() + "] "
+                            + (loaded ? "§a[SYMULOWANY]" : "§c[POZA SYMULACJA]")
+                            + " §7uzyc: §f" + hc.hits()), false);
+
+            if (hc.tickets().isEmpty()) {
+                source.sendSuccess(() -> Component.literal(
+                        "§8    powod: §7(nieznany - wpis bez biletu)"), false);
+                continue;
+            }
+            for (var t : hc.tickets()) {
+                String netId = networkIdAt(manager, t.ownerPos());
+                source.sendSuccess(() -> Component.literal(
+                        "§8    siec: §e" + netId
+                                + " §8| powod: §f" + t.reason()
+                                + " §8| wlasciciel: §7" + t.owner()), false);
+                if (t.ownerPos() != null) {
+                    source.sendSuccess(() -> blockLine(t.ownerPos()), false);
+                }
+            }
+        }
+        source.sendSuccess(() -> Component.literal(
+                "§7Kliknij wspolrzedne bloku, aby sie teleportowac."), false);
+        return 1;
+    }
+
+    /**
+     * Wykrywa chunki, ktore wygladaja na trzymane bez powodu.
+     *
+     * <p>To test na wyciek: chunk wymuszony, ale zaden blok zadnej sieci w nim
+     * nie lezy - czyli zostal po sieci, ktora juz nie istnieje.
+     */
+    private static int executeCheckStrict(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerLevel sl = source.getLevel();
+        var manager = VelocePipeNetworkManager.get(sl);
+
+        var held = com.craftingveloce.network.pipe.VeloceChunkLoader.listHeld(sl);
+        int orphaned = 0;
+        for (var hc : held) {
+            // Czy w tym chunku jest cokolwiek, co usprawiedliwia trzymanie?
+            boolean justified = false;
+            for (VelocePipeNetwork net : manager.getAllNetworks()) {
+                for (BlockPos p : net.getPipes()) {
+                    if ((p.getX() >> 4) == hc.x() && (p.getZ() >> 4) == hc.z()) {
+                        justified = true;
+                        break;
+                    }
+                }
+                if (justified) {
+                    break;
+                }
+                for (BlockPos p : net.getTerminals()) {
+                    if ((p.getX() >> 4) == hc.x() && (p.getZ() >> 4) == hc.z()) {
+                        justified = true;
+                        break;
+                    }
+                }
+                if (justified) {
+                    break;
+                }
+            }
+            if (!justified) {
+                orphaned++;
+                int fx = hc.x();
+                int fz = hc.z();
+                source.sendSuccess(() -> Component.literal(
+                        "§cSierota: §f[" + fx + ", " + fz + "] §7- zaden blok sieci tu nie lezy"), false);
+            }
+        }
+        int total = held.size();
+        int found = orphaned;
+        source.sendSuccess(() -> Component.literal(
+                "§6Wynik: §f" + found + " §7sierot na §f" + total + " §7trzymanych chunkow."), false);
+        return 1;
+    }
+
+    /** ID sieci wlasciciela danej pozycji (skrocone) albo "-". */
+    private static String networkIdAt(VelocePipeNetworkManager manager, BlockPos pos) {
+        if (pos == null) {
+            return "-";
+        }
+        VelocePipeNetwork byPipe = manager.getNetworkForPipe(pos);
+        VelocePipeNetwork net = byPipe != null ? byPipe : manager.getNetworkForTerminal(null, pos);
+        return net == null ? "-" : net.getId().toString().substring(0, 8);
+    }
+
+    /** Linia z klikalnymi wspolrzednymi bloku. */
+    private static Component blockLine(BlockPos pos) {
+        String plain = pos.getX() + " " + pos.getY() + " " + pos.getZ();
+        return Component.literal("§8      blok: §f" + plain)
+                .withStyle(style -> style
+                        .withClickEvent(new net.minecraft.network.chat.ClickEvent(
+                                net.minecraft.network.chat.ClickEvent.Action.RUN_COMMAND,
+                                "/tp @s " + plain))
+                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
+                                net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                                Component.literal("Kliknij, aby sie teleportowac"))));
     }
 
     private static int executeDebug(CommandContext<CommandSourceStack> context) {

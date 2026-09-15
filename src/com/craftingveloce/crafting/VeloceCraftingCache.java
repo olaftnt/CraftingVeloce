@@ -174,6 +174,9 @@ public final class VeloceCraftingCache {
         // Rzadko (co sekunde), bo to i tak tanie.
         if (!shuttingDown && level.getGameTime() % 20 == 0) {
             maintainForcedChunks(level);
+            // Wygasle bilety "gorących" chunkow trzeba zdjac, inaczej chunk
+            // uznany raz za czesto uzywany zostawal wymuszony na zawsze.
+            com.craftingveloce.network.pipe.VeloceChunkLoader.expireHotTickets(level);
         }
     }
 
@@ -218,16 +221,23 @@ public final class VeloceCraftingCache {
             return;
         }
 
+        // Mapa: chunk -> blok, ktory jest powodem trzymania (do raportu).
         Set<BlockPos> toLoad = collectChunksToKeep();
 
-        Set<Long> wanted = new HashSet<>();
+        Map<Long, BlockPos> wanted = new HashMap<>();
         for (BlockPos p : toLoad) {
-            wanted.add(ChunkPos.asLong(p.getX() >> 4, p.getZ() >> 4));
+            // putIfAbsent: wezly sa dodawane pierwsze, wiec to one opisuja chunk.
+            wanted.putIfAbsent(ChunkPos.asLong(p.getX() >> 4, p.getZ() >> 4), p);
         }
 
-        releaseUnwantedChunks(level, wanted);
+        releaseUnwantedChunks(level, wanted.keySet());
         int added = retainWantedChunks(level, wanted);
         logForceLoad(added);
+    }
+
+    /** Nazwa wlasciciela biletu dla tej sieci - widoczna w raporcie. */
+    private String ticketOwner() {
+        return "net:" + network.getId().toString().substring(0, 8);
     }
 
     /**
@@ -257,22 +267,34 @@ public final class VeloceCraftingCache {
      * release() na nieistniejaca referencje jest bezpiecznym no-opem.
      */
     private void releaseUnwantedChunks(ServerLevel level, Set<Long> wanted) {
+        String owner = ticketOwner();
         for (long key : new HashSet<>(forcedChunks)) {
             if (!wanted.contains(key)
                     || !com.craftingveloce.network.pipe.VeloceChunkLoader.isHeld(level, key)) {
-                com.craftingveloce.network.pipe.VeloceChunkLoader.release(level, key);
+                com.craftingveloce.network.pipe.VeloceChunkLoader.release(level, key, owner);
                 forcedChunks.remove(key);
             }
         }
     }
 
     /** Laduje to, czego brakuje. Zwraca liczbe nowo wymuszonych chunkow. */
-    private int retainWantedChunks(ServerLevel level, Set<Long> wanted) {
+    private int retainWantedChunks(ServerLevel level, Map<Long, BlockPos> wanted) {
         int added = 0;
-        for (long key : wanted) {
-            if (!forcedChunks.contains(key)) {
-                com.craftingveloce.network.pipe.VeloceChunkLoader.retain(level, key);
-                forcedChunks.add(key);
+        String owner = ticketOwner();
+        for (Map.Entry<Long, BlockPos> e : wanted.entrySet()) {
+            long key = e.getKey();
+            // Bilet zgłaszamy ZAWSZE, nie tylko przy pierwszym dodaniu.
+            //
+            // retain() jest idempotentne dla tego samego wlasciciela (jeden
+            // bilet na wlasciciela), a zgloszenie przy kazdym przebiegu
+            // odtwarza bilet, gdyby zniknal - np. po rozladowaniu jednego
+            // wymiaru, gdzie ksiegowosc loadera jest czyszczona, a cache
+            // celowo jej nie czysci.
+            com.craftingveloce.network.pipe.VeloceChunkLoader.retain(
+                    level, key, owner,
+                    com.craftingveloce.network.pipe.VeloceChunkLoader.Reason.NETWORK,
+                    e.getValue());
+            if (forcedChunks.add(key)) {
                 added++;
             }
         }
@@ -351,8 +373,9 @@ public final class VeloceCraftingCache {
 
     /** Zwalnia wszystkie chunki trzymane przez te siec. */
     public void release(ServerLevel level) {
+        String owner = ticketOwner();
         for (long key : forcedChunks) {
-            com.craftingveloce.network.pipe.VeloceChunkLoader.release(level, key);
+            com.craftingveloce.network.pipe.VeloceChunkLoader.release(level, key, owner);
         }
         VeloceLog.Network.detail(VeloceLog.Side.SERVER,
                 "released %d forced chunk(s) for network", forcedChunks.size());

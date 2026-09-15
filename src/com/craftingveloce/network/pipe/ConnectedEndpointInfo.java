@@ -214,8 +214,15 @@ public class ConnectedEndpointInfo {
             // Przez globalny loader: surowe setChunkForced(false) w finally
             // zabieralo chunk sieciom, ktore nadal go trzymaly - i napedzalo
             // petle load/unload.
-            VeloceChunkLoader.retain(level, chunkKey);
+            com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
+                    com.craftingveloce.debug.ChunkOpNotifier.Op.EXTRACT);
+            VeloceChunkLoader.retain(level, chunkKey, "op:extract",
+                    VeloceChunkLoader.Reason.OPERATION, pos);
             level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true);
+        } else {
+            // Chunk byl juz zaladowany - liczymy to jako uzycie, zeby czesto
+            // odwiedzane chunki zostawaly w pamieci dluzej.
+            VeloceChunkLoader.noteUse(level, chunkKey);
         }
 
         ItemStack result = ItemStack.EMPTY;
@@ -267,7 +274,7 @@ public class ConnectedEndpointInfo {
             t.printStackTrace();
         } finally {
             if (!wasLoaded) {
-                VeloceChunkLoader.release(level, chunkKey);
+                VeloceChunkLoader.release(level, chunkKey, "op:extract");
             }
         }
 
@@ -314,8 +321,13 @@ public class ConnectedEndpointInfo {
             if (VeloceChunkLoader.isFrozen()) {
                 return stack;
             }
-            VeloceChunkLoader.retain(level, chunkKey);
+            com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
+                    com.craftingveloce.debug.ChunkOpNotifier.Op.INSERT);
+            VeloceChunkLoader.retain(level, chunkKey, "op:insert",
+                    VeloceChunkLoader.Reason.OPERATION, pos);
             level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true);
+        } else {
+            VeloceChunkLoader.noteUse(level, chunkKey);
         }
 
         ItemStack remaining = stack.copy();
@@ -365,7 +377,7 @@ public class ConnectedEndpointInfo {
             t.printStackTrace();
         } finally {
             if (!wasLoaded) {
-                VeloceChunkLoader.release(level, chunkKey);
+                VeloceChunkLoader.release(level, chunkKey, "op:insert");
             }
         }
         return remaining;
