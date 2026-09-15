@@ -206,7 +206,10 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         for (Direction dir : Direction.values()) {
             BlockState neighborOverride = (dir == changedFacing) ? changedNeighborState : null;
             boolean connected = canConnectDirection(level, pos, dir, pipeBE, neighborOverride);
-            boolean extracting = (pipeBE != null && pipeBE.isExtracting(dir)) && connected;
+            BlockPos neighborPos = pos.relative(dir);
+            BlockState neighborState = (neighborOverride != null) ? neighborOverride : level.getBlockState(neighborPos);
+            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock;
+            boolean extracting = !isExtractor && (pipeBE != null && pipeBE.isExtracting(dir)) && connected;
             state = state.setValue(PipeBlock.PROPERTY_BY_DIRECTION.get(dir), connected);
             state = state.setValue(EXTRACT_BY_DIRECTION[dir.ordinal()], extracting);
         }
@@ -251,9 +254,11 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
         if (side != null) {
             BlockPos neighborPos = pos.relative(side);
-            boolean isInventory = canConnectToInventory(world, neighborPos, side.getOpposite())
-                    || RefinedStorageHelper.hasRSNetwork(world, neighborPos, side.getOpposite());
-            boolean isNeighborPipe = world.getBlockState(neighborPos).getBlock() instanceof IInventoryCable;
+            BlockState neighborState = world.getBlockState(neighborPos);
+            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock;
+            boolean isInventory = !isExtractor && (canConnectToInventory(world, neighborPos, side.getOpposite())
+                    || RefinedStorageHelper.hasRSNetwork(world, neighborPos, side.getOpposite()));
+            boolean isNeighborPipe = neighborState.getBlock() instanceof IInventoryCable;
 
             if (isInventory) {
                 boolean extracting = pipeBE.isExtracting(side);
@@ -282,6 +287,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                 }
             } else if (isNeighborPipe) {
                 boolean disconnected = pipeBE.isDisconnected(side);
+                pipeBE.setExtracting(side, false);
                 pipeBE.setDisconnected(side, !disconnected);
                 // Also update neighbor if it's our pipe
                 BlockEntity nbe = world.getBlockEntity(neighborPos);
@@ -292,16 +298,19 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                     InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
                 }
                 if (player instanceof ServerPlayer sp) {
-                    sp.displayClientMessage(Component.literal(!disconnected ? "Disconnected" : "Push/Pull"), true);
+                    sp.displayClientMessage(Component.literal(!disconnected ? "Disconnected" : (isExtractor ? "Connected" : "Push/Pull")), true);
                 }
             }
         } else {
             // Clicked core -> toggle face clicked
             Direction hitDir = hit.getDirection();
             boolean disconnected = pipeBE.isDisconnected(hitDir);
+            pipeBE.setExtracting(hitDir, false);
             pipeBE.setDisconnected(hitDir, !disconnected);
 
             BlockPos neighborPos = pos.relative(hitDir);
+            BlockState neighborState = world.getBlockState(neighborPos);
+            boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock;
             BlockEntity nbe = world.getBlockEntity(neighborPos);
             if (nbe instanceof VelocePipeBlockEntity otherPipe) {
                 otherPipe.setDisconnected(hitDir.getOpposite(), !disconnected);
@@ -310,7 +319,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                 InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
             }
             if (player instanceof ServerPlayer sp) {
-                sp.displayClientMessage(Component.literal(!disconnected ? "Disconnected" : "Push/Pull"), true);
+                sp.displayClientMessage(Component.literal(!disconnected ? "Disconnected" : (isExtractor ? "Connected" : "Push/Pull")), true);
             }
         }
 
