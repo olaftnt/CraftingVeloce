@@ -17,6 +17,7 @@ public class VelocePacketHandler {
             registrar.playToClient(SyncCraftingTableStatePKT.TYPE, SyncCraftingTableStatePKT.STREAM_CODEC, SyncCraftingTableStatePKT::handle);
             registrar.playToClient(OpenControllerScreenPKT.TYPE, OpenControllerScreenPKT.STREAM_CODEC, OpenControllerScreenPKT::handle);
             registrar.playToServer(TerminalPullItemPKT.TYPE, TerminalPullItemPKT.STREAM_CODEC, TerminalPullItemPKT::handle);
+            registrar.playToServer(TerminalWatcherPKT.TYPE, TerminalWatcherPKT.STREAM_CODEC, TerminalWatcherPKT::handle);
             registrar.playToServer(ExtractorSetFilterPKT.TYPE, ExtractorSetFilterPKT.STREAM_CODEC, ExtractorSetFilterPKT::handle);
             registrar.playToServer(ExtractorOpenFilterPKT.TYPE, ExtractorOpenFilterPKT.STREAM_CODEC, ExtractorOpenFilterPKT::handle);
             registrar.playToServer(CraftingTableToggleItemPKT.TYPE, CraftingTableToggleItemPKT.STREAM_CODEC, CraftingTableToggleItemPKT::handle);

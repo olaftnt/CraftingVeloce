@@ -411,6 +411,12 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
 
     @Override
     public void removed() {
+        // Mowimy serwerowi, ze przestalismy patrzec - inaczej wysylalby nam
+        // pelna mape sieci co sekunde przez caly czas przebywania w poblizu.
+        if (terminalPos != null) {
+            PacketDistributor.sendToServer(new com.craftingveloce.network.TerminalWatcherPKT(
+                    terminalPos, false));
+        }
         if (this.minecraft != null && this.minecraft.player != null && this.menu != null
                 && !this.menu.getCarried().isEmpty()) {
             ItemStack carried = this.menu.getCarried();

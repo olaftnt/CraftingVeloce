@@ -73,9 +73,23 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity {
     }
 
     public void onPlayerOpenTerminal(ServerPlayer player) {
-        activeWatchingPlayers.removeIf(ref -> ref.get() == null || ref.get() == player);
-        activeWatchingPlayers.add(new WeakReference<>(player));
+        setPlayerWatching(player, true);
         syncCountsToPlayer(player);
+    }
+
+    /**
+     * Dodaje/usuwa gracza z listy odbiorcow odswiezen.
+     *
+     * <p>Usuwanie przy zamknieciu GUI jest wazne: wczesniej wpis znikal tylko
+     * przy rozlaczeniu albo odejsciu dalej niz 64 klocki, wiec gracz stojacy
+     * obok terminala dostawal pelna mape sieci co sekunde bez konca - mimo ze
+     * nic nie ogladal.
+     */
+    public void setPlayerWatching(ServerPlayer player, boolean watching) {
+        activeWatchingPlayers.removeIf(ref -> ref.get() == null || ref.get() == player);
+        if (watching) {
+            activeWatchingPlayers.add(new WeakReference<>(player));
+        }
     }
 
     /**
