@@ -78,7 +78,12 @@ public class VelocePipeNetworkManager extends SavedData {
             return;
         }
         long now = level.getGameTime();
-        if (lastRebuildTick != Long.MIN_VALUE && now - lastRebuildTick < REBUILD_COOLDOWN_TICKS) {
+        // `now >= lastRebuildTick` - przy cofnietym czasie swiata roznica bylaby
+        // ujemna, wiec blokada "cooldown" bylaby spelniona BEZ KONCA i siec
+        // nigdy nie zostalaby przebudowana (rury przestalyby sie laczyc).
+        if (lastRebuildTick != Long.MIN_VALUE
+                && now >= lastRebuildTick
+                && now - lastRebuildTick < REBUILD_COOLDOWN_TICKS) {
             return;
         }
         lastRebuildTick = now;

@@ -132,7 +132,11 @@ public class VelocePipeNetwork {
         // Agregat jest cache'owany na poziomie sieci. Bez tego kazdy z kilku
         // odbiorcow (cache w tle, GUI, wyswietlacze, pakiety) zamawial wlasny
         // pelny skan tej samej sieci - w tym samym ticku.
+        // `now >= aggregateCacheTick` - jak w ConnectedEndpointInfo: przy
+        // cofnietym czasie swiata roznica bylaby ujemna, wiec warunek
+        // "mlodsze niz TTL" bylby spelniony i agregat nigdy by sie nie odswiezyl.
         if (!force && aggregateCache != null
+                && now >= aggregateCacheTick
                 && now - aggregateCacheTick < AGGREGATE_TTL_TICKS) {
             return new HashMap<>(aggregateCache);
         }

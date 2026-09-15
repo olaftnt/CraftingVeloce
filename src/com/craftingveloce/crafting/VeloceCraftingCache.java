@@ -346,7 +346,8 @@ public final class VeloceCraftingCache {
             if (firstSeenTick < 0) {
                 firstSeenTick = level.getGameTime();
             }
-            if (level.getGameTime() - firstSeenTick < STARTUP_GRACE_TICKS) {
+            if (level.getGameTime() >= firstSeenTick
+                    && level.getGameTime() - firstSeenTick < STARTUP_GRACE_TICKS) {
                 return;
             }
             startupGracePassed = true;
@@ -386,7 +387,11 @@ public final class VeloceCraftingCache {
                         "crafting cache: first tick seen (gameTime=%d), waiting %d ticks",
                         firstSeenTick, STARTUP_GRACE_TICKS);
             }
-            if (level.getGameTime() - firstSeenTick < STARTUP_GRACE_TICKS) {
+            // `>= firstSeenTick` jak w pozostalych bramkach czasowych: przy
+            // cofnietym czasie swiata roznica bylaby ujemna, wiec karencja
+            // startowa nigdy by sie nie skonczyla i cache nie ruszylby wcale.
+            if (level.getGameTime() >= firstSeenTick
+                    && level.getGameTime() - firstSeenTick < STARTUP_GRACE_TICKS) {
                 return;
             }
             startupGracePassed = true;
