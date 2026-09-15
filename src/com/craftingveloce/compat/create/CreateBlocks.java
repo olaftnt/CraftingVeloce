@@ -62,12 +62,11 @@ public final class CreateBlocks {
             ITEMS.registerSimpleBlockItem("veloce_create_mechanical_crafter_module",
                     VELOCE_MECHANICAL_CRAFTER_MODULE);
 
-    /** Jedna linia na maszyne: blok + fabryka BE z tego modulu. */
+    /** Jedna linia na maszyne: blok + fabryka BE + typ BE z tego modulu. */
     private static VeloceKineticModuleBlock block(KineticModule module) {
         return new VeloceKineticModuleBlock(module,
-                (pos, state) -> new com.craftingveloce.compat.create.block.entity
-                        .VeloceKineticModuleBlockEntity(module,
-                        CreateBlockEntities.holderFor(module).get(), pos, state),
+                (pos, state) -> CreateBlockEntities.create(module, pos, state),
+                () -> CreateBlockEntities.holderFor(module).get(),
                 properties());
     }
 

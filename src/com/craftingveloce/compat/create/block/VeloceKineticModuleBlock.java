@@ -5,6 +5,7 @@ import com.craftingveloce.compat.create.block.entity.VeloceKineticModuleBlockEnt
 import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 import com.simibubi.create.content.kinetics.base.KineticBlock;
+import com.simibubi.create.foundation.block.IBE;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.BlockGetter;
@@ -14,6 +15,7 @@ import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
 import javax.annotation.Nullable;
@@ -31,7 +33,7 @@ import javax.annotation.Nullable;
  * bramke {@code CreateCompat} - rdzen nie wie o jej istnieniu.
  */
 public class VeloceKineticModuleBlock extends KineticBlock
-        implements EntityBlock, VeloceNetworkNode {
+        implements EntityBlock, VeloceNetworkNode, IBE<VeloceKineticModuleBlockEntity> {
 
     /** Fabryka block entity - dostarczana przez modul (rdzen nie zna rejestrow). */
     @FunctionalInterface
@@ -41,13 +43,37 @@ public class VeloceKineticModuleBlock extends KineticBlock
 
     private final KineticModule module;
     private final BlockEntityFactory blockEntityFactory;
+    private final java.util.function.Supplier<BlockEntityType<?>> blockEntityType;
 
     public VeloceKineticModuleBlock(KineticModule module,
                                     BlockEntityFactory blockEntityFactory,
+                                    java.util.function.Supplier<BlockEntityType<?>> blockEntityType,
                                     Properties properties) {
         super(properties);
         this.module = module;
         this.blockEntityFactory = blockEntityFactory;
+        this.blockEntityType = blockEntityType;
+    }
+
+    /**
+     * Typ block entity tej maszyny.
+     *
+     * <p><b>Krytyczne dla dzialania.</b> Create tickuje swoje maszyny przez
+     * domyslny {@code getTicker} z {@link IBE} - bez implementacji tego
+     * interfejsu block entity NIGDY nie bylby tickowany, {@code getSpeed()}
+     * zostaloby zerem i maszyna na zawsze bylaby "bez napedu" (cichy blad:
+     * blok stoi, nic nie robi, a w logach nie ma ani sladu).
+     */
+    @Override
+    public Class<VeloceKineticModuleBlockEntity> getBlockEntityClass() {
+        return VeloceKineticModuleBlockEntity.class;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public BlockEntityType<? extends VeloceKineticModuleBlockEntity> getBlockEntityType() {
+        return (BlockEntityType<? extends VeloceKineticModuleBlockEntity>)
+                (BlockEntityType<?>) blockEntityType.get();
     }
 
     /** Opis maszyny (typ receptury, etykieta, SU). */

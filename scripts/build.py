@@ -940,7 +940,35 @@ def validate_module_block_ids():
         print(f"    OK ({checked} blokow modulow: nazwy z prefiksem moda)")
 
 
+def validate_create_kinetics():
+    """
+    Blok kinetyczny Create MUSI implementowac {@code IBE}.
+
+    Create tickuje swoje maszyny przez domyslny {@code getTicker} z
+    {@code IBE} - bez tego interfejsu block entity nie jest tickowany nigdy,
+    {@code getSpeed()} zostaje zerem, a maszyna na zawsze jest "bez napedu".
+
+    To najgorszy rodzaj bledu: blok sie stawia, wyglada dobrze, w logach nie ma
+    nic, a integracja po prostu nie dziala. Dlatego pilnuje tego build.
+    """
+    problems, checked = [], 0
+    for path in sorted(glob.glob("src/com/craftingveloce/compat/*/block/*.java")):
+        text = open(path, encoding="utf-8").read()
+        if "extends KineticBlock" not in text:
+            continue
+        checked += 1
+        if "IBE<" not in text:
+            problems.append(path.replace(os.sep, "/")
+                            + ": dziedziczy po KineticBlock, ale nie implementuje IBE<> "
+                              "(BE nie bylby tickowany - maszyna nigdy sie nie kreci)")
+    if problems:
+        fail("kinetyka Create:\n  " + "\n  ".join(problems))
+    if checked:
+        print(f"    OK ({checked} blokow kinetycznych: IBE zapewnia tickowanie BE)")
+
+
 def game_running():
+
     """
     Czy Minecraft z tego profilu wlasnie dziala?
 
@@ -1121,6 +1149,7 @@ def main():
     validate_compat_gates(z)
     validate_jar_isolation(z)
     validate_isolation_runtime(cp, toms, rs)
+    validate_create_kinetics()
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "
