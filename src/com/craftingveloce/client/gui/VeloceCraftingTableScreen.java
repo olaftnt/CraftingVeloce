@@ -229,31 +229,42 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     // ------------------------------------------------------------------
-    // ------------------------------------------------------------------
-    // Zakladka ekwipunku
-    // ------------------------------------------------------------------
-
     /**
-     * Zakladka "Survival Inventory" NIE otwiera osobnego okna.
+     * Ukrywa zakladke "Survival Inventory" w crafterze.
      *
-     * <p>Wczesniej otwierala wlasny ekran kontenera, co konczylo sie bialym
-     * blokiem na srodku ekranu, bez zakladek i bez wyjscia - i pojawialo sie
-     * domyslnie przy kazdym wejsciu w crafter. Zrezygnowalismy z tego
-     * calkowicie: zakladka dziala jak reszta tego GUI.
+     * <p>Ta zakladka w vanilla otwiera ekwipunek gracza z pancerzem, offhandem
+     * i craftingiem 2x2 - czyli dokladnie to, co nasze GUI juz pokazuje
+     * (siatka craftera + lista itemow). Efekt byl mylacy: pokazywal sie
+     * niepasujacy ekran i nie dalo sie z niego sensownie korzystac.
+     *
+     * <p>Zamiast tego zakladka jest po prostu nieobecna - tak jak zakladki
+     * administracyjne.
      */
-
-    /** Znajduje zakladke pod kursorem. */
-    private CreativeModeTab tabUnderMouse(double mouseX, double mouseY) {
-        for (CreativeModeTab tab : net.minecraft.world.item.CreativeModeTabs.tabs()) {
-            try {
-                if (checkTabClicked(tab, mouseX, mouseY)) {
-                    return tab;
-                }
-            } catch (Throwable ignored) {
-            }
+    @Override
+    protected boolean acceptTab(CreativeModeTab tab) {
+        if (tab.getType() == CreativeModeTab.Type.INVENTORY) {
+            return false;
         }
-        return null;
+        return super.acceptTab(tab);
     }
+
+    // ------------------------------------------------------------------
+    // Zakladka ekwipunku - UKRYTA
+    // ------------------------------------------------------------------
+
+    // Historia prob (zeby nie powtarzac bledow):
+    //   1. Podmiana slotow w ekranie vanilla -> itemy na slocie glowy,
+    //      zepsuty uklad, bo walczylismy z ukladem vanilla.
+    //   2. Wlasny ekran kontenera ze scrollbarem -> otwieral sie sam przy
+    //      wejsciu w crafter i nie dalo sie z niego wyjsc (bialy blok).
+    //   3. Teraz: zakladka jest po prostu UKRYTA przez acceptTab ponizej.
+    //
+    // TODO (do zrobienia pozniej, wlasciwym sposobem):
+    //   Skopiowac ekran creative inventory do moda jako wlasna klase
+    //   i modyfikowac go bezposrednio. Wtedy zakladka ekwipunku moze pokazac
+    //   bufor craftera bez walki z vanilla - mamy pelna kontrole nad ukladem.
+    //   Nie robic tego przez podmiane slotow ani przez drugi ekran.
+
 
     // ------------------------------------------------------------------
     // Tooltip

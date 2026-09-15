@@ -299,6 +299,28 @@ teksturą. Wcześniejsze wersje są w historii gita (commit `8553ae5` i wcześni
 
 ## 🚧 Co jeszcze do zrobienia / Known Issues
 
+### 🔴 Zrobic pozniej: podglad bufora craftera w zakladce ekwipunku
+
+**Stan obecny:** zakladka "Survival Inventory" jest **ukryta** w crafterze
+(`VeloceCraftingTableScreen.acceptTab` odrzuca `Type.INVENTORY`).
+
+**Dlaczego:** dwie nieudane proby, opisane tu, zeby ich nie powtarzac:
+
+1. **Podmiana slotow w ekranie vanilla** - nadpisywalismy zawartosc slotow
+   ekwipunku gracza w `CreativeModeInventoryScreen`. Efekt: itemy na slocie
+   glowy i zepsuty uklad. Problem: walczylismy z ukladem vanilla zamiast go
+   kontrolowac.
+
+2. **Wlasny ekran kontenera** (`VeloceCrafterStorageMenu/Screen`) - osobny
+   ekran ze scrollbarem. Efekt: otwieral sie **sam** przy wejsciu w crafter
+   (wykrywanie zakladki w `containerTick`, nie tylko w kliknieciu) i nie dalo
+   sie z niego wyjsc. Usuniety.
+
+**Wlasciwy sposob (TODO):** skopiowac `CreativeModeInventoryScreen` do moda
+jako wlasna klase i modyfikowac bezposrednio. Wtedy zakladka ekwipunku moze
+pokazac bufor craftera bez walki z vanilla, bo mamy pelna kontrole nad ukladem
+slotow. **Nie** robic tego przez podmiane slotow ani przez drugi ekran.
+
 - **Crafting Table** — na razie tylko UI i toggle stanu. Auto-crafting (faktyczne craftowanie itemów z sieci na podstawie włączonych receptur) nie jest jeszcze zaimplementowany
 - **Loot tables** — bloki po zniszczeniu nie dropują się (brak `data/craftingveloce/loot_table/blocks/`)
 - **Crafting recipes** — brak receptur craftu dla bloków (można tylko creative)
