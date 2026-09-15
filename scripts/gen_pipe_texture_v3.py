@@ -65,26 +65,23 @@ def build_pipe_region():
         for x in range(BAND, BAND + WIN):
             put(x, y, CLEAR)
 
-    # 3. szary pas rozbijajacy plaszczyzne opaski.
-    #    Tylko w wierszach opaski (0,1,6,7) i kolumnach srodkowych (2..5),
-    #    zeby nie dotknac okna ani nie zaburzyc symetrii.
-    for y in (0, 1, 6, 7):
-        for x in (2, 3, 4, 5):
-            put(x, y, GREY)
+    # 3. UWAGA: wersja v4 (autorstwa uzytkownika) NIE ma szarego pasa.
+    #    Rura jest czysta czernia z oknem 4x4 - wyglada jak "szyba".
+    #    Szary GREY zostal zachowany w palecie tylko dla regionu glowicy
+    #    i na wypadek powrotu do poprzedniego wzoru.
 
 
 def build_head_region():
-    """Region B: [8,0 .. 16,8] - glowica 8x8 (bez zmian rozmiaru regionu)."""
+    """Region B: [8,0 .. 16,8] - glowica 8x8 (bez zmian rozmiaru regionu).
+
+    Wersja v4: brak szarych pasow, okno 4x4 (zamiast 4x2) - spojne z rura.
+    """
     ox, oy = 8, 0
     for y in range(8):
         for x in range(8):
             put(ox + x, oy + y, BLACK)
-    # szare pasy
-    for y in (1, 6):
-        for x in range(1, 7):
-            put(ox + x, oy + y, GREY)
-    # okno 4x2 na srodku
-    for y in (3, 4):
+    # okno 4x4 na srodku (takie samo jak na scianach rury)
+    for y in (2, 3, 4, 5):
         for x in (2, 3, 4, 5):
             put(ox + x, oy + y, CLEAR)
 
