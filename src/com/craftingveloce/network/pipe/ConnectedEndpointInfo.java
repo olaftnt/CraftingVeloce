@@ -149,12 +149,37 @@ public class ConnectedEndpointInfo {
         lastScanTick = Long.MIN_VALUE;
     }
 
+    /**
+     * Odnotowuje, ze endpointu nie da sie teraz odczytac.
+     *
+     * <p>Logujemy RAZ na endpoint, zeby nie zasmiecac loga przy kazdym
+     * ladowaniu chunku, ale zeby dalo sie to w ogole zobaczyc.
+     */
+    private void noteNotReadable() {
+        if (!notReadableLogged) {
+            notReadableLogged = true;
+            VeloceLog.Network.detail(VeloceLog.Side.SERVER,
+                    "endpoint at %s not readable yet (chunk loading?) - keeping known counts",
+                    pos);
+        }
+    }
+
+    /** Czy juz logowalismy, ze endpointu nie da sie odczytac. */
+    private boolean notReadableLogged = false;
+
     public void refreshIfLoaded(ServerLevel level) {
         if (!level.isLoaded(pos)) {
             return;
         }
 
         if (type == Type.REFINED_STORAGE) {
+            // To samo zabezpieczenie co dla INVENTORY: gdy block entity jeszcze
+            // nie istnieje (chunk w trakcie ladowania), licznik RS jest chwilowo
+            // niedostepny - nie nadpisujemy znanych liczb zerem.
+            if (level.getBlockEntity(pos) == null) {
+                noteNotReadable();
+                return;
+            }
             Map<Item, Long> rsCounts = RefinedStorageHelper.getRSItemCounts(level, pos, accessSide);
             cachedCounts.clear();
             cachedCounts.putAll(rsCounts);
@@ -167,26 +192,51 @@ public class ConnectedEndpointInfo {
             BlockState state = level.getBlockState(pos);
             BlockEntity be = level.getBlockEntity(pos);
             IItemHandler handler = Capabilities.ItemHandler.BLOCK.getCapability(level, pos, state, be, accessSide);
+
+            // CZY WIDZIELISMY POJEMNIK?
+            //
+            // BUG, ktory tu byl: ponizsze `cachedCounts.clear()` wykonywalo sie
+            // ZAWSZE, takze gdy NIE udalo sie odczytac zadnego pojemnika.
+            // Wtedy `newCounts` bylo puste i znane liczby zostawaly WYMAZANE
+            // ZEREM.
+            //
+            // Kiedy to zachodzi w praktyce: gracz teleportuje sie obok skrzyni,
+            // jej chunk zaczyna sie ladowac, ale block entity jeszcze nie
+            // powstalo (`getBlockEntity` zwraca null). Nasz skan czyta wtedy
+            // pustke i zapisuje zero - a ze chunk zaraz znowu sie rozladowuje,
+            // nie ma jak tego poprawic. Objaw: "terminal zgubil siec", bo
+            // magazyn raportuje 0 typow.
+            boolean sawContainer = false;
             if (handler != null) {
+                sawContainer = true;
                 for (int i = 0; i < handler.getSlots(); i++) {
                     ItemStack stack = handler.getStackInSlot(i);
                     if (!stack.isEmpty()) {
                         newCounts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
                     }
                 }
-            } else {
-                if (be instanceof Container container) {
-                    for (int i = 0; i < container.getContainerSize(); i++) {
-                        ItemStack stack = container.getItem(i);
-                        if (!stack.isEmpty()) {
-                            newCounts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
-                        }
+            } else if (be instanceof Container container) {
+                sawContainer = true;
+                for (int i = 0; i < container.getContainerSize(); i++) {
+                    ItemStack stack = container.getItem(i);
+                    if (!stack.isEmpty()) {
+                        newCounts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
                     }
                 }
             }
+
+            if (!sawContainer) {
+                // Nie ma czego czytac - chunk sie jeszcze laduje albo blok
+                // zniknal. ZOSTAWIAMY ostatnie znane liczby zamiast ich
+                // kasowac: lepsza nieaktualna liczba niz falszywe zero.
+                noteNotReadable();
+                return;
+            }
+
             cachedCounts.clear();
             cachedCounts.putAll(newCounts);
             scanFailureLogged = false;
+            notReadableLogged = false;
         } catch (Throwable t) {
             // NIE polykamy tego po cichu.
             //

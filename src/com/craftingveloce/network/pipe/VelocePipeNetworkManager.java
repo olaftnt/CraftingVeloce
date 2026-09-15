@@ -88,6 +88,16 @@ public class VelocePipeNetworkManager extends SavedData {
     /** Tick ostatniej przebudowy - do odstepu miedzy nimi. */
     private long lastRebuildTick = Long.MIN_VALUE;
 
+    /**
+     * Budzet czasu na cala partie przebudow w jednym ticku.
+     *
+     * <p>Musi byc MNIEJSZY niz budzet ticku (50 ms), zeby zostalo miejsce na
+     * reszte gry. Pojedyncza przebudowa ma wlasny budzet
+     * ({@link #SCAN_BUDGET_NS}), ale bez wspolnego limitu kilka przebudow
+     * pod rzad sumowalo sie do wartosci wiekszej niz caly tick.
+     */
+    private static final long REBUILD_BATCH_BUDGET_NS = 25_000_000L;
+
     /** Minimalny odstep miedzy przebudowami sieci, w tickach (5 na sekunde). */
     private static final int REBUILD_COOLDOWN_TICKS = 4;
 
@@ -151,7 +161,20 @@ public class VelocePipeNetworkManager extends SavedData {
         }
         lastRebuildTick = now;
 
+        // BUDZET CZASU NA CALA PARTIE.
+        //
+        // BUG, ktory tu byl: petla mogla wykonac MAX_REBUILDS_PER_TICK
+        // przebudow, a KAZDA ma wlasny budzet SCAN_BUDGET_NS (20 ms). Przy
+        // czterech przebudowach dawalo to do 80 ms zamulenia w jednym ticku -
+        // czyli przekroczenie calego budzetu ticku (50 ms).
+        //
+        // Teraz liczy sie suma: przerwiemy partie, gdy przekroczy bezpieczny
+        // limit, a reszta poczeka na kolejny cooldown.
+        long batchDeadline = System.nanoTime() + REBUILD_BATCH_BUDGET_NS;
         for (int done = 0; done < MAX_REBUILDS_PER_TICK; done++) {
+            if (System.nanoTime() > batchDeadline) {
+                break;
+            }
             java.util.Iterator<BlockPos> it = pendingRebuilds.iterator();
             if (!it.hasNext()) {
                 break;
