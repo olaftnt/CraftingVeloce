@@ -99,19 +99,25 @@ public class VeloceThresholdSensorScreen
         this.thresholdField.setMaxLength(10);
         // Tylko cyfry - pole jest liczbowe, wiec nie ma po co wpuszczac liter.
         this.thresholdField.setFilter(s -> s.isEmpty() || s.chars().allMatch(Character::isDigit));
+        // Podpowiedz pola: naglowek + jedno zdanie, co ta liczba znaczy.
+        this.thresholdField.setTooltip(Tooltip.create(
+                Component.translatable("gui.craftingveloce.sensor.threshold")
+                        .append(Component.literal("\n"))
+                        .append(Component.translatable("gui.craftingveloce.sensor.threshold.tip")
+                                .withStyle(ChatFormatting.DARK_GRAY))));
         addRenderableWidget(this.thresholdField);
 
         addRenderableWidget(Button.builder(Component.literal("+"), b -> step(1))
                 .bounds(this.leftPos + VeloceThresholdSensorMenu.STEP_PLUS_X,
                         this.topPos + VeloceThresholdSensorMenu.ROW_Y,
                         VeloceThresholdSensorMenu.BTN_W, VeloceThresholdSensorMenu.ROW_H)
-                .tooltip(stepTip())
+                .tooltip(stepTip("gui.craftingveloce.sensor.step.plus"))
                 .build());
         addRenderableWidget(Button.builder(Component.literal("-"), b -> step(-1))
                 .bounds(this.leftPos + VeloceThresholdSensorMenu.STEP_MINUS_X,
                         this.topPos + VeloceThresholdSensorMenu.ROW_Y,
                         VeloceThresholdSensorMenu.BTN_W, VeloceThresholdSensorMenu.ROW_H)
-                .tooltip(stepTip())
+                .tooltip(stepTip("gui.craftingveloce.sensor.step.minus"))
                 .build());
 
         // Guzik trybu na koncu wiersza - ikona zamiast napisu.
@@ -156,8 +162,15 @@ public class VeloceThresholdSensorScreen
                         .withStyle(ChatFormatting.DARK_GRAY)));
     }
 
-    private Tooltip stepTip() {
-        return Tooltip.create(Component.translatable("gui.craftingveloce.sensor.step.tip"));
+    /**
+     * Podpowiedz guzika "+" / "-".
+     *
+     * <p>Krotko - sam znak i jedynka. Dlugie zdanie ("Change the amount by one,
+     * type a bigger value") gracz kazal usunac: guzik jest maly, a tooltip ma
+     * dopowiedziec, a nie tlumaczyc obsluge.
+     */
+    private Tooltip stepTip(String key) {
+        return Tooltip.create(Component.translatable(key));
     }
 
     private void toggleMode() {
