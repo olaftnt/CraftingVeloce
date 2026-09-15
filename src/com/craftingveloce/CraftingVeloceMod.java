@@ -142,6 +142,16 @@ public class CraftingVeloceMod {
                 });
 
         NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.event.level.LevelEvent.Load.class, event -> {
+                    // Powrot do swiata po wyjsciu do menu. releaseAll() ustawia
+                    // flage "serwer sie zamyka" i ktos musi ja zdjac - inaczej
+                    // force-loading chunkow zostaje wylaczony do konca sesji.
+                    if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel) {
+                        com.craftingveloce.crafting.VeloceCraftingCache.onLevelLoaded();
+                    }
+                });
+
+        NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.event.level.LevelEvent.Unload.class, event -> {
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                         com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)

@@ -609,6 +609,20 @@ public final class VeloceCraftingCache {
      */
     private static volatile boolean shuttingDown = false;
 
+    /**
+     * Wchodzimy do swiata - znowu wolno wymuszac chunki.
+     *
+     * <p><b>Bez tego byl ciezki, cichy bug.</b> {@code releaseAll} ustawialo
+     * {@code shuttingDown = true} i NIKT tego nie cofal. W trybie single-player
+     * wystarczylo wyjsc do menu i wejsc ponownie (LevelEvent.Unload -> releaseAll),
+     * zeby force-loading chunkow przestal dzialac DO KONCA SESJI: ekstraktory,
+     * craftery i terminale w dalszych chunkach przestawaly byc tickowane,
+     * a liczby w GUI zostawaly stare.
+     */
+    public static void onLevelLoaded() {
+        shuttingDown = false;
+    }
+
     /** Zwalnia force-loady wszystkich sieci. Wolane przy zamykaniu serwera. */
     public static void releaseAll(ServerLevel level) {
         shuttingDown = true;
