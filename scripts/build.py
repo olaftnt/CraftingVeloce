@@ -126,20 +126,27 @@ def validate_gui_layout():
         "ekran": "src/com/craftingveloce/client/gui/VeloceVelocityFurnaceScreen.java",
         "generator": "scripts/gen_furnace_gui.py",
     }
+    # Bateria i jej slot zyja w menu pieca ELEKTRYCZNEGO i w jego ekranie.
+    paths["menu_el"] = "src/com/craftingveloce/inventory/VeloceElectricFurnaceMenu.java"
+    paths["ekran_el"] = "src/com/craftingveloce/client/gui/VeloceElectricFurnaceScreen.java"
     names = ["FILTER_X", "FILTER_Y", "FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y",
-             "FLAME_X", "FLAME_Y", "BAR_X", "BAR_Y", "BAR_W", "BAR_H"]
-    who = {n: [k for k in paths] for n in names}
+             "FLAME_X", "FLAME_Y",
+             "BATTERY_X", "BATTERY_Y", "BATTERY_W", "BATTERY_H", "NUB_W", "NUB_H",
+             "BATTERY_SLOT_X", "BATTERY_SLOT_Y"]
+    # Domyslnie porownujemy trojke pieca PALIWOWEGO: menu, ekran, generator.
+    # Pozostale elementy maja wlasne listy nizej.
+    who = {n: ["menu", "ekran", "generator"] for n in names}
     for n in ("FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y"):
         who[n] = ["menu", "generator"]          # ekran ich nie potrzebuje
     for n in ("FLAME_X", "FLAME_Y"):
         who[n] = ["ekran", "generator"]         # menu ich nie potrzebuje
-    for n in ("BAR_X", "BAR_Y", "BAR_W", "BAR_H"):
-        who[n] = ["ekran", "generator"]         # pasek energii pieca elektrycznego
+    for n in ("BATTERY_X", "BATTERY_Y", "BATTERY_W", "BATTERY_H", "NUB_W", "NUB_H"):
+        who[n] = ["ekran_el", "generator"]      # bateria pieca elektrycznego
+    for n in ("BATTERY_SLOT_X", "BATTERY_SLOT_Y"):
+        # Ekran elektryczny UZYWA stalej z menu (nie ma wlasnej kopii) - i tak
+        # ma byc: jedno zrodlo. Generator maluje ramke pod ta pozycja.
+        who[n] = ["menu_el", "generator"]
 
-    paths["ekran_elektryczny"] = ("src/com/craftingveloce/client/gui/"
-                                  "VeloceElectricFurnaceScreen.java")
-    for n in ("BAR_X", "BAR_Y", "BAR_W", "BAR_H"):
-        who[n] = ["ekran_elektryczny", "generator"]
     values = {n: {k: consts(paths[k], [n])[n] for k in who[n]} for n in names}
 
     problems = []
