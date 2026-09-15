@@ -89,12 +89,12 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     public static final VoxelShape SHAPE_UP = Block.box(5.0D, 11.0D, 5.0D, 11.0D, 16.0D, 11.0D);
     public static final VoxelShape SHAPE_DOWN = Block.box(5.0D, 0.0D, 5.0D, 11.0D, 5.0D, 11.0D);
 
-    public static final VoxelShape SHAPE_EXTRACT_NORTH = Block.box(4.0D, 4.0D, 0.0D, 12.0D, 12.0D, 1.0D);
-    public static final VoxelShape SHAPE_EXTRACT_SOUTH = Block.box(4.0D, 4.0D, 15.0D, 12.0D, 12.0D, 16.0D);
-    public static final VoxelShape SHAPE_EXTRACT_WEST = Block.box(0.0D, 4.0D, 4.0D, 1.0D, 12.0D, 12.0D);
-    public static final VoxelShape SHAPE_EXTRACT_EAST = Block.box(15.0D, 4.0D, 4.0D, 16.0D, 12.0D, 12.0D);
-    public static final VoxelShape SHAPE_EXTRACT_UP = Block.box(4.0D, 15.0D, 4.0D, 12.0D, 16.0D, 12.0D);
-    public static final VoxelShape SHAPE_EXTRACT_DOWN = Block.box(4.0D, 0.0D, 4.0D, 12.0D, 1.0D, 12.0D);
+    public static final VoxelShape SHAPE_EXTRACT_NORTH = Shapes.or(SHAPE_NORTH, Block.box(4.0D, 4.0D, 0.0D, 12.0D, 12.0D, 1.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_SOUTH = Shapes.or(SHAPE_SOUTH, Block.box(4.0D, 4.0D, 15.0D, 12.0D, 12.0D, 16.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_WEST = Shapes.or(SHAPE_WEST, Block.box(0.0D, 4.0D, 4.0D, 1.0D, 12.0D, 12.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_EAST = Shapes.or(SHAPE_EAST, Block.box(15.0D, 4.0D, 4.0D, 16.0D, 12.0D, 12.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_UP = Shapes.or(SHAPE_UP, Block.box(4.0D, 15.0D, 4.0D, 12.0D, 16.0D, 12.0D)).optimize();
+    public static final VoxelShape SHAPE_EXTRACT_DOWN = Shapes.or(SHAPE_DOWN, Block.box(4.0D, 0.0D, 4.0D, 12.0D, 1.0D, 12.0D)).optimize();
 
     public static final VoxelShape[] SIDE_SHAPES = new VoxelShape[] {
             SHAPE_DOWN, SHAPE_UP, SHAPE_NORTH, SHAPE_SOUTH, SHAPE_WEST, SHAPE_EAST
@@ -233,7 +233,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
 
-        Direction side = getClickedSide(state, pos, hit.getLocation(), pipeBE);
+        Direction side = getClickedSide(state, pos, hit.getLocation());
 
         if (side != null) {
             BlockPos neighborPos = pos.relative(side);
@@ -297,25 +297,15 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     }
 
     @Nullable
-    public Direction getClickedSide(BlockState state, BlockPos pos, Vec3 hitLocation, VelocePipeBlockEntity pipeBE) {
+    public Direction getClickedSide(BlockState state, BlockPos pos, Vec3 hitLocation) {
         Vec3 rel = hitLocation.subtract(pos.getX(), pos.getY(), pos.getZ());
-        Direction bestDir = null;
-        double shortest = SHAPE_CORE.closestPointTo(rel).map(v -> v.distanceToSqr(rel)).orElse(Double.MAX_VALUE);
-
-        for (Direction dir : Direction.values()) {
-            int idx = dir.ordinal();
-            BooleanProperty prop = PipeBlock.PROPERTY_BY_DIRECTION.get(dir);
-            if (!state.getValue(prop)) {
-                continue;
-            }
-            VoxelShape sideShape = (pipeBE != null && pipeBE.isExtracting(dir)) ? EXTRACT_SHAPES[idx] : SIDE_SHAPES[idx];
-            double dist = sideShape.closestPointTo(rel).map(v -> v.distanceToSqr(rel)).orElse(Double.MAX_VALUE);
-            if (dist < shortest) {
-                shortest = dist;
-                bestDir = dir;
-            }
-        }
-        return bestDir;
+        if (rel.z < 0.3125 && state.getValue(NORTH)) return Direction.NORTH;
+        if (rel.z > 0.6875 && state.getValue(SOUTH)) return Direction.SOUTH;
+        if (rel.x < 0.3125 && state.getValue(WEST)) return Direction.WEST;
+        if (rel.x > 0.6875 && state.getValue(EAST)) return Direction.EAST;
+        if (rel.y < 0.3125 && state.getValue(DOWN)) return Direction.DOWN;
+        if (rel.y > 0.6875 && state.getValue(UP)) return Direction.UP;
+        return null;
     }
 
     @Override
@@ -324,12 +314,13 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             if (entityContext.getEntity() instanceof Player player && player.level().isClientSide()) {
                 HitResult hitResult = ClientTerminalHelper.getClientHitResult();
                 if (hitResult instanceof BlockHitResult blockHit && blockHit.getBlockPos().equals(pos)) {
-                    BlockEntity be = world.getBlockEntity(pos);
-                    if (be instanceof VelocePipeBlockEntity pipeBE && VeloceWrenchItem.isHoldingWrench(player)) {
-                        Direction side = getClickedSide(state, pos, blockHit.getLocation(), pipeBE);
+                    if (VeloceWrenchItem.isHoldingWrench(player)) {
+                        Direction side = getClickedSide(state, pos, blockHit.getLocation());
                         if (side != null) {
                             int idx = side.ordinal();
-                            return pipeBE.isExtracting(side) ? EXTRACT_SHAPES[idx] : SIDE_SHAPES[idx];
+                            return state.getValue(EXTRACT_BY_DIRECTION[idx]) ? EXTRACT_SHAPES[idx] : SIDE_SHAPES[idx];
+                        } else {
+                            return SHAPE_CORE;
                         }
                     }
                 }
@@ -340,13 +331,10 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         for (Direction dir : Direction.values()) {
             int idx = dir.ordinal();
             if (state.getValue(PipeBlock.PROPERTY_BY_DIRECTION.get(dir))) {
-                shape = Shapes.or(shape, SIDE_SHAPES[idx]);
-            }
-            if (state.getValue(EXTRACT_BY_DIRECTION[idx])) {
-                shape = Shapes.or(shape, EXTRACT_SHAPES[idx]);
+                shape = Shapes.or(shape, state.getValue(EXTRACT_BY_DIRECTION[idx]) ? EXTRACT_SHAPES[idx] : SIDE_SHAPES[idx]);
             }
         }
-        return shape;
+        return shape.optimize();
     }
 
     @Override
