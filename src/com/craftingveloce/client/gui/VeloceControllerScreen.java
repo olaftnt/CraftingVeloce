@@ -81,6 +81,17 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     private final List<Button> filterButtons = new ArrayList<>();
 
+    // ---------- przeplyw (ile na sekunde przybywa / ubywa) ----------
+    /** Tempo w sztukach na sekunde, tylko dla itemow, ktore sie ruszaja. */
+    private Map<Item, Float> flowPerMinute = new HashMap<>();
+    private Map<Item, Float> flowPerHour = new HashMap<>();
+    /** Ile sekund realnie obejmuje okno (moze byc mniej niz pelne). */
+    private float flowCoveredMinute;
+    private float flowCoveredHour;
+    /** Co ile tickow dopytujemy serwer o swieze tempo. */
+    private static final int FLOW_REQUEST_INTERVAL_TICKS = 20;
+    private int flowRequestCooldown;
+
     public VeloceControllerScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                   boolean displayOperatorCreativeTab, BlockPos controllerPos,
                                   Map<Item, Long> stock, Set<Item> craftable,
@@ -167,6 +178,46 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
             return 0x77AA5500;  // pomaranczowy: piec to przepali
         }
         return 0x77AA0000;      // czerwony: niedostepne
+    }
+
+    /**
+     * Odswieza samo tempo przeplywu - BEZ przebudowy ekranu.
+     *
+     * <p>To jest powod, dla ktorego przeplyw ma osobny pakiet: gdyby serwer
+     * co sekunde przysylal pelny obraz sieci i kazal tworzyc ekran od nowa,
+     * gracz tracilby przy kazdym odswiezeniu wybrany filtr, pozycje przewijania
+     * i wpisane wyszukiwanie.
+     *
+     * @param pos pozycja kontrolera, ktorego dotyczy pakiet - ignorujemy pakiety
+     *            dla innego kontrolera, zeby nie podmieszac danych
+     */
+    public void updateFlow(net.minecraft.core.BlockPos pos,
+                           Map<Item, Float> perMinute, Map<Item, Float> perHour,
+                           float coveredMinute, float coveredHour) {
+        if (!controllerPos.equals(pos)) {
+            return;
+        }
+        this.flowPerMinute = new HashMap<>(perMinute);
+        this.flowPerHour = new HashMap<>(perHour);
+        this.flowCoveredMinute = coveredMinute;
+        this.flowCoveredHour = coveredHour;
+    }
+
+    /**
+     * Dopytuje serwer o swieze tempo, dopoki ekran jest otwarty.
+     *
+     * <p>Zapytanie, a nie subskrypcja: serwer nie musi pamietac, kto patrzy,
+     * wiec nie zostaje z nieaktualnym stanem, gdy klient wyjdzie z gry.
+     */
+    @Override
+    public void containerTick() {
+        super.containerTick();
+        if (--flowRequestCooldown > 0) {
+            return;
+        }
+        flowRequestCooldown = FLOW_REQUEST_INTERVAL_TICKS;
+        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                new com.craftingveloce.network.ControllerFlowRequestPKT(controllerPos));
     }
 
     // ---------- lifecycle ----------
@@ -303,11 +354,88 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         List<Component> lines = new ArrayList<>();
         lines.add(slot.getItem().getHoverName());
         addStockLines(lines, item);
+        addFlowLines(lines, item);
         addCraftingLines(lines, item);
         addFurnaceLines(lines, item);
         addUnavailableHint(lines, item);
 
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
+    }
+
+    /**
+     * Ile tego itemu na sekunde przybywa albo ubywa.
+     *
+     * <p>Dwa okna, bo odpowiadaja na dwa rozne pytania: minuta mowi "co sie
+     * dzieje TERAZ" (czy wlasnie trwa produkcja albo zrzut), a godzina "jaki
+     * jest dlugofalowy bilans" (czy zapas rosnie, czy jest zjadany).
+     *
+     * <p>Brak wpisu w mapie znaczy "stoi" - nie wysylamy setek zer. Ale
+     * UWAGA: brak wpisu jest tez tym, co widzimy, gdy okno nie ma jeszcze
+     * danych, dlatego najpierw sprawdzamy pokrycie okna i w takiej sytuacji
+     * mowimy wprost "zbieram dane", a nie "0".
+     */
+    private void addFlowLines(List<Component> lines, Item item) {
+        addFlowLine(lines, item, flowPerMinute, flowCoveredMinute, 60f,
+                "gui.craftingveloce.controller.flow.minute");
+        addFlowLine(lines, item, flowPerHour, flowCoveredHour, 3600f,
+                "gui.craftingveloce.controller.flow.hour");
+    }
+
+    /**
+     * Jedna linia tempa.
+     *
+     * <p>Kazdy stan ma INNY tekst, nie tylko inny kolor - gracz nie moze byc
+     * zmuszony do rozrozniania zielonego od czerwonego, a znak liczby i tak
+     * jest czescia napisu.
+     */
+    private void addFlowLine(List<Component> lines, Item item, Map<Item, Float> rates,
+                             float coveredSeconds, float fullWindowSeconds, String windowKey) {
+        String value;
+        net.minecraft.ChatFormatting color;
+
+        if (coveredSeconds < 1f) {
+            value = Component.translatable("gui.craftingveloce.controller.flow.gathering").getString();
+            color = net.minecraft.ChatFormatting.DARK_GRAY;
+        } else {
+            float rate = rates.getOrDefault(item, 0f);
+            if (Math.abs(rate) < 0.01f) {
+                value = Component.translatable("gui.craftingveloce.controller.flow.steady").getString();
+                color = net.minecraft.ChatFormatting.DARK_GRAY;
+            } else {
+                value = (rate > 0 ? "+" : "-") + formatRate(Math.abs(rate)) + "/s";
+                color = rate > 0
+                        ? net.minecraft.ChatFormatting.GREEN
+                        : net.minecraft.ChatFormatting.RED;
+            }
+        }
+        lines.add(Component.translatable(windowKey, value).withStyle(color));
+
+        // Okno krotsze od nominalnego (serwer stoi od kilku minut) - mowimy
+        // o tym wprost. Inaczej "1 hour: +2/s" z trzech minut danych byloby
+        // liczba prawdziwa, ale przedstawiona tak, jakby obejmowala godzine.
+        if (coveredSeconds >= 1f && coveredSeconds < fullWindowSeconds * 0.95f) {
+            lines.add(Component.translatable("gui.craftingveloce.controller.flow.partial",
+                            formatSpan(coveredSeconds))
+                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        }
+    }
+
+    /** "45 s" / "12 min" / "1.5 h" - najkrotsza czytelna forma. */
+    private static String formatSpan(float seconds) {
+        if (seconds < 90f) {
+            return Math.round(seconds) + " s";
+        }
+        if (seconds < 5400f) {
+            return Math.round(seconds / 60f) + " min";
+        }
+        return String.format(java.util.Locale.ROOT, "%.1f h", seconds / 3600f);
+    }
+
+    /** Tempo z dokladnoscia, ktora ma sens: 2 miejsca ponizej 1/s, inaczej 1. */
+    private static String formatRate(float rate) {
+        return rate < 1f
+                ? String.format(java.util.Locale.ROOT, "%.2f", rate)
+                : String.format(java.util.Locale.ROOT, "%.1f", rate);
     }
 
     /** Stock w sieci + ewentualna informacja, ze item jest w hotbarze. */

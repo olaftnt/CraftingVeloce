@@ -1,6 +1,7 @@
 package com.craftingveloce.block.entity;
 
 import com.craftingveloce.crafting.VeloceCraftingRegistry;
+import com.craftingveloce.crafting.VeloceFlowTracker;
 import com.craftingveloce.crafting.VeloceHeatSources;
 import com.craftingveloce.crafting.VeloceRecipeRegistry;
 import com.craftingveloce.init.VeloceRegistry;
@@ -37,8 +38,70 @@ import java.util.Set;
  */
 public class VeloceControllerBlockEntity extends BlockEntity {
 
+    /**
+     * Jak blisko musi stac gracz, zeby kontroler obsluzyl jego zapytanie
+     * o tempo przeplywu. Bez tego limitu dowolny gracz moglby zamowic prace
+     * serwera dla dowolnej pozycji w swiecie.
+     */
+    public static final double MAX_FLOW_REQUEST_DISTANCE = 64.0;
+
+    /**
+     * Miernik przeplywu. Zyje razem z kontrolerem i mierzy siec, do ktorej
+     * kontroler jest AKTUALNIE podlaczony.
+     */
+    private final VeloceFlowTracker flow = new VeloceFlowTracker();
+
+    /** Siec, dla ktorej zbieramy migawki - zeby wykryc przestawienie kontrolera. */
+    private java.util.UUID sampledNetworkId;
+
     public VeloceControllerBlockEntity(BlockPos pos, BlockState state) {
         super(VeloceRegistry.VELOCE_CONTROLLER_BE.get(), pos, state);
+    }
+
+    /**
+     * Jedno tykniecie kontrolera: migawka stocku (raz na 5 s) i nic wiecej.
+     *
+     * <p>Nie wysylamy tu nic do graczy - o tempo pyta klient osobnym pakietem
+     * (patrz {@link com.craftingveloce.network.ControllerFlowRequestPKT}).
+     * Dzieki temu kontroler nie musi pamietac, kto patrzy, i nie ma czego
+     * zgubic, gdy klient wyjdzie z gry albo sie teleportuje.
+     */
+    public void serverTick() {
+        if (!(level instanceof ServerLevel sl)) {
+            return;
+        }
+        long now = sl.getGameTime();
+        if (!flow.due(now)) {
+            return;
+        }
+        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
+                .getNetworkForTerminal(sl, worldPosition);
+        if (net == null) {
+            // Kontroler bez sieci nie ma czego mierzyc. Zerujemy pomiar, zeby
+            // po ponownym podlaczeniu nie mieszac historii z innej sieci.
+            if (sampledNetworkId != null) {
+                flow.reset();
+                sampledNetworkId = null;
+            }
+            return;
+        }
+        // Inna siec niz dotad (kontroler przestawiony) - stara historia jest
+        // bez znaczenia i tylko zafalszowalaby tempo.
+        if (sampledNetworkId != null && !sampledNetworkId.equals(net.getId())) {
+            flow.reset();
+        }
+        sampledNetworkId = net.getId();
+        flow.sample(now, net.getAllItemCounts(sl));
+    }
+
+    /** Wysyla graczowi samo tempo przeplywu (odpowiedz na zapytanie klienta). */
+    public void sendFlowTo(ServerPlayer player) {
+        PacketDistributor.sendToPlayer(player, new com.craftingveloce.network.SyncControllerFlowPKT(
+                worldPosition,
+                flow.movingItems(VeloceFlowTracker.Window.MINUTE),
+                flow.movingItems(VeloceFlowTracker.Window.HOUR),
+                flow.coveredSeconds(VeloceFlowTracker.Window.MINUTE),
+                flow.coveredSeconds(VeloceFlowTracker.Window.HOUR)));
     }
 
     /** Zbiera aktualny stan sieci i wysyla GUI graczowi. */
@@ -93,6 +156,11 @@ public class VeloceControllerBlockEntity extends BlockEntity {
         PacketDistributor.sendToPlayer(player, new OpenControllerScreenPKT(
                 this.getBlockPos(), stock, craftable, craftingEnabled,
                 furnaceCraftable, furnaceInNetwork, furnacePowered, hotbar));
+
+        // Tempo przeplywu idzie osobnym, lekkim pakietem. Wysylamy je od razu,
+        // zeby gracz nie czekal sekundy na pierwsze liczby - a potem klient
+        // dopytuje sam, dopoki ma otwarte GUI.
+        sendFlowTo(player);
     }
 
     @Override

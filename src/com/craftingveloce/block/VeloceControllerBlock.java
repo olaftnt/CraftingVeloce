@@ -23,6 +23,8 @@ import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityTicker;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.MapColor;
@@ -64,6 +66,30 @@ public class VeloceControllerBlock extends BaseEntityBlock implements EntityBloc
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new VeloceControllerBlockEntity(pos, state);
+    }
+
+    /**
+     * Kontroler MUSI tykac, bo to on mierzy przeplyw itemow w sieci.
+     *
+     * <p>{@code VeloceFlowTracker} potrzebuje regularnych migawek, zeby
+     * powiedziec, ile sztuk na sekunde przybywa, a ile ucieka. Bez tickera
+     * mialby dane tylko wtedy, gdy ktos stoi i patrzy na GUI - czyli dokladnie
+     * nic, bo tempo potrzebuje historii SPRZED otwarcia okna.
+     *
+     * <p>Koszt jest maly i rozlozony: migawka leci raz na 5 sekund, a nie co
+     * tick, i korzysta z cache'u licznikow sieci.
+     */
+    @Override
+    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level world, BlockState state,
+                                                                  BlockEntityType<T> type) {
+        if (world.isClientSide) {
+            return null;
+        }
+        return (lvl, pos, st, be) -> {
+            if (be instanceof VeloceControllerBlockEntity ctrl) {
+                ctrl.serverTick();
+            }
+        };
     }
 
     @Override
