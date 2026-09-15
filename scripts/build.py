@@ -46,6 +46,22 @@ EXCLUDED_SRC = ("eatawesome", "moze_intel")
 JUNK = (".DS_Store", "__MACOSX", ".git")
 
 
+def game_running():
+    """
+    Czy Minecraft z tego profilu wlasnie dziala?
+
+    Potrzebne, zeby ostrzec, ze podmiana JARa nie zmieni DZIALAJACEJ sesji -
+    jej classloader trzyma stary plik otwarty. Wczesniej nadpisywalismy JAR
+    w miejscu i konczylo sie to ClassNotFoundException w losowym miejscu.
+    """
+    try:
+        out = subprocess.run(["pgrep", "-fl", "MinecraftLaunch"],
+                             capture_output=True, text=True, timeout=10)
+        return out.returncode == 0 and bool(out.stdout.strip())
+    except Exception:
+        return False
+
+
 def fail(msg):
     print(f"\nBLAD: {msg}")
     sys.exit(1)
@@ -178,8 +194,36 @@ def main():
 
     # --- 5. wdrozenie ---------------------------------------------------
     step(5, "Wdrozenie do profilu testing")
-    shutil.copyfile(JAR_NAME, DEPLOYED)
+
+    # WDROZENIE MUSI BYC ATOMOWE.
+    #
+    # shutil.copyfile() otwiera plik docelowy i nadpisuje go W MIEJSCU. Gdy
+    # Minecraft wlasnie dziala, jego classloader trzyma ten JAR otwarty i czyta
+    # z niego klasy LENIWIE - po pierwszym uruchomieniu wiekszosc klas nie jest
+    # jeszcze zaladowana. Nadpisanie pliku pod dzialajacym JVM konczy sie wiec:
+    #
+    #   Caused by: java.lang.ClassNotFoundException:
+    #       com.craftingveloce.crafting.VeloceRecipeGraph
+    #
+    # i crashem serwera w losowym miejscu, wygladajacym na blad w kodzie.
+    #
+    # Zapis do pliku tymczasowego + os.replace() to pojedyncza operacja rename(2):
+    # dzialajaca gra zostaje przy starym inode (wiec dziala dalej), a nowy JAR
+    # pojawia sie dla nastepnego uruchomienia.
+    tmp_deploy = DEPLOYED + ".tmp"
+    shutil.copyfile(JAR_NAME, tmp_deploy)
+    os.replace(tmp_deploy, DEPLOYED)
     print(f"    {DEPLOYED}")
+
+    # --- 5b. ostrzezenie o dzialajacej grze -----------------------------
+    if game_running():
+        print()
+        print("    " + "!" * 62)
+        print("    Minecraft DZIALA. JAR zostal podmieniony bezpiecznie (atomowo),")
+        print("    ale ta sesja nadal uzywa STAREJ wersji - jej classloader trzyma")
+        print("    stary plik otwarty. ZAMKNIJ gre i uruchom ponownie, inaczej")
+        print("    przetestujesz stary kod.")
+        print("    " + "!" * 62)
 
     import hashlib
 

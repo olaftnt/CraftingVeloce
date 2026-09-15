@@ -920,17 +920,17 @@ public final class VeloceAutoCrafter {
                 stock.merge(it, (long) ctx.inventory.count(it), Long::sum);
             }
         }
-        // Bufory crafterow: to tam trafiaja wyniki posrednie.
-        if (ctx.buffers != null) {
-            for (var buf : ctx.buffers) {
-                for (int slot = 0; slot < buf.getContainerSize(); slot++) {
-                    ItemStack st = buf.getItem(slot);
-                    if (!st.isEmpty()) {
-                        stock.merge(st.getItem(), (long) st.getCount(), Long::sum);
-                    }
-                }
-            }
-        }
+        // UWAGA: buforow crafterow NIE dodajemy tutaj.
+        //
+        // Bufor jest juz endpointem sieci (CraftingBufferEndpoint - patrz
+        // scanAndBuildNetwork), wiec networkCounts juz go zawiera. Dodawanie
+        // go drugi raz liczylo zawartosc bufora PODWOJNIE: planer widzial
+        // 4 deski tam, gdzie byly 2, planowal craft i wywalal sie dopiero na
+        // wykonaniu z bledem "ingredients vanished mid-craft".
+        //
+        // Widac to bylo dokladnie tak:
+        //   plan for minecraft:oak_fence: 1 recipe run(s) to execute
+        //   execution failed for minecraft:oak_fence - ingredients vanished mid-craft
         return stock;
     }
 
