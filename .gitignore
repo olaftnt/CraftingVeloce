@@ -12,3 +12,6 @@ compiled_classes/
 # Artefakty Pythona (generowane przy uruchomieniu skryptow).
 __pycache__/
 *.pyc
+
+# Logi z uruchomien testow izolacji (scripts/isolation/L1Test.java).
+logs/

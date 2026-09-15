@@ -894,8 +894,10 @@ def validate_isolation_runtime(cp, toms, rs):
     if res.returncode != 0:
         fail("nie kompiluje sie test izolacji (scripts/isolation/L1Test.java):\n"
              + res.stderr[:600])
+    # Uruchamiamy w katalogu tymczasowym, zeby logger (log4j z classpath MC)
+    # nie tworzyl katalogu logs/ w repozytorium.
     res = subprocess.run(["java", "-cp", os.pathsep.join([out, classpath]), "L1Test"],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, cwd=out)
     if res.returncode != 0:
         lines = [l for l in res.stdout.splitlines() if l.startswith("FAIL") or l.startswith("BLAD")]
         fail("L1 (mod bez obcych modow) nie przeszedl:\n  " + "\n  ".join(lines[:8]))
