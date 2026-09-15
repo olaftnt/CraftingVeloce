@@ -141,6 +141,19 @@ public class CVDebugCommand {
                 "§7Stan: " + (on ? "§aON" : "§cOFF")
                         + " §7| operacje: " + (com.craftingveloce.debug.ChunkOpNotifier.isEnabled()
                         ? "§aON" : "§cOFF")), false);
+        // Kolejka zadan chunkowych - to ona robi operacje na odleglych
+        // magazynach BEZ blokowania ticku. Jesli rosnie, znaczy ze operacji
+        // jest wiecej niz jestesmy w stanie obsluzyc.
+        var queue = com.craftingveloce.network.pipe.VeloceChunkTaskQueue.pending();
+        source.sendSuccess(() -> Component.literal(
+                "§7Kolejka zadan chunkowych: §f" + queue
+                        + " §7| wykonane: §f" + com.craftingveloce.network.pipe.VeloceChunkTaskQueue.completed()
+                        + " §7| odrzucone: §f" + com.craftingveloce.network.pipe.VeloceChunkTaskQueue.dropped()), false);
+        if (queue > 0) {
+            for (String line : com.craftingveloce.network.pipe.VeloceChunkTaskQueue.describePending(5)) {
+                source.sendSuccess(() -> Component.literal("  §8- §7" + line), false);
+            }
+        }
         // Pelna lista trzymanych chunkow - od razu, bez drugiej komendy.
         executeListChunks(context);
         return 1;

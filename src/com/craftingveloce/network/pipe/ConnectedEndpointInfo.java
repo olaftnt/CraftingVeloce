@@ -18,7 +18,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.items.IItemHandler;
 
@@ -187,6 +186,107 @@ public class ConnectedEndpointInfo {
         }
     }
 
+    /**
+     * Kolejkuje fizyczne zabranie itemu z tego magazynu.
+     *
+     * <p>Wolane, gdy magazyn jest w chunku poza symulacja. Zadanie trafi do
+     * {@link VeloceChunkTaskQueue}, ktora w swoim ticku zaladuje chunk,
+     * zabierze itemy i OD RAZU zwolni chunk - zeby gra mogla go rozladowac.
+     */
+    private void scheduleExtract(ServerLevel level, Item item, int maxCount) {
+        ConnectedEndpointInfo self = this;
+        VeloceChunkTaskQueue.submit(new VeloceChunkTaskQueue.Task() {
+            @Override
+            public long chunkKey() {
+                return ChunkPos.asLong(chunkPos.x, chunkPos.z);
+            }
+
+            @Override
+            public net.minecraft.core.BlockPos pos() {
+                return pos;
+            }
+
+            @Override
+            public VeloceChunkTaskQueue.Kind kind() {
+                return VeloceChunkTaskQueue.Kind.EXTRACT;
+            }
+
+            @Override
+            public String describe() {
+                return maxCount + "x " + item;
+            }
+
+            @Override
+            public ItemStack run(ServerLevel lvl) {
+                // Chunk jest juz zaladowany przez kolejke - robimy to samo,
+                // co sciezka synchroniczna, i odswiezamy cache.
+                ItemStack taken = self.extractNow(lvl, item, maxCount);
+                refreshIfLoaded(lvl);
+                return taken;
+            }
+        });
+    }
+
+    /**
+     * Fizyczne zabranie itemu - BEZ sprawdzania i ladowania chunku.
+     *
+     * <p>Wydzielone z {@link #extractItem}, zeby kolejka mogla wykonac sama
+     * czynnosc, gdy chunk jest juz zaladowany.
+     */
+    public ItemStack extractNow(ServerLevel level, Item item, int maxCount) {
+        if (type == Type.REFINED_STORAGE) {
+            return RefinedStorageHelper.extractItem(level, pos, accessSide,
+                    new ItemStack(item), maxCount);
+        }
+        try {
+            BlockState state = level.getBlockState(pos);
+            BlockEntity be = level.getBlockEntity(pos);
+            IItemHandler handler = Capabilities.ItemHandler.BLOCK.getCapability(
+                    level, pos, state, be, accessSide);
+            if (handler != null) {
+                ItemStack result = ItemStack.EMPTY;
+                int needed = maxCount;
+                for (int i = 0; i < handler.getSlots() && needed > 0; i++) {
+                    ItemStack inSlot = handler.getStackInSlot(i);
+                    if (!inSlot.isEmpty() && inSlot.getItem() == item) {
+                        ItemStack extracted = handler.extractItem(i, needed, false);
+                        if (!extracted.isEmpty()) {
+                            result = result.isEmpty() ? extracted.copy() : grow(result, extracted);
+                            needed -= extracted.getCount();
+                        }
+                    }
+                }
+                return result;
+            }
+            if (be instanceof Container container) {
+                ItemStack result = ItemStack.EMPTY;
+                int needed = maxCount;
+                for (int i = 0; i < container.getContainerSize() && needed > 0; i++) {
+                    ItemStack inSlot = container.getItem(i);
+                    if (!inSlot.isEmpty() && inSlot.getItem() == item) {
+                        int toTake = Math.min(needed, inSlot.getCount());
+                        ItemStack taken = container.removeItem(i, toTake);
+                        if (!taken.isEmpty()) {
+                            result = result.isEmpty() ? taken.copy() : grow(result, taken);
+                            needed -= taken.getCount();
+                        }
+                    }
+                }
+                return result;
+            }
+        } catch (Throwable t) {
+            VeloceLog.Network.failure(VeloceLog.Side.SERVER,
+                    "deferred extract at %s failed: %s", pos, t);
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /** Dokłada zawartosc do stosu wynikowego. */
+    private static ItemStack grow(ItemStack into, ItemStack from) {
+        into.grow(from.getCount());
+        return into;
+    }
+
     public ItemStack extractItem(ServerLevel level, Item item, int maxCount) {
         if (cachedCounts.getOrDefault(item, 0L) <= 0) {
             return ItemStack.EMPTY;
@@ -204,26 +304,32 @@ public class ConnectedEndpointInfo {
         boolean wasLoaded = level.isLoaded(pos);
         long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
-            // Podczas zapisu/zamykania swiata NIE wymuszamy chunku. Zrobienie
-            // tego zawiesza zapis: Minecraft probuje chunk rozladowac, my go
-            // znowu ladujemy, i tak w kolko (w logu: tysiace cykli
-            // "loaded/unloaded" w trakcie "Saving worlds").
+            // CHUNK POZA SYMULACJA -> KOLEJKUJEMY, NIE LADUJEMY.
+            //
+            // BUG, ktory tu byl: wolalismy getChunk(..., true), czyli
+            // BLOKUJACE, synchroniczne wczytanie chunku z dysku w srodku
+            // ticku serwera. Jedno wyciagniecie itemu z odleglej skrzyni to
+            // kilka do kilkudziesieciu milisekund zamulenia; przy serii
+            // operacji (auto-crafting, extractor w petli) tick sie rozjezdzal.
+            //
+            // Teraz: decyzje podejmujemy na cache (skoro chunk jest
+            // rozladowany, jego zawartosc sie nie zmienila - wiec zapamietane
+            // liczby sa nadal prawdziwe), a fizyczne zabranie itemu robi
+            // kolejka zadan w swoim ticku.
             if (VeloceChunkLoader.isFrozen()) {
                 return ItemStack.EMPTY;
             }
-            // Przez globalny loader: surowe setChunkForced(false) w finally
-            // zabieralo chunk sieciom, ktore nadal go trzymaly - i napedzalo
-            // petle load/unload.
             com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
                     com.craftingveloce.debug.ChunkOpNotifier.Op.EXTRACT);
-            VeloceChunkLoader.retain(level, chunkKey, "op:extract",
-                    VeloceChunkLoader.Reason.OPERATION, pos);
-            level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true);
-        } else {
-            // Chunk byl juz zaladowany - liczymy to jako uzycie, zeby czesto
-            // odwiedzane chunki zostawaly w pamieci dluzej.
-            VeloceChunkLoader.noteUse(level, chunkKey);
+            scheduleExtract(level, item, maxCount);
+            // Gracz widzi skutek od razu (item zniknie z listy), a serwer
+            // doważa go w tle.
+            return new ItemStack(item, Math.min(maxCount, (int) Math.min(
+                    Integer.MAX_VALUE, cachedCounts.getOrDefault(item, 0L))));
         }
+        // Chunk byl juz zaladowany - liczymy to jako uzycie, zeby czesto
+        // odwiedzane chunki zostawaly w pamieci dluzej.
+        VeloceChunkLoader.noteUse(level, chunkKey);
 
         ItemStack result = ItemStack.EMPTY;
         try {
@@ -301,6 +407,94 @@ public class ConnectedEndpointInfo {
      *
      * @return to, czego NIE udalo sie wlozyc (EMPTY gdy wszystko przyjete)
      */
+    /**
+     * Kolejkuje fizyczne wlozenie stosu do tego magazynu.
+     *
+     * <p>Wolane, gdy magazyn jest w chunku poza symulacja. Kolejka zaladuje
+     * chunk, wlozy itemy i od razu zwolni chunk.
+     */
+    private void scheduleInsert(ItemStack stack) {
+        ConnectedEndpointInfo self = this;
+        VeloceChunkTaskQueue.submit(new VeloceChunkTaskQueue.Task() {
+            @Override
+            public long chunkKey() {
+                return ChunkPos.asLong(chunkPos.x, chunkPos.z);
+            }
+
+            @Override
+            public net.minecraft.core.BlockPos pos() {
+                return pos;
+            }
+
+            @Override
+            public VeloceChunkTaskQueue.Kind kind() {
+                return VeloceChunkTaskQueue.Kind.INSERT;
+            }
+
+            @Override
+            public String describe() {
+                return stack.getCount() + "x " + stack.getItem();
+            }
+
+            @Override
+            public ItemStack run(ServerLevel lvl) {
+                // To samo, co sciezka synchroniczna, ale chunk jest juz
+                // zaladowany przez kolejke.
+                return insertNow(lvl, stack.copy());
+            }
+        });
+    }
+
+    /**
+     * Fizyczne wlozenie stosu - BEZ sprawdzania i ladowania chunku.
+     *
+     * @return to, czego NIE udalo sie wlozyc
+     */
+    public ItemStack insertNow(ServerLevel level, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        if (type == Type.REFINED_STORAGE) {
+            return RefinedStorageHelper.insertItemLeftover(level, pos, accessSide, stack);
+        }
+        ItemStack remaining = stack.copy();
+        try {
+            BlockState state = level.getBlockState(pos);
+            BlockEntity be = level.getBlockEntity(pos);
+            IItemHandler handler = Capabilities.ItemHandler.BLOCK.getCapability(
+                    level, pos, state, be, accessSide);
+            if (handler != null) {
+                for (int i = 0; i < handler.getSlots() && !remaining.isEmpty(); i++) {
+                    remaining = handler.insertItem(i, remaining, false);
+                }
+            } else if (be instanceof Container container) {
+                for (int i = 0; i < container.getContainerSize() && !remaining.isEmpty(); i++) {
+                    ItemStack inSlot = container.getItem(i);
+                    int max = Math.min(container.getMaxStackSize(), remaining.getMaxStackSize());
+                    if (inSlot.isEmpty()) {
+                        int move = Math.min(max, remaining.getCount());
+                        container.setItem(i, remaining.split(move));
+                        container.setChanged();
+                    } else if (ItemStack.isSameItemSameComponents(inSlot, remaining)) {
+                        int space = max - inSlot.getCount();
+                        if (space > 0) {
+                            int move = Math.min(space, remaining.getCount());
+                            ItemStack merged = inSlot.copy();
+                            merged.grow(move);
+                            container.setItem(i, merged);
+                            remaining.shrink(move);
+                            container.setChanged();
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            VeloceLog.Network.failure(VeloceLog.Side.SERVER,
+                    "deferred insert at %s failed: %s", pos, t);
+        }
+        return remaining;
+    }
+
     public ItemStack insertItemLeftover(ServerLevel level, ItemStack stack) {
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;
@@ -323,9 +517,16 @@ public class ConnectedEndpointInfo {
             }
             com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
                     com.craftingveloce.debug.ChunkOpNotifier.Op.INSERT);
-            VeloceChunkLoader.retain(level, chunkKey, "op:insert",
-                    VeloceChunkLoader.Reason.OPERATION, pos);
-            level.getChunkSource().getChunk(chunkPos.x, chunkPos.z, ChunkStatus.FULL, true);
+            // KOLEJKUJEMY, nie ladujemy synchronicznie - patrz extractItem.
+            //
+            // Wkladanie do niezaladowanego magazynu NIE moze od razu udac sie
+            // "na slowo": gdybysmy powiedzieli wolajacemu "przyjete", a chunk
+            // okazalby sie pelny, itemy zniknelyby z rak gracza. Dlatego
+            // zwracamy CALY stos jako nieprzyjety, a kolejka wstawi go
+            // w swoim ticku. Wolajacy zachowa sie tak, jak przy pelnym
+            // magazynie - czyli item zostaje u gracza.
+            scheduleInsert(stack.copy());
+            return stack;
         } else {
             VeloceChunkLoader.noteUse(level, chunkKey);
         }
