@@ -111,23 +111,18 @@ public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
         return sensor != null && sensor.isPowered();
     }
 
+    /**
+     * Shift-klik nic nie przenosi.
+     *
+     * <p>Czujnik nie ma wlasnych slotow na przedmioty - jedyny slot to widmo
+     * filtra, ktorego i tak nie da sie wypelnic. Poprzednia wersja przenosila
+     * stos "w obrebie ekwipunku gracza", co w GUI maszyny jest zaskakujace:
+     * gracz oczekuje przeniesienia do bloku, a nie przestawiania rzeczy
+     * w plecaku. Zachowanie zgodne z piecem elektrycznym.
+     */
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
-        ItemStack copy = ItemStack.EMPTY;
-        Slot slot = this.slots.get(index);
-        if (slot != null && slot.hasItem() && index > 0) {
-            ItemStack inSlot = slot.getItem();
-            copy = inSlot.copy();
-            if (!this.moveItemStackTo(inSlot, 1, this.slots.size(), true)) {
-                return ItemStack.EMPTY;
-            }
-            if (inSlot.isEmpty()) {
-                slot.set(ItemStack.EMPTY);
-            } else {
-                slot.setChanged();
-            }
-        }
-        return copy;
+        return ItemStack.EMPTY;
     }
 
     @Override

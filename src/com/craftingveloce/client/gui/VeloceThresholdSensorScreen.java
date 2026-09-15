@@ -59,7 +59,16 @@ public class VeloceThresholdSensorScreen
     private EditBox thresholdField;
     private Button modeButton;
 
-    /** Ostatnia wartosc wyslana na serwer - zeby nie spamowac pakietami. */
+    /**
+     * Tryb wybrany w GUI - to, co widzi gracz i co dopiero poleci na serwer.
+     *
+     * <p>MUSI byc osobny od {@link #sentHighMode}. Poprzednia wersja uzywala
+     * jednego pola i do porownania "czy sie zmienilo", i jako nowej wartosci -
+     * wiec porownanie bylo tautologia (patrz {@link #sendConfig}).
+     */
+    private boolean uiHighMode;
+
+    /** Co FAKTYCZNIE poszlo na serwer - zeby nie spamowac pakietami. */
     private long sentThreshold = Long.MIN_VALUE;
     private boolean sentHighMode;
 
@@ -78,8 +87,9 @@ public class VeloceThresholdSensorScreen
     protected void init() {
         super.init();
         long threshold = this.menu.getThreshold();
+        this.uiHighMode = this.menu.getMode() == VeloceThresholdSensorBlockEntity.Mode.HIGH;
         this.sentThreshold = threshold;
-        this.sentHighMode = this.menu.getMode() == VeloceThresholdSensorBlockEntity.Mode.HIGH;
+        this.sentHighMode = this.uiHighMode;
 
         this.thresholdField = new EditBox(this.font,
                 this.leftPos + FIELD_X, this.topPos + FIELD_Y, FIELD_W, FIELD_H,
@@ -115,51 +125,72 @@ public class VeloceThresholdSensorScreen
     }
 
     private Component modeLabel() {
-        return Component.translatable(this.sentHighMode
+        return Component.translatable(this.uiHighMode
                 ? "gui.craftingveloce.sensor.mode.high"
                 : "gui.craftingveloce.sensor.mode.low");
     }
 
     private void toggleMode() {
-        this.sentHighMode = !this.sentHighMode;
+        this.uiHighMode = !this.uiHighMode;
         if (this.modeButton != null) {
             this.modeButton.setMessage(modeLabel());
         }
         sendConfig();
     }
 
+    /** Progu o jeden - liczone od tego, co gracz WIDZI w polu. */
     private void step(int delta) {
-        long next = Math.max(0L, this.menu.getThreshold() + delta);
+        long next = Math.max(0L, currentFieldValue() + delta);
         this.thresholdField.setValue(Long.toString(next));
         sendConfig();
     }
 
-    /** Wysyla prog i tryb na serwer - tylko gdy naprawde sie zmienily. */
+    /**
+     * Wysyla prog i tryb, ale TYLKO gdy ktorys naprawde sie zmienil.
+     *
+     * <p><b>BUG, ktory to naprawia.</b> Poprzednia wersja brala "nowy tryb"
+     * z tego samego pola, z ktorym sie porownywala:
+     * <pre>
+     *   if (threshold == sentThreshold &amp;&amp; sentHighMode == currentHighMode()) return;
+     *   // a currentHighMode() zwracalo po prostu sentHighMode
+     * </pre>
+     * czyli drugi warunek byl ZAWSZE prawdziwy. Przy niezmienionym progu
+     * funkcja wychodzila wiec wczesniej i NIC nie wysylala - a ze przycisk
+     * trybu zmienial tylko swoja etykiete, wygladalo to na dzialajace.
+     * Tryb odwrotny nie docieral do serwera ani razu.
+     *
+     * <p>Teraz porownujemy stan GUI z tym, co NAPRAWDE poszlo.
+     */
     private void sendConfig() {
-        long threshold = parseThreshold();
-        if (threshold == sentThreshold && sentHighMode == currentHighMode()) {
+        long threshold = currentFieldValue();
+        boolean high = this.uiHighMode;
+        if (threshold == this.sentThreshold && high == this.sentHighMode) {
             return;
         }
-        sentThreshold = threshold;
+        this.sentThreshold = threshold;
+        this.sentHighMode = high;
         PacketDistributor.sendToServer(
-                new SensorConfigPKT(this.menu.getPos(), threshold, currentHighMode()));
+                new SensorConfigPKT(this.menu.getPos(), threshold, high));
     }
 
-    private boolean currentHighMode() {
-        return this.sentHighMode;
-    }
-
-    /** Wartosc z pola; puste albo bzdurne traktujemy jako 0. */
-    private long parseThreshold() {
+    /**
+     * Prog, ktory gracz ma teraz przed oczami.
+     *
+     * <p>Bierzemy pole, a nie wartosc z serwera - inaczej wpisanie 500 i
+     * wcisniecie "+" daloby (stara wartosc z serwera)+1, czyli cicho zgubilo
+     * to, co gracz wlasnie wpisal. Puste albo bzdurne pole schodzi do wartosci
+     * z serwera.
+     */
+    private long currentFieldValue() {
         String text = this.thresholdField == null ? "" : this.thresholdField.getValue().trim();
-        if (text.isEmpty()) {
-            return 0L;
+        if (!text.isEmpty()) {
+            try {
+                return Math.max(0L, Long.parseLong(text));
+            } catch (NumberFormatException ignored) {
+                // pole przyjmuje tylko cyfry, wiec to praktycznie nie wystapi
+            }
         }
-        try {
-            return Math.max(0L, Long.parseLong(text));
-        } catch (NumberFormatException e) {
-            return 0L;
-        }
+        return this.menu.getThreshold();
     }
 
     @Override
@@ -175,10 +206,16 @@ public class VeloceThresholdSensorScreen
                 this.sentThreshold = this.menu.getThreshold();
             }
         }
-        boolean high = this.menu.getMode() == VeloceThresholdSensorBlockEntity.Mode.HIGH;
-        if (high != this.sentHighMode && this.modeButton != null) {
-            this.sentHighMode = high;
-            this.modeButton.setMessage(modeLabel());
+        // Tryb z serwera przyjmujemy TYLKO gdy nie mamy wlasnej, jeszcze
+        // niepotwierdzonej zmiany - inaczej nadpisanie cofnęłoby klik gracza
+        // (serwer odpowiada z opoznieniem jednego ticku).
+        boolean serverHigh = this.menu.getMode() == VeloceThresholdSensorBlockEntity.Mode.HIGH;
+        if (this.sentHighMode == this.uiHighMode && serverHigh != this.uiHighMode) {
+            this.uiHighMode = serverHigh;
+            this.sentHighMode = serverHigh;
+            if (this.modeButton != null) {
+                this.modeButton.setMessage(modeLabel());
+            }
         }
         // Filtr mogl zostac zmieniony wspolnym pakietem - odswiezamy lustro.
         this.clientFilter = this.menu.getFilter();
