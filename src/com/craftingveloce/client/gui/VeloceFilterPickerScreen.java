@@ -160,8 +160,9 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
             return;
         }
 
-        // Trash / sell slot
-        if (slot.x == 173 && slot.y == 112) {
+        // Slot smieci - uzywamy wspolnego helpera z klasy bazowej, zamiast
+        // powtarzac tu te same wspolrzedne (rozjechalyby sie przy zmianie ukladu).
+        if (isTrashSlot(slot)) {
             return;
         }
 
