@@ -151,13 +151,23 @@ public class VelocePipeNetworkManager extends SavedData {
      * sasiadow konczy sie najwyzej piecioma przebudowami na sekunde.
      */
     public void tick(ServerLevel level) {
-        if (pendingRebuilds.isEmpty()) {
+        // UZGADNIANIE CACHE SIECI Z ZYWYMI KOMPONENTAMI.
+        //
+        // MUSI byc przed wczesnym returnem ponizej: uklad polaczen zmienia sie
+        // takze bez kolejkowania przebudowy (samo postawienie rury zmienia
+        // komponenty), a wtedy zostawalyby osierocone cache'e.
+        //
+        // BUG, ktory to naprawia: identyfikator sieci liczymy z reprezentanta
+        // komponentu (najmniejsza pozycja), wiec przy podziale albo scaleniu
+        // sieci powstaje NOWE UUID. Stary cache (z wlasnymi force-loadami)
+        // nie byl nigdy zwalniany - jego chunki zostawaly wymuszone NA ZAWSZE.
+        reconcileCaches(level);
+
+        if (VeloceChunkLoader.isFrozen()) {
+            pendingRebuilds.clear();
             return;
         }
-        if (VeloceChunkLoader.isFrozen()) {
-            // Serwer sie zamyka - przebudowy sieci sa wtedy bez sensu i tylko
-            // przeszkadzaja w zapisie.
-            pendingRebuilds.clear();
+        if (pendingRebuilds.isEmpty()) {
             return;
         }
         long now = level.getGameTime();
@@ -364,7 +374,7 @@ public class VelocePipeNetworkManager extends SavedData {
         // uklad rur daje ten sam identyfikator, wiec cache i force-loady
         // przezywaja kolejne przebudowy bez zadnego przenoszenia.
         UUID id = world.componentOf(seed) != null
-                ? UUID.nameUUIDFromBytes(world.componentOf(seed).toShortString().getBytes())
+                ? VelocePipeWorld.componentId(world.componentOf(seed))
                 : UUID.randomUUID();
 
         VelocePipeNetwork net = new VelocePipeNetwork(id);
@@ -400,7 +410,7 @@ public class VelocePipeNetworkManager extends SavedData {
     private VelocePipeNetwork toNetwork(ServerLevel level, BlockPos seed, VelocePipeWorld.Component component) {
         BlockPos root = world.componentOf(seed);
         UUID id = root != null
-                ? UUID.nameUUIDFromBytes(root.toShortString().getBytes())
+                ? VelocePipeWorld.componentId(root)
                 : UUID.randomUUID();
         VelocePipeNetwork net = new VelocePipeNetwork(id);
         net.getPipes().addAll(component.pipes);
@@ -564,6 +574,35 @@ public class VelocePipeNetworkManager extends SavedData {
         }
         return VeloceChunkLoader.releaseOrphans(level, tracked);
     }
+
+    /**
+     * Zwolnij cache sieci, ktorych komponenty juz nie istnieja.
+     *
+     * <p>Wolane przy zmianie ukladu polaczen. Bez tego kazdy podzial albo
+     * scalenie sieci zostawial osierocony cache z jego force-loadami.
+     */
+    private void reconcileCaches(ServerLevel level) {
+        long version = world.version();
+        if (version == lastReconciledVersion) {
+            return;   // uklad sie nie zmienil - nic do roboty
+        }
+        lastReconciledVersion = version;
+
+        Set<UUID> live = new HashSet<>();
+        for (BlockPos root : world.componentRoots()) {
+            live.add(VelocePipeWorld.componentId(root));
+        }
+        int dropped = com.craftingveloce.crafting.VeloceCraftingCache
+                .retainOnly(level, live);
+        if (dropped > 0) {
+            VeloceLog.Network.success(VeloceLog.Side.SERVER,
+                    "uzgodniono cache sieci: zwolniono %d nieaktualnych (z ich force-loadami)",
+                    dropped);
+        }
+    }
+
+    /** Wersja ukladu, przy ktorej ostatnio uzgadnialismy cache. */
+    private long lastReconciledVersion = Long.MIN_VALUE;
 
     /** Zwalnia kolejke przy zamykaniu/rozladowaniu swiata. */
     public void clearPendingRebuilds() {

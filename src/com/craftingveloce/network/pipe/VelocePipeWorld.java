@@ -121,6 +121,7 @@ public final class VelocePipeWorld {
     public void addPipe(BlockPos pos) {
         if (allPipes.add(pos.immutable())) {
             componentsDirty = true;
+            version++;
         }
     }
 
@@ -144,6 +145,7 @@ public final class VelocePipeWorld {
         }
         if (had || hadLinks || removedFromOthers) {
             componentsDirty = true;
+            version++;
         }
     }
 
@@ -175,6 +177,7 @@ public final class VelocePipeWorld {
         }
         links.put(pos.immutable(), filtered);
         componentsDirty = true;
+        version++;
     }
 
     /** Sasiadujace rury (bezposrednio polaczone). */
@@ -322,6 +325,33 @@ public final class VelocePipeWorld {
         }
     }
 
+    /**
+     * Identyfikator sieci dla komponentu o danym reprezentancie.
+     *
+     * <p>JEDNO miejsce liczenia UUID - uzywane i przez budowanie sieci, i przy
+     * uzgadnianiu cache'y. Gdyby te dwa miejsca liczby inaczej, cache nie
+     * zostalby dopasowany do sieci.
+     */
+    public static java.util.UUID componentId(BlockPos root) {
+        return java.util.UUID.nameUUIDFromBytes(
+                root.toShortString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Numer wersji ukladu komponentow.
+     *
+     * <p>Rosnie przy KAZDEJ zmianie ukladu polaczen. Menedzer porownuje go,
+     * zeby wiedziec, kiedy uzgodnic cache sieci z zywymi komponentami -
+     * bez tego przy kazdym podziale sieci powstawal nowy identyfikator,
+     * a stary cache trzymal swoje force-loady na zawsze.
+     */
+    public long version() {
+        rebuildIfDirty();
+        return version;
+    }
+
+    private long version = 0L;
+
     /** Stala kolejnosc pozycji - do wyboru reprezentanta. */
     private static int comparePositions(BlockPos a, BlockPos b) {
         int c = Integer.compare(a.getY(), b.getY());
@@ -357,11 +387,13 @@ public final class VelocePipeWorld {
         componentMembers.clear();
         componentCache.clear();
         componentsDirty = true;
+        version++;
     }
 
     /** Wymusza przeliczenie komponentow (po zmianie, ktora nie ustawila flagi). */
     public void invalidate() {
         componentsDirty = true;
+        version++;
     }
 
     /** Czy struktura jest pusta. */

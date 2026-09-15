@@ -146,6 +146,29 @@ public final class VeloceCraftingCache {
         }
     }
 
+    /**
+     * Zwalnia cache sieci, ktorych nie ma na liscie zywych.
+     *
+     * <p>Identyfikator sieci liczymy z reprezentanta komponentu, wiec przy
+     * podziale lub scaleniu sieci powstaje nowe UUID. Stary cache zostawal
+     * wtedy w mapie na zawsze - razem ze swoimi force-loadami, ktore nigdy
+     * nie byly zwalniane.
+     *
+     * @return ile nieaktualnych cache'y zwolniono
+     */
+    public static int retainOnly(ServerLevel level, java.util.Set<UUID> liveIds) {
+        java.util.List<UUID> stale = new java.util.ArrayList<>();
+        for (UUID id : CACHES.keySet()) {
+            if (!liveIds.contains(id)) {
+                stale.add(id);
+            }
+        }
+        for (UUID id : stale) {
+            drop(level, id);
+        }
+        return stale.size();
+    }
+
     /** Liczba zywych cache'ow - do wykrywania wyciekow. */
     public static int liveCount() {
         return CACHES.size();
