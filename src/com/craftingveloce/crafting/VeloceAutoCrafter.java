@@ -125,7 +125,11 @@ public final class VeloceAutoCrafter {
         final Set<Item> enabledItems;
         /** Preferowane receptury (item -> recipe id). */
         final Map<Item, ResourceLocation> preferred;
-        /** Ekwipunek gracza (moze byc null) - ma priorytet przy pobieraniu. */
+        /**
+         * Ekwipunek gracza. <b>Zawsze {@code null} w obecnym kodzie</b> - patrz
+         * dokumentacja {@link ItemInventory}. Galezie, ktore go sprawdzaja, sa
+         * przygotowane, ale nieosiagalne.
+         */
         @Nullable
         final ItemInventory inventory;
 
@@ -935,6 +939,26 @@ public final class VeloceAutoCrafter {
     }
 
     /** Abstrakcja ekwipunku gracza - zeby silnik dal sie testowac. */
+    /**
+     * Ekwipunek gracza jako zrodlo skladnikow.
+     *
+     * <p><b>UWAGA: to jest obecnie MARTWY KOD.</b> Interfejs nie ma zadnej
+     * implementacji, a oba miejsca tworzace {@link Context} przekazuja
+     * {@code null}:
+     * <ul>
+     *   <li>{@code VeloceTomTerminalBlockEntity.craftItemFromNetwork}</li>
+     *   <li>{@code VeloceExtractorBlockEntity.craftFromNetwork}</li>
+     * </ul>
+     *
+     * <p>Wszystkie trzy galezie "ekwipunek gracza ma priorytet"
+     * ({@link #ensureAvailable}, {@code takeOne}, {@code snapshotStock}) sa
+     * wiec nieosiagalne - auto-crafting korzysta WYLACZNIE z sieci.
+     *
+     * <p>Nie podlaczam tego bez decyzji wlasciciela, bo zmieniloby to
+     * zachowanie: craftowanie zaczelyby zjadac itemy z ekwipunku gracza.
+     * Jesli to jest pozadane, wystarczy zaimplementowac ten interfejs nad
+     * {@code player.getInventory()} i przekazac go w obu miejscach.
+     */
     public interface ItemInventory {
         int count(Item item);
 
