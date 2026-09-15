@@ -1,0 +1,17 @@
+{
+    "multipart": [
+        { "when": { "facing": "down" }, "apply": { "model": "craftingveloce:block/connector_nozzle" } },
+        { "when": { "facing": "up" }, "apply": { "model": "craftingveloce:block/connector_nozzle", "x": 180 } },
+        { "when": { "facing": "north" }, "apply": { "model": "craftingveloce:block/connector_nozzle", "x": 90 } },
+        { "when": { "facing": "south" }, "apply": { "model": "craftingveloce:block/connector_nozzle", "x": -90, "y": 180 } },
+        { "when": { "facing": "west" }, "apply": { "model": "craftingveloce:block/connector_nozzle", "x": 90, "y": 270 } },
+        { "when": { "facing": "east" }, "apply": { "model": "craftingveloce:block/connector_nozzle", "x": 90, "y": 90 } },
+
+        { "when": { "north": "true" }, "apply": { "model": "craftingveloce:block/cable_open", "uvlock": true } },
+        { "when": { "east": "true" }, "apply": { "model": "craftingveloce:block/cable_open", "y": 90, "uvlock": true } },
+        { "when": { "south": "true" }, "apply": { "model": "craftingveloce:block/cable_open", "y": 180, "uvlock": true } },
+        { "when": { "west": "true" }, "apply": { "model": "craftingveloce:block/cable_open", "y": 270, "uvlock": true } },
+        { "when": { "up": "true" }, "apply": { "model": "craftingveloce:block/cable_open", "x": -90, "uvlock": true } },
+        { "when": { "down": "true" }, "apply": { "model": "craftingveloce:block/cable_open", "x": 90, "uvlock": true } }
+    ]
+}

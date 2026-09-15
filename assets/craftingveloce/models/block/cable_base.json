@@ -1,0 +1,6 @@
+{
+    "textures": {
+        "particle": "craftingveloce:block/veloce_cable"
+    },
+    "parent": "block/block"
+}

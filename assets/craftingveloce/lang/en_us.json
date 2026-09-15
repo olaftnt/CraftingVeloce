@@ -1,4 +1,8 @@
 {
-    "block.craftingveloce.veloce_tom_terminal": "Veloce Tom Terminal",
-    "item.craftingveloce.veloce_tom_terminal": "Veloce Tom Terminal"
+    "block.craftingveloce.veloce_tom_terminal": "Veloce Storage Terminal",
+    "item.craftingveloce.veloce_tom_terminal": "Veloce Storage Terminal",
+    "block.craftingveloce.veloce_cable": "Veloce Cable",
+    "item.craftingveloce.veloce_cable": "Veloce Cable",
+    "block.craftingveloce.veloce_connector": "Veloce Inventory Connector",
+    "item.craftingveloce.veloce_connector": "Veloce Inventory Connector"
 }

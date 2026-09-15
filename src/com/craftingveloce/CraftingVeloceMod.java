@@ -32,6 +32,8 @@ public class CraftingVeloceMod {
                     .icon(() -> new ItemStack(VeloceRegistry.VELOCE_TOM_TERMINAL_ITEM.get()))
                     .displayItems((params, output) -> {
                         output.accept(VeloceRegistry.VELOCE_TOM_TERMINAL_ITEM.get());
+                        output.accept(VeloceRegistry.VELOCE_CABLE_ITEM.get());
+                        output.accept(VeloceRegistry.VELOCE_CONNECTOR_ITEM.get());
                     })
                     .build()
     );
