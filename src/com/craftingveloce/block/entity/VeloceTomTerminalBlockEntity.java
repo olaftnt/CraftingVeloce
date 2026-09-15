@@ -99,35 +99,15 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         }
     }
 
-    /**
-     * Liczy "ile da sie dorobic" dla podanych itemow.
-     *
-     * <p><b>Uwaga wydajnosciowa.</b> Wczesniej liczone byly WSZYSTKIE wlaczone
-     * itemy (przy opt-out ok. 850), co sekunde, dla kazdego otwartego terminala.
-     * Kazde obliczenie rekurencyjnie kopiuje mape stocku na kazdym poziomie,
-     * wiec koszt rosnie lawinowo i serwer sie zadlawial - dokladnie to widac
-     * w logu, gdzie Server thread przestawal odpowiadac po otwarciu terminala.
-     *
-     * <p>Teraz liczymy tylko to, o co poprosi klient, i tylko na zadanie.
-     */
-    /** Gotowe liczby craftowalnosci z cache sieci (bez liczenia). */
-    private Map<Item, Long> craftableSnapshot() {
-        // Liczby "+N" nie sa juz nigdzie utrzymywane w tle. Klient zamawia je
-        // dla widocznej strony (RequestCraftableCountsPKT) i dostaje swieze.
-        return Map.of();
-    }
-
-    /**
-     * Zwraca gotowe liczby "ile da sie dorobic" z cache sieci.
-     *
-     * <p><b>Nic tu nie liczymy.</b> Cache jest utrzymywany w tle przez
-     * {@link com.craftingveloce.crafting.VeloceCraftingCache}, wiec odczyt jest
-     * natychmiastowy. Wczesniej liczenie tu, na zadanie, dla wszystkich itemow,
-     * zadlawialo serwer przy duzej liczbie receptur.
-     *
-     * <p>Jesli czegos nie ma w cache (nowy item, trwa jeszcze pierwszy skan),
-     * po prostu nie ma go w wyniku - GUI pokaze zero zamiast czekac.
-     */
+    // UWAGA: usunieto stad martwa metode craftableSnapshot() wraz z dwoma
+    // nieaktualnymi javadokami. Opisywaly one liczby "+N" utrzymywane
+    // w tle przez VeloceCraftingCache - a tego tla JUZ NIE MA (bylo zbyt
+    // drogie). Zostaly po nim: metoda zwracajaca Map.of() i dokumentacja
+    // opisujaca nieistniejace zachowanie, czyli dokladnie to, co myli przy
+    // czytaniu kodu i przy diagnozie.
+    //
+    // Liczby "+N" powstaja wylacznie na zadanie klienta, dla itemow
+    // widocznych na ekranie (RequestCraftableCountsPKT -> ponizsza metoda).
     /**
      * Liczy NATYCHMIAST "ile da sie dorobic" dla podanych itemow.
      *
