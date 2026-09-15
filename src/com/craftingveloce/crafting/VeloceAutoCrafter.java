@@ -108,7 +108,7 @@ public final class VeloceAutoCrafter {
     public static CraftResult ensureAvailable(ServerLevel level, VelocePipeNetwork network,
                                               Item item, int count, Context ctx) {
         if (count <= 0) {
-            return CraftResult.fail("niepoprawna ilosc");
+            return CraftResult.fail("craftingveloce.craft.error.amount");
         }
 
         // 1. Ekwipunek gracza ma priorytet.
@@ -127,7 +127,7 @@ public final class VeloceAutoCrafter {
         // 3. Brakuje - trzeba wycraftowac. Wolno tylko gdy wlaczone.
         int missing = (int) Math.min(Integer.MAX_VALUE, count - available);
         if (!ctx.isEnabled(item)) {
-            return CraftResult.fail("brak na stocku (auto-crafting wyłączony)");
+            return CraftResult.fail("craftingveloce.craft.error.disabled");
         }
 
         // Faza 1: planowanie (symulacja na liczbach).
@@ -135,12 +135,12 @@ public final class VeloceAutoCrafter {
         Plan plan = new Plan();
         if (!plan(level, ctx, item, missing, stock, plan, new HashSet<>(), 0)) {
         logPlanFailure(level, ctx, item, missing, stock);
-            return CraftResult.fail("brak bazowych składników");
+            return CraftResult.fail("craftingveloce.craft.error.noBase");
         }
 
         // Faza 2: wykonanie dokladnie tego, co zaplanowano.
         if (!execute(level, ctx, plan)) {
-            return CraftResult.fail("nie udało się pobrać składników");
+            return CraftResult.fail("craftingveloce.craft.error.extract");
         }
         return CraftResult.ok(count);
     }

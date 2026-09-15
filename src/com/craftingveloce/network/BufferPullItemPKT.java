@@ -100,8 +100,9 @@ public record BufferPullItemPKT(BlockPos pos, ItemStack itemStack, int count)
                 // Nie zmiescilo sie - wracamy do bufora, zeby nic nie zginelo.
                 buffer.insert(leftover);
                 player.displayClientMessage(
-                        net.minecraft.network.chat.Component.literal(
-                                "§6[CraftingVeloce] Inventory full!"), true);
+                        net.minecraft.network.chat.Component.translatable(
+                                "craftingveloce.message.inventoryFull")
+                                .withStyle(net.minecraft.ChatFormatting.GOLD), true);
             }
 
             player.level().playSound(null, player.getX(), player.getY(), player.getZ(),

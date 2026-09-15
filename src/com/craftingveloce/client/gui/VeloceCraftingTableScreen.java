@@ -351,36 +351,52 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
 
             String ing = describeIngredients(r);
             if (!ing.isEmpty()) {
-                lines.add(Component.literal("§8     " + ing));
+                lines.add(Component.literal("§8     ").append(
+                        Component.translatable("gui.craftingveloce.crafter.ingredients", ing)
+                                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY)));
             }
         }
 
         lines.add(Component.empty());
         if (recipes.size() > 1) {
-            lines.add(Component.literal("§7Prawy klik §8zmienia recepturę"));
+            lines.add(Component.translatable("gui.craftingveloce.crafter.recipe.cycle")
+                    .withStyle(net.minecraft.ChatFormatting.GRAY));
         }
-        lines.add(Component.literal("§7Lewy klik: " + (disabledItems.contains(item)
-                ? "§aWŁĄCZ §7auto-crafting"
-                : "§cWYŁĄCZ §7auto-crafting")));
-        lines.add(Component.literal("§8Prawy klik na ikonce kategorii: cała kategoria"));
+        lines.add(Component.translatable(disabledItems.contains(item)
+                ? "gui.craftingveloce.crafter.toggle.on"
+                : "gui.craftingveloce.crafter.toggle.off")
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
+        lines.add(Component.translatable("gui.craftingveloce.crafter.category.hint")
+                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
 
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
     }
 
     /**
-     * Skladniki receptury jako "2x Oak Planks, 1x Stick".
-     * Bez surowych id i bez informacji o alternatywach.
+     * Skladniki receptury jako "4x Stone" - powtorzenia tego samego itemu sa
+     * sumowane.
+     *
+     * <p>Receptura z siatki zwraca osobny Ingredient na kazdy slot, wiec
+     * kamienne cegly (4x stone w ksztalcie kwadratu) dawaly wczesniej
+     * "1x Stone, 1x Stone, 1x Stone, 1x Stone". Liczymy wystapienia i pokazujemy
+     * jedna pozycje z suma.
      */
     private static String describeIngredients(ClientRecipe r) {
-        StringBuilder sb = new StringBuilder();
+        // Nazwa itemu -> ile sztuk. LinkedHashMap, zeby kolejnosc byla stabilna.
+        Map<String, Integer> counts = new LinkedHashMap<>();
         for (List<ItemStack> options : r.options()) {
             if (options.isEmpty()) {
                 continue;
             }
+            String name = options.get(0).getHoverName().getString();
+            counts.merge(name, 1, Integer::sum);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, Integer> e : counts.entrySet()) {
             if (sb.length() > 0) {
                 sb.append("§8, §7");
             }
-            sb.append("1x ").append(options.get(0).getHoverName().getString());
+            sb.append(e.getValue()).append("x ").append(e.getKey());
         }
         return sb.toString();
     }

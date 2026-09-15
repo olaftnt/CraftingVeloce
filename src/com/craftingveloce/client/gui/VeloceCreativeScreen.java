@@ -304,10 +304,12 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
         List<Component> lines = new ArrayList<>();
         lines.add(tab.getDisplayName());
-        lines.add(Component.literal("§8Right click to change all"));
-        lines.add(Component.literal(anyOn
-                ? "§7→ wyłączy §f" + toggleable + "§7 itemów"
-                : "§7→ włączy §f" + toggleable + "§7 itemów"));
+        lines.add(Component.translatable("gui.craftingveloce.category.hint")
+                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+        lines.add(Component.translatable(anyOn
+                ? "gui.craftingveloce.category.willDisable"
+                : "gui.craftingveloce.category.willEnable", toggleable)
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
 
         graphics.renderTooltip(this.font, lines,
                 java.util.Optional.empty(), mouseX, mouseY);

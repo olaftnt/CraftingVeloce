@@ -58,7 +58,8 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
 
             BlockEntity be = serverPlayer.level().getBlockEntity(pkt.terminalPos());
             if (!(be instanceof VeloceTomTerminalBlockEntity terminalBE)) {
-                serverPlayer.displayClientMessage(Component.literal("§c[CraftingVeloce] Terminal block not found!"), true);
+                serverPlayer.displayClientMessage(Component.translatable("craftingveloce.message.terminalNotFound")
+                        .withStyle(net.minecraft.ChatFormatting.RED), true);
                 resyncInventories(serverPlayer);
                 return;
             }
@@ -68,7 +69,8 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
 
             if (extracted.isEmpty()) {
                 String itemName = pkt.itemStack().getHoverName().getString();
-                serverPlayer.displayClientMessage(Component.literal("§c[CraftingVeloce] Item not in network: " + itemName), true);
+                serverPlayer.displayClientMessage(Component.translatable("craftingveloce.message.itemNotInNetwork", itemName)
+                        .withStyle(net.minecraft.ChatFormatting.RED), true);
                 resyncInventories(serverPlayer);
                 return;
             }
@@ -77,7 +79,8 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             if (!leftover.isEmpty()) {
                 // Return leftover back to terminal if inventory was partially full
                 terminalBE.pushStack(leftover);
-                serverPlayer.displayClientMessage(Component.literal("§6[CraftingVeloce] Inventory full!"), true);
+                serverPlayer.displayClientMessage(Component.translatable("craftingveloce.message.inventoryFull")
+                        .withStyle(net.minecraft.ChatFormatting.GOLD), true);
             }
 
             serverPlayer.level().playSound(null, serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ(),

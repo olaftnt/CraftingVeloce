@@ -47,15 +47,19 @@ import java.util.Set;
 public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     /** Tryb filtrowania widoku. */
+    /**
+     * Tryb filtrowania widoku. Kazdy ma klucz tlumaczenia, zeby etykieta
+     * byla z jezyka gry, a nie zaszyta w kodzie.
+     */
     public enum Filter {
-        ALL("Show all"),
-        AVAILABLE("Available"),
-        NOT_AVAILABLE("Not available");
+        ALL("gui.craftingveloce.controller.filter.all"),
+        AVAILABLE("gui.craftingveloce.controller.filter.available"),
+        NOT_AVAILABLE("gui.craftingveloce.controller.filter.notAvailable");
 
-        final String label;
+        final String key;
 
-        Filter(String label) {
-            this.label = label;
+        Filter(String key) {
+            this.key = key;
         }
     }
 
@@ -161,7 +165,8 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         int i = 0;
         for (Filter f : Filter.values()) {
             final Filter target = f;
-            Button b = Button.builder(Component.literal((filter == f ? "§a▶ " : "") + f.label), btn -> {
+            Button b = Button.builder((filter == f ? Component.literal("§a▶ ") : Component.empty())
+                            .append(Component.translatable(f.key)), btn -> {
                 this.filter = target;
                 rebuildWidgets();
             }).bounds(startX + i * (w + gap), y, w, 18).build();
@@ -248,11 +253,12 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         renderInfoTooltip(graphics, mouseX, mouseY);
 
         // Podsumowanie trybu w prawym gornym rogu.
-        String info = switch (filter) {
-            case ALL -> "§7Wszystkie";
-            case AVAILABLE -> "§aDostępne";
-            case NOT_AVAILABLE -> "§cNiedostępne";
+        String infoKey = switch (filter) {
+            case ALL -> "gui.craftingveloce.controller.state.all";
+            case AVAILABLE -> "gui.craftingveloce.controller.state.available";
+            case NOT_AVAILABLE -> "gui.craftingveloce.controller.state.notAvailable";
         };
+        String info = Component.translatable(infoKey).getString();
         graphics.drawString(this.font, info, this.leftPos + 176 - 8 - this.font.width(info),
                 this.topPos + 6, 0xFFFFFF, true);
     }
@@ -271,25 +277,33 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         lines.add(slot.getItem().getHoverName());
 
         long n = stock.getOrDefault(item, 0L);
-        lines.add(Component.literal(n > 0
-                ? "§bStock: §f" + n
-                : "§7Stock: §8brak"));
+        lines.add(n > 0
+                ? Component.translatable("gui.craftingveloce.controller.stock", n)
+                        .withStyle(net.minecraft.ChatFormatting.AQUA)
+                : Component.translatable("gui.craftingveloce.controller.stock.none")
+                        .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
 
         if (hotbar.containsKey(item)) {
-            lines.add(Component.literal("§a✔ W hotbarze: §f" + hotbar.get(item)));
+            lines.add(Component.translatable("gui.craftingveloce.controller.inHotbar", hotbar.get(item))
+                    .withStyle(net.minecraft.ChatFormatting.GREEN));
         }
         if (craftingEnabled.contains(item)) {
-            lines.add(Component.literal("§e✔ Auto-crafting WŁĄCZONY"));
+            lines.add(Component.translatable("gui.craftingveloce.controller.craftingOn")
+                    .withStyle(net.minecraft.ChatFormatting.YELLOW));
         } else if (craftable.contains(item)) {
-            lines.add(Component.literal("§7Masz recepturę, ale auto-crafting wyłączony"));
+            lines.add(Component.translatable("gui.craftingveloce.controller.craftingOff")
+                    .withStyle(net.minecraft.ChatFormatting.GRAY));
         } else {
-            lines.add(Component.literal("§c✘ Crafter tego nie zrobi"));
+            lines.add(Component.translatable("gui.craftingveloce.controller.notCraftable")
+                    .withStyle(net.minecraft.ChatFormatting.RED));
         }
 
         if (!isAvailable(item)) {
             lines.add(Component.empty());
-            lines.add(Component.literal("§7Zbuduj maszynę: §fextractor §7+ §fskrzynia"));
-            lines.add(Component.literal("§7żeby ten item stał się dostępny."));
+            lines.add(Component.translatable("gui.craftingveloce.controller.buildMachine")
+                    .withStyle(net.minecraft.ChatFormatting.GRAY));
+            lines.add(Component.translatable("gui.craftingveloce.controller.buildMachine2")
+                    .withStyle(net.minecraft.ChatFormatting.GRAY));
         }
 
         graphics.renderTooltip(this.font, lines, java.util.Optional.empty(), mouseX, mouseY);
