@@ -79,7 +79,9 @@ public class CVDebugCommand {
                     "  §8net §7" + net.getId().toString().substring(0, 8)
                             + " §7pipes=§f" + net.getPipes().size()
                             + " §7endpoints=§f" + net.getEndpoints().size()
-                            + " §7cache: lastTick=§f" + cache.lastTickMillis() + "ms"
+                            + " §7cache: " + (cache.isIdle(sl) ? "§8idle" : "§aBUSY")
+                            + " §7queue=§f" + cache.pendingCount()
+                            + " §7lastTick=§f" + cache.lastTickMillis() + "ms"
                             + " §7overruns=§f" + cache.overrunCount()), false);
         }
         source.sendSuccess(() -> Component.literal("§6======================================="), false);
