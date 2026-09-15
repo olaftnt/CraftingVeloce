@@ -37,11 +37,19 @@ public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
     //
     //  slot 16 | 4 | pole 38 | 4 | "+" 20 | 4 | "-" 20 | 4 | tryb 20
     //
-    // Szerokosc wiersza = 16 + 4 + 38 + 4 + 20 + 4 + 20 + 4 + 20 = 130, a
-    // (212 - 130) / 2 = 41 - dokladnie tyle marginesu z KAZDEJ strony. Pole
-    // liczby jest o POLOWE krotsze, niz bylo (bylo 76 px).
+    // POZIOMO: szerokosc wiersza = 16+4+38+4+20+4+20+4+20 = 130, a
+    // (212 - 130) / 2 = 41 - dokladnie tyle marginesu z KAZDEJ strony.
+    //
+    // PIONOWO: wiersz ma stac na SRODKU pola roboczego, czyli miedzy dolna
+    // krawedzia tytulu (y=15) a gorna krawedzia ekwipunku gracza (y=84).
+    // 15 + (84 - 15 - 20) / 2 = 39, wiec nad wierszem zostaje 24 px, a pod nim
+    // 25 px - po pol piksela na strone, bo roznica wysokosci jest nieparzysta.
+    // Wczesniej bylo 26, czyli wiersz byl o 13 px za wysoko (srodek samego
+    // panela, bez ekwipunku) - gracz to zglosil.
+    /** Dolna krawedz napisu tytulu (titleLabelY = 6 + wysokosc czcionki 9). */
+    public static final int TITLE_BOTTOM = 15;
     /** Gorny brzeg wiersza; slot 16 px jest w nim wysrodkowany (2 px zapasu). */
-    public static final int ROW_Y = 26;
+    public static final int ROW_Y = 39;
     public static final int ROW_H = 20;
     public static final int GAP = 4;
     public static final int SLOT_SIZE = 16;
@@ -56,7 +64,7 @@ public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
 
     /** Slot itemu: pierwszy element wiersza. Generator maluje tu ramke. */
     public static final int FILTER_SLOT_X = 41;
-    public static final int FILTER_SLOT_Y = 28;
+    public static final int FILTER_SLOT_Y = 41;
 
     private static final int PLAYER_X = 26;
     private static final int PLAYER_Y = 84;

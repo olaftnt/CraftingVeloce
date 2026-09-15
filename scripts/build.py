@@ -278,19 +278,22 @@ def validate_gui_layout():
 
 def validate_sensor_row():
     """
-    Wiersz sensora: wysrodkowany, rowne odstepy, nic na sobie nie lezy.
+    Wiersz sensora: wysrodkowany W OBIE STRONY, rowne odstepy, nic na sobie.
 
     Gracz poprosil wprost o JEDEN wyrownany rzad (slot itemu, pole liczby, "+",
-    "-", guzik trybu) i o wycentrowanie. Wspolrzedne sa recznie policzonymi
-    liczbami, a literowke widac dopiero w grze - jako krzywy GUI. Tu liczymy to
-    samo, co zrobi gracz: marginesy i odstepy.
+    "-", guzik trybu), wycentrowany - najpierw w poziomie, a potem doszedl
+    drugi zglos: "w poziomie ok, ale w pionie za wysoko". Wspolrzedne sa recznie
+    policzonymi liczbami, a taka literowke widac dopiero w grze - jako krzywy
+    GUI. Tutaj liczymy to samo, co widzi gracz: marginesy poziome, marginesy
+    pionowe w polu roboczym (tytul -> ekwipunek) i wysrodkowanie slotu w rzedzie.
     """
     path = "src/com/craftingveloce/inventory/VeloceThresholdSensorMenu.java"
     if not os.path.exists(path):
         return
     text = open(path, encoding="utf-8").read()
     names = ["PANEL_WIDTH", "GAP", "SLOT_SIZE", "FIELD_W", "FIELD_X",
-             "BTN_W", "FILTER_SLOT_X", "STEP_PLUS_X", "STEP_MINUS_X", "MODE_X"]
+             "BTN_W", "FILTER_SLOT_X", "STEP_PLUS_X", "STEP_MINUS_X", "MODE_X",
+             "ROW_Y", "ROW_H", "FILTER_SLOT_Y", "TITLE_BOTTOM", "PLAYER_Y"]
     v = {}
     for n in names:
         m = re.search(r"\b" + re.escape(n) + r"\s*=\s*(-?\d+)", text)
@@ -312,12 +315,31 @@ def validate_sensor_row():
     left = pieces[0][1]
     right = v["PANEL_WIDTH"] - (pieces[-1][1] + pieces[-1][2])
     if left != right:
-        problems.append(f"wiersz nie jest wysrodkowany: lewy margines {left}, prawy {right}")
+        problems.append(f"wiersz nie jest wysrodkowany poziomo: "
+                        f"lewy margines {left}, prawy {right}")
+
+    # Pion: polem roboczym jest odstep miedzy tytulem a ekwipunkiem gracza.
+    above = v["ROW_Y"] - v["TITLE_BOTTOM"]
+    below = v["PLAYER_Y"] - (v["ROW_Y"] + v["ROW_H"])
+    if below < 0:
+        problems.append(f"wiersz (y={v['ROW_Y']}..{v['ROW_Y'] + v['ROW_H']}) "
+                        f"wchodzi na ekwipunek gracza (y={v['PLAYER_Y']})")
+    elif abs(above - below) > 1:
+        problems.append(f"wiersz nie jest wysrodkowany w pionie: nad nim "
+                        f"{above} px, pod nim {below} px")
+
+    # Slot 16 px ma byc wysrodkowany w rzedzie 20 px.
+    slot_above = v["FILTER_SLOT_Y"] - v["ROW_Y"]
+    slot_below = v["ROW_Y"] + v["ROW_H"] - (v["FILTER_SLOT_Y"] + v["SLOT_SIZE"])
+    if abs(slot_above - slot_below) > 1:
+        problems.append(f"slot nie jest wysrodkowany w rzedzie: nad nim "
+                        f"{slot_above} px, pod nim {slot_below} px")
 
     if problems:
         fail("wiersz sensora:\n  " + "\n  ".join(problems))
     row_w = pieces[-1][1] + pieces[-1][2] - pieces[0][1]
-    print(f"    OK (wiersz sensora wysrodkowany: {row_w} px, margines {left} px z kazdej strony)")
+    print(f"    OK (wiersz sensora: {row_w} px, margines {left} px z bokow, "
+          f"{above} px nad i {below} px pod)")
 
 
 def game_running():

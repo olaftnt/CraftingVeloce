@@ -41,13 +41,13 @@ LAMP_GLOW = (0xFF, 0x8A, 0x70)
 # zeby porownac generator z menu (zapis krotkowy "A, B = 1, 2" tego nie pozwala
 # i wlasnie dlatego ta para byla poza kontrola).
 FILTER_SLOT_X = 41
-FILTER_SLOT_Y = 28
+FILTER_SLOT_Y = 41
 
 # Granice calego wiersza - do samokontroli "wiersz jest czystym panelem".
-# Te same liczby ma menu (ROW_Y, ROW_H, MODE_X, BTN_W); tutaj sa tylko po to,
-# zeby sprawdzic PIKSELI, a nie zeby ich uzywac do rysowania.
-ROW_TOP = 25
-ROW_BOTTOM = 46
+# Te same liczby ma menu (ROW_Y=39, ROW_H=20, MODE_X=151, BTN_W=20); tutaj sa
+# tylko po to, zeby sprawdzic PIKSELI, a nie zeby ich uzywac do rysowania.
+ROW_TOP = 38
+ROW_BOTTOM = 60
 ROW_RIGHT = 171
 
 
