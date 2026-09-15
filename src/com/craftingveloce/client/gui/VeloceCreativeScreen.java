@@ -581,21 +581,51 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         if (!this.isHovering(173, 112, 16, 16, mouseX, mouseY)) {
             return;
         }
-        // JEDEN Component z przejsciem do nowej linii - dokladnie ta sama
-        // sygnatura renderTooltip, ktorej vanilla uzywa dla kosza. Dzieki temu
-        // tooltip jest pozycjonowany IDENTYCZNIE (normalnie po prawej stronie
-        // kursora), a nie "gdzies po lewej".
+        // DWIE linie jako osobne wpisy - to gwarantuje, ze tooltip jest waski
+        // i ze NIE zamieni sie w jedna dluga linie.
+        java.util.List<net.minecraft.util.FormattedCharSequence> lines = java.util.List.of(
+                Component.translatable("gui.craftingveloce.terminal.storeSlot").getVisualOrderText(),
+                Component.translatable("gui.craftingveloce.terminal.storeHint")
+                        .withStyle(net.minecraft.ChatFormatting.GRAY).getVisualOrderText());
+
+        // WLASNY POSITIONER: zawsze po PRAWEJ stronie kursora.
         //
-        // BUG, ktory tu byl: trzy osobne, BARDZO dlugie linie (jedna miala 61
-        // znakow) nie miescily sie po prawej stronie ekranu, wiec domyslny
-        // positioner odwracal tooltip na lewo. Krotki "Destroy Item" miescil sie
-        // i zostawal po prawej - dlatego widac bylo DWA tooltipy naraz.
-        Component tooltip = Component.translatable("gui.craftingveloce.terminal.storeSlot")
-                .append(Component.literal("\n"))
-                .append(Component.translatable("gui.craftingveloce.terminal.storeHint")
-                        .withStyle(net.minecraft.ChatFormatting.GRAY));
-        graphics.renderTooltip(this.font, tooltip, mouseX, mouseY);
+        // BUG, ktory to naprawia: domyslny positioner Minecrafta decyduje
+        // o stronie na podstawie tego, czy tooltip sie MIESCI. Gdy sie nie
+        // miescil, ODWRACAL go na lewo od myszki. Vanilla "Destroy Item" byl
+        // krotki i miescil sie po prawej, a nasz dluzszy tooltip ladowal po
+        // lewej - stad wrazenie dwoch roznych tooltipow.
+        //
+        // Teraz strona jest ustalona: +12 px w prawo od kursora (tak samo jak
+        // robi to vanilla dla krotkich tooltipow). Gdy zabraknie miejsca przy
+        // krawedzi ekranu, tooltip zostaje DOciagniety do krawedzi - ale
+        // NADAL po prawej stronie kursora, nigdy po lewej.
+        graphics.renderTooltip(this.font, lines, TOOLTIP_RIGHT_OF_CURSOR, mouseX, mouseY);
     }
+
+    /**
+     * Positioner tooltipa: zawsze na prawo od kursora.
+     *
+     * <p>Kolejnosc argumentow pochodzi z interfejsu:
+     * {@code (screenWidth, screenHeight, mouseX, mouseY, tooltipWidth, tooltipHeight)}.
+     */
+    private static final net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipPositioner
+            TOOLTIP_RIGHT_OF_CURSOR = (screenWidth, screenHeight, mouseX, mouseY,
+                                       tooltipWidth, tooltipHeight) -> {
+        // 12 px w prawo i 12 px w gore - dokladnie jak vanilla.
+        int x = mouseX + 12;
+        int y = mouseY - 12;
+
+        // Przy krawedzi ekranu dosuwamy do brzegu, ale NIE przenosimy na lewa
+        // strone kursora. To jest cala roznica wobec domyslnego positionera.
+        if (x + tooltipWidth > screenWidth - 4) {
+            x = Math.max(4, screenWidth - tooltipWidth - 4);
+        }
+        if (y + tooltipHeight > screenHeight - 4) {
+            y = Math.max(4, screenHeight - tooltipHeight - 4);
+        }
+        return new org.joml.Vector2i(x, y);
+    };
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
@@ -1077,6 +1107,20 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
     protected void suppressPlayerSlots() {
         if (this.menu == null || this.minecraft == null || this.minecraft.player == null) {
+            return;
+        }
+        // ===== REGRESJA, ktora to naprawia =====
+        //
+        // Na zakladce SURVIVAL INVENTORY ekwipunek gracza to CALA ZAWARTOSC
+        // tego ekranu. Ukrycie go daje PUSTE GUI - zadnych slotow, nic nie
+        // da sie kliknac. Dokladnie to sie stalo, gdy suppression zaczela
+        // dzialac PO wyborze zakladki: wczesniej vanilla selectTab odbudowywala
+        // sloty i przypadkiem je "odslaniala".
+        //
+        // Teraz regula jest jawna: ukrywamy sloty gracza TYLKO na zakladkach
+        // z siatka itemow (tam zaslaniaja nasz uklad), a na Survival
+        // Inventory zostawiamy je w spokoju.
+        if (isSurvivalInventoryTab()) {
             return;
         }
         // Sloty zbroi i tarczy w zakladce Survival Inventory.
