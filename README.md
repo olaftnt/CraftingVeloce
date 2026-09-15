@@ -319,20 +319,18 @@ w różnych osiach) daje identyczny obraz:
 ```
         dlugosc ->
         0  1  2  3  4  5
-szer 0  K  K  G  G  K  K      K = czarna opaska (opaque)
-szer 1  K  K  G  G  K  K      G = szary odcień (rozjaśnia płaszczyznę)
-szer 2  K  .  K  K  .  K      . = przezroczyste okno
-szer 3  K  .  K  K  .  K
-szer 4  K  K  G  G  K  K
-szer 5  K  K  G  G  K  K
+szer 0  K  K  K  K  K  K      K = czarna opaska (opaque)
+szer 1  K  .  .  .  .  K      . = przezroczyste okno
+szer 2  K  .  .  .  .  K
+szer 3  K  .  .  .  .  K
+szer 4  K  .  .  .  .  K
+szer 5  K  K  K  K  K  K
 ```
 
-- 2 podłużne okienka na segment, rozdzielone poprzeczką w środku
+- Ramka opaski dookoła + **jedno duże okno 4×4** na środku każdej ściany
 - **Paleta ograniczona do 2 kolorów**: czerń `(18,18,20)` + szary `(58,58,64)`.
   Bez fioletu, bez dodatkowych rozjaśnień — celowo, decyzja projektowa.
-- Szary pas (kolumny 2,3) rozbija duże płaszczyzny czerni, żeby rura nie była
-  jednolitą plamą. Leży **wyłącznie w wierszach opaski** — poprzeczka między
-  oknami (wiersze 2,3) zostaje czarna, inaczej okna straciłyby kontrast.
+- Szary występuje tylko w regionie głowicy (pasy poziome) — patrz niżej
 - kolumny 0 i 5 to opaska → na styku bloków **brak szczeliny**, opaska jest ciągła
 - `rotation: 90` **usunięte** — było potrzebne tylko dla prostokątnego regionu 5×6;
   przy kwadratowym 6×6 mapowanie jest 1:1 i rotacja łamałaby symetrię
@@ -347,11 +345,14 @@ Nozzle jest większy (8×8) i ma cienkie ściany boczne, więc używa osobnego r
 
 | Region | Przeznaczenie |
 |--------|---------------|
-| `[0,0 .. 6,6]` | ściany rury (opaska + okna) |
+| `[0,0 .. 6,6]` | ściany rury (opaska + okno) |
 | `[8,0 .. 16,8]` | głowica / nozzle |
 
-Tekstura jest **generowana skryptem**: `scripts/gen_pipe_texture.py` (edytuj i uruchom ponownie,
-zamiast malować ręcznie). Skrypt wypisuje podgląd ASCII i jest źródłem prawdy dla wzoru.
+**Tekstura jest autorstwa użytkownika** — `veloce_pipe.png` to plik robiony ręcznie,
+nie generowany skryptem. Jest to źródło prawdy dla wyglądu rury.
+
+⚠️ `scripts/gen_pipe_texture_OLD_DRAFT.py` to **archiwalny** generator wcześniejszej
+wersji roboczej. **Nie uruchamiaj go** — nadpisałby obecną teksturę.
 
 ### Testy symetrii (uruchamiane ręcznie)
 
@@ -386,9 +387,9 @@ Przy zmianie wzoru sprawdź, że przechodzą:
 - **Loot tables** — bloki po zniszczeniu nie dropują się (brak `data/craftingveloce/loot_table/blocks/`)
 - **Crafting recipes** — brak receptur craftu dla bloków (można tylko creative)
 - **Textures** — `veloce_crafting_table.png` to przebarwiona wersja extractora (placeholder)
-- **`veloce_pipe.png` przeprojektowana** — czarna wersja (100 px `(0,0,0)`) została zastąpiona
-  nową teksturą z czarną opaską i podłużnymi okienkami, generowaną przez
-  `scripts/gen_pipe_texture.py`. Poprzednia kolorowa wersja to `veloce_pipe-kopia.png`.
+- **`veloce_pipe.png` — tekstura użytkownika** — czarna ramka + okno 4×4 na każdej ścianie.
+  Zastąpiła popsutą wersję (100 px `(0,0,0)` bez danych kolorystycznych) oraz roboczą
+  wersję agenta. `veloce_pipe-kopia.png` to najstarsza kolorowa wersja (backup).
 - **UV rury zmienione na wspólny region `[0,0,6,6]`** — jeśli w przyszłości dodasz nowy element
   rury, użyj tego samego regionu i **nie dodawaj `rotation`** (region jest kwadratowy i
   symetryczny; rotacja łamie ciągłość na zakrętach).
