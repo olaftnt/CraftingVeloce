@@ -136,6 +136,18 @@ public final class ChunkOpNotifier {
             seen.clear();
             seen.put(key, now);
         }
+        // BEZPIECZNIK PAMIECI. Klucz to "pozycja:operacja", wiec dluga sesja
+        // diagnozy z lataniem po swiecie dorzucalaby wpis za kazdym nowym
+        // miejscem - i nic by ich nie usuwalo. Licznik sluzy WYLACZNIE do
+        // ograniczenia spamu, wiec wyczyszczenie go nic nie psuje: najwyzej
+        // kilka komunikatow przejdzie podwojnie.
+        if (seen.size() > MAX_TRACKED_KEYS) {
+            seen.clear();
+            seen.put(key, now);
+        }
         return false;
     }
+
+    /** Powyzej tylu wpisow czyscimy licznik miejsc (patrz {@link #isThrottled}). */
+    private static final int MAX_TRACKED_KEYS = 4096;
 }
