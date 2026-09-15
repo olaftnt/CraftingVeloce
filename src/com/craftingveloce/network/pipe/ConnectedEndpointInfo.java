@@ -616,6 +616,12 @@ public class ConnectedEndpointInfo {
                 ChunkTrace.at("INSERT", level, pos,
                         "budzet loadow wyczerpany (%d/tick) -> odmowa, stos zostaje u gracza",
                         VeloceChunkLoader.MAX_OP_LOADS_PER_TICK);
+                // Zwykly log (bez /cv trace), bo to JEDYNA sytuacja, w ktorej
+                // wkladanie odmawia mimo wolnego miejsca. Bez tego sladu
+                // wygladaloby to dokladnie jak stary bug "network full".
+                VeloceLog.Network.detail(VeloceLog.Side.SERVER,
+                        "insert at %s deferred: blocking-load budget used (%d/tick), stack kept by caller",
+                        pos, VeloceChunkLoader.MAX_OP_LOADS_PER_TICK);
                 return stack;
             }
             VeloceChunkLoader.retain(level, chunkKey, "op:insert",
