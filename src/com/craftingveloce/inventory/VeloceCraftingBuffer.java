@@ -95,7 +95,17 @@ public class VeloceCraftingBuffer implements Container {
 
     @Override
     public void clearContent() {
-        items.clear();
+        // NIE items.clear().
+        //
+        // NonNullList.clear() czysci liste BAZOWA, wiec jej rozmiar spada
+        // z SIZE (216) do zera - a getContainerSize() dalej zwraca SIZE.
+        // Kazde nastepne items.get(i) (czyli getItem, removeItem, insert,
+        // skan endpointu) rzucaloby IndexOutOfBoundsException.
+        //
+        // Poprawnie: wyzerowac zawartosc, zachowujac rozmiar.
+        for (int i = 0; i < SIZE; i++) {
+            items.set(i, ItemStack.EMPTY);
+        }
         setChanged();
     }
 
