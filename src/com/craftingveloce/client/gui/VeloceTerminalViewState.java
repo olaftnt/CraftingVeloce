@@ -1,6 +1,5 @@
 package com.craftingveloce.client.gui;
 
-
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
@@ -147,7 +146,6 @@ public final class VeloceTerminalViewState {
         return "";
     }
 
-    /** Zakladka aktualnie wybrana w ekranie (moze byc null). */
     /** Czy juz logowalismy awarie odczytu zakladki. */
     private static boolean currentTabFailureLogged;
 

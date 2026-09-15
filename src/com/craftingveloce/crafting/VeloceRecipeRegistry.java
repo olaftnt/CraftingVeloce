@@ -105,7 +105,6 @@ public final class VeloceRecipeRegistry {
      */
     private static final Set<String> TRUSTED_MOD_NAMESPACES = Set.of();
 
-    /** Cache: RecipeManager -> (wynik Item -> lista receptur). */
     /**
      * Indeks receptur per RecipeManager.
      *

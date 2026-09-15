@@ -30,11 +30,11 @@ public class ConnectedEndpointInfo {
     public enum Type {
         INVENTORY,
         REFINED_STORAGE,
-        /**
-         * Bufor auto-craftera - pamiec podreczna bloku, nie zasobnik w swiecie.
-         * Rozpoznawany po typie, zeby po restarcie swiata odtworzyc wlasciwa
-         * implementacje endpointu (patrz {@link CraftingBufferEndpoint}).
-         */
+    /**
+     * Bufor auto-craftera - pamiec podreczna bloku, nie zasobnik w swiecie.
+     * Rozpoznawany po typie, zeby po restarcie swiata odtworzyc wlasciwa
+     * implementacje endpointu (patrz {@link CraftingBufferEndpoint}).
+     */
         CRAFTING_BUFFER
     }
 
@@ -537,26 +537,7 @@ public class ConnectedEndpointInfo {
         return result;
     }
 
-    /**
-     * Wklada item do tego endpointu (odwrotnosc {@link #extractItem}).
-     *
-     * <p>Uzywane przez auto-crafter do odkładania wynikow craftowania.
-     * Obsluguje te same trzy rodzaje magazynow co ekstrakcja: Refined Storage,
-     * NeoForge ItemHandler oraz vanilla Container.
-     *
-     * @return true, jesli udalo sie wlozyc cala stacke
-     */
-    /**
-     * Wklada ile sie da i zwraca RESZTE.
-     *
-     * <p><b>Po co zostaw pozostaly stos, a nie sam boolean.</b> Poprzednia
-     * wersja zwracala {@code remaining.isEmpty()}, wiec przy CZESCIOWYM
-     * przyjeciu (np. beczka prawie pelna) mowila "nie udalo sie" - mimo ze
-     * czesc itemow juz fizycznie weszla. Wolajacy nie zabieral wtedy niczego
-     * graczowi, a itemy byly juz w magazynie: DUPLIKACJA.
-     *
-     * @return to, czego NIE udalo sie wlozyc (EMPTY gdy wszystko przyjete)
-     */
+
     /**
      * Fizyczne wlozenie stosu - BEZ sprawdzania i ladowania chunku.
      *
@@ -607,6 +588,17 @@ public class ConnectedEndpointInfo {
         return remaining;
     }
 
+    /**
+     * Wklada ile sie da i zwraca RESZTE.
+     *
+     * <p><b>Po co zostaw pozostaly stos, a nie sam boolean.</b> Poprzednia
+     * wersja zwracala {@code remaining.isEmpty()}, wiec przy CZESCIOWYM
+     * przyjeciu (np. beczka prawie pelna) mowila "nie udalo sie" - mimo ze
+     * czesc itemow juz fizycznie weszla. Wolajacy nie zabieral wtedy niczego
+     * graczowi, a itemy byly juz w magazynie: DUPLIKACJA.
+     *
+     * @return to, czego NIE udalo sie wlozyc (EMPTY gdy wszystko przyjete)
+     */
     public ItemStack insertItemLeftover(ServerLevel level, ItemStack stack) {
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;

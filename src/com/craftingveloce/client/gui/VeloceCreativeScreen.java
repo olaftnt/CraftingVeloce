@@ -1,6 +1,5 @@
 package com.craftingveloce.client.gui;
 
-
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -83,7 +82,6 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     private static java.lang.reflect.Method scrollToMethod;
     private static java.lang.reflect.Field scrollOffsFieldRef;
     private static boolean reflectionResolved;
-
 
     protected VeloceCreativeScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                    boolean displayOperatorCreativeTab) {
@@ -851,21 +849,6 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         return super.checkTabClicked(tab, mouseX, mouseY);
     }
 
-    /** Znajduje zakladke, ktorej ikonka jest pod kursorem. */
-    /**
-     * Tooltip na ikonce zakladki - podpowiada, ze prawy klik przelacza
-     * cala kategorie. Pokazywany tylko gdy podkursorem jest zakladka i gdy
-     * w tej zakladce jest w ogole cos do przelaczenia.
-     *
-     * <p>Wywoływane z {@link #render} podklas. Vanilla nie rysuje zadnego
-     * tooltipa dla zakladek, wiec dodajemy go sami.
-     */
-
-    /**
-     * Przelacza wszystkie craftowalne itemy z danej zakladki.
-     * Podklasy decyduja, co zrobic z pojedynczym itemem.
-     */
-
     // ------------------------------------------------------------------
     // Przelaczanie pojedynczych itemow - do nadpisania w podklasach
     // ------------------------------------------------------------------
@@ -907,15 +890,6 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         return false;
     }
 
-    /** Zastepuje sloty gracza nieaktywnymi slotami poza ekranem. */
-    /**
-     * Czy zostawic hotbar gracza dzialajacy.
-     *
-     * <p>Domyslnie wylaczamy sloty gracza (te GUI sa "fake creative" i nie
-     * sluza do przenoszenia itemow). Terminal tego nie chce - gracz musi moc
-     * korzystac z hotbara, np. odkladac wyciagniete itemy. Podklasy
-     * nadpisuja te metode zwracajac true.
-     */
     /**
      * Zbiera sloty zbroi i tarczy z menu ekwipunku gracza.
      *
@@ -984,10 +958,19 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         }
     }
 
+    /**
+     * Czy zostawic hotbar gracza dzialajacy.
+     *
+     * <p>Domyslnie wylaczamy sloty gracza (te GUI sa "fake creative" i nie
+     * sluza do przenoszenia itemow). Terminal tego nie chce - gracz musi moc
+     * korzystac z hotbara, np. odkladac wyciagniete itemy. Podklasy
+     * nadpisuja te metode zwracajac true.
+     */
     protected boolean keepPlayerHotbar() {
         return false;
     }
 
+    /** Zastepuje sloty gracza nieaktywnymi slotami poza ekranem. */
     protected void suppressPlayerSlots() {
         if (this.menu == null || this.minecraft == null || this.minecraft.player == null) {
             return;

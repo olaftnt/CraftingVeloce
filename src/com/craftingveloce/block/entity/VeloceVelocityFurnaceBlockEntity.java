@@ -15,7 +15,6 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -289,13 +288,24 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
 
     /** Ile tickow palenia daje ten stos (0 = nie jest paliwem). */
     public static long burnTicksOf(ItemStack stack) {
-        if (stack.isEmpty() || !AbstractFurnaceBlockEntity.isFuel(stack)) {
+        if (stack.isEmpty()) {
             return 0L;
         }
-        Integer ticks = AbstractFurnaceBlockEntity.getFuel().get(stack.getItem());
-        // Paliwo z tagu moze nie miec wpisu per-item - wtedy bierzemy
-        // standardowa wartosc, zeby nie odrzucic poprawnego paliwa.
-        return ticks == null ? 200L : ticks.longValue();
+        // TA SAMA SCIEZKA CO WANILIOWY PIEC.
+        //
+        // Vanilla liczy czas palenia tak: AbstractFurnaceBlockEntity
+        // .getBurnDuration() -> ItemStack.getBurnTime(recipeType). Idziemy
+        // dokladnie ta droga, bo ona przechodzi przez wartosci paliw z danych
+        // (FuelValues) i ROZWIJA TAGI.
+        //
+        // BUG, ktory tu byl: pytalismy przestarzala statyczna mape
+        // AbstractFurnaceBlockEntity.getFuel(), ktora zna wylacznie paliwa
+        // wpisane per-item. Paliwo zdefiniowane tagiem albo dodane przez inny
+        // mod danymi nie mialo tam wpisu, wiec nasz zapasowy fallback dawal mu
+        // rowne 200 tickow - czyli takie paliwo spalalo sie w naszym piecu
+        // wielokrotnie szybciej, niz powinno (weglu to 1600 tickow).
+        int ticks = stack.getBurnTime(net.minecraft.world.item.crafting.RecipeType.SMELTING);
+        return Math.max(0L, ticks);
     }
 
     /**

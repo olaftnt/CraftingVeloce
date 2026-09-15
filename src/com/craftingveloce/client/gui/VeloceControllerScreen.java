@@ -41,7 +41,6 @@ import java.util.Set;
  */
 public class VeloceControllerScreen extends VeloceCreativeScreen {
 
-    /** Tryb filtrowania widoku. */
     /**
      * Tryb filtrowania widoku. Kazdy ma klucz tlumaczenia, zeby etykieta
      * byla z jezyka gry, a nie zaszyta w kodzie.
@@ -289,9 +288,6 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         }
     }
 
-
-
-
     // ---------- render ----------
 
     @Override
@@ -333,7 +329,6 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         VeloceSlotOverlay.drawCraftable(graphics, this.font,
                 craftableCounts.get(item), slot.x, slot.y);
     }
-
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {

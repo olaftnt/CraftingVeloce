@@ -55,17 +55,6 @@ public class ClientTerminalHelper {
     }
 
     /**
-     * Wraca z wyboru filtra do GUI ekstraktora.
-     *
-     * <p><b>Po co osobna metoda.</b> Picker konczyl sie {@code onClose()}, ktore
-     * zamyka ekran DO GRY - gracz wybieral item i ladowal z powrotem w swiecie,
-     * zamiast wrocic do ekstraktora. Ekstraktor ma normalne menu, wiec wystarczy
-     * je otworzyc z powrotem (tak samo, jak robi to otwarcie pickera).
-     *
-     * <p>Trace droge robimy przez zwykle menu gracza, a nie przez {@code onClose()},
-     * zeby nie odpalac logiki zamykania pickera (przywracania trybu gry itd.).
-     */
-    /**
      * Wraca z wyboru filtra do GUI tego bloku, z ktorego picker zostal otwarty.
      *
      * <p><b>Skad wiemy, do ktorego.</b> Nie trzeba tym nigdzie podrozowac:

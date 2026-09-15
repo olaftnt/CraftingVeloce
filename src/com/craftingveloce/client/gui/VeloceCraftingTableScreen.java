@@ -1,6 +1,5 @@
 package com.craftingveloce.client.gui;
 
-
 import com.craftingveloce.network.CraftingTableToggleItemPKT;
 import com.craftingveloce.network.CraftingTableCycleRecipePKT;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -52,7 +51,6 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     private Set<Item> disabledItems;
     private Map<Item, ResourceLocation> preferredRecipes;
 
-    /** Cache: item -> lista receptur (id + wynik + skladniki). */
     /**
      * Indeks receptur po stronie klienta.
      *
@@ -130,7 +128,6 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         List<ClientRecipe> recipes = getCraftableItems().get(stack.getItem());
         return recipes != null && !recipes.isEmpty();
     }
-
 
     /**
      * Buduje indeks itemow craftowalnych z receptur dostepnych po stronie klienta.
@@ -286,7 +283,6 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     //   i modyfikowac go bezposrednio. Wtedy zakladka ekwipunku moze pokazac
     //   bufor craftera bez walki z vanilla - mamy pelna kontrole nad ukladem.
     //   Nie robic tego przez podmiane slotow ani przez drugi ekran.
-
 
     // ------------------------------------------------------------------
     // Tooltip
@@ -475,7 +471,9 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         }
         ResourceLocation current = preferredRecipes.get(item);
         int idx = current == null ? -1 : ids.indexOf(current);
-        int next = (int) (((idx + 1) % ids.size() + ids.size()) % ids.size());
+        // Podwojny modulo, zeby wynik byl nieujemny takze dla idx = -1
+        // (item bez wybranej receptury). Wyrazenie jest juz typu int.
+        int next = ((idx + 1) % ids.size() + ids.size()) % ids.size();
         ResourceLocation chosen = ids.get(next);
         preferredRecipes.put(item, chosen);
         PacketDistributor.sendToServer(

@@ -157,28 +157,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         return result;
     }
 
-    /**
-     * Napędza tło cache craftowalnosci dla tej sieci.
-     *
-     * <p>Wolane z ticku: cache sam wykrywa zmiany stocku i przelicza tylko
-     * dotkniete lancuchy. Dzieki temu liczby sa gotowe zanim gracz otworzy GUI.
-     */
-    /**
-     * Utrzymuje siec przy zyciu (force-load chunkow).
-     *
-     * <p><b>Liczenie craftowalnosci zostalo usuniete.</b> Ten cache liczyl
-     * kiedys w tle, w porcjach, "na zapas" - i to bylo zrodlem zamulania,
-     * bo nie sposob zgadnac, co gracz za chwile otworzy. Teraz liczby "+N"
-     * powstaja WYLACZNIE na zadanie klienta, dla itemow widocznych na ekranie
-     * ({@link #computeCraftableCounts}), a nie ma czego trzymac na zapas.
-     *
-     * <p>Cache zostaje, bo ma druga, niezbedna funkcje: trzyma wymuszone
-     * chunki z blokami sieci. Bez tego ekstraktory i craftery przestalyby
-     * pracowac, gdy gracz odejdzie od bazy.
-     */
     /** Tick ostatniego rozgloszenia licznikow do obserwujacych. */
     private long lastSyncTick = Long.MIN_VALUE;
-
 
     /**
      * Krotka migawka stocku sieci - bez liczenia craftowalnosci.

@@ -1,6 +1,5 @@
 package com.craftingveloce.client.gui;
 
-
 import com.craftingveloce.network.TerminalPullItemPKT;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.Font;
@@ -164,7 +163,6 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         this.craftable.request(terminalPos, this.menu.slots, this::isPlayerSlot, force);
     }
 
-
     /**
      * Rysuje strzalke na slocie odkladania.
      *
@@ -214,28 +212,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         }
     }
 
-    /**
-     * Skrocona liczba: 1K, 1.2K, 1M, 1.2M, 1B.
-     *
-     * <p>Zasady (ustalone z uzytkownikiem):
-     * <ul>
-     *   <li>ponizej 1000 - dokladna liczba,</li>
-     *   <li>1000 -> "1K", 1200 -> "1.2K" (bez zbednego ".0" przy okraglych),</li>
-     *   <li>999999 -> "1M", a nie "1000K" - zaokraglenie musi przeskoczyc prog,</li>
-     *   <li>tak samo dla M -> B.</li>
-     * </ul>
-     */
     /** Zgodnosc: skrocona liczba. Implementacja jest we {@link VeloceSlotOverlay}. */
     public static String formatCount(long number) {
         return VeloceSlotOverlay.formatCount(number);
     }
-
-
-    /**
-     * Rysuje liczbe mozliwych do wycraftowania sztuk (np. "+12") w lewym gornym
-     * rogu slotu. Pokazywane tylko gdy auto-crafting danego itemu jest wlaczony
-     * i faktycznie da sie cos dorobic.
-     */
 
     /**
      * Tooltip slotu magazynu.
@@ -271,8 +251,6 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                         : net.minecraft.world.item.TooltipFlag.Default.NORMAL
         );
     }
-
-
 
     /**
      * Klucz stanu widoku - pozycja TEGO terminala.

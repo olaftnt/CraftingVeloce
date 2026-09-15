@@ -53,13 +53,6 @@ public class VelocePipeNetworkManager extends SavedData {
     private final Set<BlockPos> pendingRebuilds = new java.util.LinkedHashSet<>();
 
     /**
-     * Tablica polaczen miedzy sieciami.
-     *
-     * <p>To ona sprawia, ze laczenie sieci A z B NIE niszczy zadnej z nich:
-     * powstaje tylko krawedz. Rozlaczenie usuwa krawedz i obie sieci wracaja
-     * dokladnie do stanu sprzed - z wlasnymi cache i force-loadami.
-     */
-    /**
      * Plaska struktura wszystkich rur: pozycja -> realne polaczenia.
      *
      * <p>To jest ZRODLO PRAWDY o tym, co jest z czym polaczone. Sieci
@@ -1118,7 +1111,6 @@ public class VelocePipeNetworkManager extends SavedData {
                 level, chunkPos, loaded, affectedThings);
     }
 
-    /** Krotki opis bloku w chunku - do komunikatu debugowego. */
     /**
      * Czy blok lezy w tym chunku - bez alokowania ChunkPos na kazdy blok.
      *
@@ -1600,7 +1592,6 @@ public class VelocePipeNetworkManager extends SavedData {
         }
         return candidates.stream().min(UUID::compareTo).orElseGet(UUID::randomUUID);
     }
-
 
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {

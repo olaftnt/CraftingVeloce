@@ -107,7 +107,6 @@ public final class VeloceCraftingRegistry {
         return out;
     }
 
-    /** Zbior itemow, dla ktorych auto-crafting jest wlaczony w calej sieci. */
     /**
      * Itemy, ktore auto-craftery w tej sieci faktycznie potrafia zrobic.
      *

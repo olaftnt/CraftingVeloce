@@ -86,13 +86,6 @@ public final class VeloceAutoCrafter {
     public static final long UNKNOWN_COUNT = -1L;
 
     /**
-     * Domyslny budzet czasu na jedno szacowanie, w nanosekundach.
-     *
-     * <p>25 ms to wartosc bezpieczna dla pojedynczego itemu przy natychmiastowym
-     * przeliczeniu widocznej strony (ok. 45 itemow obliczanych razem).
-     * W tle cache uzywa mniejszego budzetu, zeby nie przekroczyc ticku.
-     */
-    /**
      * Budzet na przeliczenie widocznej strony terminala.
      *
      * <p>To leci na watku serwera, wiec musi zostawiac zapas na reszte ticku.
@@ -334,7 +327,6 @@ public final class VeloceAutoCrafter {
         return CraftResult.ok((int) Math.min(Integer.MAX_VALUE, actuallyCrafted));
     }
 
-
     /**
      * Licznik operacji biezacego szacowania.
      *
@@ -446,14 +438,6 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Jak {@link #countCraftableNow}, ale ze stockiem podanym z zewnatrz.
-     *
-     * <p>Cache w tle liczy setki itemow na tick. Czytanie calego stocku sieci
-     * przy KAZDYM z nich bylo najdrozsza czescia tej petli - a przeciez cache
-     * i tak ma swiezy stock z diffa. Dzieki temu siec czytamy raz na tick,
-     * a nie raz na item.
-     */
-    /**
      * Ile sztuk da sie <b>dorobic z surowcow</b> - bez tego, co juz gotowe.
      *
      * <p><b>BUG, ktory to naprawia.</b> Poprzednia wersja liczyla tak:
@@ -513,15 +497,6 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Liczy wiele itemow naraz, wspoldzielac jeden budzet czasowy.
-     *
-     * <p>Uzywane do NATYCHMIASTOWEGO przeliczenia widocznej strony terminala.
-     * Zamiast placic za odczyt stocku przy kazdym itemie, robimy go raz.
-     * Dzieki temu 45 itemow liczy sie w kilka milisekund.
-     *
-     * @return mapa item -> ile da sie dorobic (tylko wartosci > 0)
-     */
-    /**
      * Wynik obliczenia partii.
      *
      * @param counts   ile da sie dorobic (tylko wartosci > 0)
@@ -530,6 +505,15 @@ public final class VeloceAutoCrafter {
     public record BatchResult(Map<Item, Long> counts, boolean complete) {
     }
 
+/**
+     * Liczy wiele itemow naraz, wspoldzielac jeden budzet czasowy.
+     *
+     * <p>Uzywane do NATYCHMIASTOWEGO przeliczenia widocznej strony terminala.
+     * Zamiast placic za odczyt stocku przy kazdym itemie, robimy go raz.
+     * Dzieki temu 45 itemow liczy sie w kilka milisekund.
+     *
+     * @return mapa item -> ile da sie dorobic (tylko wartosci > 0)
+     */
     public static Map<Item, Long> countCraftableBatch(
             ServerLevel level, VelocePipeNetwork network,
             java.util.Collection<Item> items, Set<Item> enabledItems,
@@ -593,11 +577,6 @@ public final class VeloceAutoCrafter {
         return new BatchResult(out, complete);
     }
 
-    /**
-     * Loguje, dlaczego planowanie sie nie udalo: jakie sa receptury dla itemu
-     * i czego brakuje. Wlaczane tylko przy niepowodzeniu, wiec nie zasmieca
-     * loga w normalnej pracy.
-     */
     /**
      * Znajduje NAJWIEKSZA ilosc itemu, ktora da sie zaplanowac z tego stocku.
      *
@@ -1216,7 +1195,6 @@ public final class VeloceAutoCrafter {
         return true;
     }
 
-    /** Pobiera jedna sztuke pasujaca do skladnika. Priorytet: ekwipunek -> siec. */
     /**
      * Pobiera jedna sztuke pasujaca do skladnika.
      *
@@ -1385,8 +1363,7 @@ public final class VeloceAutoCrafter {
         return ordered;
     }
 
-    /** Migawka stanu sieci + ekwipunku do symulacji. */
-    /**
+        /**
      * Migawka wszystkiego, co jest dostepne do craftowania.
      *
      * <p><b>Musi byc symetryczna z {@link #deposit}.</b> deposit wklada wyniki
@@ -1396,15 +1373,13 @@ public final class VeloceAutoCrafter {
      * craftowaniu (deski -> plotek).
      *
      * <p>Kolejnosc zrodel: siec + ekwipunek + bufory crafterow.
-     */
-    /**
-     * Jak wyzej, ale ze stanem sieci podanym z zewnatrz.
      *
-     * <p>Po to, zeby {@link #ensureAvailable} nie skanowal sieci DWA razy:
-     * raz na sprawdzenie dostepnosci, a chwile pozniej drugi raz na migawke
-     * do planowania. Przy wymuszonym skanie (force=true) to jest pelne
-     * przejscie po wszystkich inwentarzach sieci.
+     * <p>Stan sieci mozna podac z zewnatrz, zeby {@link #ensureAvailable} nie
+     * skanowal sieci DWA razy: raz na sprawdzenie dostepnosci, a chwile
+     * pozniej drugi raz na migawke do planowania. Przy wymuszonym skanie
+     * (force=true) to jest pelne przejscie po wszystkich inwentarzach sieci.
      */
+
     private static Map<Item, Long> snapshotStock(Context ctx, Map<Item, Long> networkCounts) {
         Map<Item, Long> stock = new HashMap<>(networkCounts);
         if (ctx.inventory != null) {
@@ -1426,7 +1401,6 @@ public final class VeloceAutoCrafter {
         return stock;
     }
 
-    /** Abstrakcja ekwipunku gracza - zeby silnik dal sie testowac. */
     /**
      * Ekwipunek gracza jako zrodlo skladnikow.
      *

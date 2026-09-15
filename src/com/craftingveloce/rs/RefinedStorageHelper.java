@@ -167,13 +167,11 @@ public class RefinedStorageHelper {
         return ItemStack.EMPTY;
     }
 
-    /**
-     * Wklada item do sieci Refined Storage podlaczonej do targetPos.
-     *
-     * <p>Uzywane przez auto-crafter do odkładania wynikow craftowania.
-     *
-     * @return true, jesli cala stacka zostala przyjeta
-     */
+    /** Zgodnosc: true gdy wszystko przyjete. */
+    public static boolean insertItem(Level level, BlockPos targetPos, Direction side, ItemStack stack) {
+        return insertItemLeftover(level, targetPos, side, stack).isEmpty();
+    }
+
     /**
      * Wklada ile sie da i zwraca RESZTE.
      *
@@ -182,11 +180,6 @@ public class RefinedStorageHelper {
      * a itemy juz byly w magazynie. Wolajacy nie zabieral ich wtedy graczowi,
      * co konczylo sie duplikacja.
      */
-    /** Zgodnosc: true gdy wszystko przyjete. */
-    public static boolean insertItem(Level level, BlockPos targetPos, Direction side, ItemStack stack) {
-        return insertItemLeftover(level, targetPos, side, stack).isEmpty();
-    }
-
     public static ItemStack insertItemLeftover(Level level, BlockPos targetPos, Direction side, ItemStack stack) {
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;

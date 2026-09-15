@@ -82,7 +82,6 @@ public final class VeloceConfig {
     private VeloceConfig() {
     }
 
-    /** Czy logowac zdarzenia o danym poziomie (lub wazniejsze). */
     /**
      * Czy logowac zdarzenia o danym poziomie (lub wazniejsze).
      *
