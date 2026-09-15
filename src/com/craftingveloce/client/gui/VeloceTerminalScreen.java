@@ -20,8 +20,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import javax.annotation.Nullable;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.text.DecimalFormat;
-import java.text.DecimalFormatSymbols;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -231,20 +229,43 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         }
     }
 
-    private static final DecimalFormat FORMAT_1_DEC;
-    static {
-        DecimalFormatSymbols sym = new DecimalFormatSymbols();
-        sym.setDecimalSeparator('.');
-        FORMAT_1_DEC = new DecimalFormat(".#;0.#", sym);
-    }
-
+    /**
+     * Skrocona liczba: 1K, 1.2K, 1M, 1.2M, 1B.
+     *
+     * <p>Zasady (ustalone z uzytkownikiem):
+     * <ul>
+     *   <li>ponizej 1000 - dokladna liczba,</li>
+     *   <li>1000 -> "1K", 1200 -> "1.2K" (bez zbednego ".0" przy okraglych),</li>
+     *   <li>999999 -> "1M", a nie "1000K" - zaokraglenie musi przeskoczyc prog,</li>
+     *   <li>tak samo dla M -> B.</li>
+     * </ul>
+     */
     public static String formatCount(long number) {
-        if (number < 1000) return Long.toString(number);
-        if (number < 1000000) return FORMAT_1_DEC.format(number / 1000.0) + "K";
-        if (number < 1000000000) return FORMAT_1_DEC.format(number / 1000000.0) + "M";
-        return FORMAT_1_DEC.format(number / 1000000000.0) + "B";
+        if (number < 0) {
+            return "0";
+        }
+        if (number < 1000) {
+            return Long.toString(number);
+        }
+        // Progi sprawdzamy po ZAOKRAGLENIU, inaczej 999999 dawaloby "1000K"
+        // zamiast "1M".
+        if (number < 999_500L) {
+            return trimZero(number / 1000.0) + "K";
+        }
+        if (number < 999_500_000L) {
+            return trimZero(number / 1_000_000.0) + "M";
+        }
+        return trimZero(number / 1_000_000_000.0) + "B";
     }
 
+    /** Jedno miejsce po przecinku, ale bez zbednego ".0" przy okraglych. */
+    private static String trimZero(double value) {
+        String s = String.format(java.util.Locale.ROOT, "%.1f", value);
+        if (s.endsWith(".0")) {
+            s = s.substring(0, s.length() - 2);
+        }
+        return s;
+    }
     private void drawCountOverlay(GuiGraphics graphics, Font font, long count, int x, int y) {
         float scaleFactor = 0.6f;
         RenderSystem.disableDepthTest();

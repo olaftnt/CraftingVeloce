@@ -232,7 +232,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         // Liczba sztuk na stocku (jesli jest).
         long n = stock.getOrDefault(item, 0L);
         if (n > 0) {
-            String txt = formatCount(n);
+            String txt = VeloceTerminalScreen.formatCount(n);
             graphics.pose().pushPose();
             graphics.pose().translate(0, 0, 250);
             graphics.drawString(this.font, txt, slot.x + 17 - this.font.width(txt),
@@ -241,15 +241,6 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         }
     }
 
-    static String formatCount(long n) {
-        if (n >= 1_000_000) {
-            return String.format("%.1fM", n / 1_000_000.0);
-        }
-        if (n >= 1_000) {
-            return String.format("%.1fK", n / 1_000.0);
-        }
-        return Long.toString(n);
-    }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {

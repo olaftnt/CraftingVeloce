@@ -713,13 +713,20 @@ public final class VeloceAutoCrafter {
             return fromStock;
         }
 
-        // Gorna granica: nie da sie zrobic wiecej sztuk niz jest WSZYSTKICH
-        // itemow w stocku (kazdy craft zuzywa co najmniej jeden).
-        long totalItems = 0;
-        for (long v : stock.values()) {
-            totalItems += v;
-        }
-        long hi = Math.min(totalItems, MAX_ESTIMATE_RESULT);
+        // Gorna granica bisekcji.
+        //
+        // BUG, ktory tu byl: bralismy sume WSZYSTKICH sztuk w sieci i twierdzilismy,
+        // ze "kazdy craft zuzywa co najmniej jeden item, wiec nie da sie zrobic
+        // wiecej". To nieprawda dla receptur dajacych wiele sztuk: 1 kloda ->
+        // 4 deski -> 16 patykow. Przy 64 klodach granica wychodzila 64, wiec
+        // bisekcja NIGDY nie sprawdzila wiecej - i terminal pokazywal "64 plotki"
+        // tam, gdzie naprawde mozna zrobic kilkaset.
+        //
+        // Teraz liczymy REALNA gorna granice: dla kazdego surowca mnozymy jego
+        // ilosc przez to, ile sztuk danego itemu da sie z niego uzyskac w jednym
+        // ciagu receptur. To wciaz tylko ograniczenie bisekcji (bezpieczne
+        // zawyzenie), a prawdziwa wartosc i tak znajduje planer.
+        long hi = Math.min(estimateUpperBound(level, item, stock, recipes), MAX_ESTIMATE_RESULT);
         if (hi <= 0) {
             return fromStock;
         }
@@ -744,6 +751,56 @@ public final class VeloceAutoCrafter {
 
     /** Limit wyniku szacowania - chroni przed absurdalna bisekcja. */
     private static final long MAX_ESTIMATE_RESULT = 100_000L;
+
+    /**
+     * Bezpieczne ZAWYZENIE liczby sztuk, ktore mozna zrobic z danego stocku.
+     *
+     * <p>Dla kazdego surowca obecnego w sieci mnozymy jego ilosc przez najwiekszy
+     * mozliwy uzysk w jednym ciagu receptur. Przyklad: 64 klody, a receptura
+     * "1 kloda -> 4 deski" i "1 deska -> 4 patyki" daje uzysk 16, wiec gorna
+     * granica to 1024 - i bisekcja ma miejsce, zeby znalezc prawdziwy wynik
+     * (np. 170 plotkow), zamiast zatrzymywac sie na 64.
+     *
+     * <p>To jest wylacznie ograniczenie bisekcji. Wynik nie musi byc osiagalny -
+     * o tym decyduje planer. Wazne, zeby nie byl ZA MALY, bo wtedy obcinalibysmy
+     * poprawne odpowiedzi.
+     */
+    private static long estimateUpperBound(ServerLevel level, Item item,
+                                           Map<Item, Long> stock,
+                                           java.util.List<VeloceRecipeRegistry.CraftingEntry> recipes) {
+        // Maksymalny uzysk na jedna sztuke surowca, w jednym ciagu receptur.
+        long bestYield = 1;
+        for (var recipe : recipes) {
+            long perCraft = Math.max(1, recipe.result().getCount());
+            // Skladniki tej receptury tez moga byc wytworzone, wiec liczymy
+            // krotki lancuch w gore (glebokosc ograniczona, to tylko oszacowanie).
+            long cheapest = 1;
+            for (Ingredient ing : recipe.ingredients()) {
+                long options = 0;
+                for (ItemStack opt : nonEmpty(ing)) {
+                    long have = stock.getOrDefault(opt.getItem(), 0L);
+                    if (have > 0) {
+                        options++;
+                    }
+                }
+                // Jesli skladnik jest dostepny, traktujemy go jako "1 jednostke".
+                // Interesuje nas tylko rzad wielkosci, nie dokladna liczba.
+                if (options > 0) {
+                    cheapest = Math.max(cheapest, 1);
+                }
+            }
+            bestYield = Math.max(bestYield, perCraft / cheapest);
+        }
+
+        long total = 0;
+        for (long v : stock.values()) {
+            total += v;
+        }
+        // Mnozymy przez najwiekszy uzysk i przez zapas na wieloetapowe lancuchy
+        // (np. kłoda -> deski -> patyki to dwa etapy). To ma byc ZAWYZENIE.
+        long bound = total * Math.max(bestYield, 4L);
+        return bound <= 0 ? total : bound;
+    }
 
     /**
      * Czy da sie wytworzyc {@code amount} sztuk itemu z danego stocku.
