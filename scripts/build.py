@@ -1690,19 +1690,24 @@ def validate_brewing_stand():
     if problems:
         fail("brewing stand:\n  " + "\n  ".join(problems))
 
+    # UWAGA: dziedziczenie po waniliowym BrewingStandBlockEntity jest
+    # NIE MOZLIWE dla naszego bloku - waniliowy konstruktor ustawia typ
+    # minecraft:brewing_stand, a nasz blok ma wlasny typ, co konczylo sie
+    # crashem "Invalid block entity ... got Block craftingveloce:brewing_stand".
+    # Dlatego BE jest nasz wlasny: 5 slotow + zapis w NBT + menu, a logika
+    # mieszania (PotionBrewing) dochodzi osobno.
     be_text = open(be, encoding="utf-8").read()
-    if "extends net.minecraft.world.level.block.entity.BrewingStandBlockEntity" not in be_text:
-        problems.append("BE nie dziedziczy po waniliowym (trzeba by kopiowac logike warzenia)")
-    if "public void serverTick()" not in be_text:
-        problems.append("BE nie ma serverTick() - ticker bloku nie ma co wolac")
-    if "BrewingStandBlockEntity.serverTick(" not in be_text:
-        problems.append("BE nie wola waniliowej logiki warzenia")
-
-    block_text = open(block, encoding="utf-8").read()
-    if "getTicker(" not in block_text or ".serverTick();" not in block_text:
-        problems.append("blok nie tyka warzenia")
-    if ".serverTick();" in block_text and "public void serverTick()" not in be_text:
-        problems.append("ticker wola serverTick(), ktorego BE nie ma (zgloszony crash)")
+    if "extends BlockEntity" not in be_text:
+        problems.append("BE nie jest naszym wlasnym block entity")
+    for need, what in (("implements net.minecraft.world.Container", "kontenera 5 slotow"),
+                       ("new SimpleContainer(5)", "pieciu slotow (3 butelki, skladnik, paliwo)"),
+                       ('tag.put("Items"', "zapisu zawartosci w NBT"),
+                       ("createMenu(", "otwierania wlasnego menu")):
+        if need not in be_text:
+            problems.append("BE brewing standu bez " + what)
+    if "BrewingStandBlockEntity" in be_text and "extends" in be_text \
+            and "extends BlockEntity" not in be_text:
+        problems.append("BE dziedziczy po waniliowym (to powoduje crash typow)")
 
     menu_text = open(menu, encoding="utf-8").read()
     # Slotow maszyny szukamy w WYWOLANIACH addSlot, nie w stalych: sama nazwa

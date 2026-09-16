@@ -64,20 +64,6 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
      * Bez tickera pasek w GUI zamarzlby na wartosci z chwili otwarcia okna.
      */
     @Override
-    public <T extends BlockEntity> net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(
-            Level world, BlockState state,
-            net.minecraft.world.level.block.entity.BlockEntityType<T> type) {
-        if (world.isClientSide) {
-            return null;
-        }
-        return (lvl, pos, st, be) -> {
-            if (be instanceof VeloceBrewingStandBlockEntity furnace) {
-                furnace.serverTick();
-            }
-        };
-    }
-
-    @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
                                                Player player, BlockHitResult hit) {
         // Menu z paskiem energii. Piec nie ma slotow na przedmioty - to bufor
