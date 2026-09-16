@@ -86,6 +86,40 @@ public class VelocePipeBlockEntity extends PlatformBlockEntity implements Tickab
     /** Limit FE na tick - jak getRate(upgrade) w Pipezie. */
     private static final int ENERGY_RATE = 20_000;
 
+    /** Diagnostyka: czy rura w ogole ticka i co widzi wokol siebie. */
+    private static final org.slf4j.Logger PIPE_LOG =
+            org.slf4j.LoggerFactory.getLogger("craftingveloce-pipe-energy");
+    private static long lastEnergyLog;
+    private int pulledTotal;
+    private int pushedTotal;
+
+
+    /** Log raz na 30 s: ile rura pobrala i ile oddala (diagnostyka FE). */
+    private void logEnergy() {
+        if (System.currentTimeMillis() - lastEnergyLog < 30_000L) {
+            return;
+        }
+        lastEnergyLog = System.currentTimeMillis();
+        StringBuilder sides = new StringBuilder();
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            if (disconnectedSides[dir.ordinal()]) {
+                continue;
+            }
+            var st = level.getCapability(
+                    net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                    worldPosition.relative(dir), dir.getOpposite());
+            sides.append(dir).append(':')
+                    .append(st == null ? "brak"
+                            : (st.canExtract() ? ("extract=" + st.extractEnergy(1, true))
+                                    : "nie-oddaje"))
+                    .append(' ');
+        }
+        PIPE_LOG.info("[Veloce][PIPE-ENERGY] pobrano={} oddano={} bufor={}/{} strony: {}",
+                pulledTotal, pushedTotal, energyBuffer.getEnergyStored(),
+                energyBuffer.getMaxEnergyStored(), sides.toString().trim());
+        pulledTotal = 0;
+        pushedTotal = 0;
+    }
 
     /** Czy jakikolwiek bok jest jawnie oznaczony jako pobierajacy. */
     private boolean anyExtractingSide() {
@@ -124,6 +158,7 @@ public class VelocePipeBlockEntity extends PlatformBlockEntity implements Tickab
                 if (accepted < taken) {
                     source.receiveEnergy(taken - accepted, false);
                 }
+                pulledTotal += accepted;
             }
         }
         // FALLBACK: jesli zaden bok nie jest oznaczony jako "extracting", a rura
@@ -170,8 +205,10 @@ public class VelocePipeBlockEntity extends PlatformBlockEntity implements Tickab
                     Math.min(energyBuffer.getEnergyStored(), ENERGY_RATE), false);
             if (accepted > 0) {
                 energyBuffer.extractEnergy(accepted, false);
+                pushedTotal += accepted;
             }
         }
+        logEnergy();
     }
 
     @Override
