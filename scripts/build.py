@@ -1352,64 +1352,27 @@ def validate_create_mechanics():
     # bloku - rysuja je wlasne renderery block entity, wiec renderSingleBlock
     # pokazywal PUSTA obudowe (zgloszenie gracza: "inne itemki w ogole nie
     # renderuja sie w srodku, tylko waniliowe").
+    parts_body = _method_body(renderer, "private void renderParts(")
+    render_body = _method_body(renderer, "public void render(")
+
+    # Zawartosc obudowy to model ITEMU (pelna reprezentacja maszyny), a nie
+    # model bloku - modele blokow maszyn z modow sa okrojone (czesc rysuje ich
+    # wlasny renderer / Flywheel), a modele itemow sa pelne. Transformacja
+    # przedmiotu (FIXED) MUSI byc skompensowana, inaczej item jest maly i w rogu.
     for need, what in (("ItemRenderer", "renderera przedmiotow"),
-                       ("ItemDisplayContext.NONE", "kontekstu NONE dla fallbacku itemu"),
-                       ("renderStatic(", "rysowania modelu itemu w fallbacku"),
-                       ("renderSingleBlock(", "rysowania modelu BLOKU"),
-                       ("getQuads(", "sprawdzania, czy model bloku ma geometrie")):
+                       ("ItemDisplayContext.FIXED", "kontekstu FIXED"),
+                       ("renderStatic(", "rysowania modelu itemu"),
+                       ("getTransforms()", "odczytu transformacji modelu"),
+                       ("transform.scale.x", "kompensacji rozmiaru"),
+                       ("transform.translation", "kompensacji przesuniecia")):
         if need not in renderer:
             problems.append("renderer obudowy bez " + what)
-    # TRZY warstwy zawartosci, w tej kolejnosci: (1) model bloku, gdy ma
-    # geometrie, (2) RENDERER BLOCK ENTITY maszyny bazowej - tylko on pokazuje
-    # animowane czesci (ostrze pily, srodek mlyna, bijak prasy, kola kruszarki),
-    # (3) model itemu jako ostatnia deska ratunku.
-    content_body = _method_body(renderer, "private void renderContent(")
-    if content_body is None:
-        problems.append("renderer bez metody renderContent")
-    else:
-        order = [content_body.find("renderSingleBlock("),
-                 content_body.find("contentRenderer(content)"),
-                 content_body.find("renderStatic(")]
-        if order[0] < 0 or order[1] < 0 or order[2] < 0:
-            problems.append("renderContent nie ma wszystkich trzech warstw zawartosci")
-        elif not (order[0] < order[1] < order[2]):
-            problems.append("warstwy zawartosci sa w zlej kolejnosci (blok -> renderer BE -> item)")
-        if "BROKEN_CONTENT_RENDERERS" not in content_body:
-            problems.append("renderContent nie pamieta nieudanych rendererow")
-        # Warunek warstwy 1 musi byc PRAWDZIWYM sprawdzeniem geometrii, a nie
-        # "if (false)" - inaczej model bloku nigdy sie nie rysuje (a nazwa
-        # renderSingleBlock zostaje w martwej galezi i sama obecnosc nie wystarcza).
-        if "if (blockModelUsable(content))" not in content_body:
-            problems.append("warstwa modelu bloku wisi na martwym warunku")
-    custom_body = _method_body(renderer, "private static Optional<ContentRenderer> contentRenderer(")
-    if custom_body is None or "getBlockEntityRenderDispatcher()" not in custom_body \
-            or "getRenderer(" not in custom_body:
-        problems.append("brak warstwy renderera block entity maszyny (pila/mlyn/prasa "
-                        "mialyby pociety model)")
-
-    if "ItemDisplayContext.FIXED" in renderer:
-        problems.append("fallback itemu uzywa FIXED - item jest za maly i "
-                        "przesuniety; ma byc NONE (jak model bloku)")
-
-    # Uklad elementow ma sie krecic RAZEM, wokol srodka obudowy, zwykla
-    # animacja - a nie kazdy element wokol siebie ("beyblade"). Tylko kola
-    # mlynskie krecA sie pojedynczo i z predkoscia napedu.
-    if "casePartsSpinIndividually()" not in renderer:
-        problems.append("renderer nie rozroznia obrotu calego ukladu od obrotu kol")
-    parts_body = _method_body(renderer, "private void renderParts(")
-    if parts_body is None or "beginStandardAnimation(pose, time)" not in parts_body \
-            or "if (!individually)" not in parts_body:
-        problems.append("uklad elementow nie obraca sie RAZEM wokol srodka obudowy")
-    if parts_body is not None and ("speed != 0.0F" not in parts_body
-                                   or "time * speed" not in parts_body):
-        problems.append("kola mlynskie nie krecA sie z predkoscia napedu")
-    if "renderStandard(content, partialTick, pose" not in renderer:
-        problems.append("zawartosc ze stala zawartoscia nie uzywa zwyklej animacji")
-    be_spin = _method_body(open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
-                                encoding="utf-8").read(),
-                           "public boolean casePartsSpinIndividually()")
-    if be_spin is None or "CRUSHING" not in be_spin:
-        problems.append("tylko kruszarka powinna krecic elementami pojedynczo")
+    if "renderSingleBlock" in renderer or "getBlockRenderer" in renderer:
+        problems.append("renderer obudowy rysuje model BLOKU - modele blokow maszyn "
+                        "sa okrojone (pelny jest model itemu)")
+    if "getBlockEntityRenderDispatcher" in renderer:
+        problems.append("renderer obudowy wola renderery block entity - maszyny "
+                        "Create rysuje Flywheel, wiec bylaby pusta")
 
     spin_iface = open("src/com/craftingveloce/block/VeloceCaseSpin.java", encoding="utf-8").read()
     if "boolean casePartsSpinIndividually();" not in spin_iface:
@@ -1441,10 +1404,8 @@ def validate_create_mechanics():
         problems.append("siatka craftera nie rosnie kwadratowo (bok z pierwiastka oczek)")
     # Sprawdzamy TRESC metody renderParts, nie samo wystapienie nazwy w pliku:
     # definicja spiralOrder zostaje nawet wtedy, gdy pętla jej nie uzywa.
-    if parts_body is None or "spiralOrder(" not in parts_body or "order[i][0]" not in parts_body:
+    if parts_body is None or "centreOrder(" not in parts_body or "order[i][0]" not in parts_body:
         problems.append("elementy nie wypelniaja kwadratu od SRODKA na zewnatrz")
-    if "while (" in _method_body(renderer, "private static int[][] spiralOrder(") or "":
-        pass  # miejsca na przyszle reguly
 
     if "neighbourAxis" not in block_code or "Direction.Axis axis = neighbourAxis" not in block_code:
         problems.append("os maszyny nie dopasowuje sie do sasiada z napedem "
