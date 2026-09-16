@@ -132,20 +132,20 @@ public final class VeloceEnergyPull {
         net.minecraft.core.Direction known = KNOWN_SIDE.get(pos);
         if (known != null) {
             IEnergyStorage st = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, known);
-            if (st != null && st.canExtract() && st.extractEnergy(1, true) > 0) {
+            if (st != null && st.canExtract() && st.extractEnergy(MAX_PER_SOURCE_PER_TICK, true) > 0) {
                 return st;
             }
             KNOWN_SIDE.remove(pos);
         }
         for (net.minecraft.core.Direction side : net.minecraft.core.Direction.values()) {
             IEnergyStorage st = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
-            if (st != null && st.canExtract() && st.extractEnergy(1, true) > 0) {
+            if (st != null && st.canExtract() && st.extractEnergy(MAX_PER_SOURCE_PER_TICK, true) > 0) {
                 KNOWN_SIDE.put(pos.immutable(), side);
                 return st;
             }
         }
         IEnergyStorage any = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, null);
-        return any != null && any.canExtract() && any.extractEnergy(1, true) > 0 ? any : null;
+        return any != null && any.canExtract() && any.extractEnergy(MAX_PER_SOURCE_PER_TICK, true) > 0 ? any : null;
     }
 
     public static int pull(ServerLevel level, VelocePipeNetwork network,
@@ -189,7 +189,7 @@ public final class VeloceEnergyPull {
                         sides.append(d).append(':')
                                 .append(st == null ? "brak"
                                         : (st.canExtract()
-                                                ? ("extract=" + st.extractEnergy(1, true))
+                                                ? ("extract=" + st.extractEnergy(MAX_PER_SOURCE_PER_TICK, true))
                                                 : "nie-moze-oddac"))
                                 .append(' ');
                     }
