@@ -1,5 +1,6 @@
 package com.craftingveloce.compat.create;
 
+import com.craftingveloce.block.VeloceCaseContents;
 import com.craftingveloce.compat.VeloceMods;
 import net.neoforged.bus.api.IEventBus;
 
@@ -34,9 +35,61 @@ public final class CreateCompat {
         CreateBlockEntities.register(modEventBus);
         CreateRecipeFamily.register(modEventBus);
         CreateModule.register(modEventBus);
+        // Obudowy modulow: kazdy nasz modul Create ma model obudowy Integrale,
+        // a w srodku renderuje sie BLOK BAZOWY z Create (kolo mlynskie, mlyn,
+        // pila, crafter mechaniczny).
+        registerCases();
+        if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+            registerCaseRenderers(modEventBus);
+        }
         // Stresu NIE rejestrujemy: CStress.setImpact rzuca wyjatek dla blokow
         // spoza Create, a nasza maszyna liczy stale SU sama
         // (VeloceKineticModuleBlockEntity.calculateStressApplied).
+    }
+
+    /**
+     * Blok bazowy z Create po ID.
+     *
+     * <p>NIE przez {@code AllBlocks}: ten typ ({@code BlockEntry} z registrate)
+     * nie jest na classpath kompilacji, a nazwa bloku w rejestrze jest tak samo
+     * stabilna jak pole w klasie.
+     */
+    private static net.minecraft.world.level.block.Block block(String id) {
+        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(
+                net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", id));
+    }
+
+    /** Wiersze tabeli obudow: nasz modul -&gt; blok bazowy z Create. */
+    private static void registerCases() {
+        VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MILLSTONE_MODULE.get(),
+                () -> block("millstone"));
+        VeloceCaseContents.register(() -> CreateBlocks.VELOCE_SAW_MODULE.get(),
+                () -> block("mechanical_saw"));
+        VeloceCaseContents.register(() -> CreateBlocks.VELOCE_CRUSHING_MODULE.get(),
+                () -> block("crushing_wheel"));
+        VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MECHANICAL_CRAFTER_MODULE.get(),
+                () -> block("mechanical_crafter"));
+    }
+
+    /**
+     * Renderer zawartosci obudowy dla block entity modulow - TYLKO klient.
+     *
+     * <p>Wolane wylacznie gdy Create jest obecne i gdy jestesmy na kliencie,
+     * wiec klasa renderera (klasy klienta) nie laduje sie na serwerze.
+     */
+    private static void registerCaseRenderers(IEventBus modEventBus) {
+        modEventBus.addListener(
+                net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class,
+                event -> {
+                    event.registerBlockEntityRenderer(CreateBlockEntities.MILLSTONE_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(CreateBlockEntities.SAW_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(CreateBlockEntities.CRUSHING_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(CreateBlockEntities.MECHANICAL_CRAFTER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                });
     }
 
     /**

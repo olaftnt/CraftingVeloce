@@ -1550,6 +1550,22 @@ def validate_integrale_model():
         if machine_models != ["craftingveloce:block/veloce_integrale_frame"]:
             problems.append(f"blockstate {machine} nie jest obudowa Integrale: {machine_models}")
 
+    # 5b) Kazdy blockstate, ktory jest obudowa, musi miec ikone z ZAWARTOSCIA
+    #     (#content). Bez tego blok wyglada jak obudowa, ale item ma stary
+    #     model, albo (gorzej) obudowa jest pusta, bo zapomniano wiersza tabeli.
+    for bs_file in sorted(glob.glob("assets/craftingveloce/blockstates/*.json")):
+        block_id = os.path.basename(bs_file)[:-len(".json")]
+        bs_data = json.load(open(bs_file, encoding="utf-8"))
+        bs_models = [v.get("model") for v in bs_data.get("variants", {}).values()]
+        if bs_models != ["craftingveloce:block/veloce_integrale_frame"]:
+            continue
+        item_file = f"assets/craftingveloce/models/item/{block_id}.json"
+        if not os.path.exists(item_file):
+            problems.append(f"{block_id}: brak ikony itemu dla obudowy")
+            continue
+        if "#content" not in open(item_file, encoding="utf-8").read():
+            problems.append(f"{block_id}: ikona itemu bez zawartosci obudowy (#content)")
+
     # 6) Ikona przedmiotu "rama + stol": rama klatki + kostka stolu w srodku.
     #    To ona mowi graczowi (i modom od receptur), ze w tym bloku jest stol.
     item_path = "assets/craftingveloce/models/item/veloce_integrale_crafting.json"
