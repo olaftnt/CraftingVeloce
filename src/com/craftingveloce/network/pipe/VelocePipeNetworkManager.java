@@ -466,7 +466,15 @@ public class VelocePipeNetworkManager extends SavedData {
             net.getTerminals().clear();
             net.getEndpoints().clear();
         }
-        return net;
+                VelocePipeNetwork seeded = networks.get(id);
+        if (seeded != null && seeded.getCraftableMemo().isEmpty() && !persistedCraftable.isEmpty()) {
+            // Cache wczytany z save'a (po ITEMIE) podajemy KAZDEJ sieci, ktora
+            // nie ma jeszcze wlasnego - takze tej ODBUDOWANEJ po wczytaniu
+            // swiata. Log pokazal: load=44 itemy, a sieci w tym momencie 0,
+            // wiec seedowanie tylko w load() nie trafialo w odbudowane sieci.
+            seeded.rememberCraftable(persistedCraftable);
+        }
+return net;
     }
 
     private VelocePipeNetwork toNetwork(ServerLevel level, BlockPos seed, VelocePipeWorld.Component component) {

@@ -1663,6 +1663,88 @@ def validate_module_info_gui():
     print("    OK (okna maszyn: FE jak piec z bateria, Create osobny ekran bez energii)")
 
 
+def validate_brewing_stand():
+    """
+    Brewing Stand: blok, BE, menu, ekran i dane - z waniliowa logika warzenia.
+
+    Gracz: "dodaj brewing stand tak samo jak piecyk czy crafting". Sprawdzamy
+    ogniwa, ktore latwo zgubic pojedynczo (a wtedy blok stoi i nic nie robi):
+      1. block entity DZIEDZICZY po waniliowym BrewingStandBlockEntity (5 slotow,
+         brewTime, paliwo, PotionBrewing, NBT) zamiast kopiowac logike,
+      2. ticker bloku wola {@code serverTick()} i BE je MA - to byla prawdziwa
+         przyczyna czerwonych buildow: skopiowany z pieca blok wolal metode
+         instancyjna pieca, ktorej brewing stand nie mial,
+      3. menu ma SLOTY WARZENIA (3 butelki + skladnik + blaze powder) i ekwipunek,
+      4. ekran nie udaje pieca: brak paska baterii (warzenie nie ma akumulatora),
+      5. rejestracja (blok/item/BE/menu + ekran), obudowa Integrale i dane.
+    """
+    problems = []
+    block = "src/com/craftingveloce/block/VeloceBrewingStandBlock.java"
+    be = "src/com/craftingveloce/block/entity/VeloceBrewingStandBlockEntity.java"
+    menu = "src/com/craftingveloce/inventory/VeloceBrewingStandMenu.java"
+    screen = "src/com/craftingveloce/client/gui/VeloceBrewingStandScreen.java"
+    for path, what in ((block, "bloku"), (be, "block entity"), (menu, "menu"),
+                       (screen, "ekranu")):
+        if not os.path.exists(path):
+            problems.append("brak " + what)
+    if problems:
+        fail("brewing stand:\n  " + "\n  ".join(problems))
+
+    be_text = open(be, encoding="utf-8").read()
+    if "extends net.minecraft.world.level.block.entity.BrewingStandBlockEntity" not in be_text:
+        problems.append("BE nie dziedziczy po waniliowym (trzeba by kopiowac logike warzenia)")
+    if "public void serverTick()" not in be_text:
+        problems.append("BE nie ma serverTick() - ticker bloku nie ma co wolac")
+    if "BrewingStandBlockEntity.serverTick(" not in be_text:
+        problems.append("BE nie wola waniliowej logiki warzenia")
+
+    block_text = open(block, encoding="utf-8").read()
+    if "getTicker(" not in block_text or ".serverTick();" not in block_text:
+        problems.append("blok nie tyka warzenia")
+    if ".serverTick();" in block_text and "public void serverTick()" not in be_text:
+        problems.append("ticker wola serverTick(), ktorego BE nie ma (zgloszony crash)")
+
+    menu_text = open(menu, encoding="utf-8").read()
+    # Slotow maszyny szukamy w WYWOLANIACH addSlot, nie w stalych: sama nazwa
+    # stalej zostaje w pliku nawet wtedy, gdy slot zniknie (kalibracja to
+    # pokazala - pierwsza wersja checku przepuscila usuniecie slotu paliwa).
+    for need, what in (("new Slot(container, bottle,", "petli trzech butelek"),
+                                              ("new Slot(container, 3,", "slotu skladnika"),
+                       ("new Slot(container, 4,", "slotu paliwa (blaze powder)"),
+                       ("new Slot(playerInv,", "ekwipunku gracza")):
+        if need not in menu_text:
+            problems.append("menu bez " + what)
+    if "getBatterySlot" in menu_text:
+        problems.append("menu warzenia ma slot baterii (to nie maszyna na FE)")
+
+    screen_text = open(screen, encoding="utf-8").read()
+    if "drawBattery" in screen_text or "energyCapacity" in screen_text:
+        problems.append("ekran warzenia rysuje baterie (warzenie nie ma akumulatora)")
+    if "electric_furnace.png" not in screen_text:
+        problems.append("ekran warzenia nie uzywa tekstury pieca")
+
+    reg = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    for need, what in (("BREWING_STAND =", "bloku"), ("BREWING_STAND_ITEM", "itemu"),
+                       ("BREWING_STAND_BE", "block entity"), ("BREWING_STAND_MENU", "menu")):
+        if need not in reg:
+            problems.append("rejestracja bez " + what)
+    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    if "VeloceBrewingStandScreen::new" not in mod:
+        problems.append("ekran warzenia nie jest podpiety")
+    cc = open("src/com/craftingveloce/block/VeloceCaseContents.java", encoding="utf-8").read()
+    if "BREWING_STAND.get()" not in cc:
+        problems.append("brak obudowy Integrale dla brewing standa")
+    for path in ("assets/craftingveloce/blockstates/brewing_stand.json",
+                 "assets/craftingveloce/models/item/brewing_stand.json",
+                 "data/craftingveloce/loot_table/blocks/brewing_stand.json"):
+        if not os.path.exists(path):
+            problems.append("brak danych: " + path)
+
+    if problems:
+        fail("brewing stand:\n  " + "\n  ".join(problems))
+    print("    OK (brewing stand: waniliowa logika warzenia + menu/sloty + dane)")
+
+
 def validate_energy_pull():
     """
     Nasze maszyny SAME sciagaja prad z obcych zrodel w sieci (Forge Energy).
@@ -2923,6 +3005,7 @@ def main():
     validate_block_probe()
     validate_craftable_cache()
     validate_energy_pull()
+    validate_brewing_stand()
     validate_module_info_gui()
     validate_jade_info()
     validate_terminal_craft_error()
