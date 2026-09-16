@@ -1663,6 +1663,55 @@ def validate_module_info_gui():
     print("    OK (okna maszyn: FE jak piec z bateria, Create osobny ekran bez energii)")
 
 
+def validate_pipe_energy():
+    """
+    Energia w rurze: pobor z oznaczonych stron i rozdanie na pozostale (Pipez).
+
+    Gracz kazal przeniesc mechanizm energy pipe z Pipez. Sprawdzamy ogniwa,
+    ktore inaczej znikna po cichu:
+      1. rura ma pojemnik energii i limit FE/tick,
+      2. pobor idzie TYLKO na stronach oznaczonych jako extracting (jak
+         isExtracting w Pipezie), a rozdanie na pozostalych,
+      3. pobor/rozdanie wola sie z updateServer (hook TickableServer z Toma),
+      4. rura NIE wystawia pojemnika jako capability (nie jest przewodem dla
+         innych modow - zasada gracza),
+      5. maszyny nie oddaja energii (extractEnergy = 0), wiec nie moga byc
+         dla siebie zrodlem.
+    """
+    problems = []
+    pipe = "src/com/craftingveloce/block/entity/VelocePipeBlockEntity.java"
+    text = open(pipe, encoding="utf-8").read()
+    for need, what in (("energyBuffer", "pojemnika energii"),
+                       ("ENERGY_RATE", "limitu FE/tick"),
+                       ("extractingSides[i]", "poboru na stronie extracting"),
+                       ("!extractingSides[i]", "rozdania na pozostalych stronach")):
+        if need not in text:
+            problems.append("rura bez " + what)
+    tick = _method_body(text, "public void updateServer()")
+    if tick is None or "tickEnergy();" not in tick:
+        problems.append("energia nie jest tykowana (brak tickEnergy w updateServer)")
+
+    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    if "VELOCE_PIPE_BE.get()" in mod and "EnergyStorage.BLOCK" in mod:
+        # sprawdzamy tylko najprostsza pomylke: rejestracja energii na rurze
+        for line in mod.splitlines():
+            if "EnergyStorage.BLOCK" in line and "VELOCE_PIPE_BE" in line:
+                problems.append("rura wystawia EnergyStorage (moglaby byc przewodem)")
+
+    # Maszyny: tylko odbiorniki - extractEnergy musi zwracac 0.
+    for path, what in (("src/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java",
+                        "piec elektryczny"),
+                       ("src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java",
+                        "modul FE")):
+        body = _method_body(open(path, encoding="utf-8").read(), "public int extractEnergy(")
+        if body is None or "return 0;" not in body:
+            problems.append(f"{what}: oddaje energie (maszyny maja byc tylko odbiornikami)")
+
+    if problems:
+        fail("energia w rurze:\n  " + "\n  ".join(problems))
+    print("    OK (energia: bufor w rurze, pobor extracting, rozdanie, maszyny tylko odbieraja)")
+
+
 def validate_brewing_stand():
     """
     Brewing Stand: blok, BE, menu, ekran i dane - z waniliowa logika warzenia.
@@ -3041,6 +3090,7 @@ def main():
     validate_craftable_cache()
     validate_energy_pull()
     validate_brewing_stand()
+    validate_pipe_energy()
     validate_module_info_gui()
     validate_jade_info()
     validate_terminal_craft_error()
