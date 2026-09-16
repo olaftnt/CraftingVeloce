@@ -1229,7 +1229,7 @@ def validate_showcase_command():
     # Ciala metod, nie caly plik: nazwa "BuiltInRegistries.BLOCK" wystepuje
     # w kilku miejscach, wiec samo jej usuniecie z listy blokow nie byloby widoczne.
     blocks_body = _method_body(text, "private static List<Block> ourBlocks()")
-    if blocks_body is None or "BuiltInRegistries.BLOCK" not in blocks_body:
+    if blocks_body is None or "BuiltInRegistries.BLOCK.keySet()" not in blocks_body:
         problems.append("showcase nie czyta listy blokow z REJESTRU (reczna lista sie rozjedzie)")
     fill_body = _method_body(text, "private static void fillParts(")
     if fill_body is None or "VeloceCaseBuildable" not in fill_body:
