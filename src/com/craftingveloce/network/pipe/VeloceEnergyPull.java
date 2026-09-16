@@ -33,6 +33,7 @@ public final class VeloceEnergyPull {
     private static long lastPullLog;
     private static long lastPullLog2;
     private static long lastSourceLog;
+    private static long lastSummaryLog;
 
     /** Ile FE na tick najwyzej probujemy wziac z jednego zrodla. */
     public static final int MAX_PER_SOURCE_PER_TICK = 1_000_000;
@@ -105,7 +106,7 @@ public final class VeloceEnergyPull {
         if (found > 0) {
             LOG.info("[Veloce][ENERGY] znalezione zrodla: {} (przejrzane rury={}, zrodla={})",
                     found, visited.size(), network.getEnergyEndpoints());
-        } else if (System.currentTimeMillis() - lastDiscoverLog > 5_000L) {
+        } else if (System.currentTimeMillis() - lastDiscoverLog > 30_000L) {
             lastDiscoverLog = System.currentTimeMillis();
             LOG.info("[Veloce][ENERGY] brak zrodel: przejrzane rury={}, sasiadow={}, "
                             + "sasiedzi={} - jesli Energy Cube jest na liscie, to nie wystawia "
@@ -139,13 +140,6 @@ public final class VeloceEnergyPull {
         // DIAGNOSTYKA (gracz: "nie dziala"): jesli maszyna ma wolne miejsce,
         // a siec nie zna ZADNEGO obcego zrodla energii, to problem jest
         // w wykrywaniu, a nie w poborze. Log max raz na 5 s, zeby nie spamowac.
-        if (network.getEnergyEndpoints().isEmpty()
-                && System.currentTimeMillis() - lastEmptyLog > 5_000L) {
-            lastEmptyLog = System.currentTimeMillis();
-            LOG.info("[Veloce][ENERGY] maszyna {} (klasa {}) ma wolne {} FE, ale siec nie zna "
-                            + "zadnego obcego zrodla (endpointy=0)",
-                    receiver, receiver.getClass().getSimpleName(), free);
-        }
         // Jesli siec nie zna zrodel (np. Energy Cube postawiony PO skanie sieci
         // albo siec byla odbudowana z zapisu), znajdz je teraz - inaczej pobor
         // nigdy nie ruszy i wyglada to jak "nie dziala".
@@ -153,11 +147,6 @@ public final class VeloceEnergyPull {
 
         int budget = Math.min(free, maxRate);
         int total = 0;
-        if (System.currentTimeMillis() - lastPullLog > 5_000L) {
-            lastPullLog = System.currentTimeMillis();
-            LOG.info("[Veloce][ENERGY] pobor: wolne={} FE, zrodla={}, limit maszyny={}/tick",
-                    free, network.getEnergyEndpoints(), maxRate);
-        }
         for (BlockPos pos : network.getEnergyEndpoints()) {
             if (budget <= 0) {
                 break;
@@ -169,7 +158,7 @@ public final class VeloceEnergyPull {
             // potrafi nie oddawac energii z tej strony, od ktorej patrzymy.
             IEnergyStorage source = findExtracting(level, pos);
             if (source == null) {
-                if (System.currentTimeMillis() - lastSourceLog > 5_000L) {
+                if (System.currentTimeMillis() - lastSourceLog > 30_000L) {
                     lastSourceLog = System.currentTimeMillis();
                     IEnergyStorage any = level.getCapability(
                             Capabilities.EnergyStorage.BLOCK, pos, null);
@@ -202,11 +191,17 @@ public final class VeloceEnergyPull {
             }
             total += accepted;
             budget -= accepted;
-            if (accepted > 0 && System.currentTimeMillis() - lastPullLog2 > 5_000L) {
+            if (accepted > 0 && System.currentTimeMillis() - lastPullLog2 > 30_000L) {
                 lastPullLog2 = System.currentTimeMillis();
                 LOG.info("[Veloce][ENERGY] wzielo {} FE ze {} (razem {} FE w tym ticku)",
                         accepted, pos.toShortString(), total);
             }
+        }
+        if (System.currentTimeMillis() - lastSummaryLog > 30_000L) {
+            lastSummaryLog = System.currentTimeMillis();
+            LOG.info("[Veloce][ENERGY] pobor: wzielo {} FE, zrodel={}, wolne={} FE",
+                    total, network.getEnergyEndpoints().size(),
+                    receiver.getMaxEnergyStored() - receiver.getEnergyStored());
         }
         return total;
     }
