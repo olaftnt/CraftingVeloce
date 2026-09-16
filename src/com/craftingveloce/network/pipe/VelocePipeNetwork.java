@@ -223,7 +223,29 @@ public class VelocePipeNetwork {
         craftableMemo.putAll(counts);
     }
 
-    /** Migawka cache'u - to leci do klienta NATYCHMIAST po otwarciu GUI. */
+    /**
+     * Po UDANYM crafcie: liczba "ile jeszcze moge zrobic" maleje o to, co
+     * wlasnie zeszlo z sieci.
+     *
+     * <p>Gracz: "jak craftuje item z automatu, to ta liczba sie nie zmniejsza -
+     * zrob z niej -1, a jesli craftuje stack to -64". Bez tego GUI pokazywalo
+     * stale liczby, dopoki ktos nie wymusil przeliczenia.
+     *
+     * <p>Wpis, ktorego nie ma w cache, zostaje bez zmian - nie zgadujemy.
+     */
+    public void noteCrafted(Item item, long amount) {
+        if (item == null || amount <= 0) {
+            return;
+        }
+        Long known = craftableMemo.get(item);
+        if (known == null) {
+            return;
+        }
+        long left = known - amount;
+        craftableMemo.put(item, Math.max(0L, left));
+    }
+
+    /** Migawka cache'u - to leci do klienta NATYCHMIST po otwarciu GUI. */
     public Map<Item, Long> getCraftableMemo() {
         return new HashMap<>(craftableMemo);
     }

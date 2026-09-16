@@ -17,6 +17,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.items.ItemHandlerHelper;
 import net.neoforged.neoforge.items.wrapper.PlayerMainInvWrapper;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int count) implements CustomPacketPayload {
@@ -120,7 +121,22 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             }
 
             ItemStack extracted = pulled.stack();
-            ItemStack leftover = ItemHandlerHelper.insertItemStacked(new PlayerMainInvWrapper(serverPlayer.getInventory()), extracted, false);
+            // Liczba "ile moge jeszcze zrobic" maleje o to, co wlasnie zeszlo
+            // (-1 dla jednej sztuki, -64 dla stacka), a gracz dostaje swieza
+            // migawke od razu - inaczej cyferka w GUI zostawala stara.
+            if (serverPlayer.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                var net = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
+                        .getNetworkForTerminal(serverLevel, pkt.terminalPos());
+                if (net != null) {
+                    net.noteCrafted(extracted.getItem(), extracted.getCount());
+                    PacketDistributor.sendToPlayer(serverPlayer,
+                            new SyncCraftableCountsPKT(pkt.terminalPos(),
+                                    net.getCraftableMemo(), false));
+                }
+            }
+
+            ItemStack leftover = ItemHandlerHelper.insertItemStacked(
+                    new PlayerMainInvWrapper(serverPlayer.getInventory()), extracted, false);
             if (!leftover.isEmpty()) {
                 // Return leftover back to terminal if inventory was partially full
                 terminalBE.pushStack(leftover);
