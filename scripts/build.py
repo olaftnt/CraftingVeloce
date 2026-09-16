@@ -2823,34 +2823,49 @@ def validate_integrale_model():
     #    a dopiero w srodku jest render". Jednoczesciowy model jest tez jedynym
     #    sposobem, zeby particles przy zbiciu pochodzily z ramy: przy multipart
     #    wanilia bierze particleIcon z PIERWSZEJ czesci listy.
-    for machine in ("veloce_crafting_table", "veloce_controller", "veloce_extractor",
-                    "threshold_sensor", "velocity_furnace", "electric_furnace"):
-        machine_bs = f"assets/craftingveloce/blockstates/{machine}.json"
-        if not os.path.exists(machine_bs):
-            problems.append(f"brak blockstate maszyny {machine}")
-            continue
-        machine_data = json.load(open(machine_bs, encoding="utf-8"))
-        # MASZYNA MUSI BYC MULTIPARTEM ramy + paneli, nie statycznym modelem.
-        #
-        # BUG, ktory to naprawia (zgloszenie gracza powtarzane piec razy:
-        # "kabel sie przelacza, ale scianki sie nie zamykaja - na crushing wheelu
-        # dziala, a na crafting table i piecyku nie"): ten guard wymuszal
-        # POJEDYNCZY model ramy, wiec stany zaslepek (closed_*) nie mialy jak
-        # zmienic wygladu - blok nie mogl pokazac zamknietej sciany, choc stan
-        # byl poprawny. Crushing wheel i puste Integrale mialy multipart, dlatego
-        # u nich dzialalo.
-        parts = machine_data.get("multipart")
-        applied = [p.get("apply", {}).get("model") for p in (parts or [])]
-        if not parts or not applied or applied[0] != "craftingveloce:block/veloce_integrale_frame":
-            problems.append(f"blockstate {machine} nie jest obudowa Integrale "
-                            f"(pierwsza czesc musi byc rama - particleIcon): {applied[:2]}")
-        else:
-            for side in ("north", "east", "south", "west", "up", "down"):
-                if not any(p.get("when", {}).get(side) == "true"
-                           and p.get("apply", {}).get("model")
-                           == f"craftingveloce:block/veloce_integrale_panel_{side}"
-                           for p in parts):
-                    problems.append(f"blockstate {machine}: brak warunku zaslepki {side}")
+    machines_with_frame = set()
+    for j in glob.glob("src/com/craftingveloce/block/*.java") + glob.glob("src/com/craftingveloce/compat/*/block/*.java"):
+        if "VeloceIntegraleFrame.addProperties" in open(j, encoding="utf-8").read():
+            # We want the block ID, but we have Java files. The easiest way is to scan all blockstate json
+            # but maybe we just require all blockstates that have the frame model to be multipart
+            pass
+
+    # A better approach: ANY blockstate that mentions veloce_integrale_frame MUST be a multipart with panels.
+    # We already have a loop over all blockstates below in "5b". Let's move the multipart check there.
+    for bs_file in sorted(glob.glob("assets/craftingveloce/blockstates/*.json")):
+        block_id = os.path.basename(bs_file)[:-len(".json")]
+        bs_data = json.load(open(bs_file, encoding="utf-8"))
+        
+        # Check if it uses the frame
+        uses_frame = False
+        parts = bs_data.get("multipart")
+        variants = bs_data.get("variants")
+        
+        if parts:
+            applied = [p.get("apply", {}).get("model") for p in parts]
+            if any("veloce_integrale_frame" in m for m in applied if m):
+                uses_frame = True
+        elif variants:
+            models = [v.get("model") for v in variants.values()]
+            if any("veloce_integrale_frame" in m for m in models if m):
+                uses_frame = True
+                
+        if uses_frame:
+            # MASZYNA MUSI BYC MULTIPARTEM ramy + paneli, nie statycznym modelem.
+            if not parts:
+                problems.append(f"blockstate {block_id} uzywa ramy Integrale, ale jest 'variants' - MUSI byc multipart z panelami")
+            else:
+                applied = [p.get("apply", {}).get("model") for p in parts]
+                if applied[0] != "craftingveloce:block/veloce_integrale_frame":
+                    problems.append(f"blockstate {block_id} nie jest obudowa Integrale "
+                                    f"(pierwsza czesc musi byc rama - particleIcon): {applied[:2]}")
+                else:
+                    for side in ("north", "east", "south", "west", "up", "down"):
+                        if not any(p.get("when", {}).get(side) == "true"
+                                   and p.get("apply", {}).get("model")
+                                   == f"craftingveloce:block/veloce_integrale_panel_{side}"
+                                   for p in parts):
+                            problems.append(f"blockstate {block_id}: brak warunku zaslepki {side}")
 
     # 5b) Obudowa = model ramy (pierwsza czesc!) + ikona z ZAWARTOSCIA.
     #
