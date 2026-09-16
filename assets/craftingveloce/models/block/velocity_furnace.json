@@ -1,8 +1,0 @@
-{
-    "parent": "block/orientable",
-    "textures": {
-        "top": "craftingveloce:block/velocity_furnace_top",
-        "front": "craftingveloce:block/velocity_furnace_front",
-        "side": "craftingveloce:block/velocity_furnace_side"
-    }
-}

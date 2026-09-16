@@ -1,10 +1,7 @@
 {
     "variants": {
-        "powered=false": {
-            "model": "craftingveloce:block/threshold_sensor"
-        },
-        "powered=true": {
-            "model": "craftingveloce:block/threshold_sensor_on"
+        "": {
+            "model": "craftingveloce:block/veloce_integrale_frame"
         }
     }
 }

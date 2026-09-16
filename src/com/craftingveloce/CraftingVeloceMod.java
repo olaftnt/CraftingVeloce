@@ -121,15 +121,26 @@ public class CraftingVeloceMod {
             com.craftingveloce.compat.mekanism.MekanismCompat.register(modEventBus);
         }
 
-        // Renderer stolu stojacego w klatce Veloce Integrale (stan "facade").
-        // Wychodzi od razu dla zwyklego stolu craftingu, wiec nic nie kosztuje,
-        // a cala praca jest po stronie klienta - wynik podmiany widac w stanie
-        // bloku, wiec serwer nie synchronizuje zadnych przedmiotow.
+        // Renderer ZAWARTOSCI obudowy Veloce Integrale: kazdy nasz klocek ma
+        // model obudowy (rama + szyba), a w srodku renderuje sie model klocka
+        // bazowego (pulpit, dozownik, obserwator, stol, piec). Zawartosc wynika
+        // z TYPU bloku, wiec serwer nic nie zapisuje ani nie synchronizuje.
         modEventBus.addListener(
                 net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class,
-                event -> event.registerBlockEntityRenderer(
-                        VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(),
-                        com.craftingveloce.client.render.VeloceFacadeRenderer::new));
+                event -> {
+                    event.registerBlockEntityRenderer(VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(VeloceRegistry.VELOCE_CONTROLLER_BE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(VeloceRegistry.VELOCE_EXTRACTOR_BE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(VeloceRegistry.THRESHOLD_SENSOR_BE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(VeloceRegistry.VELOCITY_FURNACE_BE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(VeloceRegistry.ELECTRIC_FURNACE_BE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                });
 
         modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent.class, event -> {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);

@@ -1,74 +1,7 @@
 {
-    "multipart": [
-        {
-            "when": {
-                "facade": "true"
-            },
-            "apply": {
-                "model": "craftingveloce:block/veloce_integrale_frame"
-            }
-        },
-        {
-            "when": {
-                "facade": "false"
-            },
-            "apply": {
-                "model": "craftingveloce:block/veloce_crafting_table"
-            }
-        },
-        {
-            "when": {
-                "facade": "true",
-                "north": "true"
-            },
-            "apply": {
-                "model": "craftingveloce:block/veloce_integrale_panel_north"
-            }
-        },
-        {
-            "when": {
-                "facade": "true",
-                "east": "true"
-            },
-            "apply": {
-                "model": "craftingveloce:block/veloce_integrale_panel_east"
-            }
-        },
-        {
-            "when": {
-                "facade": "true",
-                "south": "true"
-            },
-            "apply": {
-                "model": "craftingveloce:block/veloce_integrale_panel_south"
-            }
-        },
-        {
-            "when": {
-                "facade": "true",
-                "west": "true"
-            },
-            "apply": {
-                "model": "craftingveloce:block/veloce_integrale_panel_west"
-            }
-        },
-        {
-            "when": {
-                "facade": "true",
-                "up": "true"
-            },
-            "apply": {
-                "model": "craftingveloce:block/veloce_integrale_panel_up"
-            }
-        },
-        {
-            "when": {
-                "facade": "true",
-                "down": "true"
-            },
-            "apply": {
-                "model": "craftingveloce:block/veloce_integrale_panel_down"
-            }
+    "variants": {
+        "": {
+            "model": "craftingveloce:block/veloce_integrale_frame"
         }
-    ]
+    }
 }

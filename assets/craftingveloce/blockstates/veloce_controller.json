@@ -1,7 +1,7 @@
 {
     "variants": {
         "": {
-            "model": "craftingveloce:block/veloce_controller"
+            "model": "craftingveloce:block/veloce_integrale_frame"
         }
     }
 }
