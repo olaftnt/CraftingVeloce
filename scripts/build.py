@@ -1353,13 +1353,15 @@ def validate_create_mechanics():
     # pokazywal PUSTA obudowe (zgloszenie gracza: "inne itemki w ogole nie
     # renderuja sie w srodku, tylko waniliowe").
     for need, what in (("ItemRenderer", "renderera przedmiotow"),
-                       ("ItemDisplayContext", "kontekstu wyswietlania przedmiotu"),
-                       ("renderStatic(", "rysowania modelu itemu")):
+                       ("ItemDisplayContext.NONE", "kontekstu NONE dla fallbacku itemu"),
+                       ("renderStatic(", "rysowania modelu itemu w fallbacku"),
+                       ("renderSingleBlock(", "rysowania modelu BLOKU"),
+                       ("getQuads(", "sprawdzania, czy model bloku ma geometrie")):
         if need not in renderer:
             problems.append("renderer obudowy bez " + what)
-    if "getBlockRenderer" in renderer:
-        problems.append("renderer obudowy rysuje model BLOKU - maszyny z innych "
-                        "modow bylyby puste (maja wlasne renderery)")
+    if "ItemDisplayContext.FIXED" in renderer:
+        problems.append("fallback itemu uzywa FIXED - item jest za maly i "
+                        "przesuniety; ma byc NONE (jak model bloku)")
 
     # Uklad elementow ma sie krecic RAZEM, wokol srodka obudowy, zwykla
     # animacja - a nie kazdy element wokol siebie ("beyblade"). Tylko kola

@@ -8,7 +8,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
+import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.entity.ItemRenderer;
+import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.client.resources.model.ModelManager;
+import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
@@ -48,14 +53,51 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
     /**
      * Model ITEMU zamiast modelu bloku.
      *
-     * <p><b>Dlaczego.</b> Maszyny z innych modow (mlynek, pila, kruszarka,
-     * maszyny Mekanism) NIE sa rysowane zwyklym modelem bloku - maja wlasne
-     * renderery block entity (partial/OBJ). {@code renderSingleBlock} rysowal
-     * wiec PUSTKE i gracz widzial obudowe bez niczego w srodku. Ich modele
-     * itemow sa poprawne i reprezentatywne, wiec renderujemy je tak, jak
-     * renderuje sie przedmiot (z tym samym obrotem i bujaniem).
+     * <p><b>Hybryda.</b> Najpierw probujemy modelu BLOKU (tak wygladaja
+     * waniliowe klocki, mechanical crafter i wszystko z geometria). Tylko gdy
+     * model bloku nie ma zadnych kwadratow - bo maszyne rysuje wlasny renderer
+     * block entity (kola mlynskie, maszyny Mekanism) - siegamy po model ITEMU.
      */
     private static final Map<Block, ItemStack> CONTENT_STACKS = new ConcurrentHashMap<>();
+
+    /**
+     * Decyzja "model bloku czy model itemu" - liczona raz na blok i raz na
+     * generacje modeli.
+     *
+     * <p>Wiekszosc klockow ma normalny model bloku i wtedy rysujemy BLOK (tak
+     * wygladaja waniliowe klocki, mechanical crafter i wszystko, co ma
+     * geometrie). Maszyny, ktore rysuje wlasny renderer block entity (kola
+     * mlynskie, maszyny Mekanism) nie maja kwadratow w modelu bloku - dla nich
+     * jedynym sensownym wygladem jest model ITEMU. Klucz cache zawiera
+     * generacje ModelManager, wiec po przeladowaniu paczek decyzja liczy sie
+     * od nowa.
+     */
+    private static final Map<Block, Boolean> BLOCK_MODEL_USABLE = new ConcurrentHashMap<>();
+    private static int cachedGeneration = 0;
+
+    private static boolean blockModelUsable(Block block) {
+        ModelManager manager = Minecraft.getInstance().getModelManager();
+        int generation = System.identityHashCode(manager);
+        if (generation != cachedGeneration) {
+            cachedGeneration = generation;
+            BLOCK_MODEL_USABLE.clear();
+        }
+        return BLOCK_MODEL_USABLE.computeIfAbsent(block, b -> {
+            BlockRenderDispatcher dispatcher = Minecraft.getInstance().getBlockRenderer();
+            var state = b.defaultBlockState();
+            BakedModel model = dispatcher.getBlockModel(state);
+            RandomSource random = RandomSource.create(42L);
+            if (!model.getQuads(state, null, random).isEmpty()) {
+                return true;
+            }
+            for (Direction side : Direction.values()) {
+                if (!model.getQuads(state, side, random).isEmpty()) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
 
     public VeloceCaseRenderer(BlockEntityRendererProvider.Context context) {
     }
@@ -63,13 +105,25 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
     /** Rysuje klocek bazowy jako przedmiot (FIXED) - z obrotem i bujaniem. */
     private void renderContent(Block content, PoseStack pose, MultiBufferSource buffers,
                                int packedLight, int packedOverlay) {
+        if (blockModelUsable(content)) {
+            // Normalny model bloku - tak jak bylo: pelny rozmiar i srodek.
+            Minecraft.getInstance().getBlockRenderer()
+                    .renderSingleBlock(content.defaultBlockState(), pose, buffers,
+                            packedLight, packedOverlay);
+            return;
+        }
+        // Fallback: maszyna bez geometrii w modelu bloku (kola mlynskie,
+        // maszyny Mekanism) - rysujemy model ITEMU, ale z kontekstem NONE,
+        // czyli bez transformacji "FIXED". Dzieki temu item jest tej samej
+        // wielkosci i dokladnie tam, gdzie model bloku (gracz: "za maly i nie
+        // na srodku").
         ItemStack stack = CONTENT_STACKS.computeIfAbsent(content,
                 block -> new ItemStack(block.asItem()));
         ItemRenderer renderer = Minecraft.getInstance().getItemRenderer();
         if (stack.isEmpty() || renderer == null) {
             return;
         }
-        renderer.renderStatic(stack, ItemDisplayContext.FIXED, packedLight, packedOverlay,
+        renderer.renderStatic(stack, ItemDisplayContext.NONE, packedLight, packedOverlay,
                 pose, buffers, Minecraft.getInstance().level, 0);
     }
 
