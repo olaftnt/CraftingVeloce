@@ -78,9 +78,6 @@ COMPILE_ONLY = {
         ("Mekanism-1.21.1-10.7.19.85-api.jar",
          "Mekanism-1.21.1-10.7.19.85.jar"),
     ),
-    "snownee.jade": (
-        ("Jade-1.21.1-NeoForge-15.10.6.jar",),
-    ),
 }
 
 # Katalogi, w ktorych szukamy JAR-ow compileOnly (w tej kolejnosci).
@@ -93,9 +90,9 @@ EXCLUDED_SRC = ("eatawesome", "moze_intel")
 # nie moze ich importowac, a modul compat/ danego moda nie moze importowac
 # innego obcego moda (latwo o pomylke przy kopiowaniu pliku).
 FOREIGN_PACKAGES = ("com.simibubi.create", "net.createmod",
-                    "com.smashingmods", "mekanism", "snownee.jade")
+                    "com.smashingmods", "mekanism")
 FOREIGN_JAR_PATHS = ("com/simibubi/create/", "net/createmod/",
-                     "com/smashingmods/", "mekanism/", "snownee/jade/")
+                     "com/smashingmods/", "mekanism/")
 
 
 # Smieci systemowe, ktore nie moga trafic do JARa.
@@ -766,8 +763,6 @@ def validate_core_isolation():
         "create": ("com.simibubi.create", "net.createmod"),
         "alchemistry": ("com.smashingmods",),
         "mekanism": ("mekanism",),
-        # Plugin overlayu: wolno mu importowac WYLACZNIE Jade.
-        "jade": ("snownee.jade",),
     }
     core, cross, checked = [], [], 0
     for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
@@ -826,11 +821,7 @@ def validate_compat_gates(z):
     }
     module_dirs = ("com/craftingveloce/compat/create/",
                    "com/craftingveloce/compat/alchemistry/",
-                   "com/craftingveloce/compat/mekanism/",
-                   # Plugin Jade: implementuje interfejs Jada, wiec obce typy
-                   # w sygnaturach sa tu konieczne - a klasa laduje sie tylko
-                   # wtedy, gdy Jade jest obecny (odkrywa ja sama Jade).
-                   "com/craftingveloce/compat/jade/")
+                   "com/craftingveloce/compat/mekanism/")
     gate_paths = {cls.replace(".", "/") + ".class" for cls in gates.values()}
 
     targets = []
@@ -1214,66 +1205,36 @@ def validate_block_models():
     print(f"    OK ({checked} odwolan do modeli i tekstur istnieje)")
 
 
-def validate_jade_plugin():
+def validate_mods_toml():
     """
-    Plugin Jade: odkrywalny, miekki i nie ingeruje w cudze bloki.
+    `neoforge.mods.toml` musi sie PARSOWAC i miec wymagane zaleznosci.
 
-    Trzy rzeczy, ktore musza byc prawda (inaczej overlay albo nie dziala, albo
-    psuje gre bez Jada):
-      1. klasa pluginu ma adnotacje @WailaPlugin (inaczej Jade go nie znajdzie),
-      2. plugin NIE jest wolany z rdzenia (bez Jade nie wolno go ladowac),
-      3. provider filtruje bloki po namespace NASZEGO moda (inaczej dokladalby
-         linie Veloce takze do cudzych blokow przy rejestracji na Block.class).
+    BUG, ktory to wykryl: przy usuwaniu bloku zaleznosci (Jade) zostala
+    osierocona linia `side="CLIENT"` na koncu pliku. TOML dokleja taka linie do
+    POPRZEDNIEJ tabeli, a duplikat klucza `side` wywala parsowanie CALEGO pliku
+    - czyli mod nie wstaje. Build tego nie widzial, bo to plik danych, a nie
+    kod: kompilacja przechodzi, JAR sie pakuje, a blad wychodzi dopiero w grze.
     """
-    plugin = "src/com/craftingveloce/compat/jade/VeloceJadePlugin.java"
-    provider = "src/com/craftingveloce/compat/jade/VeloceBlockInfoProvider.java"
-    problems = []
-    if not os.path.exists(plugin) or not os.path.exists(provider):
+    path = "src_meta/META-INF/neoforge.mods.toml"
+    if not os.path.exists(path):
         return
-    ptext = open(plugin, encoding="utf-8").read()
-    if "@WailaPlugin(" not in ptext:
-        problems.append("brak adnotacji @WailaPlugin (Jade go nie znajdzie)")
-    if "implements IWailaPlugin" not in ptext:
-        problems.append("plugin nie implementuje IWailaPlugin")
-    if "registerClient" not in ptext:
-        problems.append("brak registerClient")
-    if "Block.class" not in ptext:
-        problems.append("brak rejestracji dla Block.class (nasze bloki nie dostana linii)")
+    try:
+        import tomllib
+    except ImportError:      # Python < 3.11
+        print("    (pomijam: brak tomllib)")
+        return
+    try:
+        with open(path, "rb") as handle:
+            data = tomllib.load(handle)
+    except Exception as exc:
+        fail(f"neoforge.mods.toml nie parsuje sie: {exc}")
 
-    if "registerBlockDataProvider" not in ptext:
-        problems.append("plugin nie rejestruje danych z serwera "
-                        "(liczby bylyby nieaktualne na kliencie)")
-
-    data_path = "src/com/craftingveloce/compat/jade/VeloceBlockDataProvider.java"
-    if not os.path.exists(data_path):
-        problems.append("brak klasy z danymi serwera")
-    else:
-        dtext = open(data_path, encoding="utf-8").read()
-        if '"craftingveloce".equals(id.getNamespace())' not in dtext:
-            problems.append("dane nie filtruja po namespace - dorzucalby je "
-                            "takze cudzym blokom")
-        for need, what in (("VeloceHeatSource", "informacji o piecu"),
-                           ("VeloceProcessingSource", "informacji o module"),
-                           ("VeloceControllerBlockEntity", "informacji o kontrolerze"),
-                           ("VeloceThresholdSensorBlockEntity", "informacji o sensorze"),
-                           ("VeloceExtractorBlockEntity", "informacji o ekstraktorze"),
-                           ("VeloceTomTerminalBlockEntity", "informacji o terminalu"),
-                           ("isFacade", "informacji o stole stojacym w klatce (fasada)")):
-            if need not in dtext:
-                problems.append("brak " + what)
-
-    ctext = open(provider, encoding="utf-8").read()
-    if "getServerData()" not in ctext:
-        problems.append("provider nie czyta danych z serwera (getServerData)")
-
-    # Rdzen nie moze wolac pluginu (Jade zostaje miekka zaleznoscia).
-    core = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
-    if "compat.jade" in core:
-        problems.append("rdzen wola plugin Jade - bez Jade mod by nie wstal")
-
-    if problems:
-        fail("plugin Jade:\n  " + "\n  ".join(problems))
-    print("    OK (plugin Jade: adnotacja + filtr namespace + wszystkie rodziny blokow)")
+    dependencies = data.get("dependencies", {}).get("craftingveloce", [])
+    mod_ids = {dep.get("modId") for dep in dependencies}
+    missing = sorted({"neoforge", "minecraft", "toms_storage"} - mod_ids)
+    if missing:
+        fail("neoforge.mods.toml bez wymaganych zaleznosci: " + ", ".join(missing))
+    print(f"    OK (mods.toml parsuje sie: {len(mod_ids)} zaleznosci)")
 
 
 def validate_integrale_display():
@@ -1814,7 +1775,7 @@ def main():
     validate_block_models()
     validate_integrale_model()
     validate_integrale_display()
-    validate_jade_plugin()
+    validate_mods_toml()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))

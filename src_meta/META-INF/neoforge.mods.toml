@@ -98,13 +98,3 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="AFTER"
     side="BOTH"
 
-# JADE - opcjonalny. Overlay informacyjny (klient): nasz plugin doklada linie
-# o stanie naszych blokow. Plugin jest odkrywany przez Jade po adnotacji, wiec
-# bez Jade nie jest nawet ladowany - rdzen go nie wola (pilnuje tego
-# validate_jade_plugin w build.py).
-[[dependencies.craftingveloce]]
-    modId="jade"
-    type="optional"
-    versionRange="[15.0.0,)"
-    ordering="AFTER"
-    side="CLIENT"

@@ -172,21 +172,6 @@ public class VeloceControllerBlockEntity extends BlockEntity
                 worldPosition, delta.changed(), delta.removed(), flow.steadyRates(), delta.full()));
     }
 
-    /** Ile roznych itemow ma siec (dla overlay Jade). */
-    public int stockItemTypes() {
-        if (!(level instanceof ServerLevel sl)) {
-            return 0;
-        }
-        VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
-                .getNetworkForTerminal(sl, worldPosition);
-        return net == null ? 0 : net.getAllItemCounts(sl).size();
-    }
-
-    /** Ile itemow ma teraz STALY trend (dla overlay Jade) - to samo, co GUI. */
-    public int steadyFlowCount() {
-        return flow.steadyRates().size();
-    }
-
     /** Zbiera aktualny stan sieci i wysyla GUI graczowi. */
     public void syncToPlayer(ServerPlayer player) {
         if (!(level instanceof ServerLevel sl)) {

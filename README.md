@@ -400,42 +400,6 @@ Rdzeń nie wymaga przy tym żadnej zmiany.
 
 ---
 
-## 🧩 Overlay: Jade (`compat/jade`)
-
-Jade pokazuje nasze bloki (nazwy z rejestru), a nasz plugin **dokłada linie ze
-stanem** — dla **wszystkich** bloków w namespace `craftingveloce`:
-
-| Blok | Linie |
-|------|-------|
-| crafter (także stół w klatce) | auto-crafting włączony (ile itemów wyłączonych), rozmiar bufora |
-| klatka Integrale | pusty schowek / „Display: &lt;item&gt;”, ile stron zabudowanych, podpowiedź o prawym kliku |
-| stół w klatce (`facade`) | „Integrale case: crafting table inside” |
-| piec paliwowy i elektryczny | nazwa źródła ciepła + ile operacji, „Powered: tak/nie” |
-| moduły Create / Mekanism / Alchemistry | id modułu, ile operacji zostało, „Powered” |
-| kontroler | ile typów itemów w sieci, ile itemów ma stały trend |
-| ekstraktor | ile slotów filtra ustawionych, ile z auto-craftingiem |
-| sensor progu | filtr, próg (+ tryb „when at least / when below”), ile jest w sieci |
-| terminal | węzły, magazyny, ile typów itemów w sieci |
-| rura | ile rur w sieci (albo „nie podłączona do sieci”) |
-
-Zasady tej integracji:
-
-1. **Jade jest miękka zależnością.** Plugin jest odkrywany przez Jade po
-   adnotacji `@WailaPlugin`, więc bez Jade jego klasa **nie jest nawet
-   ładowana**, a rdzeń go nie woła (`validate_jade_plugin` tego pilnuje).
-2. **Liczby liczy serwer** (`VeloceBlockDataProvider`), bo w tooltipie na
-   kliencie nie ma aktualnych danych, a liczenie ich w locie znaczyłoby skan
-   sieci przy każdej klatce tooltipa. Linia pojawia się tylko wtedy, gdy dana
-   wartość naprawdę przyszła — żadnego „0” udającego prawdę.
-3. **Jedna rejestracja na `Block.class`** + filtr po namespace, a nie ręczna
-   lista naszych bloków (lista modułów rośnie, a spis rozjechałby się
-   z rejestrem).
-4. `Jade-1.21.1-NeoForge-15.10.6.jar` jest zależnością **compileOnly**
-   (rozwiązywaną automatycznie z profilu `testing`), a kontrola wycieków
-   pilnuje, żeby żadna klasa Jade nie trafiła do naszego JAR-a.
-
----
-
 ## 🌐 Network (Packets)
 
 Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.

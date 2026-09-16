@@ -80,7 +80,7 @@ public final class VeloceIntegraleFrame {
         return property != null && state.getValue(property);
     }
 
-    /** Liczba zakrytych okien (0..6) - diagnostyka i overlay Jade. */
+    /** Liczba zakrytych okien (0..6) - diagnostyka i logi. */
     public static int coveredSides(BlockState state) {
         int covered = 0;
         for (Direction direction : Direction.values()) {
