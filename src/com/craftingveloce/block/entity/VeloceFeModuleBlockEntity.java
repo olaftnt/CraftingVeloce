@@ -242,10 +242,31 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
         return st != null && st.canExtract() && st.getMaxEnergyStored() > 0;
     }
 
-    /** Co tick (serwer): dobierz prad z itemu w slocie baterii. */
+    /** Co tick (serwer): dobierz prad z itemu w slocie baterii i z sieci. */
     public void serverTick() {
         chargeFromItem();
+        pullFromNetwork();
     }
+
+    /**
+     * Sciaga prad z OBCYCH zrodel podpietych do sieci rur (Energy Cube,
+     * generator). Tylko nasza maszyna sciaga - rura nie przewodzi pradu dla
+     * innych modow, a maszyny nie sa dla siebie zrodlem (skan sieci pomija
+     * nasze bloki). Pelny akumulator = zero prob (patrz VeloceEnergyPull).
+     */
+    private void pullFromNetwork() {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+        var serverLevel = (net.minecraft.server.level.ServerLevel) level;
+        var network = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
+                .getNetworkForTerminal(serverLevel, worldPosition);
+        com.craftingveloce.network.pipe.VeloceEnergyPull.pull(
+                serverLevel, network, this, MAX_PULL_PER_TICK);
+    }
+
+    /** Ile FE na tick najwyzej przyjmujemy z sieci (obok limitu zrodla). */
+    public static final int MAX_PULL_PER_TICK = 1_000_000;
 
     /**
      * Bierze prad z itemu i wlewa do akumulatora.
