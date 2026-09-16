@@ -427,6 +427,12 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         // 1. Veloce Pipe Network extraction (handles live and on-demand unloaded chunk ticketing)
         VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
+        com.craftingveloce.crafting.VeloceCraftTrace.log(
+                "terminal @%s: szukam %dx %s (%s), siec=%s, auto-crafting=%s",
+                worldPosition, count, requested.getHoverName().getString(),
+                com.craftingveloce.crafting.VeloceCraftTrace.id(requested.getItem()),
+                net == null ? "BRAK (terminal nie podlaczony?)" : net.getId(),
+                allowCrafting);
         com.craftingveloce.util.VeloceLog.Craft.attempt(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
                 "player requested %sx %s from terminal at %s",
@@ -449,6 +455,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
             com.craftingveloce.util.VeloceLog.Craft.why(
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
                     "%s not in stock, trying auto-crafting", requested.getItem());
+            com.craftingveloce.crafting.VeloceCraftTrace.log(
+                    "stock: brak w sieci - probuje auto-craftingu");
             // 1b. Nie ma w sieci - sprobuj auto-craftingu (jesli wlaczony dla tego itemu).
             if (allowCrafting) {
                 PullResult crafted = craftItemFromNetwork(sl, net, requested, count);
@@ -459,11 +467,16 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                     syncCountsToAllWatchers();
                     return crafted;
                 }
+                com.craftingveloce.crafting.VeloceCraftTrace.log(
+                        "auto-crafting nie dal itemu: reason=%s detail=%s",
+                        crafted.reason(), crafted.detail());
                 // Craftowanie sie nie udalo - przekazujemy POWOD dalej.
                 if (!crafted.reason().isEmpty()) {
                     return crafted;
                 }
             }
+            com.craftingveloce.crafting.VeloceCraftTrace.log(
+                    "siec istnieje, ale nie ma itemu w stocku i auto-crafting nic nie dal");
             return PullResult.empty();
         }
 
@@ -479,6 +492,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
             }
         }
 
+        com.craftingveloce.crafting.VeloceCraftTrace.log(
+                "terminal bez sieci rur - probuje skrzyni/RS przy %s", targetPos);
         // 3. Try Tom's Storage / connected chests
         try {
             StoredItemStack pulled = pullStack(new StoredItemStack(requested), count);

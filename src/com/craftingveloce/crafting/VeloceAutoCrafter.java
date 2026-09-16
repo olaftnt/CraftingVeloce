@@ -318,6 +318,18 @@ public final class VeloceAutoCrafter {
             return CraftResult.fail("craftingveloce.craft.error.disabled");
         }
 
+        // SLAD (tylko dla akcji gracza - patrz VeloceCraftTrace.begin):
+        // zrzucamy WSZYSTKO, co decyduje o wyniku, zanim cokolwiek policzymy.
+        if (VeloceCraftTrace.active()) {
+            VeloceCraftTrace.log("zadanie: %sx %s (%s), w sieci=%d, w ekwipunku=%d, brakuje=%d",
+                    count, VeloceCraftTrace.name(item), VeloceCraftTrace.id(item),
+                    inNetwork, inInventory, missing);
+            VeloceCraftTrace.dumpEnvironment(level, network, item);
+            VeloceCraftTrace.dumpRecipes(level, network, item);
+            VeloceCraftTrace.dumpStock(netStock, item,
+                    VeloceRecipeFinder.all(level, item));
+        }
+
         // Faza 1: planowanie (symulacja na liczbach).
         // Ustawiamy twardy budzet czasu - planowanie drzewa receptur nie moze
         // zamrozic watku serwera, nawet gdy gracz poprosi o cos absurdalnie
@@ -368,6 +380,8 @@ public final class VeloceAutoCrafter {
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
                 "plan for %s x%d: %d recipe run(s) to execute",
                 item, planned, plan.runs.size());
+        VeloceCraftTrace.log("start wykonania planu: %s x%d (krokow=%d)",
+                VeloceCraftTrace.id(item), planned, plan.runs.size());
         if (!execute(level, ctx, plan)) {
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                     "execution failed for %s - ingredients vanished mid-craft", item);
@@ -746,6 +760,11 @@ public final class VeloceAutoCrafter {
         }
         plan.runs.clear();
         plan.runs.addAll(best.runs);
+        VeloceCraftTrace.log("plan: zamowione %d, wykonalne %d, krokow w planie %d, cieplo=%d",
+                wanted, planned, plan.runs.size(), plan.heatRemaining);
+        for (var run : plan.runs) {
+            VeloceCraftTrace.log("  krok planu: %s x%d", run.recipe().id(), run.times());
+        }
         if (planned < wanted) {
             VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
                     "%s: zamowione %d, wykonalne %d (plan w budzecie %d ms)",
@@ -1162,8 +1181,14 @@ public final class VeloceAutoCrafter {
             startEstimate(budgetNanos);
             Map<Item, Long> copy = new HashMap<>(stock);
             Plan candidate = new Plan(heatOps);
-            if (plan(level, network, enabled, preferred, item, amount, copy, candidate,
-                    new HashSet<>(), 0)) {
+            long startNanos = System.nanoTime();
+            boolean ok = plan(level, network, enabled, preferred, item, amount, copy, candidate,
+                    new HashSet<>(), 0);
+            VeloceCraftTrace.log("plan: proba %d szt -> %s (runow=%d, %d ms, cieplo=%d, abort=%s)",
+                    amount, ok ? "OK" : "NIE", candidate.runs.size(),
+                    (System.nanoTime() - startNanos) / 1_000_000L,
+                    candidate.heatRemaining, estimateAborted());
+            if (ok) {
                 found = amount;
                 best = candidate;
             } else {
@@ -1456,6 +1481,9 @@ public final class VeloceAutoCrafter {
         java.util.List<com.craftingveloce.block.entity.VeloceHeatSource> heat =
                 VeloceHeatSources.allIn(level, ctx.network);
 
+        VeloceCraftTrace.log("wykonanie: %d krokow planu, zrodel ciepla w sieci=%d",
+                plan.runs.size(), heat.size());
+
         // Plan jest w kolejnosci post-order: skladniki produkowane przed uzyciem.
         for (PlannedRun run : plan.runs) {
             for (long i = 0; i < run.times(); i++) {
@@ -1674,6 +1702,9 @@ public final class VeloceAutoCrafter {
             int units = recipe.ingredientCount(ingIndex);
             for (int unit = 0; unit < units; unit++) {
                 ItemStack taken = takeOne(level, ctx, ing);
+                VeloceCraftTrace.log("wykonanie %s: skladnik %d/%d %s -> %s",
+                        recipe.id(), unit + 1, units, describeOptions(ing),
+                        taken.isEmpty() ? "BRAK" : (taken.getCount() + "x " + taken.getItem()));
                 if (taken.isEmpty()) {
                     // MOWIMY WPROST, CZEGO ZABRAKLO.
                     //
@@ -1704,7 +1735,11 @@ public final class VeloceAutoCrafter {
         // "czy to nie piec".
         //
         // Przy niepowodzeniu nie zabieramy NICZEGO i zwracamy pobrane itemy.
-        if (!payForOperation(level, ctx, recipe, heat)) {
+        boolean paid = payForOperation(level, ctx, recipe, heat);
+        VeloceCraftTrace.log("wykonanie %s: zaplata (%s) -> %s", recipe.id(),
+                recipe.isFurnace() ? "cieplo" : (VeloceRecipeFamilies.isFree(recipe.type())
+                        ? "brak" : "maszyna modulu"), paid ? "OK" : "BRAK");
+        if (!paid) {
             for (ItemStack s : consumed) {
                 deposit(level, ctx, s);
             }
@@ -1728,6 +1763,8 @@ public final class VeloceAutoCrafter {
             if (chance < 1.0f && level.random.nextFloat() >= chance) {
                 continue;
             }
+            VeloceCraftTrace.log("wykonanie %s: wynik %dx %s", recipe.id(),
+                    single.getCount(), single.getItem());
             deposit(level, ctx, single.copy());
         }
         return true;

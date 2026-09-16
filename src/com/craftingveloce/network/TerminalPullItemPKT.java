@@ -102,8 +102,28 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             }
 
             int toPull = Math.min(pkt.count(), pkt.itemStack().getMaxStackSize());
-            VeloceTomTerminalBlockEntity.PullResult pulled =
-                    terminalBE.extractWithReason(pkt.itemStack(), toPull, true);
+            // PELNY SLAD tej jednej proby (patrz VeloceCraftTrace): gracz kliknal
+            // "wyciagnij", wiec logujemy wszystko, co decyduje o wyniku.
+            com.craftingveloce.crafting.VeloceCraftTrace.begin(
+                    "terminal " + pkt.terminalPos() + " gracz="
+                            + serverPlayer.getGameProfile().getName()
+                            + " item=" + pkt.itemStack().getHoverName().getString()
+                            + " x" + toPull);
+            VeloceTomTerminalBlockEntity.PullResult pulled;
+            try {
+                pulled = terminalBE.extractWithReason(pkt.itemStack(), toPull, true);
+            } catch (Throwable t) {
+                // Wyjatek w sciezce craftu MUSI byc w sladzie - inaczej widac
+                // tylko przerwany ciag linii bez przyczyny.
+                com.craftingveloce.crafting.VeloceCraftTrace.exception(
+                        "terminal pull " + pkt.itemStack(), t);
+                com.craftingveloce.crafting.VeloceCraftTrace.end("WYJATEK: " + t);
+                throw t;
+            }
+            com.craftingveloce.crafting.VeloceCraftTrace.end(pulled.stack().isEmpty()
+                    ? ("BRAK (" + pulled.reason() + " " + pulled.detail() + ")")
+                    : ("dostarczono " + pulled.stack().getCount() + "x "
+                            + pulled.stack().getItem()));
 
             if (pulled.stack().isEmpty()) {
                 // POWOD, A NIE TYLKO "NIE MA".
