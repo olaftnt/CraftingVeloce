@@ -26,6 +26,10 @@ import net.neoforged.neoforge.energy.IEnergyStorage;
  */
 public final class VeloceEnergyPull {
 
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger("craftingveloce-energy");
+    private static long lastEmptyLog;
+
     /** Ile FE na tick najwyzej probujemy wziac z jednego zrodla. */
     public static final int MAX_PER_SOURCE_PER_TICK = 1_000_000;
 
@@ -46,6 +50,17 @@ public final class VeloceEnergyPull {
         int free = receiver.getMaxEnergyStored() - receiver.getEnergyStored();
         if (free <= 0) {
             return 0;   // pelny akumulator - zero prob sciagania
+        }
+        // DIAGNOSTYKA (gracz: "nie dziala"): jesli maszyna ma wolne miejsce,
+        // a siec nie zna ZADNEGO obcego zrodla energii, to problem jest
+        // w wykrywaniu, a nie w poborze. Log max raz na 5 s, zeby nie spamowac.
+        if (network.getEnergyEndpoints().isEmpty()
+                && System.currentTimeMillis() - lastEmptyLog > 5_000L) {
+            lastEmptyLog = System.currentTimeMillis();
+            LOG.info("[Veloce][ENERGY] maszyna {} ma wolne {} FE, ale siec nie zna "
+                            + "zadnego obcego zrodla (endpointy=0) - sprawdz, czy Energy Cube "
+                            + "stoi PRZY RURZE i czy siec byla skanowana po jego postawieniu",
+                    receiver.getEnergyStored(), free);
         }
         int budget = Math.min(free, maxRate);
         int total = 0;
