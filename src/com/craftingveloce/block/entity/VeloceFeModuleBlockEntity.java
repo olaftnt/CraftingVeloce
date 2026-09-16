@@ -6,6 +6,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -215,15 +216,91 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     // Zapis / odczyt
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // Slot baterii (jak w Velocity Electric Furnace)
+    // ------------------------------------------------------------------
+
+    /** Item z energia (bateria, energy cube, tablet) - jedyne, co tu wejdzie. */
+    private final net.minecraft.world.SimpleContainer batterySlot =
+            new net.minecraft.world.SimpleContainer(1);
+
+    /** Ile FE na tick najwyzej wyciagamy z itemu. */
+    public static final int MAX_ITEM_DRAIN_PER_TICK = 1_000_000;
+
+    /** Slot baterii - dla menu i dla ekranu. */
+    public net.minecraft.world.Container getBatterySlot() {
+        return batterySlot;
+    }
+
+    /** Czy item ma energie do oddania (standardowa zdolnosc NeoForge). */
+    public static boolean isEnergyItem(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        net.neoforged.neoforge.energy.IEnergyStorage st = stack.getCapability(
+                net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.ITEM);
+        return st != null && st.canExtract() && st.getMaxEnergyStored() > 0;
+    }
+
+    /** Co tick (serwer): dobierz prad z itemu w slocie baterii. */
+    public void serverTick() {
+        chargeFromItem();
+    }
+
+    /**
+     * Bierze prad z itemu i wlewa do akumulatora.
+     *
+     * <p>Kolejnosc jak w piecu: NAJPIERW symulacja, potem wlew do akumulatora,
+     * a z itemu zabieramy tylko to, co naprawde weszlo - inaczej przy pelnym
+     * akumulatorze energia znikalaby z itemu.
+     */
+    private void chargeFromItem() {
+        ItemStack stack = batterySlot.getItem(0);
+        if (stack.isEmpty()) {
+            return;
+        }
+        int space = module.capacity() - energy;
+        if (space <= 0) {
+            return;
+        }
+        net.neoforged.neoforge.energy.IEnergyStorage itemEnergy = stack.getCapability(
+                net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.ITEM);
+        if (itemEnergy == null || !itemEnergy.canExtract()) {
+            return;
+        }
+        int available = itemEnergy.extractEnergy(Math.min(space, MAX_ITEM_DRAIN_PER_TICK), true);
+        if (available <= 0) {
+            return;
+        }
+        int taken = itemEnergy.extractEnergy(available, false);
+        if (taken <= 0) {
+            return;
+        }
+        int accepted = receiveEnergy(taken, false);
+        if (accepted < taken) {
+            itemEnergy.receiveEnergy(taken - accepted, false);
+        }
+        if (accepted > 0) {
+            batterySlot.setChanged();
+        }
+    }
+
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         tag.putInt("Energy", energy);
+        ItemStack battery = batterySlot.getItem(0);
+        if (!battery.isEmpty()) {
+            tag.put("Battery", battery.save(registries, new CompoundTag()));
+        }
     }
 
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
         energy = Math.max(0, Math.min(module.capacity(), tag.getInt("Energy")));
+        batterySlot.setItem(0, tag.contains("Battery")
+                ? ItemStack.parse(registries, tag.getCompound("Battery")).orElse(ItemStack.EMPTY)
+                : ItemStack.EMPTY);
     }
 }

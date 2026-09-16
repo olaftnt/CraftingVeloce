@@ -65,6 +65,20 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
                 new VeloceFeModuleBlock(module, blockEntityFactory, properties));
     }
 
+    /** Tick po stronie serwera: dobieranie pradu z itemu w slocie baterii. */
+    @Override
+    public <T extends BlockEntity> net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(
+            Level level, BlockState state, net.minecraft.world.level.block.entity.BlockEntityType<T> type) {
+        if (level.isClientSide) {
+            return null;
+        }
+        return (lvl, pos, st, be) -> {
+            if (be instanceof com.craftingveloce.block.entity.VeloceFeModuleBlockEntity module) {
+                module.serverTick();
+            }
+        };
+    }
+
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return blockEntityFactory.create(pos, state);

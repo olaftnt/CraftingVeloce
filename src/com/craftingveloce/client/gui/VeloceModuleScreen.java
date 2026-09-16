@@ -36,7 +36,7 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
     private static final int BATTERY_H = 14;
     private static final int NUB_W = 2;
     private static final int NUB_H = 6;
-    private static final int COLOR_BATTERY_EMPTY = 0xFF14361A;
+    private static final int COLOR_BATTERY_EMPTY = 0xFF8B8B8B;
     private static final int COLOR_BATTERY_FILL = 0xFF39D353;
 
     /** Tlo panelu - zaslaniamy nim wglebienie baterii w maszynie kinetycznej. */
@@ -107,10 +107,20 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
             graphics.fill(x + BATTERY_W, nubY, x + BATTERY_W + NUB_W, nubY + NUB_H,
                     COLOR_BATTERY_FILL);
         }
-        graphics.drawString(this.font,
-                Component.translatable("gui.craftingveloce.module.info.operations",
-                        display.getLong("operations"), display.getLong("fePerOperation")),
-                this.leftPos + 26, this.topPos + 18, COLOR_TEXT, false);
+    }
+
+    /** Podpowiedz na baterii - DOKLADNIE ta sama co w piecu. */
+    private void renderBatteryTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!isHovering(BATTERY_X, BATTERY_Y, BATTERY_W + NUB_W, BATTERY_H, mouseX, mouseY)) {
+            return;
+        }
+        java.util.List<Component> lines = new java.util.ArrayList<>();
+        lines.add(Component.translatable("gui.craftingveloce.module.info.energy",
+                com.craftingveloce.util.VeloceFormat.feCompact(display.getLong("energy")),
+                com.craftingveloce.util.VeloceFormat.feCompact(display.getLong("energyCapacity"))));
+        lines.add(Component.translatable("gui.craftingveloce.module.info.operations",
+                display.getLong("operations"), display.getLong("fePerOperation")));
+        graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
     }
 
     @Override
@@ -122,6 +132,9 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
+        if (VeloceModuleStatus.isEnergy(display)) {
+            renderBatteryTooltip(graphics, mouseX, mouseY);
+        }
         this.renderTooltip(graphics, mouseX, mouseY);
     }
 }

@@ -50,7 +50,7 @@ public class VeloceElectricFurnaceScreen
     private static final int NUB_H = 6;
 
     /** Tlo akumulatora - ciemna zielen, zeby pusto i pelno gralo jednym kolorem. */
-    private static final int COLOR_BATTERY_EMPTY = 0xFF14361A;
+    private static final int COLOR_BATTERY_EMPTY = 0xFF8B8B8B;
 
     /** Naladowanie - zielen "energii". */
     private static final int COLOR_BATTERY_FILL = 0xFF39D353;

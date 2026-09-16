@@ -1605,6 +1605,34 @@ def validate_module_info_gui():
             if need not in text:
                 problems.append("okno maszyny bez " + what)
 
+    # Ladowanie akumulatora: slot na baterie w menu + dobieranie pradu z itemu.
+    # Bez tego moduly na FE nie ladowaly sie ani z itemu, ani z zewnatrz
+    # (zgloszenie gracza: "slot jest nieaktywny, tylko w piecu dziala").
+    menu = open(inventory, encoding="utf-8").read()
+    for need, what in (("getBatterySlot()", "slotu na baterie w menu"),
+                       ("isEnergyItem", "filtra: tylko itemy z energia")):
+        if need not in menu:
+            problems.append("menu maszyny bez " + what)
+    fe_be = "src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
+    fe_be_text = open(fe_be, encoding="utf-8").read()
+    for need, what in (("private void chargeFromItem()", "metody dobierania pradu"),
+                       ("getBatterySlot()", "wystawienia slotu baterii"),
+                       ('tag.put("Battery"', "zapisu baterii w NBT")):
+        if need not in fe_be_text:
+            problems.append("modul FE bez " + what)
+    # WOLANIE sprawdzamy w ciele serverTick, nie w calym pliku: komentarz
+    # z "chargeFromItem()" nie laduje akumulatora.
+    tick_body = _method_body(fe_be_text, "public void serverTick()")
+    if tick_body is None or "        chargeFromItem();" not in tick_body:
+        problems.append("modul FE nie dobiera pradu w ticku")
+    # Pelna sygnatura tickera: samo "getTicker(" przechodzi takze dla metody
+    # zwracajacej Object, a wtedy gra nie tyka block entity.
+    ticker = ("public <T extends BlockEntity> "
+              "net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(")
+    if ticker not in open("src/com/craftingveloce/block/VeloceFeModuleBlock.java",
+                           encoding="utf-8").read():
+        problems.append("modul FE nie ma tickera (ladowanie z itemu nie zadziala)")
+
     if problems:
         fail("okno maszyny (jak piec):\n  " + "\n  ".join(problems))
     print("    OK (okno maszyny: zwykly kontener jak piec, tekst zamiast baterii dla Create)")
