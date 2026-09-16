@@ -59,23 +59,38 @@ public final class VeloceEnergyPull {
         if (!network.getEnergyEndpoints().isEmpty()) {
             return;
         }
-        int pipes = network.getPipes().size();
+        // Przejscie po RURACH polaczonych z siecia (BFS), a nie tylko po liscie
+        // z sieci: log gracza pokazal "rur=1", mimo ze piec JEST na sieci
+        // z Energy Cubem - lista rur byla niepelna, wiec szukanie sasiadow
+        // konczylo sie na jednej rurze i nigdy nie dochodzilo do cube'a.
+        java.util.ArrayDeque<BlockPos> queue = new java.util.ArrayDeque<>(network.getPipes());
+        java.util.Set<BlockPos> visited = new java.util.LinkedHashSet<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
         int neighbours = 0;
         int found = 0;
-        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
-        for (BlockPos pipe : network.getPipes()) {
-            if (!level.isLoaded(pipe)) {
+        while (!queue.isEmpty() && visited.size() < 512) {
+            BlockPos pipe = queue.poll();
+            if (!visited.add(pipe) || !level.isLoaded(pipe)) {
                 continue;
             }
             for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
                 BlockPos side = pipe.relative(dir);
-                if (!level.isLoaded(side)
-                        || level.getBlockState(side).getBlock() instanceof VeloceNetworkNode) {
+                if (!level.isLoaded(side)) {
                     continue;
+                }
+                var state = level.getBlockState(side);
+                if (state.getBlock() instanceof com.craftingveloce.block.VelocePipeBlock) {
+                    if (!visited.contains(side)) {
+                        queue.add(side);
+                    }
+                    continue;
+                }
+                if (state.getBlock() instanceof VeloceNetworkNode) {
+                    continue;   // nasze maszyny sa tylko odbiornikami
                 }
                 neighbours++;
                 if (seen.size() < 6) {
-                    seen.add(level.getBlockState(side).getBlock() + " @" + side.toShortString());
+                    seen.add(state.getBlock() + " @" + side.toShortString());
                 }
                 if (level.getCapability(Capabilities.EnergyStorage.BLOCK, side,
                         dir.getOpposite()) != null) {
@@ -84,12 +99,15 @@ public final class VeloceEnergyPull {
                 }
             }
         }
-        if (found == 0 && System.currentTimeMillis() - lastDiscoverLog > 5_000L) {
+        if (found > 0) {
+            LOG.info("[Veloce][ENERGY] znalezione zrodla: {} (przejrzane rury={})", found,
+                    visited.size());
+        } else if (System.currentTimeMillis() - lastDiscoverLog > 5_000L) {
             lastDiscoverLog = System.currentTimeMillis();
-            LOG.info("[Veloce][ENERGY] szukalem zrodel: rur={}, sasiadow={}, zrodel={}, "
-                                    + "sasiedzi={} - jesli Energy Cube jest na liscie, "
-                                    + "a zrodel 0, to nie wystawia Forge Energy z tej strony",
-                            pipes, neighbours, found, seen);
+            LOG.info("[Veloce][ENERGY] brak zrodel: przejrzane rury={}, sasiadow={}, "
+                            + "sasiedzi={} - jesli Energy Cube jest na liscie, to nie wystawia "
+                            + "Forge Energy z tej strony",
+                    visited.size(), neighbours, seen);
         }
     }
 
