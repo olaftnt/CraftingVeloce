@@ -126,9 +126,10 @@ public final class CreateRecipeHarvest {
         if (!recipe.getFluidIngredients().isEmpty() || !recipe.getFluidResults().isEmpty()) {
             return null;
         }
-        if (recipe.getRequiredHeat() != HeatCondition.NONE) {
-            return null;
-        }
+        // Receptury wymagajace ciepla NIE sa odrzucane: ida do planera z flaga,
+        // a modul sprawdza, czy w sieci jest Blaze Burner (gracz: "jak musi byc
+        // heated blaze burner, to tez mamy zaliczone, jesli tylko go mamy").
+        boolean requiresHeat = recipe.getRequiredHeat() != HeatCondition.NONE;
         NonNullList<Ingredient> ingredients = recipe.getIngredients();
         if (ingredients.isEmpty()) {
             return null;
@@ -149,7 +150,8 @@ public final class CreateRecipeHarvest {
         for (int i = 0; i < ingredients.size(); i++) {
             counts.add(1);
         }
-        return new ProcessingEntry(id, results, chances, ingredients, counts, type);
+        return new ProcessingEntry(id, results, chances, ingredients, counts, type,
+                0, 0, requiresHeat);
     }
 
     /**
@@ -181,7 +183,9 @@ public final class CreateRecipeHarvest {
         for (int i = 0; i < ingredients.size(); i++) {
             counts.add(1);
         }
+        // Rozmiar siatki jedzie z receptury: bez tego crafter "umialby"
+        // wszystko, takze receptury wieksze niz zbudowana siatka.
         return new ProcessingEntry(id, List.of(result.copy()), List.of(1.0f),
-                ingredients, counts, type);
+                ingredients, counts, type, recipe.getWidth(), recipe.getHeight());
     }
 }

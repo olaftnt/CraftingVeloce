@@ -440,10 +440,10 @@
                 "north": {
                     "texture": "#content"
                 },
-                "south": {
+                "east": {
                     "texture": "#content"
                 },
-                "east": {
+                "south": {
                     "texture": "#content"
                 },
                 "west": {

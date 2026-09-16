@@ -1,5 +1,6 @@
 package com.craftingveloce.compat.create.block;
 
+import com.craftingveloce.block.VeloceIntegraleFrame;
 import com.craftingveloce.compat.create.KineticModule;
 import com.craftingveloce.compat.create.block.entity.VeloceKineticModuleBlockEntity;
 import com.craftingveloce.network.pipe.VeloceNetworkNode;
@@ -12,11 +13,16 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 import javax.annotation.Nullable;
 
@@ -53,6 +59,76 @@ public class VeloceKineticModuleBlock extends KineticBlock
         this.module = module;
         this.blockEntityFactory = blockEntityFactory;
         this.blockEntityType = blockEntityType;
+        registerDefaultState(stateDefinition.any()
+                .setValue(BlockStateProperties.AXIS, Direction.Axis.Y));
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(BlockStateProperties.AXIS);
+        VeloceIntegraleFrame.addProperties(builder);
+    }
+
+    /**
+     * Os obrotu bierze sie ze sciany, w ktora celuje gracz.
+     *
+     * <p>Gracz: "powinno przyjmowac power krecenia z KAZDEJ strony". Krecenie
+     * przenosi sie tylko miedzy maszynami o ZGODNEJ osi, wiec maszyna musi
+     * przyjmowac os z miejsca postawienia (jak wal Create) - wtedy naped
+     * z kazdej strony wystarczy podlaczyc walem w tej samej osi.
+     */
+    @Override
+    public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
+        BlockState state = defaultBlockState().setValue(BlockStateProperties.AXIS,
+                context.getClickedFace().getAxis());
+        for (Direction direction : Direction.values()) {
+            state = VeloceIntegraleFrame.withClosure(state, direction,
+                    covered(context.getLevel(), context.getClickedPos().relative(direction),
+                            context.getLevel().getBlockState(context.getClickedPos().relative(direction))));
+        }
+        return state;
+    }
+
+    /**
+     * Sasiedni blok zakrywa bok obudowy blacha.
+     *
+     * <p>Zakryte sa DWIE rzeczy tej samej wagi: rura Veloce i NAPED Create.
+     * Gracz: "ten bok ma sie zachowywac tak, jakby byl kabel podlaczony
+     * z tej strony" - czyli od razu widac, skad maszyna dostaje krecenie.
+     */
+    private static boolean covered(net.minecraft.world.level.BlockGetter world,
+                                   BlockPos neighborPos, BlockState neighbor) {
+        if (neighbor.getBlock() instanceof com.craftingveloce.block.VelocePipeBlock) {
+            return true;
+        }
+        return world.getBlockEntity(neighborPos)
+                instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+    }
+
+    @Override
+    protected BlockState updateShape(BlockState state, Direction facing, BlockState facingState,
+                                     LevelAccessor world, BlockPos pos, BlockPos facingPos) {
+        return VeloceIntegraleFrame.withClosure(state, facing,
+                covered(world, facingPos, facingState));
+    }
+
+    /** Obrot konstrukcji obraca os napedu (X &lt;-&gt; Z), jak w walku Create. */
+    @Override
+    protected BlockState rotate(BlockState state, Rotation rotation) {
+        if (rotation == Rotation.NONE) {
+            return state;
+        }
+        Direction.Axis axis = state.getValue(BlockStateProperties.AXIS);
+        if (axis == Direction.Axis.Y) {
+            return state;
+        }
+        return state.setValue(BlockStateProperties.AXIS,
+                axis == Direction.Axis.X ? Direction.Axis.Z : Direction.Axis.X);
+    }
+
+    @Override
+    protected BlockState mirror(BlockState state, Mirror mirror) {
+        return state;
     }
 
     /**
@@ -135,17 +211,17 @@ public class VeloceKineticModuleBlock extends KineticBlock
         return RenderShape.MODEL;
     }
 
-    /** Wal napedowy wchodzi od dolu - tak jak w mlynku Create. */
+    /** Wal napedowy wchodzi z KAZDEJ strony zgodnej z osia maszyny. */
     @Override
     public boolean hasShaftTowards(LevelReader world, BlockPos pos, BlockState state,
                                    Direction side) {
-        return side == Direction.DOWN;
+        return side.getAxis() == state.getValue(BlockStateProperties.AXIS);
     }
 
-    /** Os obrotu pionowa (Y) - zgodnie z walem od dolu. */
+    /** Os obrotu maszyny - taka, jaka wybral gracz przy postawieniu. */
     @Override
     public Direction.Axis getRotationAxis(BlockState state) {
-        return Direction.Axis.Y;
+        return state.getValue(BlockStateProperties.AXIS);
     }
 
     /**

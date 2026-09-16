@@ -62,6 +62,20 @@ public final class CreateBlocks {
             ITEMS.registerSimpleBlockItem("veloce_create_mechanical_crafter_module",
                     VELOCE_MECHANICAL_CRAFTER_MODULE);
 
+    /** Prasa: receptury {@code create:pressing} (na Basenie). */
+    public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_PRESS_MODULE =
+            BLOCKS.register("veloce_create_press_module",
+                    () -> block(CreateKineticModules.PRESSING));
+    public static final DeferredItem<BlockItem> VELOCE_PRESS_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_create_press_module", VELOCE_PRESS_MODULE);
+
+    /** Mixer: receptury {@code create:mixing} (na Basenie). */
+    public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_MIXER_MODULE =
+            BLOCKS.register("veloce_create_mixer_module",
+                    () -> block(CreateKineticModules.MIXING));
+    public static final DeferredItem<BlockItem> VELOCE_MIXER_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_create_mixer_module", VELOCE_MIXER_MODULE);
+
     /** Jedna linia na maszyne: blok + fabryka BE + typ BE z tego modulu. */
     private static VeloceKineticModuleBlock block(KineticModule module) {
         return new VeloceKineticModuleBlock(module,
@@ -95,5 +109,7 @@ public final class CreateBlocks {
         output.accept(VELOCE_SAW_MODULE_ITEM.get());
         output.accept(VELOCE_CRUSHING_MODULE_ITEM.get());
         output.accept(VELOCE_MECHANICAL_CRAFTER_MODULE_ITEM.get());
+        output.accept(VELOCE_PRESS_MODULE_ITEM.get());
+        output.accept(VELOCE_MIXER_MODULE_ITEM.get());
     }
 }

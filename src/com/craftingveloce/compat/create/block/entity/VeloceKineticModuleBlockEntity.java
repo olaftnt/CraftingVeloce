@@ -82,7 +82,19 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
 
     /** Ile elementow maszyna potrzebuje, zeby w ogole pracowac. */
     public int requiredParts() {
-        return module() == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING ? 2 : 0;
+        if (module() == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING) {
+            return 2;
+        }
+        if (module() == com.craftingveloce.compat.create.CreateKineticModules.MECHANICAL_CRAFTING) {
+            return 1;   // niezbudowany crafter nie ma zadnego pola siatki
+        }
+        return 0;
+    }
+
+    /** Ile pol siatki ma ta maszyna (patrz VeloceProcessingSources.maxGridSide). */
+    @Override
+    public int availableParts() {
+        return parts;
     }
 
     /** Gorna granica liczby elementow (0 = maszyna ich nie przyjmuje). */

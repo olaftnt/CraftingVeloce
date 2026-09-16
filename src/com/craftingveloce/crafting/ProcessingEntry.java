@@ -39,6 +39,9 @@ import java.util.List;
  * @param ingredients      skladniki; kazdy {@link Ingredient} to alternatywy
  * @param ingredientCounts liczba sztuk per skladnik (ta sama dlugosc co lista)
  * @param type             typ receptury (do gatingu i diagnostyki)
+ * @param gridWidth        szerokosc siatki receptury (0 = receptura bez siatki)
+ * @param gridHeight       wysokosc siatki receptury (0 = receptura bez siatki)
+ * @param requiresHeat     czy receptura wymaga podgrzanego Blaze Burnera
  */
 public record ProcessingEntry(
         ResourceLocation id,
@@ -46,8 +49,46 @@ public record ProcessingEntry(
         List<Float> resultChances,
         NonNullList<Ingredient> ingredients,
         List<Integer> ingredientCounts,
-        RecipeType<?> type
+        RecipeType<?> type,
+        int gridWidth,
+        int gridHeight,
+        boolean requiresHeat
 ) {
+
+    /**
+     * Receptura BEZ siatki (piec, maszyny item -&gt; item, crafting 3x3).
+     *
+     * <p>Wygodny konstruktor, zeby stare miejsca nie musialy podawac zer.
+     */
+    public ProcessingEntry(ResourceLocation id, List<ItemStack> results,
+                           List<Float> resultChances, NonNullList<Ingredient> ingredients,
+                           List<Integer> ingredientCounts, RecipeType<?> type) {
+        this(id, results, resultChances, ingredients, ingredientCounts, type, 0, 0, false);
+    }
+
+    /** Receptura z siatka, ale bez ciepla (np. mechanical crafting Create). */
+    public ProcessingEntry(ResourceLocation id, List<ItemStack> results,
+                           List<Float> resultChances, NonNullList<Ingredient> ingredients,
+                           List<Integer> ingredientCounts, RecipeType<?> type,
+                           int gridWidth, int gridHeight) {
+        this(id, results, resultChances, ingredients, ingredientCounts, type,
+                gridWidth, gridHeight, false);
+    }
+
+    /**
+     * Czy receptura zmiesci sie w siatce o boku {@code side}.
+     *
+     * <p>Dotyczy tylko receptur z siatka (mechanical crafting Create): gracz
+     * buduje crafter z osobnych oczek, wiec receptura 5x5 wymaga zbudowania
+     * 25 oczek. Receptura bez siatki ({@code gridWidth} = 0) zawsze sie miesci -
+     * dzieki temu ten sam filtr obsluguje wszystkie rodziny maszyn.
+     */
+    public boolean fitsGrid(int side) {
+        if (gridWidth <= 0 && gridHeight <= 0) {
+            return true;
+        }
+        return gridWidth <= side && gridHeight <= side;
+    }
 
     /**
      * Pilnuje, zeby trzy rownolegle listy nie rozjechaly sie dlugoscia.

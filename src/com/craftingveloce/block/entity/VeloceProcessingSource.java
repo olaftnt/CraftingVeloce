@@ -65,4 +65,15 @@ public interface VeloceProcessingSource {
 
     /** Etykieta do logow i raportu (np. "Veloce Crusher Module"). */
     String sourceName();
+    /**
+     * Ile elementow maszyny jest ZBUDOWANYCH (kola mlynskie, oczka craftera).
+     *
+     * <p>Domyslnie zero: zwykla maszyna nie ma czesci skladowych. Crafter
+     * mechaniczny Create buduje sie z oczek i tylko tyle pol ma jego siatka,
+     * dlatego planer pyta o te liczbe przed obieceniem receptury z siatka.
+     */
+    default int availableParts() {
+        return 0;
+    }
+
 }

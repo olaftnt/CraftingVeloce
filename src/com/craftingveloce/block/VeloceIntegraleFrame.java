@@ -74,21 +74,26 @@ public final class VeloceIntegraleFrame {
         return state.getValue(property) == pipe ? state : state.setValue(property, pipe);
     }
 
+    /**
+     * Ustawia zaslepke jednej strony, gdy WOLAJACY wie, czy jest zakryta.
+     *
+     * <p>Klatka pyta o rury Veloce, ale maszyna kinetyczna Create zakrywa bok
+     * takze wtedy, gdy dochodzi z niego NAPED (gracz: "ten bok ma sie
+     * zachowywac tak, jakby byl kabel podlaczony z tej strony"). Rdzen nie
+     * moze znac Create, wiec decyzje podejmuje wolajacy.
+     */
+    public static BlockState withClosure(BlockState state, Direction facing, boolean covered) {
+        BooleanProperty property = property(facing);
+        if (property == null || !state.hasProperty(property)) {
+            return state;
+        }
+        return state.getValue(property) == covered ? state : state.setValue(property, covered);
+    }
+
     /** Czy okno z tej strony jest zakryte blacha. */
     public static boolean isClosed(BlockState state, Direction direction) {
         BooleanProperty property = property(direction);
         return property != null && state.getValue(property);
-    }
-
-    /** Liczba zakrytych okien (0..6) - diagnostyka i logi. */
-    public static int coveredSides(BlockState state) {
-        int covered = 0;
-        for (Direction direction : Direction.values()) {
-            if (isClosed(state, direction)) {
-                covered++;
-            }
-        }
-        return covered;
     }
 
     /**

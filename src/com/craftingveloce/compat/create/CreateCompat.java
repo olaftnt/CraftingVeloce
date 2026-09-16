@@ -69,6 +69,10 @@ public final class CreateCompat {
                 () -> block("crushing_wheel"));
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MECHANICAL_CRAFTER_MODULE.get(),
                 () -> block("mechanical_crafter"));
+        VeloceCaseContents.register(() -> CreateBlocks.VELOCE_PRESS_MODULE.get(),
+                () -> block("mechanical_press"));
+        VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MIXER_MODULE.get(),
+                () -> block("mechanical_mixer"));
     }
 
     /**
@@ -88,6 +92,10 @@ public final class CreateCompat {
                     event.registerBlockEntityRenderer(CreateBlockEntities.CRUSHING_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(CreateBlockEntities.MECHANICAL_CRAFTER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(CreateBlockEntities.PRESS_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(CreateBlockEntities.MIXER_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                 });
     }

@@ -11,6 +11,8 @@
     "craftingveloce:veloce_create_crushing_module",
     "craftingveloce:veloce_create_mechanical_crafter_module",
     "craftingveloce:veloce_create_millstone_module",
+    "craftingveloce:veloce_create_mixer_module",
+    "craftingveloce:veloce_create_press_module",
     "craftingveloce:veloce_create_saw_module",
     "craftingveloce:veloce_extractor",
     "craftingveloce:veloce_integrale",

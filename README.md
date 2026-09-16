@@ -116,48 +116,44 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
 
   | Wkładasz | Powstaje |
   |----------|----------|
-  | `crafting_table` | `veloce_crafting_table` (w obudowie, stan `facade`) |
+  | `crafting_table` | `veloce_crafting_table` |
   | `lectern` (pulpit) | `veloce_controller` |
   | `dispenser` (dozownik) | `veloce_extractor` |
   | `observer` (obserwator) | `threshold_sensor` |
   | `furnace` (piec) | `velocity_furnace` |
 
-  Klocek spoza tabeli **nie robi nic** — żadnego „wystawiania w środku”
-  (gracz: „jak wkładam furnace to robi się furnace display — ma się zmieniać
-  w normalne itemki veloce”)
-- **Jedna tabela, jedno miejsce**: mapowanie jest w `VeloceIntegraleConversions`
-  (dodanie maszyny = jeden wiersz, także z modułu `compat/` przez `register`),
-  a podpowiedź itemu klatki jest z niej **generowana** (`VeloceIntegraleItem`),
-  więc lista nie może się rozjechać z mechaniką
+  Klocek spoza tabeli **nie robi nic** (żadnego „wystawiania w środku")
+- **Każdy klocek Veloce wygląda jak obudowa z zawartością w środku**: blok ma
+  model ramy (`veloce_integrale_frame`), a klient renderuje w środku model
+  klocka bazowego — pulpit w kontrolerze, dozownik w ekstraktorze, obserwator
+  w sensorze, stół craftingu w stole, piec w piecu. Jedna tabela
+  (`VeloceCaseContents`) + **jeden** generyczny renderer (`VeloceCaseRenderer`,
+  zawartość wynika z TYPU bloku, więc serwer nic nie synchronizuje).
+  Stare modele tych bloków zostały **skasowane**, a ikony itemów są generowane
+  (rama obudowy + kostka bazowego bloku w środku)
+- **Nazwy bez duplikatów**: „Veloce Integrale" to wyłącznie **pusta obudowa**
+  na inne klocki; maszyny nazywają się Veloce Crafting Table / Controller /
+  Extractor / Threshold Sensor / Furnace / Electric Furnace. Nie ma już stanu
+  `facade` ani osobnego przedmiotu „rama + stół" — po ujednoliceniu wyglądu
+  był to **duplikat** zwykłego stołu craftingu
 - **Dlaczego podmiana bloku, a nie własny block entity**: pierwsza wersja
-  trzymała w klatce BE stołu i **udawała** craftera, druga „wystawiała eksponat”.
-  Obie znaczyły, że klatka nie jest maszyną: mod od receptur (JEI/EMI) nie miał
-  czego rozpoznać, a sieć musiała znać wyjątki. Teraz w świecie stoi po prostu
-  nasz blok, a crafterem jest się **po typie bloku** (`isActiveCrafter`)
-- **Stół craftingu w obudowie**: ten jeden blok ma stan `facade` — zachowuje
-  wygląd klatki (rama + blachy), a w środku renderuje się model crafting table,
-  który **delikatnie się obraca i buja** (lewo-prawo, góra-dół)
-- **Droga powrotna**: shift + right-click z pustą ręką na stole w obudowie
-  rozbiera ją na **pustą klatkę + crafting table** — bez tego pustej klatki
-  nie dałoby się odzyskać, bo zbita obudowa oddaje jeden przedmiot „rama + stół”
-- **Jeden przedmiot na wyjściu**: zbicie stołu w obudowie wypuszcza
-  `veloce_integrale_crafting` („Veloce Integrale (Crafting)”) — rama + stół
-  w jednym przedmiocie, z własną ikoną (rama z crafting table w środku), żeby
-  gracz i mody od receptur widziały, że w tym bloku można craftować
-- **Renderer tylko dla obudowy**: `VeloceFacadeRenderer` rysuje stół w środku
-  wyłącznie dla stanu `facade` (wynik podmiany widać w stanie bloku, więc serwer
-  **nie synchronizuje żadnych przedmiotów**); dla zwykłego crafting table
-  wychodzi od razu, więc nic nie kosztuje
+  trzymała w klatce BE stolu i **udawała** craftera, druga „wystawiała
+  eksponat". Obie znaczyły, że klatka nie jest maszyną: mod od receptur
+  (JEI/EMI) nie miał czego rozpoznać, a sieć musiała znać wyjątki. Teraz
+  w świecie stoi po prostu nasz blok, a crafterem jest się **po typie bloku**
+  (`isActiveCrafter`)
+- **Animacja zawartości**: renderer delikatnie obraca eksponat i buja nim
+  (lewo-prawo, góra-dół). Maszyny, które mają własne **elementy ruchome**
+  (kruszarka Create: koła młyńskie), rysują je **obok siebie**, a prędkość
+  obrotu bierze się z maszyny (`VeloceCaseSpin`) — rdzeń nie zna typów Create
 - Klatka **nie jest** crafterem (decyduje typ bloku), nie wystawia bufora sieci
   i nie trzyma chunku; maszyna, która z niej powstaje — jest, wystawia i trzyma
-- Modelu i ikony pilnuje `validate_integrale_model` w `build.py` (12 prętów,
-  szyba wcięta i ze szkła, `render_type: translucent`, `ambientocclusion: false`,
-  6 blach dokładnie w świetle okna, 6 warunków w blockstate, model stolu dla
-  `facade=true` i ikona z kostką stolu 4..12), a mechaniki —
-  `validate_integrale_display` (tabela przepisań, podmiana bloku, zgłoszenie
-  węzła do sieci, droga powrotna i **brak** pozostałości po eksponatach).
-  Ikona jest **generowana** z modelu ramy
-  (`scripts/gen_integrale_crafting_item.py`), więc nie może rozjechać się z ramą
+- Modelu i ikon pilnuje `validate_integrale_model` (12 prętów, szyba wcięta
+  i ze szkła, `render_type: translucent`, `ambientocclusion: false`, 6 blach
+  dokładnie w świetle okna, obudowa w blockstate każdej maszyny, ikona
+  z zawartością `#content`), a mechaniki klatki — `validate_integrale_display`
+  (tabela przepisań, podmiana bloku, zgłoszenie węzła do sieci i **brak**
+  pozostałości po eksponatach oraz po duplikacie stacji)
 
 
 
@@ -376,17 +372,31 @@ kablem (capability `EnergyStorage`), a kliknięcie pokazuje stan akumulatora na
 pasku akcji. Sawmill planuje tylko wynik główny, a dodatkowy dorzuca po rzucie
 kością; fission planuje oba wyniki, bo oba są gwarantowane.
 
-Maszyny Create są **kinetyczne**, nie na FE: wał napędowy wchodzi od dołu
-(os obrotu Y), a „zasilenie" to `getSpeed() != 0` (Create sam zwraca 0 przy
-overstress i zatrzymanej sieci). Pobór SU jest **stały** niezależnie od RPM —
-`calculateStressApplied()` dzieli stałą przez prędkość, bo `CStress.setImpact`
-rzuca wyjątek dla bloków spoza Create. Rury Veloce łączą się z każdej strony,
-niezależnie od napędu. Receptury z płynami i wymagające ciepła (blaze burner)
-są w v1 pomijane — nie mamy czym ich „opłacić".
+Maszyny Create są **kinetyczne**, nie na FE: „zasilenie" to `getSpeed() != 0`
+(Create sam zwraca 0 przy overstress i zatrzymanej sieci). Pobór SU jest
+**stały** niezależnie od RPM — `calculateStressApplied()` dzieli stałą przez
+prędkość, bo `CStress.setImpact` rzuca wyjątek dla bloków spoza Create.
 
-Dissolver (probabilistyczny `ProbabilitySet`), press/mixer/basin Create (pracują
-na zawartości Basenu) oraz maszyny na płynach/chemikaliach czekają na osobną
-politykę probabilistyki i warstwę płynów.
+Napęd wchodzi **z każdej strony**: blok ma stan `axis` (os obrotu wybierana przy
+postawieniu, jak wał Create), wał jest na obu końcach tej osi, a `rotate`
+przestawia os X↔Z. Strona, z której dochodzi **napęd** (albo rura Veloce),
+zamyka się **blachą** — od razu widać, skąd maszyna dostaje kręcenie
+(`VeloceIntegraleFrame.withClosure` + `updateShape`).
+
+Maszyny mają **elementy**, które dokłada gracz prawym klikiem:
+
+| Maszyna | Elementy | Jak działa |
+|---------|----------|------------|
+| kruszarka | **2 koła młyńskie** (1 klik = 1 koło) | z jednym kołem kręci się, ale nic nie robi (`isPowered` wymaga kompletu) |
+| mechanical crafter | **oczka** (do 9×9 = 81) | siatka receptury liczona z receptury (`getWidth()/getHeight()`) i porównywana z zbudowanymi polami; zbudowane 25 oczek = wszystko z packa |
+
+Receptury, które wymagają **Basenu** (press, mixer) albo **ciepła** (Blaze
+Burner), są dostępne wtedy, gdy te rzeczy są w sieci — nie budujemy modelu
+przepływów, pytamy o **obecność przedmiotu** (`basin`, `blaze_burner`).
+Receptury z płynami nadal są pomijane (nie mamy warstwy płynów).
+
+Gotowe maszyny kinetyczne: młyn, piła, kruszarka, mechanical crafter, prasa
+i mixer — każda jako obudowa Integrale z blokiem bazowym z Create w środku.
 
 Jak dołożyć kolejny moduł — cała procedura:
 

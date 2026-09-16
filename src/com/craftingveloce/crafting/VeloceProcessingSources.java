@@ -51,6 +51,25 @@ public final class VeloceProcessingSources {
         return out;
     }
 
+    /**
+     * Bok najwiekszej ZBUDOWANEJ siatki wsrod maszyn tego typu.
+     *
+     * <p>Crafter mechaniczny Create nie ma "rozmiaru" w jednym bloku: gracz
+     * stawia oczka i tylko tyle pol ma siatka. Liczba pol to liczba
+     * zbudowanych elementow, a bok siatki to pierwiastek z niej (25 oczek =
+     * siatka 5x5). Gdy maszyna nie ma elementow, bok wynosi 0 i zadna
+     * receptura z siatka sie nie zmiesci - czyli nie da sie craftowac
+     * niezbudowanym crafterem.
+     */
+    public static int maxGridSide(ServerLevel level, VelocePipeNetwork network,
+                                  RecipeType<?> type) {
+        int best = 0;
+        for (VeloceProcessingSource source : forType(level, network, type)) {
+            best = Math.max(best, Math.max(0, source.availableParts()));
+        }
+        return (int) Math.floor(Math.sqrt(best));
+    }
+
     /** Czy w sieci stoi JAKAKOLWIEK maszyna dla tego typu receptury. */
     public static boolean hasAny(ServerLevel level, VelocePipeNetwork network, RecipeType<?> type) {
         return !forType(level, network, type).isEmpty();

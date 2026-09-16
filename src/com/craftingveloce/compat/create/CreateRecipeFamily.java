@@ -64,6 +64,16 @@ public final class CreateRecipeFamily {
         return AllRecipeTypes.CRUSHING.getType();
     }
 
+    /** Prasa: receptury {@code create:pressing} (pracuje na Basenie). */
+    public static RecipeType<?> pressing() {
+        return AllRecipeTypes.PRESSING.getType();
+    }
+
+    /** Mixer: receptury {@code create:mixing} (pracuje na Basenie). */
+    public static RecipeType<?> mixing() {
+        return AllRecipeTypes.MIXING.getType();
+    }
+
     /** Mechanical crafter: receptury {@code create:mechanical_crafting}. */
     public static RecipeType<?> mechanicalCrafting() {
         return AllRecipeTypes.MECHANICAL_CRAFTING.getType();
@@ -82,6 +92,8 @@ public final class CreateRecipeFamily {
             out.add(cutting());
             out.add(crushing());
             out.add(mechanicalCrafting());
+            out.add(pressing());
+            out.add(mixing());
             resolved = Set.copyOf(out);
         }
         return resolved;

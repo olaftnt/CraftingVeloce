@@ -73,11 +73,6 @@ public final class VeloceCaseContents {
         return null;
     }
 
-    /** Czy ten blok ma obudowe z zawartoscia w srodku. */
-    public static boolean hasCase(BlockState state) {
-        return contentFor(state) != null;
-    }
-
     /** Wszystkie wiersze (podpowiedzi, guardy, dokumentacja). */
     public static List<Entry> all() {
         return List.copyOf(ENTRIES);

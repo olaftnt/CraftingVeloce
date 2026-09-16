@@ -51,7 +51,17 @@ public final class CreateKineticModules {
             "create:mechanical_crafting", "Veloce Mechanical Crafter Module",
             CreateRecipeFamily::mechanicalCrafting, 2.0f);
 
-    /** Wszystkie maszyny v1 - do rejestracji i zakladki kreatywnej. */
+    /** Prasa: receptury {@code create:pressing} - wymaga Basenu w sieci. */
+    public static final KineticModule PRESSING = new KineticModule(
+            "create:pressing", "Veloce Press Module",
+            CreateRecipeFamily::pressing, 4.0f);
+
+    /** Mixer: receptury {@code create:mixing} - wymaga Basenu w sieci. */
+    public static final KineticModule MIXING = new KineticModule(
+            "create:mixing", "Veloce Mixer Module",
+            CreateRecipeFamily::mixing, 4.0f);
+
+    /** Wszystkie maszyny - do rejestracji i zakladki kreatywnej. */
     public static final List<KineticModule> ALL =
-            List.of(MILLING, CUTTING, CRUSHING, MECHANICAL_CRAFTING);
+            List.of(MILLING, CUTTING, CRUSHING, MECHANICAL_CRAFTING, PRESSING, MIXING);
 }

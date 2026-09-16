@@ -67,7 +67,16 @@ public final class CreateModule implements VeloceProcessingModule {
             if (!VeloceProcessingSources.hasAny(level, network, type)) {
                 continue;
             }
-            out.addAll(CreateRecipeHarvest.index(level, type).keySet());
+            int side = VeloceProcessingSources.maxGridSide(level, network, type);
+            CreateRecipeHarvest.index(level, type).forEach((item, entries) -> {
+                for (ProcessingEntry entry : entries) {
+                    if (entry.fitsGrid(side)
+                            && requirementsMet(level, network, type, entry)) {
+                        out.add(item);
+                        return;
+                    }
+                }
+            });
         }
         return out;
     }
@@ -96,7 +105,14 @@ public final class CreateModule implements VeloceProcessingModule {
             if (!VeloceProcessingSources.hasPowered(level, network, type)) {
                 continue;
             }
-            out.addAll(CreateRecipeHarvest.forItem(level, type, item));
+            // Receptura z siatka wchodzi tylko wtedy, gdy maszyna ma dosc
+            // zbudowanych pol (crafter mechaniczny buduje sie z oczek).
+            int side = VeloceProcessingSources.maxGridSide(level, network, type);
+            for (ProcessingEntry entry : CreateRecipeHarvest.forItem(level, type, item)) {
+                if (entry.fitsGrid(side) && requirementsMet(level, network, type, entry)) {
+                    out.add(entry);
+                }
+            }
         }
         return out;
     }
@@ -115,6 +131,39 @@ public final class CreateModule implements VeloceProcessingModule {
             out.addAll(CreateRecipeHarvest.forItem(level, type, item));
         }
         return out;
+    }
+
+    /**
+     * Wymagania dodatkowe receptury: cieplo i Basen.
+     *
+     * <p>Gracz opisal to wprost: "jak cos potrzebuje mixer, to mixer jest;
+     * jesli tylko basin jest w jakimkolwiek inventory, to mamy basin
+     * zaliczony, a jak musi byc heated blaze burner, to tez mamy zaliczone,
+     * jesli tylko mamy blaze burner". Dlatego NIE budujemy modelu sieci
+     * przeplywow - pytamy wylacznie o obecnosc przedmiotu w sieci.
+     */
+    private static boolean requirementsMet(ServerLevel level, VelocePipeNetwork network,
+                                           RecipeType<?> type, ProcessingEntry entry) {
+        if (entry.requiresHeat() && !hasItem(level, network, "blaze_burner")) {
+            return false;
+        }
+        if (needsBasin(type) && !hasItem(level, network, "basin")) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Prasa i mixer pracuja na zawartosci Basenu - bez Basenu nie ma czego mieszac. */
+    private static boolean needsBasin(RecipeType<?> type) {
+        return type == CreateRecipeFamily.pressing() || type == CreateRecipeFamily.mixing();
+    }
+
+    /** Czy siec ma przedmiot z Create (w magazynie albo w buforze craftera). */
+    private static boolean hasItem(ServerLevel level, VelocePipeNetwork network, String path) {
+        Item item = net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+                net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", path));
+        return item != net.minecraft.world.item.Items.AIR
+                && network.getAllItemCounts(level).containsKey(item);
     }
 
     @Override

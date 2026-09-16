@@ -6,7 +6,7 @@
         "frame": "craftingveloce:block/veloce_integrale",
         "glass": "minecraft:block/purple_stained_glass",
         "particle": "minecraft:block/purple_stained_glass",
-        "content": "create:block/crushing_wheel_insert"
+        "content": "create:block/mechanical_press_side"
     },
     "elements": [
         {

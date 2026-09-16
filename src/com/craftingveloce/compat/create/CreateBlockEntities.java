@@ -52,6 +52,20 @@ public final class CreateBlockEntities {
                                     CreateKineticModules.MECHANICAL_CRAFTING, pos, state),
                             CreateBlocks.VELOCE_MECHANICAL_CRAFTER_MODULE.get()).build(null));
 
+    public static final DeferredHolder<BlockEntityType<?>,
+            BlockEntityType<VeloceKineticModuleBlockEntity>> PRESS_MODULE =
+            TYPES.register("veloce_create_press_module",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> create(CreateKineticModules.PRESSING, pos, state),
+                            CreateBlocks.VELOCE_PRESS_MODULE.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>,
+            BlockEntityType<VeloceKineticModuleBlockEntity>> MIXER_MODULE =
+            TYPES.register("veloce_create_mixer_module",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> create(CreateKineticModules.MIXING, pos, state),
+                            CreateBlocks.VELOCE_MIXER_MODULE.get()).build(null));
+
     public static void register(IEventBus modEventBus) {
         TYPES.register(modEventBus);
     }
@@ -77,6 +91,12 @@ public final class CreateBlockEntities {
         }
         if (module == CreateKineticModules.MECHANICAL_CRAFTING) {
             return MECHANICAL_CRAFTER_MODULE;
+        }
+        if (module == CreateKineticModules.PRESSING) {
+            return PRESS_MODULE;
+        }
+        if (module == CreateKineticModules.MIXING) {
+            return MIXER_MODULE;
         }
         throw new IllegalArgumentException("brak typu block entity dla maszyny " + module.id());
     }

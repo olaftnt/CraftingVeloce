@@ -1236,6 +1236,81 @@ def validate_case_occlusion():
     print("    OK (kazda definicja bloku: noOcclusion + nie zaslania sasiadow)")
 
 
+def validate_create_mechanics():
+    """
+    Mechanika maszyn Create: naped z kazdej strony, blachy, siatka, wymagania.
+
+    Gracz opisal cztery rzeczy, ktore musza dzialac razem:
+      1. krecenie przyjmowane z KAZDEJ strony (os obrotu ze stanu bloku, wal
+         na obu koncach osi) - inaczej naped z boku jest ignorowany,
+      2. bok, z ktorego dochodzi naped, zamyka sie blacha jak przy rurze,
+      3. crafter mechaniczny ma tyle pol siatki, ile zbudowal gracz, a receptura
+         wchodzi tylko wtedy, gdy sie w nich zmiesci (5x5 = 25 oczek, sufit 9x9),
+      4. receptury z Basenem i cieplem (Blaze Burner) sa craftowalne wtedy, gdy
+         te rzeczy sa w sieci - bez nich planer ich nie widzi.
+    """
+    problems = []
+
+    block_code = open("src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
+                      encoding="utf-8").read()
+    for need, what in (("BlockStateProperties.AXIS", "stanu osi obrotu"),
+                       ("side.getAxis() == state.getValue(BlockStateProperties.AXIS)",
+                        "walu z kazdej strony zgodnej z osia"),
+                       ("return state.getValue(BlockStateProperties.AXIS)",
+                        "osi obrotu czytanej ze stanu"),
+                       ("instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity",
+                        "blachy od strony napedu Create"),
+                       ("VeloceIntegraleFrame.withClosure", "blach na bokach obudowy"),
+                       ("protected BlockState updateShape", "przeliczania blach po zmianie sasiada")):
+        if need not in block_code:
+            problems.append("maszyna kinetyczna bez " + what)
+
+    entry = open("src/com/craftingveloce/crafting/ProcessingEntry.java", encoding="utf-8").read()
+    if "public boolean fitsGrid(int side)" not in entry:
+        problems.append("ProcessingEntry bez reguly dopasowania siatki")
+    sources = open("src/com/craftingveloce/crafting/VeloceProcessingSources.java",
+                   encoding="utf-8").read()
+    if "maxGridSide" not in sources:
+        problems.append("brak liczenia boku zbudowanej siatki")
+    harvest = open("src/com/craftingveloce/compat/create/CreateRecipeHarvest.java",
+                   encoding="utf-8").read()
+    for need, what in (("recipe.getWidth()", "szerokosci siatki z receptury"),
+                       ("recipe.getHeight()", "wysokosci siatki z receptury"),
+                       ("requiresHeat", "flagi ciepla (Blaze Burner)")):
+        if need not in harvest:
+            problems.append("harvest Create bez " + what)
+    module = open("src/com/craftingveloce/compat/create/CreateModule.java",
+                  encoding="utf-8").read()
+    for need, what in (('"blaze_burner"', "wymagania Blaze Burnera"),
+                       ('"basin"', "wymagania Basenu")):
+        if need not in module:
+            problems.append("modul Create bez " + what)
+    # Filtrowanie musi byc w OBIE strony zapytania (planer i lista "co umiemy"):
+    # samo wystapienie nazwy w pliku nic nie znaczy - latwo usunac jedno z dwoch
+    # miejsc i cicho dostac receptury ponad zbudowana siatke.
+    for signature, name in (("public List<ProcessingEntry> recipesFor(", "recipesFor"),
+                            ("public Set<Item> producible(", "producible")):
+        body = _method_body(module, signature)
+        if body is None or "fitsGrid" not in body or "requirementsMet" not in body:
+            problems.append(f"{name} nie filtruje receptur po siatce i wymaganiach")
+    family = open("src/com/craftingveloce/compat/create/CreateRecipeFamily.java",
+                  encoding="utf-8").read()
+    for need, what in (("pressing()", "typu prasy"), ("mixing()", "typu miksera")):
+        if need not in family:
+            problems.append("rodzina Create bez " + what)
+    be = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
+              encoding="utf-8").read()
+    for need, what in (("public static final int GRID_LIMIT = 9", "granicy 9x9"),
+                       ("GRID_LIMIT * GRID_LIMIT", "limitu oczek craftera")):
+        if need not in be:
+            problems.append("crafter bez " + what)
+
+    if problems:
+        fail("mechanika Create:\n  " + "\n  ".join(problems))
+    print("    OK (Create: os z kazdej strony + blachy, siatka z receptury, "
+          "wymagania basin/blaze, sufit 9x9)")
+
+
 def validate_mods_toml():
     """
     `neoforge.mods.toml` musi sie PARSOWAC i miec wymagane zaleznosci.
@@ -1559,8 +1634,15 @@ def validate_integrale_model():
         block_id = os.path.basename(bs_file)[:-len(".json")]
         bs_data = json.load(open(bs_file, encoding="utf-8"))
         bs_models = [v.get("model") for v in bs_data.get("variants", {}).values()]
-        if bs_models != ["craftingveloce:block/veloce_integrale_frame"]:
+        if not bs_models:
+            # Model wieloczesciowy: pierwsza czesc to obudowa (wazne takze dla
+            # particles - patrz komentarz przy blockstate stolu craftingu).
+            bs_models = [part.get("apply", {}).get("model")
+                         for part in bs_data.get("multipart", [])]
+        if not bs_models or bs_models[0] != "craftingveloce:block/veloce_integrale_frame":
             continue
+        if block_id == "veloce_integrale":
+            continue   # PUSTA obudowa: nie ma zawartosci i nie ma jej miec
         item_file = f"assets/craftingveloce/models/item/{block_id}.json"
         if not os.path.exists(item_file):
             problems.append(f"{block_id}: brak ikony itemu dla obudowy")
@@ -1767,6 +1849,7 @@ def main():
     validate_integrale_model()
     validate_integrale_display()
     validate_mods_toml()
+    validate_create_mechanics()
     validate_case_occlusion()
     validate_auto_crafter_ingredient_rule()
 
