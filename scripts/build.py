@@ -1663,6 +1663,81 @@ def validate_module_info_gui():
     print("    OK (okna maszyn: FE jak piec z bateria, Create osobny ekran bez energii)")
 
 
+def validate_energy_pull():
+    """
+    Nasze maszyny SAME sciagaja prad z obcych zrodel w sieci (Forge Energy).
+
+    Gracz: "nasz modul moze sciagnac prad z energy cuba, ale tylko w te strone;
+    inne moduly nie moga uzywac naszych kabli; jesli jest pelny, to nie probuje
+    sciagac; i chcemy limity".
+
+    Sprawdzamy caly lancuch:
+      1. obce zrodlo energii jest typem endpointu i trafia do sieci ze skanu,
+         ktory POMIJA nasze bloki (maszyny nie moga byc dla siebie zrodlem),
+      2. pobor respektuje: pelny akumulator = zero prob, limit odbioru maszyny,
+         limit zrodla (pytamy extractEnergy), zwrot nadwyzki i nieciagniecie
+         niezaladowanych chunkow,
+      3. ciagnie PIEC i moduly FE w swoim serwerowym ticku,
+      4. nasza rura NIE wystawia EnergyStorage (kierunek tylko jeden).
+    """
+    problems = []
+    enum_path = "src/com/craftingveloce/network/pipe/ConnectedEndpointInfo.java"
+    scan_path = "src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java"
+    pull_path = "src/com/craftingveloce/network/pipe/VeloceEnergyPull.java"
+    net_path = "src/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
+
+    if "ENERGY" not in open(enum_path, encoding="utf-8").read():
+        problems.append("brak typu endpointu ENERGY")
+    net_text = open(net_path, encoding="utf-8").read()
+    for need, what in (("addEnergyEndpoint(", "zapisu zrodel energii"),
+                       ("getEnergyEndpoints()", "odczytu zrodel energii"),
+                       ("clearEnergyEndpoints()", "czyszczenia listy zrodel")):
+        if need not in net_text:
+            problems.append("VelocePipeNetwork bez " + what)
+
+    scan = open(scan_path, encoding="utf-8").read()
+    if "discoveredEnergy.add(" not in scan:
+        problems.append("skan nie zapamietuje obcych zrodel energii")
+    if "instanceof VeloceNetworkNode" not in scan or "addEnergyEndpoint(" not in scan:
+        problems.append("skan nie pomija naszych blokow / nie zapisuje zrodel do sieci")
+
+    if not os.path.exists(pull_path):
+        problems.append("brak wspolnego poboru energii (VeloceEnergyPull)")
+    else:
+        pull = open(pull_path, encoding="utf-8").read()
+        for need, what in (("free <= 0", "braku poboru przy pelnym akumulatorze"),
+                           ("extractEnergy(", "pytania zrodla o transfer (limit zrodla)"),
+                           ("receiveEnergy(taken - accepted, false)", "zwrotu nadwyzki"),
+                           ("isLoaded(pos)", "pomijania niezaladowanych zrodel"),
+                           ("Math.min(free, maxRate)", "limitu odbioru maszyny")):
+            if need not in pull:
+                problems.append("pobor energii bez " + what)
+
+    # Modul FE wola pobor przez wlasny helper (pullFromNetwork), piec robi to
+    # wprost - dlatego sprawdzamy TICK + wywolanie w pliku, a nie sam literal
+    # w ciele ticku (pierwsza wersja testu dawala falszywy alarm).
+    fe_mod = "src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
+    fe_text = open(fe_mod, encoding="utf-8").read()
+    fe_tick = _method_body(fe_text, "public void serverTick()")
+    if fe_tick is None or "pullFromNetwork()" not in fe_tick \
+            or "VeloceEnergyPull.pull(" not in fe_text:
+        problems.append("modul FE: nie sciaga pradu z sieci w ticku")
+    furn = "src/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java"
+    furn_text = open(furn, encoding="utf-8").read()
+    furn_tick = _method_body(furn_text, "public void serverTick()")
+    if furn_tick is None or "VeloceEnergyPull.pull(" not in furn_tick:
+        problems.append("piec elektryczny: nie sciaga pradu z sieci w ticku")
+
+    # Kierunek tylko jeden: rura nie moze wystawiac EnergyStorage.
+    pipe_be = "src/com/craftingveloce/block/entity/VelocePipeBlockEntity.java"
+    if os.path.exists(pipe_be) and "IEnergyStorage" in open(pipe_be, encoding="utf-8").read():
+        problems.append("rura wystawia EnergyStorage (obcy mod moglby z niej pobierac)")
+
+    if problems:
+        fail("pobor pradu z sieci:\n  " + "\n  ".join(problems))
+    print("    OK (pobor pradu: maszyny same sciagaja, limity i pelny akumulator respektowane)")
+
+
 def validate_craftable_cache():
     """
     Cache liczb "ile da sie dorobic": serwerowy, JEDEN na siec, instant dla GUI.
@@ -2847,6 +2922,7 @@ def main():
     validate_showcase_command()
     validate_block_probe()
     validate_craftable_cache()
+    validate_energy_pull()
     validate_module_info_gui()
     validate_jade_info()
     validate_terminal_craft_error()
