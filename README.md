@@ -99,11 +99,20 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
   się jak normalny klocek (można po niej chodzić, nie da się przez nią przejść);
   `noOcclusion` + przepuszczanie światła, żeby sąsiad nie renderował się
   „w dziurze”
+- **Zabudowa stron od kabli**: gdy z danej strony dochodzi rura Veloce, okno
+  od tej strony **zamyka się metalową blachą** — od razu widać, z której strony
+  klatka jest podłączona. Stan trzymany jest w **stanie bloku** (sześć
+  booleanów waniliowego `PipeBlock`, po jednym na stronę), a `updateShape`
+  przelicza tylko tę jedną stronę; brak block entity i tickera, więc działa
+  też na kliencie bez pakietów
 - **Węzeł sieci Veloce**: rura łączy się z każdej strony, ale klatka **nie
   utrzymuje chunku** (`VeloceNetworkNode.keepChunkLoaded()` = `false`) — jest
   dekoracją, a force-loady mają trzymać to, co naprawdę pracuje
+- Blockstate jest **wielocześciowy** (`multipart`): model ramy + po jednej
+  blasze na stronę (`veloce_integrale_panel_<strona>`), a nie 64 warianty
 - Modelu pilnuje `validate_integrale_model` w `build.py` (12 prętów, szyba
-  wcięta i ze szkła, `render_type: translucent`, `ambientocclusion: false`)
+  wcięta i ze szkła, `render_type: translucent`, `ambientocclusion: false`,
+  6 blach dokładnie w świetle okna i 6 warunków w blockstate)
 
 ---
 

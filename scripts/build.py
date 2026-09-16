@@ -1120,6 +1120,13 @@ def validate_block_models():
                 refs.append(variant.get("model"))
             elif isinstance(variant, list):
                 refs.extend(v.get("model") for v in variant)
+        # Blockstate wieloczesciowy (multipart): model ramy + zaslepki stron.
+        for part in data.get("multipart", []):
+            apply = part.get("apply")
+            if isinstance(apply, dict):
+                refs.append(apply.get("model"))
+            elif isinstance(apply, list):
+                refs.extend(a.get("model") for a in apply)
         for ref in refs:
             if not ref:
                 continue
@@ -1184,7 +1191,7 @@ def validate_integrale_model():
       * szyba bierze teksture szkla, a nie metalu ramy,
       * model ma render_type translucent (bez tego fiolet jest nieprzezroczysty).
     """
-    path = "assets/craftingveloce/models/block/veloce_integrale.json"
+    path = "assets/craftingveloce/models/block/veloce_integrale_frame.json"
     if not os.path.exists(path):
         return
     model = json.load(open(path, encoding="utf-8"))
@@ -1228,9 +1235,77 @@ def validate_integrale_model():
         problems.append(f"render_type={render_type!r} - bez translucent fiolet jest "
                         f"nieprzezroczysty (gracz chce szklo)")
 
+    # 3) Zaslepki stron: po jednej na kazda strone, dokladnie w świetle okna.
+    #
+    # Gracz chce widziec, z ktorej strony dochodzi kabel - okno od tej strony
+    # zamyka sie blacha. Zaslepka MUSI lezec na plaszczyznie TEJ wlasnie strony
+    # (0 albo 16) i przykrywac okno 2..14, inaczej zostaje szpara albo blacha
+    # wisi w powietrzu.
+    sides = {
+        "north": (2, 0), "south": (2, 1), "west": (0, 2),
+        "east": (1, 2), "down": (2, 2), "up": (2, 2),
+    }
+    for side, (axis_a, axis_b) in sides.items():
+        panel_path = ("assets/craftingveloce/models/block/"
+                      f"veloce_integrale_panel_{side}.json")
+        if not os.path.exists(panel_path):
+            problems.append(f"brak modelu zaslepki {side}")
+            continue
+        panel_model = json.load(open(panel_path, encoding="utf-8"))
+        panel_elements = panel_model.get("elements", [])
+        if len(panel_elements) != 1:
+            problems.append(f"zaslepka {side}: elementow {len(panel_elements)}, ma byc 1")
+            continue
+        f, t = panel_elements[0]["from"], panel_elements[0]["to"]
+        if side in ("north", "south"):
+            low, high = f[2], t[2]
+            if not ((side == "north" and low == 0 and high == 2)
+                    or (side == "south" and low == 14 and high == 16)):
+                problems.append(f"zaslepka {side}: z={low}..{high}, ma byc przy scianie")
+            if (f[0], t[0], f[1], t[1]) != (2, 14, 2, 14):
+                problems.append(f"zaslepka {side}: okno ma byc 2..14, jest "
+                                f"{f[0]}..{t[0]} x {f[1]}..{t[1]}")
+        if side in ("west", "east"):
+            low, high = f[0], t[0]
+            if not ((side == "west" and low == 0 and high == 2)
+                    or (side == "east" and low == 14 and high == 16)):
+                problems.append(f"zaslepka {side}: x={low}..{high}, ma byc przy scianie")
+            if (f[1], t[1], f[2], t[2]) != (2, 14, 2, 14):
+                problems.append(f"zaslepka {side}: okno ma byc 2..14, jest "
+                                f"{f[1]}..{t[1]} x {f[2]}..{t[2]}")
+        if side in ("down", "up"):
+            low, high = f[1], t[1]
+            if not ((side == "down" and low == 0 and high == 2)
+                    or (side == "up" and low == 14 and high == 16)):
+                problems.append(f"zaslepka {side}: y={low}..{high}, ma byc przy scianie")
+            if (f[0], t[0], f[2], t[2]) != (2, 14, 2, 14):
+                problems.append(f"zaslepka {side}: okno ma byc 2..14, jest "
+                                f"{f[0]}..{t[0]} x {f[2]}..{t[2]}")
+
+    # 4) Blockstate musi byc wieloczesciowy: rama + po jednej zaslepce na strone.
+    bs_path = "assets/craftingveloce/blockstates/veloce_integrale.json"
+    bs = json.load(open(bs_path, encoding="utf-8"))
+    parts = bs.get("multipart", [])
+    if not parts:
+        problems.append("blockstate nie jest wieloczesciowy (multipart) - "
+                        "nie da sie pokazac zabudowanych stron")
+    else:
+        applied = {p.get("apply", {}).get("model") for p in parts}
+        if "craftingveloce:block/veloce_integrale_frame" not in applied:
+            problems.append("blockstate nie zawiera modelu ramy")
+        for side in sides:
+            condition = parts and any(
+                p.get("when", {}).get(side) == "true"
+                and p.get("apply", {}).get("model")
+                == f"craftingveloce:block/veloce_integrale_panel_{side}"
+                for p in parts)
+            if not condition:
+                problems.append(f"blockstate nie ma warunku dla strony {side}")
+
     if problems:
         fail("model klatki veloce_integrale:\n  " + "\n  ".join(problems))
-    print(f"    OK (klatka: {len(bars)} pretow + szyba {glass_texture}, translucent)")
+    print(f"    OK (klatka: {len(bars)} pretow + szyba {glass_texture}, "
+          f"6 zaslepek stron, translucent)")
 
 
 def game_running():

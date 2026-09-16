@@ -4,10 +4,14 @@ import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.PipeBlock;
 import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.BlockState;
 
 import javax.annotation.Nullable;
@@ -41,8 +45,68 @@ import javax.annotation.Nullable;
  */
 public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
 
+    /**
+     * Szesc stanow: czy okno z danej strony jest ZABUDOWANE.
+     *
+     * <p>Uzywamy stanow waniliowego {@link PipeBlock} (te same nazwy:
+     * {@code north}, {@code east}, ...), bo sa dokladnie tym, czego potrzeba -
+     * jedna wartosc na strone - i dzieki temu mapa kierunek -&gt; wlasciwosc
+     * istnieje juz w wanilii ({@link PipeBlock#PROPERTY_BY_DIRECTION}).
+     *
+     * <p><b>Po co.</b> Gracz chce widziec, z ktorej strony dochodzi kabel:
+     * okno od tej strony zamyka sie metalowa zaslepka. To czysto wizualne -
+     * polaczenie sieci jest rozpoznawane po bloku, nie po stanie.
+     */
+    public static final BooleanProperty[] CLOSED_BY_DIRECTION = {
+            PipeBlock.DOWN, PipeBlock.UP, PipeBlock.NORTH,
+            PipeBlock.SOUTH, PipeBlock.WEST, PipeBlock.EAST,
+    };
+
     public VeloceIntegraleBlock(Properties properties) {
         super(properties);
+        BlockState state = stateDefinition.any();
+        for (Direction direction : Direction.values()) {
+            state = state.setValue(PipeBlock.PROPERTY_BY_DIRECTION.get(direction), false);
+        }
+        registerDefaultState(state);
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(CLOSED_BY_DIRECTION);
+    }
+
+    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    @Override
+    public BlockState getStateForPlacement(BlockPlaceContext context) {
+        BlockState state = defaultBlockState();
+        net.minecraft.world.level.Level level = context.getLevel();
+        BlockPos pos = context.getClickedPos();
+        for (Direction direction : Direction.values()) {
+            boolean cable = level.getBlockState(pos.relative(direction)).getBlock()
+                    instanceof VelocePipeBlock;
+            state = state.setValue(PipeBlock.PROPERTY_BY_DIRECTION.get(direction), cable);
+        }
+        return state;
+    }
+
+    /**
+     * Zmiana sasiada przelicza TYLKO te strone.
+     *
+     * <p>Dzieki temu postawienie albo zburzenie kabla obok natychmiast zamyka
+     * lub otwiera okno - bez block entity, bez tickera i bez odswiezania
+     * z serwera (stan bloku jedzie normalnym sync pakietem).
+     */
+    @Override
+    protected BlockState updateShape(BlockState state, Direction facing, BlockState facingState,
+                                     net.minecraft.world.level.LevelAccessor world, BlockPos pos,
+                                     BlockPos facingPos) {
+        BooleanProperty property = PipeBlock.PROPERTY_BY_DIRECTION.get(facing);
+        if (property == null) {
+            return state;
+        }
+        boolean cable = facingState.getBlock() instanceof VelocePipeBlock;
+        return state.getValue(property) == cable ? state : state.setValue(property, cable);
     }
 
     @Override

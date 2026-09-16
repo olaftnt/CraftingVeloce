@@ -1,0 +1,43 @@
+{
+    "parent": "block/block",
+    "ambientocclusion": false,
+    "render_type": "minecraft:translucent",
+    "textures": {
+        "panel": "craftingveloce:block/veloce_integrale",
+        "particle": "craftingveloce:block/veloce_integrale"
+    },
+    "elements": [
+        {
+            "from": [
+                2.0,
+                2.0,
+                0
+            ],
+            "to": [
+                14.0,
+                14.0,
+                2.0
+            ],
+            "faces": {
+                "north": {
+                    "texture": "#panel"
+                },
+                "east": {
+                    "texture": "#panel"
+                },
+                "south": {
+                    "texture": "#panel"
+                },
+                "west": {
+                    "texture": "#panel"
+                },
+                "up": {
+                    "texture": "#panel"
+                },
+                "down": {
+                    "texture": "#panel"
+                }
+            }
+        }
+    ]
+}
