@@ -1681,22 +1681,30 @@ def validate_pipe_energy():
     problems = []
     pipe = "src/com/craftingveloce/block/entity/VelocePipeBlockEntity.java"
     text = open(pipe, encoding="utf-8").read()
-    for need, what in (("energyBuffer", "pojemnika energii"),
-                       ("ENERGY_RATE", "limitu FE/tick"),
-                       ("extractingSides[i]", "poboru na stronie extracting"),
-                       ("!extractingSides[i]", "rozdania na pozostalych stronach")):
+    # Sprawdzamy DEKLARACJE i WYWOLANIA, nie sama obecnosc slowa: podmiana
+    # "energyBuffer =" na "buforX =" albo zakomentowanie wolania przechodzila
+    # przez pierwsza wersje testu (kalibracja to pokazala).
+    for need, what in (("private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer",
+                        "deklaracji pojemnika energii"),
+                       ("private static final int ENERGY_RATE", "limitu FE/tick"),
+                       ("if (!extractingSides[i] || disconnectedSides[i])",
+                        "poboru tylko na stronie extracting"),
+                       ("if (extractingSides[i] || disconnectedSides[i])",
+                        "rozdania na pozostalych stronach")):
         if need not in text:
             problems.append("rura bez " + what)
     tick = _method_body(text, "public void updateServer()")
-    if tick is None or "tickEnergy();" not in tick:
+    if tick is None or "\n        tickEnergy();" not in tick:
         problems.append("energia nie jest tykowana (brak tickEnergy w updateServer)")
 
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
-    if "VELOCE_PIPE_BE.get()" in mod and "EnergyStorage.BLOCK" in mod:
-        # sprawdzamy tylko najprostsza pomylke: rejestracja energii na rurze
-        for line in mod.splitlines():
-            if "EnergyStorage.BLOCK" in line and "VELOCE_PIPE_BE" in line:
-                problems.append("rura wystawia EnergyStorage (moglaby byc przewodem)")
+    # Rejestracja energii na rurze = rura staje sie przewodem dla innych modow.
+    # Sprawdzamy OKNO wokol kazdej rejestracji, bo typ bywa w nastepnej linii.
+    for idx in [i for i in range(len(mod)) if mod.startswith("EnergyStorage.BLOCK", i)]:
+        window = mod[idx:idx + 200]
+        if "VELOCE_PIPE_BE" in window or "VELOCE_PIPE" in window:
+            problems.append("rura wystawia EnergyStorage (moglaby byc przewodem)")
+            break
 
     # Maszyny: tylko odbiorniki - extractEnergy musi zwracac 0.
     for path, what in (("src/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java",
