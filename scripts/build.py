@@ -1205,6 +1205,43 @@ def validate_block_models():
     print(f"    OK ({checked} odwolan do modeli i tekstur istnieje)")
 
 
+def validate_showcase_command():
+    """
+    /cv showcase: lista blokow z REJESTRU, nie z recznej listy.
+
+    Recznie pisana lista blokow do testow rozjedzie sie z rejestrem przy
+    pierwszym nowym bloku (i nikt tego nie zauwazy, bo komenda "dziala" -
+    tylko nie pokazuje nowego klocka). Guard pilnuje, ze komenda chodzi po
+    rejestrze (BuiltInRegistries.BLOCK), ze wypelnia maszyny budowane
+    (VeloceCaseBuildable) i ze jest podpieta do rejestracji komend.
+    """
+    path = "src/com/craftingveloce/commands/CVShowcaseCommand.java"
+    if not os.path.exists(path):
+        fail("showcase:\n  brak klasy komendy /cv showcase")
+    text = open(path, encoding="utf-8").read()
+    problems = []
+    if "getStateForPlacement" not in text:
+        problems.append("komenda showcase bez stanu z wlasna logika postawienia")
+    for need, what in (('literal("pipes")', "trybu z rurami"),
+                       ('literal("clear")', "trybu sprzatania")):
+        if need not in text:
+            problems.append("komenda showcase bez " + what)
+    # Ciala metod, nie caly plik: nazwa "BuiltInRegistries.BLOCK" wystepuje
+    # w kilku miejscach, wiec samo jej usuniecie z listy blokow nie byloby widoczne.
+    blocks_body = _method_body(text, "private static List<Block> ourBlocks()")
+    if blocks_body is None or "BuiltInRegistries.BLOCK" not in blocks_body:
+        problems.append("showcase nie czyta listy blokow z REJESTRU (reczna lista sie rozjedzie)")
+    fill_body = _method_body(text, "private static void fillParts(")
+    if fill_body is None or "VeloceCaseBuildable" not in fill_body:
+        problems.append("showcase nie wypelnia maszyn budowanych elementami")
+    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    if "CVShowcaseCommand.register" not in mod:
+        problems.append("komenda showcase nie jest zarejestrowana")
+    if problems:
+        fail("showcase:\n  " + "\n  ".join(problems))
+    print("    OK (/cv showcase: bloki z rejestru + elementy + rury + sprzatanie)")
+
+
 def validate_loot_item_ids():
     """
     Kazda loot table musi wskazywac na ISTNIEJACY item.
@@ -2095,6 +2132,7 @@ def main():
     validate_case_disassembly()
     validate_case_occlusion()
     validate_loot_item_ids()
+    validate_showcase_command()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))

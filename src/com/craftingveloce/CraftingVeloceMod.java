@@ -191,6 +191,8 @@ public class CraftingVeloceMod {
 
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             CVDebugCommand.register(event.getDispatcher());
+            // /cv showcase: stawia wszystkie nasze bloki do testow renderu.
+            com.craftingveloce.commands.CVShowcaseCommand.register(event.getDispatcher());
             com.craftingveloce.commands.CVTestNetworkCommand.register(event.getDispatcher());
             com.craftingveloce.commands.CVTraceCommand.register(event.getDispatcher());
             // getitems potrzebuje build contextu - ItemArgument podpowiada
