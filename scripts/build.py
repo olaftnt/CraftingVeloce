@@ -1305,6 +1305,39 @@ def validate_create_mechanics():
         if need not in be:
             problems.append("crafter bez " + what)
 
+    # Konwersje: pusty Integrale + klocek z Create = nasz modul. To ta sciezka,
+    # ktora gracz opisal ("biore puste veloce integrale, klikam crushing
+    # wheel'em - pojawia sie jeden w srodku, drugi klik - drugi i dopiero
+    # teraz maszyna dziala").
+    compat = open("src/com/craftingveloce/compat/create/CreateCompat.java",
+                  encoding="utf-8").read()
+    if "registerConversions();" not in compat:
+        problems.append("bramka Create nie rejestruje konwersji z pustej obudowy")
+    for item in ("crushing_wheel", "mechanical_crafter", "millstone", "mechanical_saw",
+                 "mechanical_press", "mechanical_mixer"):
+        if f'VeloceIntegraleConversions.register(block("{item}")' not in compat:
+            problems.append(f"brak konwersji obudowy na modul z create:{item}")
+
+    integrale = open("src/com/craftingveloce/block/VeloceIntegraleBlock.java",
+                     encoding="utf-8").read()
+    if "VeloceCaseBuildable" not in integrale or "buildable.addPart()" not in integrale:
+        problems.append("pierwszy wlozony klocek nie zostaje w maszynie "
+                        "(konwersja nie dokłada elementu)")
+
+    renderer = open("src/com/craftingveloce/client/render/VeloceCaseRenderer.java",
+                    encoding="utf-8").read()
+    render_body = _method_body(renderer, "public void render(")
+    if render_body is None or "caseParts() <= 0" not in render_body:
+        problems.append("maszyna bez wklikanych elementow nie jest pusta obudowa "
+                        "(z creative'a widac gotowy klocek)")
+    if "Math.sqrt(parts)" not in renderer:
+        problems.append("elementy maszyny nie ukladaja sie w siatke "
+                        "(ma byc tyle modeli, ile gracz wklikal)")
+
+    if "neighbourAxis" not in block_code or "Direction.Axis axis = neighbourAxis" not in block_code:
+        problems.append("os maszyny nie dopasowuje sie do sasiada z napedem "
+                        "(naped z boku nie zadziala)")
+
     if problems:
         fail("mechanika Create:\n  " + "\n  ".join(problems))
     print("    OK (Create: os z kazdej strony + blachy, siatka z receptury, "

@@ -57,7 +57,12 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
 
         // Maszyna z wlasnymi elementami (kola mlynskie) rysuje je OBOK SIEBIE
         // i kreci z predkoscia, ktora podaje sama maszyna (Create).
-        if (be instanceof VeloceCaseSpin spin && spin.caseParts() > 0) {
+        if (be instanceof VeloceCaseSpin spin) {
+            if (spin.caseParts() <= 0) {
+                // Maszyna, ktorej gracz jeszcze NIC nie wklikal, wyglada jak
+                // pusta obudowa - a nie jak maszyna z klockiem w srodku.
+                return;
+            }
             renderParts(spin, content, pose, buffers, packedLight, packedOverlay, time);
             return;
         }
@@ -87,14 +92,26 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                              MultiBufferSource buffers, int packedLight, int packedOverlay,
                              float time) {
         int parts = spin.caseParts();
+        // Uklad: tyle modeli, ile gracz wklikal - jeden element w srodku, dwa
+        // kola obok siebie, 25 oczek jako siatka 5x5, 81 jako 9x9.
+        int side = Math.max(1, (int) Math.ceil(Math.sqrt(parts)));
+        int rows = Math.max(1, (parts + side - 1) / side);
+        float spacing = 0.72F / side;
+        float scale = Math.min(CONTENT_SCALE, spacing * 0.9F);
         float speed = spin.caseSpinDegreesPerTick();
         for (int i = 0; i < parts; i++) {
-            float offset = (i - (parts - 1) / 2.0F) * 0.34F;
+            int col = i % side;
+            int row = i / side;
             float direction = (i % 2 == 0) ? 1.0F : -1.0F;
             pose.pushPose();
-            pose.translate(0.5D + offset, 0.5D, 0.5D);
-            pose.mulPose(Axis.ZP.rotationDegrees((time * speed * direction) % 360.0F));
-            pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
+            pose.translate(0.5D + (col - (side - 1) / 2.0F) * spacing,
+                    0.5D - (row - (rows - 1) / 2.0F) * spacing, 0.5D);
+            if (speed != 0.0F) {
+                // Kola mlynskie krecA sie w przeciwne strony (zazebienie);
+                // oczka craftera stoja, bo maszyna nie ma wtedy obrotow.
+                pose.mulPose(Axis.ZP.rotationDegrees((time * speed * direction) % 360.0F));
+            }
+            pose.scale(scale, scale, scale);
             pose.translate(-0.5D, -0.5D, -0.5D);
             Minecraft.getInstance().getBlockRenderer()
                     .renderSingleBlock(content.defaultBlockState(), pose, buffers,

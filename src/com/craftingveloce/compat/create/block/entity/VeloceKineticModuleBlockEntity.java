@@ -41,7 +41,8 @@ import java.util.Set;
  * dlatego jest tworzona wylacznie przez bramke {@code CreateCompat}.
  */
 public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
-        implements VeloceProcessingSource, com.craftingveloce.block.VeloceCaseSpin {
+        implements VeloceProcessingSource, com.craftingveloce.block.VeloceCaseSpin,
+        com.craftingveloce.block.VeloceCaseBuildable {
 
     /**
      * Pula operacji dla planera, gdy maszyna sie kreci.
@@ -117,6 +118,7 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
      * Dokłada jeden element (prawy klik). Zwraca false, gdy maszyna jest pelna
      * albo w ogole nie przyjmuje elementow.
      */
+    @Override
     public boolean addPart() {
         if (partsLimit() <= 0 || parts >= partsLimit()) {
             return false;

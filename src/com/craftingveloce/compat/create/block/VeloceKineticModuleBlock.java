@@ -211,11 +211,51 @@ public class VeloceKineticModuleBlock extends KineticBlock
         return RenderShape.MODEL;
     }
 
-    /** Wal napedowy wchodzi z KAZDEJ strony zgodnej z osia maszyny. */
+    /**
+     * Wal napedowy przyjmujemy z KAZDEJ strony.
+     *
+     * <p>Krecenie przenosi sie tylko miedzy zgodnymi osiami, wiec poza dwoma
+     * koncami wlasnej osi przyjmujemy wal takze tam, gdzie stoi maszyna
+     * kinetyczna o tej samej osi - a os maszyny dopasowuje sie do sasiada
+     * automatycznie (patrz {@link #neighborChanged}).
+     */
     @Override
     public boolean hasShaftTowards(LevelReader world, BlockPos pos, BlockState state,
                                    Direction side) {
-        return side.getAxis() == state.getValue(BlockStateProperties.AXIS);
+        Direction.Axis own = state.getValue(BlockStateProperties.AXIS);
+        if (side.getAxis() == own) {
+            return true;
+        }
+        return neighbourAxis(world, pos.relative(side), world.getBlockState(pos.relative(side))) == own;
+    }
+
+    /**
+     * Os maszyny dopasowuje sie do sasiada z napedem.
+     *
+     * <p>Bez tego maszyna postawiona obok poziomego walu zostawala z pionowa
+     * osia i "nie przyjmowala mocy z tej strony" - a gracz oczekuje, ze
+     * wystarczy dostawic ja do napedu.
+     */
+    @Override
+    protected void neighborChanged(BlockState state, Level world, BlockPos pos, Block fromBlock,
+                                   BlockPos fromPos, boolean isMoving) {
+        super.neighborChanged(state, world, pos, fromBlock, fromPos, isMoving);
+        if (world.isClientSide) {
+            return;
+        }
+        Direction.Axis axis = neighbourAxis(world, fromPos, world.getBlockState(fromPos));
+        if (axis != null && axis != state.getValue(BlockStateProperties.AXIS)) {
+            world.setBlock(pos, state.setValue(BlockStateProperties.AXIS, axis), Block.UPDATE_ALL);
+        }
+    }
+
+    /** Os obrotu sasiada, gdy jest nim maszyna kinetyczna Create. */
+    private static Direction.Axis neighbourAxis(net.minecraft.world.level.BlockGetter world,
+                                                BlockPos pos, BlockState neighbour) {
+        if (neighbour.getBlock() instanceof KineticBlock kinetic) {
+            return kinetic.getRotationAxis(neighbour);
+        }
+        return null;
     }
 
     /** Os obrotu maszyny - taka, jaka wybral gracz przy postawieniu. */

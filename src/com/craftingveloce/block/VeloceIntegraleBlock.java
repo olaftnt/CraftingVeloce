@@ -134,6 +134,12 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
         BlockState result = conversion.resultBlock().defaultBlockState();
         result = VeloceIntegraleFrame.copyClosures(state, result);
         world.setBlock(pos, result, Block.UPDATE_ALL);
+        // Wlozony klocek ZOSTAJE w srodku: obudowa buduje sie element po
+        // elemencie (kolo mlynskie, oczko craftera), a nie "jest maszyna, bo
+        // zostala postawiona".
+        if (world.getBlockEntity(pos) instanceof VeloceCaseBuildable buildable) {
+            buildable.addPart();
+        }
         VeloceNodeBlocks.onNodePlaced(world, pos);
         world.playSound(null, pos, SoundEvents.ITEM_FRAME_ADD_ITEM,
                 SoundSource.BLOCKS, 0.8F, 1.2F);

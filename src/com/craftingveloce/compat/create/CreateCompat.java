@@ -1,6 +1,7 @@
 package com.craftingveloce.compat.create;
 
 import com.craftingveloce.block.VeloceCaseContents;
+import com.craftingveloce.block.VeloceIntegraleConversions;
 import com.craftingveloce.compat.VeloceMods;
 import net.neoforged.bus.api.IEventBus;
 
@@ -39,6 +40,7 @@ public final class CreateCompat {
         // a w srodku renderuje sie BLOK BAZOWY z Create (kolo mlynskie, mlyn,
         // pila, crafter mechaniczny).
         registerCases();
+        registerConversions();
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             registerCaseRenderers(modEventBus);
         }
@@ -73,6 +75,30 @@ public final class CreateCompat {
                 () -> block("mechanical_press"));
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MIXER_MODULE.get(),
                 () -> block("mechanical_mixer"));
+    }
+
+    /**
+     * Wiersze konwersji: pusty Integrale + klocek z Create = nasz modul.
+     *
+     * <p>To jest ta sciezka, ktora gracz opisal: "biore puste veloce integrale,
+     * stawiam, klikam prawym crushing wheel'em - pojawia sie jeden w srodku,
+     * klikam drugi raz - jest drugi i dopiero teraz maszyna dziala".
+     * Pierwszy klik zamienia obudowe na modul (i wklada jeden element), drugi
+     * klik trafia juz w modul i doklada kolejny element.
+     */
+    private static void registerConversions() {
+        VeloceIntegraleConversions.register(block("crushing_wheel"),
+                () -> CreateBlocks.VELOCE_CRUSHING_MODULE.get());
+        VeloceIntegraleConversions.register(block("mechanical_crafter"),
+                () -> CreateBlocks.VELOCE_MECHANICAL_CRAFTER_MODULE.get());
+        VeloceIntegraleConversions.register(block("millstone"),
+                () -> CreateBlocks.VELOCE_MILLSTONE_MODULE.get());
+        VeloceIntegraleConversions.register(block("mechanical_saw"),
+                () -> CreateBlocks.VELOCE_SAW_MODULE.get());
+        VeloceIntegraleConversions.register(block("mechanical_press"),
+                () -> CreateBlocks.VELOCE_PRESS_MODULE.get());
+        VeloceIntegraleConversions.register(block("mechanical_mixer"),
+                () -> CreateBlocks.VELOCE_MIXER_MODULE.get());
     }
 
     /**

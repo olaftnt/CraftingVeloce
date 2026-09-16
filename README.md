@@ -390,6 +390,15 @@ Maszyny mają **elementy**, które dokłada gracz prawym klikiem:
 | kruszarka | **2 koła młyńskie** (1 klik = 1 koło) | z jednym kołem kręci się, ale nic nie robi (`isPowered` wymaga kompletu) |
 | mechanical crafter | **oczka** (do 9×9 = 81) | siatka receptury liczona z receptury (`getWidth()/getHeight()`) i porównywana z zbudowanymi polami; zbudowane 25 oczek = wszystko z packa |
 
+**Jak się buduje maszynę**: stawiasz **pustą obudowę** (`veloce_integrale`),
+bierzesz klocek bazowy z Create i klikasz prawym — **pierwszy klik zamienia
+obudowę na nasz moduł i wkłada jeden element**, a każdy następny klik dokłada
+kolejny (kruszarka: dwa koła młyńskie, crafter: oczka do 9×9). W środku renderuje
+się **tyle modeli, ile wklikałeś** (jeden, dwa obok siebie, potem siatka), więc
+dopóki nie ma kompletu, maszyna jest pusta i nie pracuje. Moduł postawiony
+wprost z zakładki kreatywnej również startuje **pusty** — nic nie udaje gotowej
+maszyny.
+
 Receptury, które wymagają **Basenu** (press, mixer) albo **ciepła** (Blaze
 Burner), są dostępne wtedy, gdy te rzeczy są w sieci — nie budujemy modelu
 przepływów, pytamy o **obecność przedmiotu** (`basin`, `blaze_burner`).
