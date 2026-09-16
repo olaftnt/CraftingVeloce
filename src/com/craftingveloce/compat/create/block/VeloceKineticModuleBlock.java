@@ -9,6 +9,7 @@ import com.simibubi.create.content.kinetics.base.KineticBlock;
 import com.simibubi.create.foundation.block.IBE;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
@@ -206,6 +207,31 @@ public class VeloceKineticModuleBlock extends KineticBlock
     private static net.minecraft.world.item.Item item(String id) {
         return net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", id));
+    }
+
+    /**
+     * Zbicie maszyny oddaje ja z ZAPISANA liczba elementow.
+     *
+     * <p>Gracz: "niech dany blok ma w tagu NBT zapamietane, ile dokladnie
+     * crafterow zawiera w srodku - po zniszczeniu konstrukcji dokladnie ta sama
+     * liczba zostaje w NBT dropnietego itemu, a po postawieniu ma zachowac te
+     * sama wartosc". Zapisujemy wiec licznik w danych block entity itemu
+     * (BlockItem.setBlockEntityData), a przy postawieniu odtwarza go zwykla
+     * sciezka Minecrafta (updateCustomBlockEntityTag -> read).
+     */
+    @Override
+    protected java.util.List<ItemStack> getDrops(BlockState state,
+                                                 net.minecraft.world.level.storage.loot.LootParams.Builder params) {
+        ItemStack stack = new ItemStack(this);
+        if (params.getOptionalParameter(
+                net.minecraft.world.level.storage.loot.parameters.LootContextParams.BLOCK_ENTITY)
+                instanceof VeloceKineticModuleBlockEntity be && be.caseParts() > 0) {
+            net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+            tag.putInt("VeloceParts", be.caseParts());
+            net.minecraft.world.item.BlockItem.setBlockEntityData(stack,
+                    blockEntityType.get(), tag);
+        }
+        return java.util.List.of(stack);
     }
 
     @Override

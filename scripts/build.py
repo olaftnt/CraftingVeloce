@@ -1456,6 +1456,78 @@ def validate_create_mechanics():
           "wymagania basin/blaze, sufit 9x9)")
 
 
+def validate_case_disassembly():
+    """
+    Rozkladanie obudowy: NBT na dropie + receptura w stole craftingu.
+
+    Gracz: "niech dany blok ma w tagu NBT zapamietane, ile dokladnie crafterow
+    zawiera w srodku - po zniszczeniu dokladnie ta sama liczba zostaje w NBT
+    dropnietego itemu, a po postawieniu ma zachowac te sama wartosc. A gdy
+    wloze ten przedmiot do Crafting Table, receptura ma zwrocic sam mechanical
+    crafter w liczbie, ile ich bylo, plus sam ten bazowy klocek."
+
+    Sprawdzamy cztery ogniwa, bo kazde z nich latwo zgubic po osobno:
+      1. blok zapisuje licznik elementow do NBT dropnietego przedmiotu,
+      2. block entity umie go odczytac (inaczej postawienie gubi wartosc),
+      3. receptura zwraca pusta obudowe ORAZ klocki bazowe w liczbie z NBT,
+      4. serializer jest zarejestrowany, a receptura dostarczona jako JSON
+         (bez JSON-a receptura nie istnieje w swiecie).
+    """
+    problems = []
+
+    module_block = open("src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
+                        encoding="utf-8").read()
+    drops = _method_body(module_block, "protected java.util.List<ItemStack> getDrops(")
+    if drops is None:
+        problems.append("maszyna nie ma wlasnego dropu (licznik nie trafi do NBT)")
+    else:
+        for need, what in (('tag.putInt("VeloceParts"', "zapisu liczby elementow"),
+                           ("BlockItem.setBlockEntityData", "wpisania danych do przedmiotu"),
+                           ("LootContextParams.BLOCK_ENTITY", "odczytu block entity przy zbiciu")):
+            if need not in drops:
+                problems.append("drop maszyny bez " + what)
+
+    be = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
+              encoding="utf-8").read()
+    if 'tag.getInt("VeloceParts")' not in be or 'tag.putInt("VeloceParts"' not in be:
+        problems.append("block entity nie czyta/zapisuje liczby elementow w NBT")
+
+    recipe_path = "src/com/craftingveloce/crafting/VeloceCaseDisassemblyRecipe.java"
+    if not os.path.exists(recipe_path):
+        fail("rozkladanie obudowy:\n  brak klasy receptury")
+    recipe = open(recipe_path, encoding="utf-8").read()
+    remaining_body = _method_body(recipe, "public NonNullList<ItemStack> getRemainingItems(")
+    if remaining_body is None or "remaining.set(" not in remaining_body \
+            or "base.asItem()" not in remaining_body:
+        problems.append("getRemainingItems nie zwraca klockow bazowych do siatki")
+    for need, what in (("VELOCE_INTEGRALE_ITEM", "zwrotu pustej obudowy"),
+                       ("getRemainingItems", "zwrotu klockow bazowych do siatki"),
+                       ("base.asItem()", "klocka bazowego jako zwrotu"),
+                       ("partsOf(machine)", "liczby elementow z NBT"),
+                       ('getInt("VeloceParts")', "odczytu licznika z NBT przedmiotu")):
+        if need not in recipe:
+            problems.append("receptura bez " + what)
+
+    recipes = open("src/com/craftingveloce/crafting/VeloceRecipes.java", encoding="utf-8").read()
+    if '"case_disassembly"' not in recipes:
+        problems.append("serializer receptury nie jest zarejestrowany")
+    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    if "VeloceRecipes.register" not in mod:
+        problems.append("rejestracja receptur nie jest podpieta do moda")
+
+    json_path = "data/craftingveloce/recipe/case_disassembly.json"
+    if not os.path.exists(json_path):
+        problems.append("brak JSON-a receptury (data/craftingveloce/recipe/case_disassembly.json)")
+    else:
+        data = json.load(open(json_path, encoding="utf-8"))
+        if data.get("type") != "craftingveloce:case_disassembly":
+            problems.append(f"JSON receptury ma typ {data.get('type')}")
+
+    if problems:
+        fail("rozkladanie obudowy:\n  " + "\n  ".join(problems))
+    print("    OK (obudowa: NBT z liczba elementow + receptura rozkladajaca)")
+
+
 def validate_mods_toml():
     """
     `neoforge.mods.toml` musi sie PARSOWAC i miec wymagane zaleznosci.
@@ -2010,6 +2082,7 @@ def main():
     validate_integrale_display()
     validate_mods_toml()
     validate_create_mechanics()
+    validate_case_disassembly()
     validate_case_occlusion()
     validate_auto_crafter_ingredient_rule()
 

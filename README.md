@@ -396,6 +396,15 @@ Maszyny mają **elementy**, które dokłada gracz prawym klikiem:
 | mechanical crafter | **oczka** (do 9×9 = 81) | siatka receptury liczona z receptury (`getWidth()/getHeight()`) i porównywana z zbudowanymi polami; zbudowane 25 oczek = wszystko z packa; po każdym kliknięciu na pasku akcji pojawia się sam układ siatki (`1x2`, `1x3`, … `9x9`) |
 | deployer | — | receptury `create:deploying` (np. precision mechanism): nakłada item na item |
 
+**Rozkładanie maszyny**: zbita maszyna zapisuje w NBT przedmiotu **liczbę
+wbudowanych elementów** (`VeloceParts`), a postawienie odtwarza ją z NBT.
+Włożenie takiego przedmiotu do **stołu craftingu** daje z powrotem **pustą
+obudowę** (`veloce_integrale`) i **tyle klocków bazowych, ile było w środku**
+(np. 25 oczek → 25 × `create:mechanical_crafter`); części wracają do siatki
+mechaniką wanilii (`getRemainingItems`). Receptura:
+`data/craftingveloce/recipe/case_disassembly.json` + serializer
+`craftingveloce:case_disassembly`.
+
 **Jak się buduje maszynę**: stawiasz **pustą obudowę** (`veloce_integrale`),
 bierzesz klocek bazowy z Create i klikasz prawym — **pierwszy klik zamienia
 obudowę na nasz moduł i wkłada jeden element**, a każdy następny klik dokłada

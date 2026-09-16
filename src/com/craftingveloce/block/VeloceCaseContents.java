@@ -64,9 +64,13 @@ public final class VeloceCaseContents {
      * obudowy - np. rura albo terminal).
      */
     public static Block contentFor(BlockState state) {
-        Block block = state.getBlock();
+        return contentFor(state.getBlock());
+    }
+
+    /** To samo po samym bloku (uzywane m.in. przez recepture rozkladajaca). */
+    public static Block contentFor(Block machine) {
         for (Entry entry : ENTRIES) {
-            if (entry.machine().get() == block) {
+            if (entry.machine().get() == machine) {
                 return entry.content().get();
             }
         }

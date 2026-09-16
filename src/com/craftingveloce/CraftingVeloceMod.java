@@ -90,6 +90,7 @@ public class CraftingVeloceMod {
                 });
 
         VeloceRegistry.register(modEventBus);
+        com.craftingveloce.crafting.VeloceRecipes.register(modEventBus);
         CREATIVE_TABS.register(modEventBus);
         VelocePacketHandler.register(modEventBus);
 
