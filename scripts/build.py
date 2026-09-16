@@ -1316,37 +1316,6 @@ def validate_integrale_display():
     if leftovers:
         problems.append("zostal stary system eksponatow:\n  " + "\n  ".join(leftovers))
 
-    table = open("src/com/craftingveloce/block/VeloceCraftingTableBlock.java",
-                 encoding="utf-8").read()
-    if 'BooleanProperty.create("facade")' not in table:
-        problems.append("stol craftingu bez stanu obudowy (facade)")
-
-    drops = _method_body(table, "protected List<ItemStack> getDrops")
-    if drops is None:
-        problems.append("stol craftingu bez wlasnego wypadu przy zbiciu")
-    else:
-        for need, what in (("isFacade(state)", "rozpoznania stolu w obudowie"),
-                           ("VELOCE_INTEGRALE_CRAFTING_ITEM", "przedmiotu rama + stol")):
-            if need not in drops:
-                problems.append("wypad stolu w obudowie bez " + what)
-
-    revert = _method_body(table, "private static void takeBackCraftingTable")
-    if revert is None:
-        problems.append("stol craftingu bez drogi powrotnej (rozebranie obudowy)")
-    else:
-        for need, what in (("VELOCE_INTEGRALE.get()", "przywrocenia pustej klatki"),
-                           ("CRAFTING_TABLE", "oddania stolu craftingu")):
-            if need not in revert:
-                problems.append("rozebranie obudowy bez " + what)
-
-    use = _method_body(table, "protected InteractionResult useWithoutItem")
-    if use is None or "takeBackCraftingTable" not in use:
-        problems.append("shift + prawy klik nie rozbiera obudowy - pustej klatki "
-                        "nie da sie odzyskac")
-    elif "isFacade(state) && player.isShiftKeyDown()" not in use:
-        problems.append("rozbiorka obudowy wisi na martwym warunku (galaz nigdy "
-                        "sie nie wykona)")
-
     be_path = "src/com/craftingveloce/block/entity/VeloceCraftingTableBlockEntity.java"
     be = open(be_path, encoding="utf-8").read()
     if "instanceof com.craftingveloce.block.VeloceCraftingTableBlock" not in be:
@@ -1364,15 +1333,10 @@ def validate_integrale_display():
     registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     if "integraleBlock()" in registry:
         problems.append("klatka nadal ma wlasny block entity stolu (ma go nie miec)")
-    if '"veloce_integrale_crafting"' not in registry:
-        problems.append("brak rejestracji przedmiotu 'veloce_integrale_crafting'")
 
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VeloceCaseRenderer" not in mod:
         problems.append("brak rejestracji renderera obudowy (RegisterRenderers)")
-    if "VELOCE_INTEGRALE_CRAFTING_ITEM.get()" not in mod:
-        problems.append("przedmiotu 'rama + stol' nie ma w zakladce kreatywnej "
-                        "(nie da sie go zdobyc inaczej niz komenda)")
 
     renderer = "src/com/craftingveloce/client/render/VeloceCaseRenderer.java"
     if not os.path.exists(renderer):
@@ -1403,7 +1367,7 @@ def validate_integrale_display():
     if problems:
         fail("klatka / maszyny z klatki:\n  " + "\n  ".join(problems))
     print(f"    OK (klatka: {len(conversions.split('add(Blocks.')) - 1} przepisan, "
-          f"stol w obudowie + droga powrotna, brak eksponatow)")
+          f"obudowa + zawartosc, brak duplikatow)")
 
 
 def validate_integrale_model():
@@ -1565,36 +1529,6 @@ def validate_integrale_model():
             continue
         if "#content" not in open(item_file, encoding="utf-8").read():
             problems.append(f"{block_id}: ikona itemu bez zawartosci obudowy (#content)")
-
-    # 6) Ikona przedmiotu "rama + stol": rama klatki + kostka stolu w srodku.
-    #    To ona mowi graczowi (i modom od receptur), ze w tym bloku jest stol.
-    item_path = "assets/craftingveloce/models/item/veloce_integrale_crafting.json"
-    if not os.path.exists(item_path):
-        problems.append("brak ikony przedmiotu veloce_integrale_crafting")
-    else:
-        item_model = json.load(open(item_path, encoding="utf-8"))
-        item_elements = item_model.get("elements", [])
-        if len(item_elements) != len(elements) + 1:
-            problems.append(f"ikona: elementow {len(item_elements)}, "
-                            f"ma byc {len(elements)} (rama+szyba) + 1 (stol)")
-        else:
-            table_from = item_elements[-1].get("from")
-            table_to = item_elements[-1].get("to")
-            if table_from != [4.0, 4.0, 4.0] or table_to != [12.0, 12.0, 12.0]:
-                problems.append(f"ikona: stol {table_from}..{table_to}, "
-                                f"ma byc 4..12 (mniejszy od szyby 2..14)")
-        item_textures = item_model.get("textures", {})
-        faces = set()
-        for element in item_elements[len(elements):]:
-            for face in element.get("faces", {}).values():
-                faces.add(face.get("texture"))
-        for needed in ("#table_top", "#table_front", "#table_side"):
-            if needed not in faces:
-                problems.append(f"ikona: brak sciany {needed} stolu")
-        for key in ("table_top", "table_front", "table_side"):
-            if "crafting_table" not in item_textures.get(key, ""):
-                problems.append(f"ikona: tekstura {key} nie jest stolem craftingu "
-                                f"({item_textures.get(key)})")
 
     if problems:
         fail("model klatki veloce_integrale:\n  " + "\n  ".join(problems))

@@ -132,11 +132,6 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
     private static void convert(Level world, BlockPos pos, BlockState state,
                                 VeloceIntegraleConversions.Conversion conversion) {
         BlockState result = conversion.resultBlock().defaultBlockState();
-        if (result.hasProperty(VeloceCraftingTableBlock.FACADE)) {
-            // Stol w klatce: ten jeden blok ma wariant "w obudowie", wiec
-            // zachowuje wyglad klatki (i renderowany stol w srodku).
-            result = result.setValue(VeloceCraftingTableBlock.FACADE, true);
-        }
         result = VeloceIntegraleFrame.copyClosures(state, result);
         world.setBlock(pos, result, Block.UPDATE_ALL);
         VeloceNodeBlocks.onNodePlaced(world, pos);
