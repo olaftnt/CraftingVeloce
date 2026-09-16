@@ -5,6 +5,7 @@ import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.HashMap;
 import java.util.List;
@@ -316,7 +317,7 @@ public final class VeloceCraftingCache {
 
         // Mapa: chunk -> blok, ktory jest powodem trzymania (do raportu).
         // Limit jest juz nalozony na CHUNKI w collectChunksToKeep.
-        Map<Long, BlockPos> wanted = collectChunksToKeep();
+        Map<Long, BlockPos> wanted = collectChunksToKeep(level);
 
         releaseUnwantedChunks(level, wanted.keySet());
         int added = retainWantedChunks(level, wanted);
@@ -353,12 +354,18 @@ public final class VeloceCraftingCache {
      * <p>Wezly maja priorytet absolutny; limit {@link #MAX_FORCED_CHUNKS}
      * ucina tylko przypadki skrajne (baza z setkami wezlow).
      */
-    private Map<Long, BlockPos> collectChunksToKeep() {
+    private Map<Long, BlockPos> collectChunksToKeep(ServerLevel level) {
         List<BlockPos> nodes = new java.util.ArrayList<>(network.getTerminals());
         nodes.sort(POSITION_ORDER);
 
         Map<Long, BlockPos> chosen = new LinkedHashMap<>();
         for (BlockPos p : nodes) {
+            // Wezly OZDOBNE (np. klatka) nie trzymaja chunku - patrz
+            // VeloceNetworkNode.keepChunkLoaded. Sprawdzamy to PO bloku, bo
+            // decyduje o tym sam blok, a nie lista typow w tym miejscu.
+            if (!keepsChunkLoaded(level, p)) {
+                continue;
+            }
             if (chosen.size() >= MAX_FORCED_CHUNKS) {
                 VeloceLog.Network.failure(VeloceLog.Side.SERVER,
                         "network %s has more than %d node chunk(s) - rest NOT force-loaded",
@@ -368,6 +375,24 @@ public final class VeloceCraftingCache {
             chosen.putIfAbsent(chunkKeyOf(p), p);
         }
         return chosen;
+    }
+
+    /**
+     * Czy wezel na tej pozycji ma utrzymywany chunk.
+     *
+     * <p>Nieczytelny wezel (chunk rozladowany) traktujemy jak "trzymaj": nie
+     * umiemy wtedy odczytac jego decyzji, a zaprzestanie trzymania
+     * uniemozliwiloby kiedykolwiek odczytanie go ponownie.
+     */
+    private static boolean keepsChunkLoaded(ServerLevel level, BlockPos pos) {
+        BlockState state = com.craftingveloce.network.pipe.VeloceChunkLoader
+                .blockStateIfLoaded(level, pos);
+        if (state == null) {
+            return true;
+        }
+        return !(state.getBlock()
+                instanceof com.craftingveloce.network.pipe.VeloceNetworkNode node)
+                || node.keepChunkLoaded();
     }
 
     /** Klucz chunku dla pozycji bloku. */

@@ -50,6 +50,20 @@ public interface VeloceNetworkNode {
         return false;
     }
 
+    /**
+     * Czy chunk z tym wezlem ma byc utrzymywany w pamieci (force-load).
+     *
+     * <p>Domyslnie tak, bo wezel to zwykle maszyna albo terminal: bez symulacji
+     * przestaje pracowac (piec nie pali, crafter nie craftuje, sensor nie
+     * pilnuje progow). Bloki OZDOBNE (np. klatka {@code veloce_integrale})
+     * zwracaja {@code false} - nie maja block entity i nic nie traca, gdy ich
+     * chunk wypadnie, a trzymanie ich kosztowaloby miejsce na liscie
+     * force-loadow, wypychajac z niej to, co naprawde pracuje.
+     */
+    default boolean keepChunkLoaded() {
+        return true;
+    }
+
     /** Opcjonalna etykieta do diagnostyki i logow. */
     default String nodeName() {
         return getClass().getSimpleName();

@@ -45,6 +45,8 @@ public class CraftingVeloceMod {
                         output.accept(VeloceRegistry.ELECTRIC_FURNACE_ITEM.get());
                         output.accept(VeloceRegistry.THRESHOLD_SENSOR_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_WRENCH.get());
+                        // Ozdobna klatka - widac tylko krawedzie, srodek pusty.
+                        output.accept(VeloceRegistry.VELOCE_INTEGRALE_ITEM.get());
                         // Pozycje z opcjonalnych integracji - TYLKO gdy mod
                         // jest obecny. Sprawdzenie musi byc W SRODKU lambdy:
                         // displayItems wykonuje sie ZAWSZE (takze bez tych

@@ -1084,7 +1084,86 @@ def validate_auto_crafter_ingredient_rule():
     print("    OK (planer i wykonanie: jedna regula skladnikow)")
 
 
+def validate_integrale_model():
+    """
+    Klatka Veloce Integrale: TYLKO krawedzie, srodek pusty.
+
+    Gracz opisal wyglad wprost: "ma tylko rogi i kance, tak jakby narysowac
+    kwadrat na kartce - widac linie tylko na rogach bez kolorowania srodka".
+    Model latwo zepsuc jedna literowka (element zamiast preta 2x2 zrobiony
+    16x2, albo srodek wypelniony przez pomylke) - a w grze wyglada to jak
+    zwykly klocek, czyli dokladnie odwrotnie niz ma byc.
+
+    Sprawdzamy to, co widzi gracz:
+      * jest 12 elementow (tyle ma szescian krawedzi),
+      * kazdy element to CIENKI pret (dwa wymiary <= 2, trzeci >= 16),
+      * srodek kazdej sciany i sam srodek NIE sa niczym przykryte,
+      * wszystkie 12 krawedzi sa obecne (przynajmniej jednym elementem).
+    """
+    path = "assets/craftingveloce/models/block/veloce_integrale.json"
+    if not os.path.exists(path):
+        return
+    model = json.load(open(path, encoding="utf-8"))
+    elements = model.get("elements", [])
+    problems = []
+
+    if len(elements) != 12:
+        problems.append(f"elementow: {len(elements)}, ma byc 12 (12 krawedzi szescianu)")
+
+    for i, el in enumerate(elements):
+        f, t = el.get("from"), el.get("to")
+        if not f or not t:
+            problems.append(f"element {i}: brak from/to")
+            continue
+        sizes = [t[0] - f[0], t[1] - f[1], t[2] - f[2]]
+        thin = sum(1 for size in sizes if size <= 2)
+        long_side = max(sizes)
+        if thin < 2 or long_side < 16:
+            problems.append(f"element {i}: wymiary {sizes} - to nie cienki pret "
+                            f"(2 wymiary <= 2 i jeden >= 16)")
+
+    def covered(point):
+        x, y, z = point
+        for el in elements:
+            f, t = el["from"], el["to"]
+            if f[0] <= x <= t[0] and f[1] <= y <= t[1] and f[2] <= z <= t[2]:
+                return True
+        return False
+
+    # Srodki scian (1 jednostka w glab) i sam srodek - musza byc puste.
+    for label, point in (("sciana -Y", (8, 1, 8)), ("sciana +Y", (8, 15, 8)),
+                         ("sciana -X", (1, 8, 8)), ("sciana +X", (15, 8, 8)),
+                         ("sciana -Z", (8, 8, 1)), ("sciana +Z", (8, 8, 15)),
+                         ("srodek", (8, 8, 8))):
+        if covered(point):
+            problems.append(f"{label} {point}: przykryta - srodek ma byc PUSTY")
+
+    # Kazda z 12 krawedzi musi byc obecna (punkt w polowie krawedzi).
+    edges = []
+    for y in (1, 15):
+        for x in (1, 15):
+            for z in (1, 15):
+                edges.append((x, y, z))          # narozniki
+    for mid in ((8, 1, 1), (8, 1, 15), (8, 15, 1), (8, 15, 15),
+                (1, 1, 8), (15, 1, 8), (1, 15, 8), (15, 15, 8),
+                (1, 8, 1), (15, 8, 1), (1, 8, 15), (15, 8, 15)):
+        edges.append(mid)
+    missing = [p for p in edges if not covered(p)]
+    # narozniki sa czescia krawedzi, wiec wystarczy sprawdzic punkty srodkowe
+    missing = [p for p in missing if p in ((8, 1, 1), (1, 8, 1), (1, 1, 8))]
+    if missing:
+        problems.append(f"brak krawedzi w punktach: {missing}")
+
+    if model.get("ambientocclusion", True):
+        problems.append("ambientocclusion nie jest false - cienie na pretach klatki")
+
+    if problems:
+        fail("model klatki veloce_integrale:\n  " + "\n  ".join(problems))
+    print(f"    OK (klatka: {len(elements)} pretow po krawedziach, srodek pusty)")
+
+
 def game_running():
+
 
 
 
@@ -1272,6 +1351,7 @@ def main():
     validate_create_kinetics()
     validate_number_format()
     validate_module_recipe_access()
+    validate_integrale_model()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))

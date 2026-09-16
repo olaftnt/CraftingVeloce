@@ -62,6 +62,7 @@ TOOL_BY_BLOCK = {
     "veloce_create_saw_module": "pickaxe",
     "veloce_create_crushing_module": "pickaxe",
     "veloce_create_mechanical_crafter_module": "pickaxe",
+    "veloce_integrale": "pickaxe",                     # ozdobna klatka
 }
 DEFAULT_TOOL = "pickaxe"
 

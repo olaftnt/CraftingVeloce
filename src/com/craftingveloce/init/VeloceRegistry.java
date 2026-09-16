@@ -197,6 +197,23 @@ public class VeloceRegistry {
                             (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceThresholdSensorMenu(
                                     windowId, inv, data.readBlockPos())));
 
+    // 9. Veloce Integrale (ozdobna klatka: tylko krawedzie, pusty srodek)
+    public static final DeferredBlock<com.craftingveloce.block.VeloceIntegraleBlock> VELOCE_INTEGRALE =
+            BLOCKS.register("veloce_integrale",
+                    () -> new com.craftingveloce.block.VeloceIntegraleBlock(
+                            net.minecraft.world.level.block.state.BlockBehaviour.Properties.of()
+                                    .mapColor(net.minecraft.world.level.material.MapColor.METAL)
+                                    .sound(net.minecraft.world.level.block.SoundType.METAL)
+                                    .strength(2.0F)
+                                    .noOcclusion()
+                                    .isViewBlocking((state, world, pos) -> false)
+                                    .isSuffocating((state, world, pos) -> false)
+                                    .requiresCorrectToolForDrops()));
+
+    public static final DeferredItem<BlockItem> VELOCE_INTEGRALE_ITEM = ITEMS.registerSimpleBlockItem(
+            "veloce_integrale",
+            VELOCE_INTEGRALE);
+
     @FunctionalInterface
     public interface BlockEntityFactory<T extends BlockEntity> {
         T create(net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state);

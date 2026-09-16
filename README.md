@@ -86,6 +86,20 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
 - Sprawdza sieć raz na sekundę (`CHECK_INTERVAL_TICKS = 20`), bo skan magazynów
   jest drogi, a sensor służy do uruchamiania fabryki, nie do taktowania
 
+### 9. Veloce Integrale (`veloce_integrale`)
+- **Ozdobna klatka**: widać TYLKO krawędzie i narożniki (12 cienkich prętów
+  2×2 px), środek każdej ściany jest pusty — jak narysowany kwadrat
+- Pusty środek to brak geometrii, a nie przezroczysta tekstura: nie potrzebuje
+  `render_type` (przezroczystość w tym modzie jest wyłączona celowo)
+- **Kolizja też z krawędzi** — przez środek można przejść, po prętach można
+  chodzić, `noOcclusion` + przepuszczanie światła (sąsiad nie renderuje się
+  „w dziurze”)
+- **Węzeł sieci Veloce**: rura łączy się z każdej strony, ale klatka **nie
+  utrzymuje chunku** (`VeloceNetworkNode.keepChunkLoaded()` = `false`) — jest
+  dekoracją, a force-loady mają trzymać to, co naprawdę pracuje
+- Modelu pilnuje `validate_integrale_model` w `build.py` (12 prętów, środek
+  każdej ściany i sam środek puste, `ambientocclusion: false`)
+
 ---
 
 ## 🏗️ Architektura techniczna
