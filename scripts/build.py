@@ -1359,6 +1359,29 @@ def validate_create_mechanics():
                        ("getQuads(", "sprawdzania, czy model bloku ma geometrie")):
         if need not in renderer:
             problems.append("renderer obudowy bez " + what)
+    # TRZY warstwy zawartosci, w tej kolejnosci: (1) model bloku, gdy ma
+    # geometrie, (2) RENDERER BLOCK ENTITY maszyny bazowej - tylko on pokazuje
+    # animowane czesci (ostrze pily, srodek mlyna, bijak prasy, kola kruszarki),
+    # (3) model itemu jako ostatnia deska ratunku.
+    content_body = _method_body(renderer, "private void renderContent(")
+    if content_body is None:
+        problems.append("renderer bez metody renderContent")
+    else:
+        order = [content_body.find("renderSingleBlock("),
+                 content_body.find("contentRenderer(content)"),
+                 content_body.find("renderStatic(")]
+        if order[0] < 0 or order[1] < 0 or order[2] < 0:
+            problems.append("renderContent nie ma wszystkich trzech warstw zawartosci")
+        elif not (order[0] < order[1] < order[2]):
+            problems.append("warstwy zawartosci sa w zlej kolejnosci (blok -> renderer BE -> item)")
+        if "BROKEN_CONTENT_RENDERERS" not in content_body:
+            problems.append("renderContent nie pamieta nieudanych rendererow")
+    custom_body = _method_body(renderer, "private static Optional<ContentRenderer> contentRenderer(")
+    if custom_body is None or "getBlockEntityRenderDispatcher()" not in custom_body \
+            or "getRenderer(" not in custom_body:
+        problems.append("brak warstwy renderera block entity maszyny (pila/mlyn/prasa "
+                        "mialyby pociety model)")
+
     if "ItemDisplayContext.FIXED" in renderer:
         problems.append("fallback itemu uzywa FIXED - item jest za maly i "
                         "przesuniety; ma byc NONE (jak model bloku)")
@@ -1375,7 +1398,7 @@ def validate_create_mechanics():
     if parts_body is not None and ("speed != 0.0F" not in parts_body
                                    or "time * speed" not in parts_body):
         problems.append("kola mlynskie nie krecA sie z predkoscia napedu")
-    if "renderStandard(content, pose" not in renderer:
+    if "renderStandard(content, partialTick, pose" not in renderer:
         problems.append("zawartosc ze stala zawartoscia nie uzywa zwyklej animacji")
     be_spin = _method_body(open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
                                 encoding="utf-8").read(),

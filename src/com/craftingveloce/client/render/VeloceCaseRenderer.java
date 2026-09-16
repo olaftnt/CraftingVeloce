@@ -9,16 +9,21 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.client.renderer.entity.ItemRenderer;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelManager;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
 
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -121,6 +126,64 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      */
     private static int cachedGeneration = 0;
 
+    /**
+     * Renderery block entity klockow bazowych (warstwa 2).
+     *
+     * <p><b>Po co.</b> Czesc modelu maszyn z innych modow (ostrze piły, srodek
+     * mlyna, bijak prasy, kola kruszarki) rysuje WYLACZNIE ich renderer block
+     * entity - w modelu bloku i w modelu itemu tych czesci po prostu nie ma.
+     * Dlatego item na ziemi wyglada dobrze (tam renderer tez dziala), a w
+     * obudowie widac tylko polowe maszyny. Tutaj tworzymy SYNTEtyczny block
+     * entity tego klocka (bez wstawiania go do swiata) i wolamy jego renderer.
+     */
+    private record ContentRenderer(BlockEntity entity,
+                                   net.minecraft.client.renderer.blockentity.BlockEntityRenderer<BlockEntity> renderer) {
+    }
+
+    private static final Map<Block, Optional<ContentRenderer>> CONTENT_RENDERERS =
+            new ConcurrentHashMap<>();
+
+    /** Klocki, ktorych renderer BE rzucil wyjatek - nie probujemy w kolko. */
+    private static final Set<Block> BROKEN_CONTENT_RENDERERS = ConcurrentHashMap.newKeySet();
+
+    @SuppressWarnings("unchecked")
+    private static Optional<ContentRenderer> contentRenderer(Block block) {
+        if (BROKEN_CONTENT_RENDERERS.contains(block)) {
+            return Optional.empty();
+        }
+        return CONTENT_RENDERERS.computeIfAbsent(block, b -> {
+            if (!(b instanceof EntityBlock entityBlock)) {
+                return Optional.empty();
+            }
+            try {
+                BlockEntity entity = entityBlock.newBlockEntity(BlockPos.ZERO, b.defaultBlockState());
+                if (entity == null) {
+                    return Optional.empty();
+                }
+                var level = Minecraft.getInstance().level;
+                if (level != null) {
+                    entity.setLevel(level);
+                }
+                var renderer = Minecraft.getInstance().getBlockEntityRenderDispatcher()
+                        .getRenderer(entity);
+                if (renderer == null) {
+                    return Optional.empty();
+                }
+                return Optional.of(new ContentRenderer(entity,
+                        (net.minecraft.client.renderer.blockentity.BlockEntityRenderer<BlockEntity>) renderer));
+            } catch (Throwable failure) {
+                // Maszyna moze wymagac prawdziwego poziomu/sasiadow - wtedy
+                // zostaje model itemu, a bledu nie powtarzamy co klatke.
+                BROKEN_CONTENT_RENDERERS.add(b);
+                com.craftingveloce.util.VeloceLog.Block.detail(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "block entity renderer for %s not usable in case: %s",
+                        b, failure.getClass().getSimpleName());
+                return Optional.empty();
+            }
+        });
+    }
+
     private static boolean blockModelUsable(Block block) {
         ModelManager manager = Minecraft.getInstance().getModelManager();
         int generation = System.identityHashCode(manager);
@@ -149,8 +212,8 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
     }
 
     /** Rysuje klocek bazowy jako przedmiot (FIXED) - z obrotem i bujaniem. */
-    private void renderContent(Block content, PoseStack pose, MultiBufferSource buffers,
-                               int packedLight, int packedOverlay) {
+    private void renderContent(Block content, float partialTick, PoseStack pose,
+                               MultiBufferSource buffers, int packedLight, int packedOverlay) {
         if (blockModelUsable(content)) {
             // Normalny model bloku - tak jak bylo: pelny rozmiar i srodek.
             Minecraft.getInstance().getBlockRenderer()
@@ -158,8 +221,23 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                             packedLight, packedOverlay);
             return;
         }
-        // Fallback: maszyna bez geometrii w modelu bloku (kola mlynskie,
-        // maszyny Mekanism) - rysujemy model ITEMU, ale z kontekstem NONE,
+        // Warstwa 2: maszyna rysowana przez wlasny renderer block entity
+        // (pila, mlyn, prasa, mixer, kruszarka). To jedyny sposob, zeby bylo
+        // widac JEJ ANIMOWANE czesci, ktorych nie ma ani w modelu bloku, ani
+        // w modelu itemu.
+        Optional<ContentRenderer> custom = contentRenderer(content);
+        if (custom.isPresent()) {
+            ContentRenderer entry = custom.get();
+            try {
+                entry.renderer().render(entry.entity(), partialTick, pose, buffers,
+                        packedLight, packedOverlay);
+                return;
+            } catch (Throwable failure) {
+                BROKEN_CONTENT_RENDERERS.add(content);
+                CONTENT_RENDERERS.remove(content);
+            }
+        }
+        // Warstwa 3: model ITEMU, ale z kontekstem NONE,
         // czyli bez transformacji "FIXED". Dzieki temu item jest tej samej
         // wielkosci i dokladnie tam, gdzie model bloku (gracz: "za maly i nie
         // na srodku").
@@ -190,7 +268,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         // i kreci z predkoscia, ktora podaje sama maszyna (Create).
         if (be instanceof VeloceCaseSpin spin) {
             if (spin.caseParts() > 0) {
-                renderParts(spin, content, pose, buffers, packedLight, packedOverlay, time);
+                renderParts(spin, content, partialTick, pose, buffers, packedLight, packedOverlay, time);
                 return;
             }
             if (spin.caseBuiltFromParts()) {
@@ -199,11 +277,11 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
             }
             // Maszyna ze stala zawartoscia (mlynek, pila, prasa, mixer,
             // deployer): zwykla animacja, taka sama jak dla waniliowych klockow.
-            renderStandard(content, pose, buffers, packedLight, packedOverlay, time);
+            renderStandard(content, partialTick, pose, buffers, packedLight, packedOverlay, time);
             return;
         }
 
-        renderStandard(content, pose, buffers, packedLight, packedOverlay, time);
+        renderStandard(content, partialTick, pose, buffers, packedLight, packedOverlay, time);
     }
 
     /**
@@ -212,13 +290,14 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      * <p>Ta sama dla kazdego klocka - gracz: "maja sie krecic tak jak kazdy
      * inny render, np. crafting czy furnace".
      */
-    private void renderStandard(Block content, PoseStack pose, MultiBufferSource buffers,
-                                int packedLight, int packedOverlay, float time) {
+    private void renderStandard(Block content, float partialTick, PoseStack pose,
+                                MultiBufferSource buffers, int packedLight, int packedOverlay,
+                                float time) {
         pose.pushPose();
         beginStandardAnimation(pose, time);
         pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
         pose.translate(-0.5D, -0.5D, -0.5D);
-        renderContent(content, pose, buffers, packedLight, packedOverlay);
+        renderContent(content, partialTick, pose, buffers, packedLight, packedOverlay);
         pose.popPose();
     }
 
@@ -239,7 +318,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      * z maszyny (RPM z sieci kinetycznej), wiec szybszy naped = szybszy obrot,
      * a zatrzymany naped = kola stoja (nadal widoczne).
      */
-    private void renderParts(VeloceCaseSpin spin, Block content, PoseStack pose,
+    private void renderParts(VeloceCaseSpin spin, Block content, float partialTick, PoseStack pose,
                              MultiBufferSource buffers, int packedLight, int packedOverlay,
                              float time) {
         int parts = spin.caseParts();
@@ -275,7 +354,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
             }
             pose.scale(scale, scale, scale);
             pose.translate(-0.5D, -0.5D, -0.5D);
-            renderContent(content, pose, buffers, packedLight, packedOverlay);
+            renderContent(content, partialTick, pose, buffers, packedLight, packedOverlay);
             pose.popPose();
         }
         pose.popPose();
