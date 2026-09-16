@@ -17,8 +17,17 @@ public class VeloceCaseDisassemblySerializer implements RecipeSerializer<VeloceC
     private static final MapCodec<VeloceCaseDisassemblyRecipe> CODEC =
             MapCodec.unit(new VeloceCaseDisassemblyRecipe());
 
+    /**
+     * UWAGA: nie {@code StreamCodec.unit(...)} - ten koduje WYLACZNIE instancje,
+     * ktora dostal w konstruktorze, a receptura z datapacku jest inna instancja.
+     * Skończylo sie to bledem "Can't encode ... expected ..." przy pakiecie
+     * clientbound/minecraft:update_recipes i rozlaczeniem gracza przy wejsciu.
+     * Receptura nie ma pol, wiec nic nie zapisujemy, a przy odczycie tworzymy
+     * nowa instancje.
+     */
     private static final StreamCodec<RegistryFriendlyByteBuf, VeloceCaseDisassemblyRecipe> STREAM_CODEC =
-            StreamCodec.unit(new VeloceCaseDisassemblyRecipe());
+            StreamCodec.of((buffer, recipe) -> {
+            }, buffer -> new VeloceCaseDisassemblyRecipe());
 
     @Override
     public MapCodec<VeloceCaseDisassemblyRecipe> codec() {

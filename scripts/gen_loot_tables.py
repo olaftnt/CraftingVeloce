@@ -114,9 +114,23 @@ def write_json(path, data):
 
 
 def generate_loot_tables(block_ids):
-    created, kept, skipped = [], [], []
+    created, kept, skipped, repaired = [], [], [], []
     for b in block_ids:
         path = os.path.join(LOOT_DIR, f"{b}.json")
+        # Istniejacy plik NIE jest slepo zostawiany: porownujemy tresc z tym,
+        # co generator by dzis wygenerowal i naprawiamy rozjazd. Stare pliki
+        # zostawaly nietkniete, a przez to 4 loot table modulow Mekanism
+        # wskazywaly nieistniejacy item ("Unknown registry key ... veloce_crusher_module").
+        if os.path.exists(path):
+            try:
+                current = json.load(open(path, encoding="utf-8"))
+            except Exception:
+                current = None
+            expected = loot_table_for(b)
+            if current != expected:
+                write_json(path, expected)
+                repaired.append(b)
+                continue
         if b in NO_DROP:
             skipped.append(b)
             continue

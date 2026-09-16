@@ -1205,6 +1205,47 @@ def validate_block_models():
     print(f"    OK ({checked} odwolan do modeli i tekstur istnieje)")
 
 
+def validate_loot_item_ids():
+    """
+    Kazda loot table musi wskazywac na ISTNIEJACY item.
+
+    BUG z loga gry ("Unknown registry key in ResourceKey[minecraft:item]:
+    craftingveloce:veloce_crusher_module"): 4 loot table modulow Mekanism
+    wskazywaly item BEZ prefiksu moda, bo generator zostawial istniejace pliki
+    nietkniete. Objaw: te bloki nie dropily NIC (a blad lecial tylko do loga,
+    przy wczytywaniu loot table).
+    """
+    registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    compat = "".join(open(path, encoding="utf-8").read()
+                     for path in glob.glob("src/com/craftingveloce/compat/*/*Blocks.java"))
+    items = set(re.findall(r'register(?:SimpleBlockItem)?\(\s*"([a-z0-9_]+)"', registry + compat))
+
+    problems = []
+    files = sorted(glob.glob("data/craftingveloce/loot_table/blocks/*.json"))
+    for path in files:
+        data = json.load(open(path, encoding="utf-8"))
+        for name in _loot_item_names(data):
+            if not name.startswith("craftingveloce:"):
+                continue
+            if name.split(":", 1)[1] not in items:
+                problems.append(f"{os.path.basename(path)} -> {name}")
+    if problems:
+        fail("loot table wskazuja nieistniejace itemy:\n  " + "\n  ".join(problems))
+    print(f"    OK ({len(files)} loot table, kazdy wskazany item istnieje)")
+
+
+def _loot_item_names(node):
+    """Wszystkie 'name' z wpisow typu minecraft:item (rekurencyjnie)."""
+    if isinstance(node, dict):
+        if node.get("type") == "minecraft:item" and isinstance(node.get("name"), str):
+            yield node["name"]
+        for value in node.values():
+            yield from _loot_item_names(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _loot_item_names(value)
+
+
 def validate_case_occlusion():
     """
     Kazdy nasz blok musi byc {@code noOcclusion()} + nie zaslaniac sasiadow.
@@ -2053,6 +2094,7 @@ def main():
     validate_create_mechanics()
     validate_case_disassembly()
     validate_case_occlusion()
+    validate_loot_item_ids()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))
