@@ -1662,6 +1662,47 @@ def validate_module_info_gui():
     print("    OK (okna maszyn: FE jak piec z bateria, Create osobny ekran bez energii)")
 
 
+def validate_block_probe():
+    """
+    `/cv block`: statystyki klocka pod celownikiem + tolerancja progu RPM.
+
+    Gracz: "mam creative motor, ktory teoretycznie daje 256 obrotow, a modul
+    pokazuje not enough ... dodaj komende, ktora pokaze statystyki klocka,
+    na ktory patrze - ile mu brakuje speeda". Dwa ogniwa, oba latwe do zgubienia:
+      1. prog 256 RPM musi miec tolerancje (256.0 bywa 255.99998 po propagacji),
+      2. komenda musi istniec, byc podpieta pod /cv i czytac te same dane co
+         okno/Jade (VeloceModuleInfoSource) oraz pokazywac BRAKUJACA predkosc.
+    """
+    problems = []
+    be = ("src/com/craftingveloce/compat/create/block/entity/"
+          "VeloceKineticModuleBlockEntity.java")
+    text = open(be, encoding="utf-8").read()
+    speed = _method_body(text, "public boolean hasEnoughRotationSpeed()")
+    if speed is None or "REQUIRED_SPEED_TOLERANCE" not in speed:
+        problems.append("prog 256 RPM bez tolerancji (256.0 bywa 255.99998)")
+
+    probe = "src/com/craftingveloce/commands/BlockProbeCommand.java"
+    if not os.path.exists(probe):
+        problems.append("brak komendy /cv block")
+    else:
+        ptext = open(probe, encoding="utf-8").read()
+        for need, what in (("moduleInfo(", "danych maszyny"),
+                           ("BRAKUJE: ", "brakujacej predkosci"),
+                           ("VeloceNetworkNode", "informacji o wezle sieci")):
+            if need not in ptext:
+                problems.append("komenda /cv block bez " + what)
+    root = open("src/com/craftingveloce/commands/CVDebugCommand.java", encoding="utf-8").read()
+    if 'Commands.literal("block")' not in root or "BlockProbeCommand::describe" not in root:
+        problems.append("/cv block nie jest podpiete")
+    readme = "README.md"
+    if os.path.exists(readme) and "/cv block" not in open(readme, encoding="utf-8").read():
+        problems.append("/cv block nieopisane w README")
+
+    if problems:
+        fail("podglad klocka (/cv block):\n  " + "\n  ".join(problems))
+    print("    OK (/cv block: statystyki klocka + tolerancja progu RPM)")
+
+
 def validate_showcase_command():
     """
     /cv showcase: lista blokow z REJESTRU, nie z recznej listy.
@@ -2718,6 +2759,7 @@ def main():
     validate_case_occlusion()
     validate_loot_item_ids()
     validate_showcase_command()
+    validate_block_probe()
     validate_module_info_gui()
     validate_jade_info()
     validate_terminal_craft_error()

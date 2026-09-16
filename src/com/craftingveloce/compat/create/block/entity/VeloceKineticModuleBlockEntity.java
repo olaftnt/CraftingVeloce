@@ -142,8 +142,16 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
      * pochodzi z {@code CreateKineticModules.REQUIRED_SPEED}.
      */
     public boolean hasEnoughRotationSpeed() {
-        return Math.abs(getSpeed()) >= com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
+        // TOLERANCJA: silnik ustawiony na 256 RPM potrafi dac 255.99998 po drodze
+        // (float + propagacja sieci Create), a wtedy prog ">= 256" meldowal
+        // "not enough" mimo kompletu obrotow. Pol RPM to nadal twarda granica
+        // (przy 255 maszyna stoi), ale przestaje zalezec od bledu zaokraglenia.
+        return Math.abs(getSpeed()) + REQUIRED_SPEED_TOLERANCE
+                >= com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
     }
+
+    /** Zapas progu predkosci - patrz {@link #hasEnoughRotationSpeed()}. */
+    public static final float REQUIRED_SPEED_TOLERANCE = 0.5F;
 
     /**
      * Dane do okna modulu: predkosc, pobor SU i sieć rur.

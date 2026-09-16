@@ -34,6 +34,8 @@ public class CVDebugCommand {
             CVCommandRoot.root()
                 .then(Commands.literal("debug")
                     .executes(CVDebugCommand::executeDebug))
+                .then(Commands.literal("block")
+                    .executes(BlockProbeCommand::describe))
                 .then(Commands.literal("perf")
                     .executes(CVDebugCommand::executePerf))
                 // JEDEN przelacznik do monitorowania chunkow.

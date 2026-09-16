@@ -586,6 +586,13 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 
 ## 🧭 Komendy diagnostyczne `/cv`
 
+`/cv block` — **statystyki klocka, na który patrzysz**: prędkość i **ile RPM
+brakuje**, pobór SU (i ile żąda moduł), stress/pojemność sieci kinetycznej,
+wklikane elementy, a dla maszyn na FE energia, koszt cyklu i liczba cykli.
+Dane biorą się z tego samego `VeloceModuleInfoSource.moduleInfo`, co okno
+maszyny i Jade, więc komenda działa dla Create, Mekanism i Alchemistry.
+
+
 Wszystkie wymagają **poziomu uprawnień 2** (jak `/gamemode`) — wcześniej nie
 miały żadnego wymogu, więc na serwerze mógł ich użyć każdy gracz.
 
