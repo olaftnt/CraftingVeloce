@@ -73,8 +73,73 @@ public class VelocePipeBlockEntity extends PlatformBlockEntity implements Tickab
         return false;
     }
 
+    /**
+     * Pojemnik energii rury - odpowiednik bufora z Pipez EnergyPipeType.
+     *
+     * <p>Pobor idzie na stronach oznaczonych jako "extracting", rozdanie na
+     * pozostalych polaczonych. Pojemnik NIE jest wystawiany jako capability,
+     * wiec nasze rury nadal nie sa przewodem pradu dla innych modow.
+     */
+    private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer =
+            new net.neoforged.neoforge.energy.EnergyStorage(100_000, 100_000, 100_000);
+
+    /** Limit FE na tick - jak getRate(upgrade) w Pipezie. */
+    private static final int ENERGY_RATE = 20_000;
+
+    /** Pobor z oznaczonych stron i rozdanie na pozostale (wzorzec z Pipeza). */
+    private void tickEnergy() {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            int i = dir.ordinal();
+            if (!extractingSides[i] || disconnectedSides[i]) {
+                continue;
+            }
+            var source = level.getCapability(
+                    net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                    worldPosition.relative(dir), dir.getOpposite());
+            if (source == null || !source.canExtract()) {
+                continue;
+            }
+            int free = energyBuffer.getMaxEnergyStored() - energyBuffer.getEnergyStored();
+            int want = Math.min(free, ENERGY_RATE);
+            if (want <= 0) {
+                break;
+            }
+            int taken = source.extractEnergy(want, false);
+            if (taken > 0) {
+                int accepted = energyBuffer.receiveEnergy(taken, false);
+                if (accepted < taken) {
+                    source.receiveEnergy(taken - accepted, false);
+                }
+            }
+        }
+        if (energyBuffer.getEnergyStored() <= 0) {
+            return;
+        }
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            int i = dir.ordinal();
+            if (extractingSides[i] || disconnectedSides[i]) {
+                continue;
+            }
+            var target = level.getCapability(
+                    net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                    worldPosition.relative(dir), dir.getOpposite());
+            if (target == null || !target.canReceive()) {
+                continue;
+            }
+            int accepted = target.receiveEnergy(
+                    Math.min(energyBuffer.getEnergyStored(), ENERGY_RATE), false);
+            if (accepted > 0) {
+                energyBuffer.extractEnergy(accepted, false);
+            }
+        }
+    }
+
     @Override
     public void updateServer() {
+        tickEnergy();
         if (level == null || level.isClientSide) return;
 
         long time = level.getGameTime();
