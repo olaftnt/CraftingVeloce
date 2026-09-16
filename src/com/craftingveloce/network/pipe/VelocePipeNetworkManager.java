@@ -15,6 +15,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.saveddata.SavedData;
 
 import javax.annotation.Nullable;
@@ -33,6 +34,19 @@ import java.util.UUID;
 public class VelocePipeNetworkManager extends SavedData {
 
     private final Map<UUID, VelocePipeNetwork> networks = new HashMap<>();
+
+    /**
+     * Cache liczb przetrwaly restart, kluczowany po ITEMIE.
+     *
+     * <p><b>Dlaczego nie wystarczylo zapisac cache w NBT sieci.</b> Gracz:
+     * "dalej cache sie nie zapisuje jak zapisze gre". Identyfikator sieci NIE
+     * jest trwaly - po wczytaniu swiata topologia jest odbudowywana i powstaje
+     * siec o nowym UUID, a cache zapisany przy starym zostawal sierota.
+     * Dlatego trzymamy go tutaj: przy zapisie zbieramy liczby ze WSZYSTKICH
+     * sieci, a przy wczytaniu podajemy je kazdej nowej sieci jako start.
+     * Pierwsze przeliczenie widocznej strony i tak go poprawi.
+     */
+    private final Map<Item, Long> persistedCraftable = new HashMap<>();
     private final Map<BlockPos, UUID> pipeToNetwork = new HashMap<>();
     private final Map<BlockPos, UUID> terminalToNetwork = new HashMap<>();
 
@@ -1760,13 +1774,24 @@ public class VelocePipeNetworkManager extends SavedData {
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
         ListTag netList = new ListTag();
+        CompoundTag memoTag = new CompoundTag();
         for (VelocePipeNetwork net : networks.values()) {
             // Cache liczb jedzie razem z siecia do save'a - po restarcie swiata
             // gracz od razu widzi liczby, zamiast patrzec na puste cyferki.
             CompoundTag netTag = net.toNbt();
             net.saveCraftableMemo(netTag);
             netList.add(netTag);
+            for (Map.Entry<Item, Long> e : net.getCraftableMemo().entrySet()) {
+                persistedCraftable.put(e.getKey(), e.getValue());
+            }
         }
+        // Kopia po ITEMIE - przezyje odbudowe sieci po wczytaniu swiata.
+        CompoundTag persisted = new CompoundTag();
+        for (Map.Entry<Item, Long> e : persistedCraftable.entrySet()) {
+            persisted.putLong(net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(e.getKey()).toString(), e.getValue());
+        }
+        tag.put("CraftableByItem", persisted);
         tag.put("Networks", netList);
         return tag;
     }
@@ -1827,11 +1852,24 @@ public class VelocePipeNetworkManager extends SavedData {
 
     public static VelocePipeNetworkManager load(CompoundTag tag, HolderLookup.Provider provider) {
         VelocePipeNetworkManager manager = new VelocePipeNetworkManager();
+        CompoundTag persisted = tag.getCompound("CraftableByItem");
+        for (String key : persisted.getAllKeys()) {
+            var id = net.minecraft.resources.ResourceLocation.tryParse(key);
+            if (id == null) {
+                continue;
+            }
+            manager.persistedCraftable.put(
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id),
+                    persisted.getLong(key));
+        }
         ListTag netList = tag.getList("Networks", Tag.TAG_COMPOUND);
         for (int i = 0; i < netList.size(); i++) {
             CompoundTag netTag = netList.getCompound(i);
             VelocePipeNetwork net = VelocePipeNetwork.fromNbt(netTag);
             net.restoreCraftableMemo(netTag);
+            if (net.getCraftableMemo().isEmpty() && !manager.persistedCraftable.isEmpty()) {
+                net.rememberCraftable(manager.persistedCraftable);
+            }
             manager.networks.put(net.getId(), net);
             for (BlockPos p : net.getPipes()) {
                 manager.pipeToNetwork.put(p, net.getId());
