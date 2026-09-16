@@ -894,6 +894,13 @@ public class VelocePipeNetworkManager extends SavedData {
             return;   // uklad sie nie zmienil - nic do roboty
         }
         lastReconciledVersion = version;
+        // Zmiana ukladu polaczen - a wiec takze przeladowanie chunkow, po ktorym
+        // czesc magazynow zniknela albo wrocila - zmienia liczby. Kasujemy cache
+        // wszystkich zywych sieci; pierwsze liczenie widocznej strony zaraz go
+        // zapelni na nowo.
+        for (VelocePipeNetwork net : networks.values()) {
+            net.clearCraftableMemo();
+        }
 
         Set<UUID> live = new HashSet<>();
         for (BlockPos root : world.componentRoots()) {

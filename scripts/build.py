@@ -1710,9 +1710,18 @@ def validate_craftable_cache():
                 and handle.index("getCraftableMemo()") > handle.index("computeCraftableCounts("):
             problems.append("cache leci PO liczeniu (ma byc instant, przed)")
 
-    for path, what in ((nodes, "wezly sieci"), (toggle, "przelacznik craftera")):
+    for path, what in ((nodes, "wezly sieci"), (toggle, "przelacznik craftera"),
+                       (nodes, "wezly sieci")):
         if "clearCraftableMemo(" not in open(path, encoding="utf-8").read():
             problems.append(f"{what}: zmiana nie kasuje cache")
+    # Zmiana ukladu / przeladowanie chunkow: kasowanie MUSI byc w CIELE
+    # reconcileCaches - inaczej metoda clearCraftableMemo istnieje, ale nikt
+    # jej nie wola przy zmianie topologii (kalibracja to pokazala).
+    mgr_text = open("src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
+                    encoding="utf-8").read()
+    reconcile = _method_body(mgr_text, "private void reconcileCaches(")
+    if reconcile is None or "clearCraftableMemo()" not in reconcile:
+        problems.append("zmiana ukladu / przeladowanie chunkow nie kasuje cache")
 
     ctrl = open(controller, encoding="utf-8").read()
     if "craftableCounts.request(" not in ctrl:
