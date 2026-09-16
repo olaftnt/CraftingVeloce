@@ -353,12 +353,14 @@ public class VeloceKineticModuleBlock extends KineticBlock
         if (world.isClientSide) {
             return;
         }
-        if (ignoresPowerInModel()) {
-            // Crafter mechaniczny nie moze zmieniac stanu (a wiec i modelu)
-            // pod wplywem podlaczonego napedu - gracz: "niech w zadnym sposob
-            // nie reaguje na dostarczana moc".
-            return;
-        }
+        // Os dopasowuje sie do napedu z KAZDEJ strony - TAKZE w crafterze.
+        //
+        // BUG, ktory to naprawia: wczesniej crafter (ignoresPowerInModel) wracal
+        // tu od razu, wiec zostawal z osia z chwili postawienia (np. pionowa)
+        // i nie przyjmowal obrotow z boku. Gracz: "chce, zeby z kazdej strony
+        // nasze klocki Create przyjmowaly power z kazdej". Model craftera nadal
+        // NIE reaguje na moc - on sie nie kreci, a to jest osobny warunek
+        // (caseSpinDegreesPerTick sprawdza ignoresPowerInModel).
         Direction.Axis axis = neighbourAxis(world, fromPos, world.getBlockState(fromPos));
         if (axis != null && axis != state.getValue(BlockStateProperties.AXIS)) {
             world.setBlock(pos, state.setValue(BlockStateProperties.AXIS, axis), Block.UPDATE_ALL);

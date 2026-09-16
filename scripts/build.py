@@ -2047,8 +2047,12 @@ def validate_create_mechanics():
     if "ignoresPowerInModel()" not in block_code:
         problems.append("maszyna nie ma znacznika 'ignoruje moc w modelu'")
     neighbour = _method_body(block_code, "protected void neighborChanged(")
-    if neighbour is None or "ignoresPowerInModel()" not in neighbour:
-        problems.append("crafter zmienia stan (model) pod wplywem podlaczonego napedu")
+    if neighbour is None or "ignoresPowerInModel()" in neighbour:
+        # Os musi sie dopasowac do napedu z KAZDEJ strony - takze w crafterze.
+        # Wczesniej crafter wracal tu od razu i nie przyjmowal obrotow z boku.
+        problems.append("maszyna nie dopasowuje osi do napedu (brak mocy z kazdej strony)")
+    if neighbour is None or "AXIS" not in neighbour:
+        problems.append("maszyna nie ustawia osi obrotu przy zmianie sasiada")
     speed_body = _method_body(be_code, "public float caseSpinDegreesPerTick()")
     if speed_body is None or "ignoresPowerInModel()" not in speed_body:
         problems.append("animacja craftera zalezy od napedu (ma byc stala)")
