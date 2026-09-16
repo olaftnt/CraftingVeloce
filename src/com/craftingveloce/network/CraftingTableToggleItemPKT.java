@@ -50,6 +50,11 @@ public record CraftingTableToggleItemPKT(BlockPos pos, Item item) implements Cus
                 BlockEntity be = level.getBlockEntity(pkt.pos());
                 if (be instanceof VeloceCraftingTableBlockEntity ctBE) {
                     ctBE.toggleItem(pkt.item());
+                    // Punkt 3/5: wlaczenie/wylaczenie itemu w crafterze zmienia
+                    // "ile da sie dorobic", wiec cache sieci przestaje byc
+                    // aktualny i leci do kosza.
+                    com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level)
+                            .clearCraftableMemo(level, pkt.pos());
                 }
             }
         });
