@@ -391,6 +391,31 @@ public class VelocePipeNetwork {
         return ItemStack.EMPTY;
     }
 
+    /** Zapis cache'u liczb do NBT sieci - ma przezyc restart swiata. */
+    public void saveCraftableMemo(CompoundTag netTag) {
+        CompoundTag memo = new CompoundTag();
+        for (Map.Entry<Item, Long> entry : craftableMemo.entrySet()) {
+            memo.putLong(net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(entry.getKey()).toString(), entry.getValue());
+        }
+        netTag.put("CraftableMemo", memo);
+    }
+
+    /** Odczyt cache'u liczb z NBT sieci (po wczytaniu swiata). */
+    public void restoreCraftableMemo(CompoundTag netTag) {
+        craftableMemo.clear();
+        CompoundTag memo = netTag.getCompound("CraftableMemo");
+        for (String key : memo.getAllKeys()) {
+            net.minecraft.resources.ResourceLocation id =
+                    net.minecraft.resources.ResourceLocation.tryParse(key);
+            if (id == null) {
+                continue;
+            }
+            craftableMemo.put(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id),
+                    memo.getLong(key));
+        }
+    }
+
     public CompoundTag toNbt() {
         CompoundTag tag = new CompoundTag();
         tag.putUUID("Id", id);

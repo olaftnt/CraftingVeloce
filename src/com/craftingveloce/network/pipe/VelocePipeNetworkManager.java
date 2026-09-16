@@ -1721,7 +1721,11 @@ public class VelocePipeNetworkManager extends SavedData {
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
         ListTag netList = new ListTag();
         for (VelocePipeNetwork net : networks.values()) {
-            netList.add(net.toNbt());
+            // Cache liczb jedzie razem z siecia do save'a - po restarcie swiata
+            // gracz od razu widzi liczby, zamiast patrzec na puste cyferki.
+            CompoundTag netTag = net.toNbt();
+            net.saveCraftableMemo(netTag);
+            netList.add(netTag);
         }
         tag.put("Networks", netList);
         return tag;
@@ -1787,6 +1791,7 @@ public class VelocePipeNetworkManager extends SavedData {
         for (int i = 0; i < netList.size(); i++) {
             CompoundTag netTag = netList.getCompound(i);
             VelocePipeNetwork net = VelocePipeNetwork.fromNbt(netTag);
+            net.restoreCraftableMemo(netTag);
             manager.networks.put(net.getId(), net);
             for (BlockPos p : net.getPipes()) {
                 manager.pipeToNetwork.put(p, net.getId());

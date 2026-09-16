@@ -1729,6 +1729,16 @@ def validate_craftable_cache():
     if "updateCraftableCounts(" not in ctrl:
         problems.append("kontroler nie odbiera liczb z tej samej sciezki")
 
+    # Persystencja: cache musi jechac do save'a razem z siecia.
+    if "saveCraftableMemo(" not in open(
+            "src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
+            encoding="utf-8").read():
+        problems.append("cache liczb nie jest zapisywany do save'a gry")
+    if "restoreCraftableMemo(" not in open(
+            "src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
+            encoding="utf-8").read():
+        problems.append("cache liczb nie jest odczytywany z save'a gry")
+
     if problems:
         fail("cache liczb craftowalnych:\n  " + "\n  ".join(problems))
     print("    OK (cache liczb: siec + instant migawka + douczanie + kasowanie przy zmianach)")
