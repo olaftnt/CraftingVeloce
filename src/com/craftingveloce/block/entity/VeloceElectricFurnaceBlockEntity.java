@@ -242,6 +242,9 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
      * (i najwyzej raz na pol sekundy): kabel z innego moda potrafi ladowac
      * co tick, a pakiet co tick bylby marnotrawstwem.
      */
+    /** Ile FE na tick najwyzej przyjmujemy z sieci (obok limitu zrodla). */
+    public static final int MAX_PULL_PER_TICK = 1_000_000;
+
     public void serverTick() {
         if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) {
             return;
@@ -250,6 +253,13 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         // Inaczej ladowanie z itemu dzialaloby tylko raz na 10 tickow (czyli
         // 10x wolniej), bo cooldown przerywa te metode.
         chargeFromItem();
+        // To samo SCIAGANIE z sieci co w modulach: piec sam pobiera prad
+        // z obcych zrodel (Energy Cube, generator) podpietych do rur. Pelny
+        // akumulator = zero prob, limit zrodla i nasz limit respektowane.
+        com.craftingveloce.network.pipe.VeloceEnergyPull.pull(sl,
+                com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
+                        .getNetworkForTerminal(sl, worldPosition),
+                this, MAX_PULL_PER_TICK);
         if (--clientSyncCooldown > 0) {
             return;
         }
