@@ -69,6 +69,53 @@ public final class VeloceNodeBlocks {
      * dopoki czegos innego nie ruszylo. Nowy wezel ma teraz JEDNO miejsce do
      * wywolania, a nie piec linii do przepisania z pamieci.
      */
+
+    /**
+     * Domkniecie scianek obudowy u KAZDEJ naszej maszyny - takze u tych, ktore
+     * nie mialy tego w swoim kodzie.
+     *
+     * <p>Zgloszenie gracza: "kabel sie przelacza, ale scianki sie nie zamykaja
+     * - na crushing wheelu dziala, a na crafting table i piecyku elektrycznym
+     * nie". Przyczyna: domykanie mialy tylko VeloceIntegraleBlock i modul
+     * kinetyczny Create. Teraz robi to to jedno miejsce: przy postawieniu i przy
+     * usunieciu wezla przeliczamy zaslepki u SASIADOW tego wezla oraz u NIEGO
+     * SAMEGO (postawienie maszyny obok istniejacej rury to druga strona tej
+     * samej sytuacji).
+     *
+     * <p>{@code withClosure} sam sprawdza, czy blok ma wlasciwosci zaslepek
+     * i zwraca ten sam stan, gdy nie ma - dlatego wolno to wolac dla kazdego
+     * sasiada bez pytania o typ bloku.
+     */
+    private static void refreshClosures(net.minecraft.server.level.ServerLevel level,
+                                        net.minecraft.core.BlockPos pos) {
+        BlockState pipe = level.getBlockState(pos);
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            net.minecraft.core.BlockPos side = pos.relative(dir);
+            if (!level.isLoaded(side)) {
+                continue;
+            }
+            BlockState state = level.getBlockState(side);
+            BlockState updated = com.craftingveloce.block.VeloceIntegraleFrame
+                    .withClosure(state, dir.getOpposite(), pipe);
+            if (updated != state) {
+                level.setBlock(side, updated, Block.UPDATE_ALL);
+            }
+        }
+        BlockState own = level.getBlockState(pos);
+        BlockState ownUpdated = own;
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            net.minecraft.core.BlockPos side = pos.relative(dir);
+            if (!level.isLoaded(side)) {
+                continue;
+            }
+            ownUpdated = com.craftingveloce.block.VeloceIntegraleFrame
+                    .withClosure(ownUpdated, dir, level.getBlockState(side));
+        }
+        if (ownUpdated != own) {
+            level.setBlock(pos, ownUpdated, Block.UPDATE_ALL);
+        }
+    }
+
     public static void onNodePlaced(net.minecraft.world.level.Level world, net.minecraft.core.BlockPos pos) {
         if (world.isClientSide) {
             return;
@@ -76,6 +123,7 @@ public final class VeloceNodeBlocks {
         com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
         if (world instanceof net.minecraft.server.level.ServerLevel sl) {
             VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
+            refreshClosures(sl, pos);
             // Nowy wezel = nowe mozliwosci: cache liczb przestaje byc aktualny.
             VelocePipeNetworkManager.get(sl).clearCraftableMemo(sl, pos);
         }
@@ -92,6 +140,7 @@ public final class VeloceNodeBlocks {
         if (world instanceof net.minecraft.server.level.ServerLevel sl) {
             com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(sl).markNodeInvalid(pos);
             VelocePipeNetworkManager.get(sl).onTerminalRemoved(sl, pos);
+            refreshClosures(sl, pos);
             VelocePipeNetworkManager.get(sl).clearCraftableMemo(sl, pos);
         }
     }
