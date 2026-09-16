@@ -76,6 +76,8 @@ public final class VeloceNodeBlocks {
         com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
         if (world instanceof net.minecraft.server.level.ServerLevel sl) {
             VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
+            // Nowy wezel = nowe mozliwosci: cache liczb przestaje byc aktualny.
+            VelocePipeNetworkManager.get(sl).clearCraftableMemo(sl, pos);
         }
     }
 
@@ -90,6 +92,7 @@ public final class VeloceNodeBlocks {
         if (world instanceof net.minecraft.server.level.ServerLevel sl) {
             com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(sl).markNodeInvalid(pos);
             VelocePipeNetworkManager.get(sl).onTerminalRemoved(sl, pos);
+            VelocePipeNetworkManager.get(sl).clearCraftableMemo(sl, pos);
         }
     }
 }

@@ -1006,6 +1006,20 @@ public class VelocePipeNetworkManager extends SavedData {
      * je rozetniesz, widzi tylko swoja czesc.
      */
     @Nullable
+    /**
+     * Kasuje cache liczb "ile da sie dorobic" dla sieci tego wezla.
+     *
+     * <p>Punkt 3/5: postawienie albo usuniecie magazynu/maszyny zmienia wynik,
+     * wiec stary cache musialby klamac. Kasujemy go - klient od razu dostanie
+     * pusta migawke, a pierwsze liczenie widocznej strony zaraz ja zapelni.
+     */
+    public void clearCraftableMemo(ServerLevel level, BlockPos pos) {
+        VelocePipeNetwork network = getNetworkForTerminal(level, pos);
+        if (network != null) {
+            network.clearCraftableMemo();
+        }
+    }
+
     public VelocePipeNetwork getNetworkForTerminal(ServerLevel level, BlockPos terminalPos) {
         // Szukamy rury obok wezla, z tej strony, z ktorej polaczenie jest
         // w ogole mozliwe (terminal ma przod, ktory sie nie laczy).
