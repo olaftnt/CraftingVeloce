@@ -1368,30 +1368,37 @@ def validate_integrale_display():
         problems.append("brak rejestracji przedmiotu 'veloce_integrale_crafting'")
 
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
-    if "VELOCE_CRAFTING_TABLE_BE.get()" not in mod or "VeloceFacadeRenderer" not in mod:
-        problems.append("brak rejestracji renderera stolu w obudowie (RegisterRenderers)")
+    if "VeloceCaseRenderer" not in mod:
+        problems.append("brak rejestracji renderera obudowy (RegisterRenderers)")
     if "VELOCE_INTEGRALE_CRAFTING_ITEM.get()" not in mod:
         problems.append("przedmiotu 'rama + stol' nie ma w zakladce kreatywnej "
                         "(nie da sie go zdobyc inaczej niz komenda)")
 
-    renderer = "src/com/craftingveloce/client/render/VeloceFacadeRenderer.java"
+    renderer = "src/com/craftingveloce/client/render/VeloceCaseRenderer.java"
     if not os.path.exists(renderer):
-        problems.append("brak klasy renderera stolu w obudowie")
+        problems.append("brak klasy renderera obudowy")
     else:
         body = open(renderer, encoding="utf-8").read()
-        for need, what in (("isFacade", "rozpoznania stolu w obudowie"),
+        for need, what in (("VeloceCaseContents.contentFor", "zawartosci z tabeli obudow"),
                            ("getBlockRenderer", "renderowania modelu bloku"),
                            ("rotationDegrees", "animacji (obrot)"),
                            ("Math.sin", "animacji (bujanie)")):
             if need not in body:
-                problems.append("renderer bez " + what)
+                problems.append("renderer obudowy bez " + what)
 
-    item = "src/com/craftingveloce/item/VeloceIntegraleItem.java"
-    if not os.path.exists(item):
-        problems.append("klatka bez wlasnej klasy przedmiotu (podpowiedz z tabeli)")
-    elif "VeloceIntegraleConversions.all()" not in open(item, encoding="utf-8").read():
-        problems.append("podpowiedz klatki nie jest generowana z tabeli przepisan "
-                        "(rozjedzie sie z nia)")
+    contents_path = "src/com/craftingveloce/block/VeloceCaseContents.java"
+    if not os.path.exists(contents_path):
+        problems.append("brak tabeli zawartosci obudow (VeloceCaseContents)")
+    else:
+        body = open(contents_path, encoding="utf-8").read()
+        for need, what in (("VELOCE_CRAFTING_TABLE.get()", "stolu craftingu"),
+                           ("VELOCE_CONTROLLER.get()", "kontrolera"),
+                           ("VELOCE_EXTRACTOR.get()", "ekstraktora"),
+                           ("THRESHOLD_SENSOR.get()", "sensora progu"),
+                           ("VELOCITY_FURNACE.get()", "pieca paliwowego"),
+                           ("ELECTRIC_FURNACE.get()", "pieca elektrycznego")):
+            if need not in body:
+                problems.append("tabela obudow bez " + what)
 
     if problems:
         fail("klatka / maszyny z klatki:\n  " + "\n  ".join(problems))
@@ -1527,55 +1534,21 @@ def validate_integrale_model():
             if not condition:
                 problems.append(f"blockstate nie ma warunku dla strony {side}")
 
-    # 5) FASADA stolu craftingu: ten sam model ramy + zaslepki, ale wylacznie
-    #    dla stanu facade=true. Bez tego stol stojacy w klatce wygladalby jak
-    #    zwykly stol (gracz nie widzialby, ze stoi w ramie).
-    bs_table_path = "assets/craftingveloce/blockstates/veloce_crafting_table.json"
-    if not os.path.exists(bs_table_path):
-        problems.append("brak blockstate stolu craftingu")
-    else:
-        table_bs = json.load(open(bs_table_path, encoding="utf-8"))
-        table_parts = table_bs.get("multipart", [])
-        if not table_parts:
-            problems.append("blockstate stolu NIE jest wieloczesciowy - "
-                            "nie da sie pokazac stolu w klatce (facade)")
-        else:
-            def facade_part(model, side=None):
-                for part in table_parts:
-                    when = part.get("when", {})
-                    if when.get("facade") != "true":
-                        continue
-                    if side is not None and when.get(side) != "true":
-                        continue
-                    if side is None and "north" in when:
-                        continue
-                    if part.get("apply", {}).get("model") == model:
-                        return True
-                return False
-
-            if not facade_part("craftingveloce:block/veloce_integrale_frame"):
-                problems.append("blockstate stolu: brak modelu ramy dla facade=true")
-            for side in sides:
-                if not facade_part(f"craftingveloce:block/veloce_integrale_panel_{side}", side):
-                    problems.append(f"blockstate stolu: brak zaslepki {side} dla facade=true")
-            plain = any(part.get("when", {}).get("facade") == "false"
-                        and part.get("apply", {}).get("model")
-                        == "craftingveloce:block/veloce_crafting_table"
-                        for part in table_parts)
-            if not plain:
-                problems.append("blockstate stolu: brak zwyklego modelu dla facade=false")
-
-            # Kolejnosc ma znaczenie: MultiPartBakedModel bierze particleIcon
-            # z PIERWSZEJ czesci listy (bytecode: iterator().next().getRight()
-            # .getParticleIcon()) - niezaleznie od stanu bloku. Gdy pierwszy byl
-            # zwykly stol, przy zbiciu obudowy lecialy particles STAREJ tekstury
-            # stolu zamiast ramy klatki (zgloszenie gracza).
-            first_model = (table_parts[0].get("apply", {}).get("model")
-                           if table_parts else None)
-            if first_model != "craftingveloce:block/veloce_integrale_frame":
-                problems.append(f"blockstate stolu: pierwsza czesc to {first_model}, "
-                                f"a musi byc rama klatki (inaczej particles przy "
-                                f"zbiciu pochodza ze starej tekstury stolu)")
+    # 5) KAZDA nasza maszyna ma model OBUDOWY (rama + szyba), a nie swoj stary
+    #    model - tak gracz chce: "model zmienia sie na ten veloce integrale,
+    #    a dopiero w srodku jest render". Jednoczesciowy model jest tez jedynym
+    #    sposobem, zeby particles przy zbiciu pochodzily z ramy: przy multipart
+    #    wanilia bierze particleIcon z PIERWSZEJ czesci listy.
+    for machine in ("veloce_crafting_table", "veloce_controller", "veloce_extractor",
+                    "threshold_sensor", "velocity_furnace", "electric_furnace"):
+        machine_bs = f"assets/craftingveloce/blockstates/{machine}.json"
+        if not os.path.exists(machine_bs):
+            problems.append(f"brak blockstate maszyny {machine}")
+            continue
+        machine_data = json.load(open(machine_bs, encoding="utf-8"))
+        machine_models = [v.get("model") for v in machine_data.get("variants", {}).values()]
+        if machine_models != ["craftingveloce:block/veloce_integrale_frame"]:
+            problems.append(f"blockstate {machine} nie jest obudowa Integrale: {machine_models}")
 
     # 6) Ikona przedmiotu "rama + stol": rama klatki + kostka stolu w srodku.
     #    To ona mowi graczowi (i modom od receptur), ze w tym bloku jest stol.
