@@ -303,8 +303,10 @@ public class VeloceKineticModuleBlock extends KineticBlock
         // Zwykle okno kontenera - jak w piecu (menu + ta sama tekstura).
         if (!world.isClientSide && player instanceof net.minecraft.server.level.ServerPlayer) {
             player.openMenu(new net.minecraft.world.SimpleMenuProvider(
-                    (id, inv, p) -> new com.craftingveloce.inventory.VeloceModuleMenu(id, inv, pos),
-                    state.getBlock().getName()));
+                            (id, inv, p) -> new com.craftingveloce.inventory.VeloceModuleMenu(
+                                    id, inv, pos),
+                            state.getBlock().getName()),
+                    buf -> buf.writeBlockPos(pos));
         }
         return net.minecraft.world.InteractionResult.sidedSuccess(world.isClientSide);
     }

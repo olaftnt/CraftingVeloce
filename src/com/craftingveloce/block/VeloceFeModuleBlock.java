@@ -96,8 +96,10 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
         // (menu + ekran z ta sama tekstura). Zadnych pakietow.
         if (!world.isClientSide && player instanceof net.minecraft.server.level.ServerPlayer) {
             player.openMenu(new net.minecraft.world.SimpleMenuProvider(
-                    (id, inv, p) -> new com.craftingveloce.inventory.VeloceModuleMenu(id, inv, pos),
-                    state.getBlock().getName()));
+                            (id, inv, p) -> new com.craftingveloce.inventory.VeloceModuleMenu(
+                                    id, inv, pos),
+                            state.getBlock().getName()),
+                    buf -> buf.writeBlockPos(pos));
         }
         return InteractionResult.sidedSuccess(world.isClientSide);
     }
