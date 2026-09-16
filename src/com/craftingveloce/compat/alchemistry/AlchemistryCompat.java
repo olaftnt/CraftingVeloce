@@ -30,6 +30,8 @@ public final class AlchemistryCompat {
         AlchemistryRecipeFamily.register(modEventBus);
         AlchemistryModule.register(modEventBus);
         registerCases();
+        // Kategorie przepisow Alchemistry dla JEI (same UID-y + nasze klocki).
+        AlchemistryJeiCatalysts.register();
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             registerCaseRenderers(modEventBus);
         }

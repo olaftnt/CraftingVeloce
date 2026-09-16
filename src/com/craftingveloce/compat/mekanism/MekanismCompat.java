@@ -31,6 +31,8 @@ public final class MekanismCompat {
         MekanismRecipeFamily.register(modEventBus);
         MekanismModule.register(modEventBus);
         registerCases();
+        // Kategorie przepisow Mekanism dla JEI (same UID-y + nasze klocki).
+        MekanismJeiCatalysts.register();
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             registerCaseRenderers(modEventBus);
         }

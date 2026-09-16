@@ -91,6 +91,8 @@ public class CraftingVeloceMod {
 
         VeloceRegistry.register(modEventBus);
         com.craftingveloce.crafting.VeloceRecipes.register(modEventBus);
+        // JEI: nasze klocki obok stolu rzemieslniczego (szczegoly - VeloceJeiCatalysts).
+        com.craftingveloce.compat.VeloceJeiCatalysts.registerDefaults();
         CREATIVE_TABS.register(modEventBus);
         VelocePacketHandler.register(modEventBus);
 

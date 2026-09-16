@@ -41,6 +41,8 @@ public final class CreateCompat {
         // pila, crafter mechaniczny).
         registerCases();
         registerConversions();
+        // Kategorie przepisow Create dla JEI (same UID-y + nasze klocki).
+        CreateJeiCatalysts.register();
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             registerCaseRenderers(modEventBus);
         }

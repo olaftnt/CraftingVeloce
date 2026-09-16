@@ -78,6 +78,9 @@ COMPILE_ONLY = {
         ("Mekanism-1.21.1-10.7.19.85-api.jar",
          "Mekanism-1.21.1-10.7.19.85.jar"),
     ),
+    "mezz.jei": (
+        ("jei-1.21.1-neoforge-19.56.0.439.jar",),
+    ),
 }
 
 # Katalogi, w ktorych szukamy JAR-ow compileOnly (w tej kolejnosci).
@@ -90,9 +93,9 @@ EXCLUDED_SRC = ("eatawesome", "moze_intel")
 # nie moze ich importowac, a modul compat/ danego moda nie moze importowac
 # innego obcego moda (latwo o pomylke przy kopiowaniu pliku).
 FOREIGN_PACKAGES = ("com.simibubi.create", "net.createmod",
-                    "com.smashingmods", "mekanism")
+                    "com.smashingmods", "mekanism", "mezz.jei")
 FOREIGN_JAR_PATHS = ("com/simibubi/create/", "net/createmod/",
-                     "com/smashingmods/", "mekanism/")
+                     "com/smashingmods/", "mekanism/", "mezz/jei/")
 
 
 # Smieci systemowe, ktore nie moga trafic do JARa.
@@ -763,6 +766,7 @@ def validate_core_isolation():
         "create": ("com.simibubi.create", "net.createmod"),
         "alchemistry": ("com.smashingmods",),
         "mekanism": ("mekanism",),
+        "jei": ("mezz.jei",),
     }
     core, cross, checked = [], [], 0
     for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
@@ -808,6 +812,14 @@ def validate_compat_gates(z):
       4. klasy w {@code compat/<mod>/} - z wyjatkiem bramek - sa ladowane
          TYLKO po sprawdzeniu obecnosci moda, wiec one moga miec obce typy.
 
+    JEI jest tu szczegolnym przypadkiem i dlatego NIE ma wlasnej bramki: jego
+    plugin ({@code compat/jei/VeloceJeiPlugin}) ma obcy typ w SYGNATURZE metody
+    ({@code registerRecipeCatalysts(IRecipeCatalystRegistration)}), a laduje go
+    samo JEI, skanujac adnotacje {@code @JeiPlugin}. Bez JEI nie ma kto go
+    zaladowac, wiec niezmiennik "obce typy tylko po sprawdzeniu obecnosci moda"
+    jest spelniony - i wlasnie dlatego plugin jest w {@code module_dirs}, a nie
+    w {@code gates}.
+
     UWAGA: to musi byc kontrola SYGNATUR, a nie test ladowania klasy. HotSpot
     rozwiazuje typy leniwie, wiec klasa z nieuzywanym polem obcego typu
     zaladuje sie bez obcego moda - i wywali sie dopiero, gdy ktos dotknie tego
@@ -821,7 +833,8 @@ def validate_compat_gates(z):
     }
     module_dirs = ("com/craftingveloce/compat/create/",
                    "com/craftingveloce/compat/alchemistry/",
-                   "com/craftingveloce/compat/mekanism/")
+                   "com/craftingveloce/compat/mekanism/",
+                   "com/craftingveloce/compat/jei/")
     gate_paths = {cls.replace(".", "/") + ".class" for cls in gates.values()}
 
     targets = []
@@ -1203,6 +1216,149 @@ def validate_block_models():
     if problems:
         fail("modele blokow:\n  " + "\n  ".join(problems))
     print(f"    OK ({checked} odwolan do modeli i tekstur istnieje)")
+
+
+# Kategorie JEI obslugiwane przez nasze klocki: plik -> {UID kategorii: pole klocka}.
+#
+# UID to UID KATEGORII JEI, a NIE nazwa typu przepisu - i to jest tu glowna
+# pulapka: pila Create ma kategorie "create:sawing", choc jej typ przepisu
+# nazywa sie "create:cutting". UID-y ustalone z bajtkodu modow (Create:
+# Create.asResource(name) z build("sawing", ...), Mekanism:
+# RecipeTypeRegistryObject.getId(), Alchemistry: RecipeType.create("alchemistry", ...)).
+JEI_CATEGORIES = {
+    "src/com/craftingveloce/compat/VeloceJeiCatalysts.java": {
+        "minecraft:crafting": "VELOCE_CRAFTING_TABLE_ITEM",
+    },
+    "src/com/craftingveloce/compat/create/CreateJeiCatalysts.java": {
+        "create:milling": "VELOCE_MILLSTONE_MODULE_ITEM",
+        "create:sawing": "VELOCE_SAW_MODULE_ITEM",
+        "create:crushing": "VELOCE_CRUSHING_MODULE_ITEM",
+        "create:mechanical_crafting": "VELOCE_MECHANICAL_CRAFTER_MODULE_ITEM",
+        "create:pressing": "VELOCE_PRESS_MODULE_ITEM",
+        "create:mixing": "VELOCE_MIXER_MODULE_ITEM",
+        "create:deploying": "VELOCE_DEPLOYER_MODULE_ITEM",
+    },
+    "src/com/craftingveloce/compat/mekanism/MekanismJeiCatalysts.java": {
+        "mekanism:crushing": "VELOCE_CRUSHER_MODULE_ITEM",
+        "mekanism:enriching": "VELOCE_ENRICHMENT_MODULE_ITEM",
+        "mekanism:combining": "VELOCE_COMBINER_MODULE_ITEM",
+        "mekanism:sawing": "VELOCE_SAWMILL_MODULE_ITEM",
+    },
+    "src/com/craftingveloce/compat/alchemistry/AlchemistryJeiCatalysts.java": {
+        "alchemistry:compactor": "VELOCE_COMPACTOR_MODULE_ITEM",
+        "alchemistry:combiner": "VELOCE_COMBINER_MODULE_ITEM",
+        "alchemistry:fission": "VELOCE_FISSION_MODULE_ITEM",
+        "alchemistry:fusion": "VELOCE_FUSION_MODULE_ITEM",
+    },
+}
+
+
+def validate_jei_catalysts():
+    """
+    JEI: nasze klocki na liscie "w tym mozna zrobic ten przepis".
+
+    Gracz: "JEI musi pokazywac, ze nasze klocki tez robia przepis (jak lista
+    stol rzemieslniczy, crafter, formulatic assembler, robot, terminal przy
+    przepisie wytwarzania)". Kazde ogniwo tego lancucha psuje sie PO CICHU -
+    JEI pokaze po prostu za malo ikonek i nikt tego nie zauwazy - dlatego:
+      1. plugin {@code @JeiPlugin} istnieje i rejestruje katalizatory przez API
+         JEI ({@code getJeiHelpers().getRecipeType(...)} +
+         {@code addRecipeCatalysts(...)}), a nie przez wlasne klasy obcych modow,
+      2. zaden plik POZA {@code compat/jei/} nie odwoluje sie do pluginu (klasa z
+         obcym typem w sygnaturze nie moze byc dotknieta przez rdzen).
+         Granicy importow samego pluginu pilnuje {@code validate_core_isolation}
+         (mapa {@code owners} zna modul {@code jei}; wolno mu tylko
+         {@code mezz.jei}) - dlatego nie ma tu drugiej, nieosiagalnej kontroli:
+         kalibracja pokazala, ze wstrzykniecie {@code import com.simibubi.create}
+         do pluginu zatrzymuje build wlasnie tam,
+      3. tabela UID kategorii -&gt; nasz klocek zgadza sie CO DO PARY (zamiana
+         UID-ow miejscami to tez blad: mlyn pokazalby sie przy kruszarce),
+      4. rdzen wypelnia kategorie {@code minecraft:crafting}, a kazda bramka
+         moda wola swoja tabele,
+      5. UID-y obcych kategorii sa w {@code FOREIGN_PACKAGES} - inaczej kontrola
+         wyciekow w JARze ich nie widzi.
+    """
+    problems = []
+    plugin = "src/com/craftingveloce/compat/jei/VeloceJeiPlugin.java"
+    registry = "src/com/craftingveloce/compat/VeloceJeiCatalysts.java"
+    for path, what in ((plugin, "pluginu JEI"), (registry, "spisu kategorii JEI")):
+        if not os.path.exists(path):
+            problems.append("brak " + what)
+            return fail("JEI:\n  " + "\n  ".join(problems))
+
+    plugin_text = open(plugin, encoding="utf-8").read()
+    if "@JeiPlugin" not in plugin_text or "IModPlugin" not in plugin_text:
+        problems.append("plugin JEI nie jest pluginem JEI (@JeiPlugin/IModPlugin)")
+    if 'ResourceLocation.fromNamespaceAndPath(MOD_ID, "jei")' not in plugin_text:
+        problems.append("plugin JEI bez wlasnego UID")
+    body = _method_body(plugin_text, "public void registerRecipeCatalysts(")
+    if body is None:
+        problems.append("plugin JEI nie rejestruje katalizatorow")
+    else:
+        for need, what in (("getJeiHelpers()", "pobrania pomocy JEI"),
+                           ("getRecipeType(", "szukania kategorii po UID"),
+                           ("addRecipeCatalysts(", "dodania katalizatora")):
+            if need not in body:
+                problems.append("plugin JEI bez " + what)
+
+    # Plugin jest ladowany przez JEI takze BEZ pozostalych modow, wiec wolno mu
+    # znac tylko JEI - tej granicy pilnuje validate_core_isolation (owners["jei"]).
+
+    # ...i odwrotnie: nikt poza compat/jei/ nie moze dotknac pluginu.
+    for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
+        rel = path.replace(os.sep, "/")
+        if "/compat/jei/" in rel:
+            continue
+        text = open(path, encoding="utf-8").read()
+        if "VeloceJeiPlugin" in text or "compat.jei" in text:
+            problems.append(f"{rel}: rdzen/bramka odwoluje sie do pluginu JEI")
+
+    # Tabela UID -> klocek: porownujemy PARY, nie same zbiory nazw.
+    for path, expected in JEI_CATEGORIES.items():
+        if not os.path.exists(path):
+            problems.append("brak tabeli kategorii JEI: " + path)
+            continue
+        text = open(path, encoding="utf-8").read()
+        found = {}
+        for m in re.finditer(r'register\(\s*"([^"]+)"\s*,\s*\(\)\s*->\s*[\w.]*?(\w+)\.get\(\)',
+                             text):
+            found[m.group(1)] = m.group(2)
+        missing = {k: v for k, v in expected.items() if k not in found}
+        extra = {k: v for k, v in found.items() if k not in expected}
+        wrong = {k: (v, found[k]) for k, v in expected.items()
+                 if k in found and found[k] != v}
+        if missing:
+            problems.append(f"{os.path.basename(path)}: brak kategorii {sorted(missing)}")
+        if extra:
+            problems.append(f"{os.path.basename(path)}: kategoria spoza listy {sorted(extra)}")
+        for uid, (want, got) in wrong.items():
+            problems.append(f"{os.path.basename(path)}: {uid} -> {got}, a ma byc {want}")
+
+    core = "src/com/craftingveloce/CraftingVeloceMod.java"
+    if os.path.exists(core) and "VeloceJeiCatalysts.registerDefaults()" \
+            not in open(core, encoding="utf-8").read():
+        problems.append("rdzen nie wypelnia kategorii minecraft:crafting")
+    for path, call in (("src/com/craftingveloce/compat/create/CreateCompat.java",
+                        "CreateJeiCatalysts.register()"),
+                       ("src/com/craftingveloce/compat/mekanism/MekanismCompat.java",
+                        "MekanismJeiCatalysts.register()"),
+                       ("src/com/craftingveloce/compat/alchemistry/AlchemistryCompat.java",
+                        "AlchemistryJeiCatalysts.register()")):
+        if not os.path.exists(path) or call not in open(path, encoding="utf-8").read():
+            problems.append(f"{os.path.basename(path)}: brak {call}")
+    if 'JEI("jei")' not in open("src/com/craftingveloce/compat/VeloceMods.java",
+                                encoding="utf-8").read():
+        problems.append("VeloceMods bez wpisu JEI")
+    toml = "src_meta/META-INF/neoforge.mods.toml"
+    if os.path.exists(toml) and 'modId="jei"' not in open(toml, encoding="utf-8").read():
+        problems.append("neoforge.mods.toml bez opcjonalnej zaleznosci jei")
+    if "mezz.jei" not in FOREIGN_PACKAGES:
+        problems.append("mezz.jei poza FOREIGN_PACKAGES - wyciek bylby niewidoczny")
+
+    if problems:
+        fail("JEI (katalizatory kategorii):\n  " + "\n  ".join(problems))
+    total = sum(len(v) for v in JEI_CATEGORIES.values())
+    print(f"    OK (JEI: {total} kategorii -> nasze klocki, plugin bez obcych modow)")
 
 
 def validate_module_info_gui():
@@ -2368,6 +2524,7 @@ def main():
     validate_loot_item_ids()
     validate_showcase_command()
     validate_module_info_gui()
+    validate_jei_catalysts()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))

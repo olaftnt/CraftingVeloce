@@ -322,6 +322,7 @@ git add -A && git commit -m "..." && git push origin main
 | NeoForge ItemHandler | `Capabilities.ItemHandler.BLOCK` zarejestrowane dla extractora (pozwala rurą Pipez ssać) |
 | Vanilla Hopper | `VeloceExtractorBlockEntity implements WorldlyContainer` |
 | Create / Alchemistry / Mekanism | opcjonalne (`compat/*`) — patrz niżej |
+| JEI | opcjonalne — nasze klocki jako katalizatory kategorii przepisów (`compat/jei/`) |
 
 ### Opcjonalne integracje (`com/craftingveloce/compat/`)
 
@@ -343,10 +344,53 @@ Pilnują tego cztery kontrole w `scripts/build.py` (krok 4):
 | `validate_compat_gates` | klasy ładowane zawsze (rdzeń + `compat/` + bramki) nie mają obcego typu w sygnaturze — na poziomie bajtkodu (`javap`) |
 | `validate_jar_isolation` | żadna klasa rdzenia w JARze nie odwołuje się do obcego pakietu (łapie też użycie bez `import`) |
 | `validate_isolation_runtime` | **L1**: uruchamia `scripts/isolation/L1Test.java` bez obcych modów — bramki muszą się załadować i zwrócić `false` |
+| `validate_jei_catalysts` | plugin JEI zna **tylko** JEI (żadnego Create/Mekanism/Alchemistry), pary *UID kategorii → nasz klocek* zgadzają się co do pary, rdzeń nie dotyka pluginu |
 
 Zakres rodzin receptur rejestrują moduły (`XRecipeFamily`) w
 `VeloceRecipeFamilies.registerModFamily` — w `FMLCommonSetupEvent`, bo
 DeferredHoldery obcego moda są wiązane dopiero po rejestracji.
+
+### JEI - nasze klocki jako maszyny przepisu
+
+JEI przy każdym przepisie pokazuje po lewej stronie ikonki maszyn, które go
+obsługują. Nasz plugin (`compat/jei/VeloceJeiPlugin`, adnotacja `@JeiPlugin`)
+dopisuje do tych list nasze klocki:
+
+| Kategoria JEI | Nasz klocek |
+|---------------|-------------|
+| `minecraft:crafting` | `veloce_crafting_table` |
+| `create:milling` / `create:sawing` / `create:crushing` | `veloce_create_millstone_module` / `..._saw_module` / `..._crushing_module` |
+| `create:mechanical_crafting` / `create:pressing` / `create:mixing` / `create:deploying` | `veloce_create_mechanical_crafter_module` / `..._press_module` / `..._mixer_module` / `..._deployer_module` |
+| `mekanism:crushing` / `mekanism:enriching` / `mekanism:combining` / `mekanism:sawing` | `veloce_mekanism_crusher_module` / `..._enrichment_module` / `..._combiner_module` / `..._sawmill_module` |
+| `alchemistry:compactor` / `...:combiner` / `...:fission` / `...:fusion` | `veloce_alchemistry_compactor_module` / `..._combiner_module` / `..._fission_module` / `..._fusion_module` |
+
+Trzy rzeczy, które tu łatwo zepsuć i dlatego są pilnowane przez
+`validate_jei_catalysts`:
+
+1. **UID kategorii to nie nazwa typu przepisu.** Piła Create ma kategorię JEI
+   `create:sawing`, choć jej typ receptury to `create:cutting` — dlatego UID-y
+   były czytane z bajtkodu modów (`Create.asResource(...)`,
+   `RecipeTypeRegistryObject.getId()`, `RecipeType.create("alchemistry", ...)`),
+   a nie zgadywane z nazw. Zamiana dwóch UID-ów miejscami też jest błędem: młyn
+   pokazałby się przy kruszarce.
+2. **Plugin nie zna Create/Mekanism/Alchemistry.** Ładuje go samo JEI (skanowanie
+   `@JeiPlugin`), więc istnieje także u gracza bez tych modów — import ich klas
+   kończyłby się `NoClassDefFoundError`. Zna tylko UID kategorii i szuka typu
+   przez `IJeiHelpers.getRecipeType(UID)`. Drugi powód jest techniczny:
+   `RecipeType.equals` porównuje *klasę* przepisu, więc samodzielnie sklejony typ
+   nigdy nie trafiłby w kategorię zarejestrowaną przez tamten mod.
+3. **Faza rejestracji.** Katalizatory dodajemy w `registerRecipeCatalysts`, czyli
+   po fazie `registerCategories` wszystkich pluginów — dopiero wtedy
+   `getRecipeType(UID)` ma co zwrócić. Kategorie nieznalezione trafiają do logu:
+   `[Veloce][JEI] katalizatory: N dodanych, M bez kategorii [...]`, bo to jedyny
+   sygnał, że któryś UID przestał się zgadzać po aktualizacji tamtego moda.
+
+Tabele kategorii wypełniają moduły integracji (`CreateJeiCatalysts`,
+`MekanismJeiCatalysts`, `AlchemistryJeiCatalysts`) do wspólnego spisu
+`compat/VeloceJeiCatalysts` — **bez dotykania JEI i bez typów obcych modów**
+(same UID-y i nasze klocki). Kategoria `minecraft:crafting` jest wypełniana przez
+rdzeń (`VeloceJeiCatalysts.registerDefaults()`), bo stół Veloce działa bez
+żadnego z tych modów.
 
 ### Moduły maszyn (bloki z `compat/*`)
 

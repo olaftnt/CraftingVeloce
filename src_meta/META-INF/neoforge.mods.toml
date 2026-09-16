@@ -98,3 +98,14 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="AFTER"
     side="BOTH"
 
+# JEI - podglad przepisow. Opcjonalny i to nie jest forma grzecznosci: plugin
+# (compat/jei/VeloceJeiPlugin) jest z obcym typem w sygnaturze, wiec bez JEI nie
+# ma go kto zaladowac - JEI samo skanuje adnotacje @JeiPlugin. Bez JEI mod dziala
+# normalnie, tylko nie ma listy "w tym mozna to zrobic".
+[[dependencies.craftingveloce]]
+    modId="jei"
+    type="optional"
+    versionRange="[19.0.0,)"
+    ordering="AFTER"
+    side="BOTH"
+

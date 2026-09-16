@@ -30,7 +30,17 @@ public enum VeloceMods {
     ALCHEMISTRY("alchemistry"),
 
     /** Mekanism - maszyny itemowe zasilane FE (crusher, enrichment...). */
-    MEKANISM("mekanism");
+    MEKANISM("mekanism"),
+
+    /**
+     * JEI - podglad przepisow; nasze klocki jako katalizatory kategorii.
+     *
+     * <p>Jako jedyny z tej listy NIE jest wolany z {@code CraftingVeloceMod}:
+     * JEI samo znajduje nasz plugin po adnotacji {@code @JeiPlugin}, a ten plik
+     * powstaje przy starcie JEI. Wpis jest tu po to, zeby lista modow byla
+     * kompletna i zeby bylo widac w logu, czy JEI jest obecne.
+     */
+    JEI("jei");
 
     private final String id;
 
