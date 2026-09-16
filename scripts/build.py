@@ -1375,12 +1375,18 @@ def validate_integrale_display():
     else:
         body = open(renderer, encoding="utf-8").read()
         for need, what in (("VeloceCaseContents.contentFor", "zawartosci z tabeli obudow"),
-                           ("VeloceCaseSpin", "obrotu elementow z predkoscia maszyny"),
                            ("getBlockRenderer", "renderowania modelu bloku"),
                            ("rotationDegrees", "animacji (obrot)"),
                            ("Math.sin", "animacji (bujanie)")):
             if need not in body:
                 problems.append("renderer obudowy bez " + what)
+        # Samo wystapienie "VeloceCaseSpin" w pliku nic nie znaczy (jest w
+        # sygnaturze metody pomocniczej) - musi byc WYWOLANE z render().
+        render_body = _method_body(body, "public void render(")
+        if render_body is None or "VeloceCaseSpin" not in render_body \
+                or "renderParts(" not in render_body:
+            problems.append("renderer nie rysuje elementow maszyny (kola mlynskie) "
+                            "z predkoscia z maszyny - VeloceCaseSpin nieuzywany")
 
     contents_path = "src/com/craftingveloce/block/VeloceCaseContents.java"
     if not os.path.exists(contents_path):
