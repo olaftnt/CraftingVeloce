@@ -101,6 +101,7 @@ public final class VelocePipeWorld {
         public final Set<BlockPos> storages = new LinkedHashSet<>();
         /** Craftery - dodatkowo jako bufory produkcji. */
         public final Set<BlockPos> crafters = new LinkedHashSet<>();
+        public final Set<BlockPos> energy = new LinkedHashSet<>();
         /** Kiedy opis powstal (gameTime) - do diagnostyki. */
         public long builtAtTick;
     }

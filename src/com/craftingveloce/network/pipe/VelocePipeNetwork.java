@@ -160,6 +160,9 @@ public class VelocePipeNetwork {
         for (BlockPos p : endpoints.keySet()) {
             trackedChunks.add(new ChunkPos(p));
         }
+        for (BlockPos p : energyEndpoints) {
+            trackedChunks.add(new ChunkPos(p));
+        }
     }
 
     /**

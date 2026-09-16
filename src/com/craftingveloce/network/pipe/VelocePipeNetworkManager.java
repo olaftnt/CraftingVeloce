@@ -430,7 +430,8 @@ public class VelocePipeNetworkManager extends SavedData {
         VelocePipeWorld.Component component = new VelocePipeWorld.Component();
         component.pipes.addAll(net.getPipes());
         component.nodes.addAll(net.getTerminals());
-        component.storages.addAll(net.getEndpoints().keySet());
+                component.storages.addAll(net.getEndpoints().keySet());
+        component.energy.addAll(net.getEnergyEndpoints());
         component.builtAtTick = level.getGameTime();
         world.storeComponent(seed, component);
 
@@ -544,6 +545,10 @@ return net;
         // odczytac z rur. Bez tego tryb Pull nie dzialalby w praktyce.
         refreshInsertModes(level, net, pipes);
         net.updateTrackedChunks();
+        net.clearEnergyEndpoints();
+        for (BlockPos ep : component.energy) {
+            net.addEnergyEndpoint(ep);
+        }
         return net;
     }
 
@@ -1382,6 +1387,7 @@ return net;
     }
 
     public void onTerminalPlaced(ServerLevel level, BlockPos terminalPos) {
+        knownNodes.add(terminalPos.immutable());
         for (Direction d : Direction.values()) {
             BlockPos neighborPos = terminalPos.relative(d);
             UUID netId = pipeToNetwork.get(neighborPos);

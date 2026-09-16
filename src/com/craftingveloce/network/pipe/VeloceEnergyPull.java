@@ -163,9 +163,7 @@ public final class VeloceEnergyPull {
         // Jesli siec nie zna zrodel (np. Energy Cube postawiony PO skanie sieci
         // albo siec byla odbudowana z zapisu), znajdz je teraz - inaczej pobor
         // nigdy nie ruszy i wyglada to jak "nie dziala".
-        discover(level, network);
-
-        int budget = Math.min(free, maxRate);
+int budget = Math.min(free, maxRate);
         int total = 0;
         for (BlockPos pos : network.getEnergyEndpoints()) {
             if (budget <= 0) {
