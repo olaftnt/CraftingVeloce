@@ -112,4 +112,21 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
     protected com.mojang.serialization.MapCodec<? extends BaseEntityBlock> codec() {
         return simpleCodec(VeloceBrewingStandBlock::new);
     }
+
+    /** Wlasciwosci zaslepek obudowy (te same, co puste Integrale). */
+    @Override
+    protected void createBlockStateDefinition(
+            net.minecraft.world.level.block.state.StateDefinition.Builder<
+                    net.minecraft.world.level.block.Block, BlockState> builder) {
+        super.createBlockStateDefinition(builder);
+        com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
+    }
+
+    /** Domkniecie blachy na scianie, przy ktorej stoi rura Veloce. */
+    @Override
+    protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
+                                     BlockState facingState, net.minecraft.world.level.LevelAccessor world,
+                                     BlockPos pos, BlockPos facingPos) {
+        return com.craftingveloce.block.VeloceIntegraleFrame.withClosure(state, facing, facingState);
+    }
 }
