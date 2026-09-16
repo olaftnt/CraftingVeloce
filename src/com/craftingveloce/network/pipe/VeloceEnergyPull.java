@@ -42,6 +42,40 @@ public final class VeloceEnergyPull {
      * @param maxRate limit odbioru maszyny na tick (wlasny, obok limitu zrodla)
      * @return ile FE NAPRAWDE weszlo do odbiornika (0 = nic nie trzeba/nie ma)
      */
+
+    /**
+     * Doszukuje obce zrodla energii w sieci na zadanie.
+     *
+     * <p>Endpointy powstaja w skanie sieci, a skan chodzi po zmianach topologii -
+     * Energy Cube postawiony obok istniejacej rury nie zmienia topologii, wiec
+     * lista zostawala pusta i maszyny nie mialy z czego sciagac. Ten przebieg
+     * sprawdza sasiadow wszystkich rur sieci i dopisuje znalezione zrodla.
+     *
+     * <p>Nasze bloki sa pomijane - maszyny sa tylko odbiornikami i nie moga byc
+     * dla siebie zrodlem.
+     */
+    private static void discover(ServerLevel level, VelocePipeNetwork network) {
+        if (!network.getEnergyEndpoints().isEmpty()) {
+            return;
+        }
+        for (BlockPos pipe : network.getPipes()) {
+            if (!level.isLoaded(pipe)) {
+                continue;
+            }
+            for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+                BlockPos side = pipe.relative(dir);
+                if (!level.isLoaded(side)
+                        || level.getBlockState(side).getBlock() instanceof VeloceNetworkNode) {
+                    continue;
+                }
+                if (level.getCapability(Capabilities.EnergyStorage.BLOCK, side,
+                        dir.getOpposite()) != null) {
+                    network.addEnergyEndpoint(side);
+                }
+            }
+        }
+    }
+
     public static int pull(ServerLevel level, VelocePipeNetwork network,
                            IEnergyStorage receiver, int maxRate) {
         if (level == null || network == null || receiver == null || maxRate <= 0) {
@@ -62,6 +96,11 @@ public final class VeloceEnergyPull {
                             + "stoi PRZY RURZE i czy siec byla skanowana po jego postawieniu",
                     receiver.getEnergyStored(), free);
         }
+        // Jesli siec nie zna zrodel (np. Energy Cube postawiony PO skanie sieci
+        // albo siec byla odbudowana z zapisu), znajdz je teraz - inaczej pobor
+        // nigdy nie ruszy i wyglada to jak "nie dziala".
+        discover(level, network);
+
         int budget = Math.min(free, maxRate);
         int total = 0;
         for (BlockPos pos : network.getEnergyEndpoints()) {
