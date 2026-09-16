@@ -129,6 +129,8 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
                         .getNetworkForTerminal(serverLevel, pkt.terminalPos());
                 if (net != null) {
                     net.noteCrafted(extracted.getItem(), extracted.getCount());
+                    com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
+                            .markDirty();
                     PacketDistributor.sendToPlayer(serverPlayer,
                             new SyncCraftableCountsPKT(pkt.terminalPos(),
                                     net.getCraftableMemo(), false));

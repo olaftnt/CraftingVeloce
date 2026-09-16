@@ -155,6 +155,10 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                 complete = computed.complete();
                 if (network != null) {
                     network.rememberCraftable(computed.counts());
+                    // Cache ma przetrwac restart swiata - bez setDirty SavedData
+                    // nie zostanie zapisany (patrz markDirty).
+                    com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
+                            .markDirty();
                 }
             }
             PacketDistributor.sendToPlayer(player,

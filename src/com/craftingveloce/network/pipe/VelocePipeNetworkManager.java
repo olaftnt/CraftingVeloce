@@ -1026,6 +1026,19 @@ public class VelocePipeNetworkManager extends SavedData {
      * wiec stary cache musialby klamac. Kasujemy go - klient od razu dostanie
      * pusta migawke, a pierwsze liczenie widocznej strony zaraz ja zapelni.
      */
+    /**
+     * Oznacza dane sieci jako brudne, czyli DO ZAPISU.
+     *
+     * <p>BUG, ktory to naprawia (zgloszenie gracza: "wychodze z gry, wchodze
+     * i od poczatku wszystko sie generuje, nic nie ma z keszu"): zapisujemy
+     * cache liczb w save(), ale SavedData zapisuje tylko wpisy oznaczone jako
+     * brudne (setDirty). Cache zmienial sie bez zadnej zmiany topologii, wiec
+     * nigdy nie byl zapisywany.
+     */
+    public void markDirty() {
+        setDirty();
+    }
+
     public void clearCraftableMemo(ServerLevel level, BlockPos pos) {
         VelocePipeNetwork network = getNetworkForTerminal(level, pos);
         if (network != null) {
