@@ -58,6 +58,17 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
     /** Predkosc obrotu calej zawartosci w stopniach na tick (pelny obrot ~10 s). */
     private static final float SPIN_DEGREES_PER_TICK = 0.6F;
 
+    /**
+     * Rozmiar calej SIATKI elementow w oknie obudowy.
+     *
+     * <p>Okno ma 12 px (0.75 klocka), a zawartosc dodatkowo buja sie w gore-dol
+     * i kazdy element ma swoja polowe grubosci. Gracz zglosil, ze przy
+     * najwyzszej klatce animacji craftery wystawaly ponad model - dlatego
+     * siatka zajmuje tylko 0.62 klocka, a nie 0.72: reszta to zapas na ruch
+     * i na grubosc elementu.
+     */
+    private static final float GRID_EXTENT = 0.62F;
+
     /** Stos przedmiotu dla klocka bazowego (bez alokacji na klatke). */
     private static final Map<Block, ItemStack> CONTENT_STACKS = new ConcurrentHashMap<>();
 
@@ -144,7 +155,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         int parts = spin.caseParts();
         int cols = Math.max(1, spin.caseGridColumns());
         int rows = Math.max(1, spin.caseGridRows());
-        float spacing = Math.min(0.72F / cols, 0.72F / rows);
+        float spacing = Math.min(GRID_EXTENT / cols, GRID_EXTENT / rows);
         float scale = Math.min(CONTENT_SCALE * contentScale, spacing * 0.9F);
         boolean individually = spin.casePartsSpinIndividually();
         float speed = spin.caseSpinDegreesPerTick();

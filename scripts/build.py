@@ -1580,7 +1580,7 @@ def validate_create_mechanics():
             problems.append("wpis tabeli obudow bez " + what)
     compat_create = open("src/com/craftingveloce/compat/create/CreateCompat.java", encoding="utf-8").read()
     for need, what in (('block("crushing_wheel"), 0.4F, 0.0F, true', "mocno zmniejszonej kruszarki"),
-                       ('block("mechanical_crafter"), 0.5F', "zmniejszonego craftera"),
+                       ('block("mechanical_crafter"), 0.42F', "zmniejszonego craftera"),
                        ('block("mechanical_press"), 0.5F', "zmniejszonej prasy"),
                        ('block("mechanical_mixer"), 0.5F', "zmniejszonego miksera"),
                        ('block("deployer"), 0.5F, -90.0F', "deployera patrzacego w dol"),
@@ -1702,6 +1702,10 @@ def validate_create_mechanics():
                        ("public String gridLabel()", "tekstu ukladu dla gracza")):
         if need not in be_code:
             problems.append("maszyna bez " + what)
+    # Siatka musi zostawiac zapas na animacje (gracz: craftery wystawaly ponad
+    # model przy najwyzszej klatce bujania).
+    if "GRID_EXTENT" not in renderer or "GRID_EXTENT / cols" not in renderer:
+        problems.append("siatka elementow nie ma zapasu na animacje")
     if "spin.caseGridColumns()" not in renderer or "spin.caseGridRows()" not in renderer:
         problems.append("renderer nie uklada elementow tak, jak podaje maszyna")
 
