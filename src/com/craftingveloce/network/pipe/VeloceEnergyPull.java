@@ -30,6 +30,8 @@ public final class VeloceEnergyPull {
             org.slf4j.LoggerFactory.getLogger("craftingveloce-energy");
     private static long lastEmptyLog;
     private static long lastDiscoverLog;
+    private static long lastPullLog;
+    private static long lastPullLog2;
 
     /** Ile FE na tick najwyzej probujemy wziac z jednego zrodla. */
     public static final int MAX_PER_SOURCE_PER_TICK = 1_000_000;
@@ -137,6 +139,11 @@ public final class VeloceEnergyPull {
 
         int budget = Math.min(free, maxRate);
         int total = 0;
+        if (System.currentTimeMillis() - lastPullLog > 5_000L) {
+            lastPullLog = System.currentTimeMillis();
+            LOG.info("[Veloce][ENERGY] pobor: wolne={} FE, zrodla={}, limit maszyny={}/tick",
+                    free, network.getEnergyEndpoints(), maxRate);
+        }
         for (BlockPos pos : network.getEnergyEndpoints()) {
             if (budget <= 0) {
                 break;
@@ -159,6 +166,11 @@ public final class VeloceEnergyPull {
             }
             total += accepted;
             budget -= accepted;
+            if (accepted > 0 && System.currentTimeMillis() - lastPullLog2 > 5_000L) {
+                lastPullLog2 = System.currentTimeMillis();
+                LOG.info("[Veloce][ENERGY] wzielo {} FE ze {} (razem {} FE w tym ticku)",
+                        accepted, pos.toShortString(), total);
+            }
         }
         return total;
     }
