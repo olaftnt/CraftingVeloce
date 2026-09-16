@@ -809,6 +809,33 @@ Przezroczysta rura wymagała `translucent`, ale kolejne próby poprawy UV
 efektu wizualnego. Zdecydowano o powrocie do solidnej rury 6×6 z oryginalną
 teksturą. Wcześniejsze wersje są w historii gita (commit `8553ae5` i wcześniejsze).
 
+## 🍺 Brewing Stand i stoły specjalne
+
+**Brewing Stand** (`veloce_brewing_stand`) jest pełnoprawną maszyną Veloce:
+blok + `VeloceBrewingStandBlockEntity` + menu + ekran + obudowa Integrale +
+dane (blockstate, model itemu, loot table). Block entity **dziedziczy po
+waniliowym `BrewingStandBlockEntity`**, więc warzenie (5 slotów: 3 butelki,
+składnik, blaze powder; `brewTime`, paliwo, mieszanie przez `PotionBrewing`
+i zapis w NBT) nie jest kopiowane — dostajemy je z wanilii. Menu pokazuje
+5 slotów maszyny + ekwipunek gracza (x=26, y=84/142), ekran to panel pieca
+**bez** części elektrycznej (warzenie nie ma akumulatora).
+
+### Co sieć umie zrobić ze stołów specjalnych
+
+| Stół | Jak wanilia to robi | Czy sieć Veloce to wytworzy |
+|------|--------------------|------------------------------|
+| Fletching table | zwykły crafting 3×3 | **tak** — rodzina `CRAFTING` |
+| Smithing table | `RecipeType.SMITHING` | **tak** — jest w rodzinie `FREE` |
+| Cartography table | logika zaszyta w menu, **brak `RecipeType`** | **nie** — wymaga własnej ścieżki |
+| Brewing stand | `PotionBrewing`, **brak `RecipeType`** | **jeszcze nie** — patrz niżej |
+
+**Ograniczenie, które trzeba znać:** wanilia nie ma typu receptury ani dla
+kartografii, ani dla warzenia — to logika zaszyta w blokach. Dlatego nie da się
+ich dodać do `VeloceRecipeFamilies` (to zbiór `RecipeType`). Warzenie w sieci
+wymaga **własnej ścieżki w planerze**: pytania `PotionBrewing.hasMix(butelka,
+składnik)` / `mix(...)`, własnego rachunku blaze powder i limitu 3 butelek.
+Blok warzy już teraz normalnie (ręcznie); automat sieciowy to osobny etap.
+
 ## 🚧 Co jeszcze do zrobienia / Known Issues
 
 ### 🔴 Zrobic pozniej: podglad bufora craftera w zakladce ekwipunku

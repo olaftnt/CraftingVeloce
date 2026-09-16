@@ -1740,6 +1740,18 @@ def validate_brewing_stand():
         if not os.path.exists(path):
             problems.append("brak danych: " + path)
 
+    # Czesc B celu: co siec umie ze stolow specjalnych. To FAKTY z wanilii,
+    # nie obietnice - smithing i fletching sa juz obslugiwane, a kartografia
+    # i warzenie nie maja RecipeType, wiec NIE wolno ich dopisywac do rodzin.
+    families = open("src/com/craftingveloce/crafting/VeloceRecipeFamilies.java",
+                    encoding="utf-8").read()
+    if "RecipeType.SMITHING" not in families:
+        problems.append("smithing table wypadl z rodzin receptur (siec go nie zrobi)")
+    if "RecipeType.CRAFTING" not in families:
+        problems.append("fletching table przestal byc obslugiwany (to zwykly crafting)")
+    if "BREWING" in families or "CARTOGRAPHY" in families:
+        problems.append("ktos dopisal nieistniejacy RecipeType (BREWING/CARTOGRAPHY)")
+
     if problems:
         fail("brewing stand:\n  " + "\n  ".join(problems))
     print("    OK (brewing stand: waniliowa logika warzenia + menu/sloty + dane)")
