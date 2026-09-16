@@ -173,12 +173,22 @@ public final class VeloceEnergyPull {
                     lastSourceLog = System.currentTimeMillis();
                     IEnergyStorage any = level.getCapability(
                             Capabilities.EnergyStorage.BLOCK, pos, null);
-                    LOG.info("[Veloce][ENERGY] zrodlo {} nie oddaje energii: storage={}, "
-                                    + "canExtract={}, stan={}/{}",
-                            pos.toShortString(), any != null,
-                            any != null && any.canExtract(),
+                    StringBuilder sides = new StringBuilder();
+                    for (net.minecraft.core.Direction d : net.minecraft.core.Direction.values()) {
+                        IEnergyStorage st = level.getCapability(
+                                Capabilities.EnergyStorage.BLOCK, pos, d);
+                        sides.append(d).append(':')
+                                .append(st == null ? "brak"
+                                        : (st.canExtract()
+                                                ? ("extract=" + st.extractEnergy(1, true))
+                                                : "nie-moze-oddac"))
+                                .append(' ');
+                    }
+                    LOG.info("[Veloce][ENERGY] zrodlo {} nie oddaje energii: stan={}/{}, "
+                                    + "strony: {}",
+                            pos.toShortString(),
                             any == null ? -1 : any.getEnergyStored(),
-                            any == null ? -1 : any.getMaxEnergyStored());
+                            any == null ? -1 : any.getMaxEnergyStored(), sides.toString().trim());
                 }
                 continue;
             }
