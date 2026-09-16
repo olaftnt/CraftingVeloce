@@ -116,11 +116,31 @@ public final class VeloceEnergyPull {
     }
 
 
-    /** Pierwsza strona bloku, ktora oddaje energie (albo null). */
+    /**
+     * Strona, ktora ostatnio oddala prad - jak cache polaczenia w Pipezie.
+     *
+     * <p>Pipez nie szuka handlera co tick: rozwiazuje go raz przy polaczeniu
+     * i pamieta. U nas robi to ta mapa: najpierw probujemy strone, ktora juz
+     * zadzialala (bo Energy Cube Mekanismu czesto oddaje prad tylko jedną),
+     * a dopiero potem obchodzimy pozostale.
+     */
+    private static final java.util.Map<BlockPos, net.minecraft.core.Direction> KNOWN_SIDE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Strona bloku, ktora oddaje energie (najpierw zapamietana, potem reszta). */
     private static IEnergyStorage findExtracting(ServerLevel level, BlockPos pos) {
+        net.minecraft.core.Direction known = KNOWN_SIDE.get(pos);
+        if (known != null) {
+            IEnergyStorage st = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, known);
+            if (st != null && st.canExtract() && st.extractEnergy(1, true) > 0) {
+                return st;
+            }
+            KNOWN_SIDE.remove(pos);
+        }
         for (net.minecraft.core.Direction side : net.minecraft.core.Direction.values()) {
             IEnergyStorage st = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
             if (st != null && st.canExtract() && st.extractEnergy(1, true) > 0) {
+                KNOWN_SIDE.put(pos.immutable(), side);
                 return st;
             }
         }
