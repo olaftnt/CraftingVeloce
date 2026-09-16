@@ -47,6 +47,11 @@ public class CraftingVeloceMod {
                         output.accept(VeloceRegistry.VELOCE_WRENCH.get());
                         // Ozdobna klatka - widac tylko krawedzie, srodek pusty.
                         output.accept(VeloceRegistry.VELOCE_INTEGRALE_ITEM.get());
+                        // Klatka ze stolem craftingu w srodku (prawdziwe
+                        // stanowisko craftingu - ten sam blok co stol, stan
+                        // "facade"). Można ja tez zrobic w swiecie: klatka +
+                        // prawy klik stolem craftingu.
+                        output.accept(VeloceRegistry.VELOCE_INTEGRALE_CRAFTING_ITEM.get());
                         // Pozycje z opcjonalnych integracji - TYLKO gdy mod
                         // jest obecny. Sprawdzenie musi byc W SRODKU lambdy:
                         // displayItems wykonuje sie ZAWSZE (takze bez tych

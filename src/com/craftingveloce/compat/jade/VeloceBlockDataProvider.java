@@ -1,6 +1,7 @@
 package com.craftingveloce.compat.jade;
 
 import com.craftingveloce.block.VeloceIntegraleBlock;
+import com.craftingveloce.block.VeloceIntegraleFrame;
 import com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity;
 import com.craftingveloce.block.entity.VeloceExtractorBlockEntity;
 import com.craftingveloce.block.entity.VeloceHeatSource;
@@ -11,16 +12,13 @@ import com.craftingveloce.block.entity.VelocePipeBlockEntity;
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
 import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.PipeBlock;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import snownee.jade.api.BlockAccessor;
 import snownee.jade.api.IServerDataProvider;
 
@@ -61,9 +59,14 @@ public class VeloceBlockDataProvider implements IServerDataProvider<BlockAccesso
         BlockState state = accessor.getBlockState();
 
         if (block instanceof VeloceIntegraleBlock) {
+            boolean filled = VeloceIntegraleBlock.isFilled(state);
             veloce.putBoolean("integrale", true);
-            veloce.putBoolean("filled", VeloceIntegraleBlock.isFilled(state));
-            veloce.putInt("coveredSides", coveredSides(state));
+            veloce.putBoolean("filled", filled);
+            veloce.putInt("coveredSides", VeloceIntegraleFrame.coveredSides(state));
+            // Pusta klatka nie mowi sama z siebie, do czego sluzy - a to
+            // jedyne miejsce, w ktorym gracz zobaczy te podpowiedz bez
+            // szukania w dokumentacji.
+            veloce.putBoolean("integraleHint", !filled);
             if (accessor.getBlockEntity() instanceof VeloceCraftingTableBlockEntity table) {
                 ItemStack display = table.getDisplayItem();
                 if (!display.isEmpty()) {
@@ -71,6 +74,13 @@ public class VeloceBlockDataProvider implements IServerDataProvider<BlockAccesso
                     veloce.putString("displayName", display.getHoverName().getString());
                 }
             }
+        }
+
+        // Stol stojacy w KLATCE (stan "facade"): to on jest crafterem, a nie
+        // klatka - dlatego linia mowi wprost, ze w srodku jest stol craftingu.
+        if (block instanceof com.craftingveloce.block.VeloceCraftingTableBlock
+                && com.craftingveloce.block.VeloceCraftingTableBlock.isFacade(state)) {
+            veloce.putBoolean("integraleCase", true);
         }
 
         if (accessor.getBlockEntity() instanceof VeloceCraftingTableBlockEntity crafter
@@ -150,17 +160,6 @@ public class VeloceBlockDataProvider implements IServerDataProvider<BlockAccesso
         } else {
             veloce.putInt("networkPipes", network.getPipes().size());
         }
-    }
-
-    private int coveredSides(BlockState state) {
-        int covered = 0;
-        for (Direction direction : Direction.values()) {
-            BooleanProperty property = PipeBlock.PROPERTY_BY_DIRECTION.get(direction);
-            if (property != null && state.getValue(property)) {
-                covered++;
-            }
-        }
-        return covered;
     }
 
     private boolean isVeloce(Block block) {

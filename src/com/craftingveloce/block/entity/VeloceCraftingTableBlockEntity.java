@@ -165,16 +165,16 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
     /**
      * Czy ten block entity jest CRAFTEREM dla sieci.
      *
-     * <p>Klatka uzywa tego samego block entity co stol, wiec pusta klatka nie
-     * moze udawac craftera (inaczej siec widzialaby craftery, ktorych nie ma).
+     * <p><b>Decyduje TYP BLOKU, nie zawartosc.</b> Klatka Veloce Integrale
+     * uzywa tego samego block entity co stol (zeby pamietac eksponat), ale
+     * klatka NIE JEST crafterem - dopiero prawy klik stolem craftingu podmienia
+     * ja na prawdziwy {@code veloce_crafting_table} (stan {@code facade}).
+     * Wczesniej klatka z eksponatem podawala sie za craftera i siec musiala
+     * znac ten wyjatek; teraz wystarczy spojrzec na typ bloku.
      */
     public boolean isActiveCrafter() {
-        BlockState state = getBlockState();
-        if (state.getBlock() instanceof com.craftingveloce.block.VeloceIntegraleBlock integrale) {
-            return integrale.isFilled(state) || com.craftingveloce.block.VeloceIntegraleBlock
-                    .isFilled(state);
-        }
-        return true;
+        return getBlockState().getBlock()
+                instanceof com.craftingveloce.block.VeloceCraftingTableBlock;
     }
 
     /** Pakiet z gablota dla klienta (klatka renderuje ja w srodku). */

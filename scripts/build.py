@@ -269,6 +269,33 @@ def _balanced(text, open_index):
     return None
 
 
+def _method_body(text, signature):
+    """
+    Cialo metody (w nawiasach klamrowych) po podanym poczatku sygnatury.
+
+    Po co: guardy sprawdzajace "czy w kodzie jest takie wywolanie" sa
+    BEZUZYTECZNE, gdy ta sama linia wystepuje w pliku jeszcze raz (np. to samo
+    zgloszenie wezla do sieci jest i przy postawieniu bloku, i przy podmianie
+    bloku). Wtedy usuniecie wywolania z JEDNEGO z tych miejsc przechodzi przez
+    build, a objaw jest cichy. Sprawdzamy wiec zawartosc KONKRETNEJ metody.
+    """
+    start = text.find(signature)
+    if start < 0:
+        return None
+    brace = text.find("{", start)
+    if brace < 0:
+        return None
+    depth = 0
+    for i in range(brace, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[brace:i + 1]
+    return None
+
+
 def validate_helper_docs():
     """
     Sygnatury metod ClientTerminalHelper w README musza sie zgadzac z kodem.
@@ -1146,7 +1173,10 @@ def validate_block_models():
             if not os.path.exists(path):
                 problems.append(f"{bs.replace(os.sep, '/')}: brak modelu {ref} ({path})")
 
-    # Modele itemow i ich rodzic (model bloku) plus tekstury.
+    # Modele itemow i ich rodzic (model bloku) plus tekstury. Sprawdzamy tez
+    # tekstury wewnatrz modeli itemow (np. ikona "stol w klatce" ma wlasne
+    # sciany) - brak pliku PNG w JARze to znowu "popsuty model", a nie blad
+    # kompilacji.
     for item_model in sorted(glob.glob(os.path.join(model_dir, "item/*.json"))):
         data = json.load(open(item_model, encoding="utf-8"))
         parent = data.get("parent")
@@ -1156,27 +1186,28 @@ def validate_block_models():
             if path is not None and not os.path.exists(path):
                 problems.append(f"{item_model.replace(os.sep, '/')}: brak rodzica {parent}")
 
-    for model_file in sorted(glob.glob(os.path.join(model_dir, "block/*.json"))):
-        data = json.load(open(model_file, encoding="utf-8"))
-        textures = data.get("textures", {})
-        refs = set()
-        for value in textures.values():
-            if isinstance(value, str) and ":" in value:
-                refs.add(value)
-        for element in data.get("elements", []):
-            for face in element.get("faces", {}).values():
-                texture = face.get("texture")
-                if isinstance(texture, str) and texture.startswith("#"):
-                    resolved = textures.get(texture[1:])
-                    if isinstance(resolved, str) and ":" in resolved:
-                        refs.add(resolved)
-        for ref in refs:
-            ns, _, path = ref.partition(":")
-            checked += 1
-            if ns != "craftingveloce":
-                continue
-            if not os.path.exists(os.path.join(asset_root, "textures", path + ".png")):
-                problems.append(f"{model_file.replace(os.sep, '/')}: brak tekstury {ref}")
+    for model_pattern in ("block/*.json", "item/*.json"):
+        for model_file in sorted(glob.glob(os.path.join(model_dir, model_pattern))):
+            data = json.load(open(model_file, encoding="utf-8"))
+            textures = data.get("textures", {})
+            refs = set()
+            for value in textures.values():
+                if isinstance(value, str) and ":" in value:
+                    refs.add(value)
+            for element in data.get("elements", []):
+                for face in element.get("faces", {}).values():
+                    texture = face.get("texture")
+                    if isinstance(texture, str) and texture.startswith("#"):
+                        resolved = textures.get(texture[1:])
+                        if isinstance(resolved, str) and ":" in resolved:
+                            refs.add(resolved)
+            for ref in refs:
+                ns, _, path = ref.partition(":")
+                checked += 1
+                if ns != "craftingveloce":
+                    continue
+                if not os.path.exists(os.path.join(asset_root, "textures", path + ".png")):
+                    problems.append(f"{model_file.replace(os.sep, '/')}: brak tekstury {ref}")
 
     if problems:
         fail("modele blokow:\n  " + "\n  ".join(problems))
@@ -1226,7 +1257,8 @@ def validate_jade_plugin():
                            ("VeloceControllerBlockEntity", "informacji o kontrolerze"),
                            ("VeloceThresholdSensorBlockEntity", "informacji o sensorze"),
                            ("VeloceExtractorBlockEntity", "informacji o ekstraktorze"),
-                           ("VeloceTomTerminalBlockEntity", "informacji o terminalu")):
+                           ("VeloceTomTerminalBlockEntity", "informacji o terminalu"),
+                           ("isFacade", "informacji o stole stojacym w klatce (fasada)")):
             if need not in dtext:
                 problems.append("brak " + what)
 
@@ -1246,48 +1278,126 @@ def validate_jade_plugin():
 
 def validate_integrale_display():
     """
-    Gabriota w klatce: klatka UZYWA block entity stolu craftingu, a klient
-    renderuje przedmiot z srodka.
+    Klatka Veloce Integrale: PODMIANA BLOKU na prawdziwy stol craftingu.
 
-    Mechanika jest rozlozona na cztery miejsca, ktore MUSZA byc spojne:
-      1. klatka tworzy block entity STOLU (inaczej nie jest prawdziwym stolem),
-      2. typ block entity stolu dopuszcza blok klatki (inaczej BE sie nie utworzy),
-      3. block entity zapisuje i SYNCHRONIZUJE "DisplayItem" (inaczej klient nie
-         ma czego renderowac),
-      4. istnieje renderer zarejestrowany dla tego typu (inaczej nic nie widac).
+    Gracz wybral to rozwiazanie swiadomie ("najprosciej byloby podmieniac
+    klocka"): klatka nie udaje craftera, tylko przy prawym kliku stolem
+    craftingu zamienia sie w nasz blok stolu ze stanem `facade`. Dzieki temu
+    w swiecie stoi prawdziwy stol (auto-crafter, GUI, bufor, ten sam blok dla
+    modow od receptur), a nie atrapa z wlasnym wyjatkiem w sieci.
 
-    Kazda z tych czterech rzeczy latwo zgubic przy refaktorze, a objaw jest
-    cichy: klatka wyglada dobrze, tylko w srodku nic sie nie pojawia.
+    Sprawdzamy szesc rzeczy, ktore musza byc spojne - kazda z nich latwo zgubic
+    przy refaktorze, a objaw jest cichy (klatka wyglada dobrze, tylko nie da
+    sie w niej craftowac albo nie ma jak odzyskac ramy):
+      1. klatka przyjmuje eksponat (gablota) i oddaje go z powrotem,
+      2. klatka PODMIENIA sie na stol (stan FACADE) i zglasza nowy wezel sieci,
+      3. zbita stacja oddaje JEDEN przedmiot (rama + stol),
+      4. jest DROGA POWROTNA (shift + prawy klik zdejmuje stol z klatki),
+      5. klient renderuje zawartosc (eksponat ALBO stol w fasadzie),
+      6. klatka NIE jest crafterem dla sieci (decyduje typ bloku).
     """
     problems = []
 
     integrale = "src/com/craftingveloce/block/VeloceIntegraleBlock.java"
     text = open(integrale, encoding="utf-8").read()
+
+    # Podmiana: samo wystapienie "onNodePlaced" w pliku nic nie znaczy - to
+    # samo wywolanie jest tez przy postawieniu bloku. Sprawdzamy TRESC metody.
+    swap = _method_body(text, "private static void swapIntoCraftingStation")
+    if swap is None:
+        problems.append("klatka nie ma metody podmiany na stol craftingu")
+    else:
+        for need, what in (("VeloceCraftingTableBlock.FACADE, true", "ustawienia stanu fasady"),
+                           ("world.setBlock(pos, station", "postawienia stolu w miejscu klatki"),
+                           ("VeloceNodeBlocks.onNodePlaced", "zgloszenia nowego bloku do sieci")):
+            if need not in swap:
+                problems.append("podmiana klatki na stol bez " + what)
+
+    put = _method_body(text, "private static void putOnDisplay")
+    take = _method_body(text, "private static void takeOffDisplay")
+    if put is None:
+        problems.append("klatka bez wkladania eksponatu (gablota)")
+    if take is None:
+        problems.append("klatka bez oddawania eksponatu (gablota)")
+    elif "getInventory().add" not in take:
+        problems.append("gablota nie oddaje eksponatu do plecaka gracza")
+
+    # Same metody nic nie znacza, jesli nikt ich nie wola - sprawdzamy OBA
+    # wejscia (prawy klik z itemem i bez itemu).
+    use_item = _method_body(text, "protected ItemInteractionResult useItemOn")
+    if use_item is None or "swapIntoCraftingStation" not in use_item:
+        problems.append("prawy klik stolem craftingu nie podmienia klatki na stol")
+    use_bare = _method_body(text, "protected InteractionResult useWithoutItem")
+    if use_bare is None or "takeOffDisplay" not in use_bare:
+        problems.append("prawy klik z pusta reka nie oddaje eksponatu z gabloty")
+
     if "VeloceCraftingTableBlockEntity(pos, state)" not in text:
-        problems.append("klatka nie tworzy block entity stolu craftingu")
+        problems.append("klatka bez block entity pamietajacego eksponat")
+    if "exposesCraftingBuffer" in text:
+        problems.append("klatka wystawia bufor craftingu, choc crafterem nie jest "
+                        "(crafterem jest stol, ktory powstaje z podmiany)")
+
+    table = open("src/com/craftingveloce/block/VeloceCraftingTableBlock.java",
+                 encoding="utf-8").read()
+    if 'BooleanProperty.create("facade")' not in table:
+        problems.append("stol craftingu bez stanu fasady")
+
+    drops = _method_body(table, "protected List<ItemStack> getDrops")
+    if drops is None:
+        problems.append("stol craftingu bez wlasnego wypadu przy zbiciu")
+    else:
+        for need, what in (("isFacade(state)", "rozpoznania stacji"),
+                           ("VELOCE_INTEGRALE_CRAFTING_ITEM", "przedmiotu rama + stol")):
+            if need not in drops:
+                problems.append("wypad stacji bez " + what)
+
+    revert = _method_body(table, "private static void takeBackCraftingTable")
+    if revert is None:
+        problems.append("stol craftingu bez drogi powrotnej (rozebranie stacji)")
+    else:
+        for need, what in (("VELOCE_INTEGRALE.get()", "przywrocenia pustej klatki"),
+                           ("CRAFTING_TABLE", "oddania stolu craftingu")):
+            if need not in revert:
+                problems.append("rozebranie stacji bez " + what)
+
+    use = _method_body(table, "protected InteractionResult useWithoutItem")
+    if use is None or "takeBackCraftingTable" not in use:
+        problems.append("shift + prawy klik nie rozbiera stacji - pustej klatki "
+                        "nie da sie odzyskac")
+    elif "isFacade(state) && player.isShiftKeyDown()" not in use:
+        problems.append("rozbiorka stacji wisi na martwym warunku (galaz nigdy "
+                        "sie nie wykona)")
 
     be_path = "src/com/craftingveloce/block/entity/VeloceCraftingTableBlockEntity.java"
     be = open(be_path, encoding="utf-8").read()
     for need, what in (('tag.put("DisplayItem"', "zapisu gabloty (NBT)"),
                        ('tag.getCompound("DisplayItem")', "odczytu gabloty (NBT)"),
-                       ('getUpdateTag', "pakietu aktualizacji dla klienta")):
+                       ("getUpdateTag", "pakietu aktualizacji dla klienta"),
+                       ("instanceof com.craftingveloce.block.VeloceCraftingTableBlock",
+                        "rozpoznania craftera po TYPIE bloku (klatka crafterem nie jest)")):
         if need not in be:
             problems.append("brak " + what + " w block entity stolu")
 
     registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     if "integraleBlock()" not in registry:
         problems.append("typ block entity stolu NIE dopuszcza bloku klatki")
+    if '"veloce_integrale_crafting"' not in registry:
+        problems.append("brak rejestracji przedmiotu 'veloce_integrale_crafting'")
 
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VELOCE_CRAFTING_TABLE_BE.get()" not in mod or "VeloceDisplayRenderer" not in mod:
         problems.append("brak rejestracji renderera gabloty (RegisterRenderers)")
+    if "VELOCE_INTEGRALE_CRAFTING_ITEM.get()" not in mod:
+        problems.append("przedmiotu 'rama + stol' nie ma w zakladce kreatywnej "
+                        "(nie da sie go zdobyc inaczej niz komenda)")
 
     renderer = "src/com/craftingveloce/client/render/VeloceDisplayRenderer.java"
     if not os.path.exists(renderer):
         problems.append("brak klasy renderera gabloty")
     else:
         body = open(renderer, encoding="utf-8").read()
-        for need, what in (("getDisplayItem()", "odczytu gabloty z block entity"),
+        for need, what in (("isFacade", "rozpoznania stolu w klatce (fasada)"),
+                           ("getDisplayItem()", "odczytu gabloty z block entity"),
                            ("getBlockRenderer", "renderowania modelu bloku"),
                            ("rotationDegrees", "animacji (obrot)"),
                            ("Math.sin", "animacji (bujanie)")):
@@ -1295,8 +1405,8 @@ def validate_integrale_display():
                 problems.append("renderer bez " + what)
 
     if problems:
-        fail("gablota w klatce:\n  " + "\n  ".join(problems))
-    print("    OK (gablota: BE stolu + sync + renderer z animacja)")
+        fail("klatka / stol w klatce:\n  " + "\n  ".join(problems))
+    print("    OK (klatka: podmiana na stol z fasada + gablota + droga powrotna)")
 
 
 def validate_integrale_model():
@@ -1427,10 +1537,78 @@ def validate_integrale_model():
             if not condition:
                 problems.append(f"blockstate nie ma warunku dla strony {side}")
 
+    # 5) FASADA stolu craftingu: ten sam model ramy + zaslepki, ale wylacznie
+    #    dla stanu facade=true. Bez tego stol stojacy w klatce wygladalby jak
+    #    zwykly stol (gracz nie widzialby, ze stoi w ramie).
+    bs_table_path = "assets/craftingveloce/blockstates/veloce_crafting_table.json"
+    if not os.path.exists(bs_table_path):
+        problems.append("brak blockstate stolu craftingu")
+    else:
+        table_bs = json.load(open(bs_table_path, encoding="utf-8"))
+        table_parts = table_bs.get("multipart", [])
+        if not table_parts:
+            problems.append("blockstate stolu NIE jest wieloczesciowy - "
+                            "nie da sie pokazac stolu w klatce (facade)")
+        else:
+            def facade_part(model, side=None):
+                for part in table_parts:
+                    when = part.get("when", {})
+                    if when.get("facade") != "true":
+                        continue
+                    if side is not None and when.get(side) != "true":
+                        continue
+                    if side is None and "north" in when:
+                        continue
+                    if part.get("apply", {}).get("model") == model:
+                        return True
+                return False
+
+            if not facade_part("craftingveloce:block/veloce_integrale_frame"):
+                problems.append("blockstate stolu: brak modelu ramy dla facade=true")
+            for side in sides:
+                if not facade_part(f"craftingveloce:block/veloce_integrale_panel_{side}", side):
+                    problems.append(f"blockstate stolu: brak zaslepki {side} dla facade=true")
+            plain = any(part.get("when", {}).get("facade") == "false"
+                        and part.get("apply", {}).get("model")
+                        == "craftingveloce:block/veloce_crafting_table"
+                        for part in table_parts)
+            if not plain:
+                problems.append("blockstate stolu: brak zwyklego modelu dla facade=false")
+
+    # 6) Ikona przedmiotu "rama + stol": rama klatki + kostka stolu w srodku.
+    #    To ona mowi graczowi (i modom od receptur), ze w tym bloku jest stol.
+    item_path = "assets/craftingveloce/models/item/veloce_integrale_crafting.json"
+    if not os.path.exists(item_path):
+        problems.append("brak ikony przedmiotu veloce_integrale_crafting")
+    else:
+        item_model = json.load(open(item_path, encoding="utf-8"))
+        item_elements = item_model.get("elements", [])
+        if len(item_elements) != len(elements) + 1:
+            problems.append(f"ikona: elementow {len(item_elements)}, "
+                            f"ma byc {len(elements)} (rama+szyba) + 1 (stol)")
+        else:
+            table_from = item_elements[-1].get("from")
+            table_to = item_elements[-1].get("to")
+            if table_from != [4.0, 4.0, 4.0] or table_to != [12.0, 12.0, 12.0]:
+                problems.append(f"ikona: stol {table_from}..{table_to}, "
+                                f"ma byc 4..12 (mniejszy od szyby 2..14)")
+        item_textures = item_model.get("textures", {})
+        faces = set()
+        for element in item_elements[len(elements):]:
+            for face in element.get("faces", {}).values():
+                faces.add(face.get("texture"))
+        for needed in ("#table_top", "#table_front", "#table_side"):
+            if needed not in faces:
+                problems.append(f"ikona: brak sciany {needed} stolu")
+        for key in ("table_top", "table_front", "table_side"):
+            if "crafting_table" not in item_textures.get(key, ""):
+                problems.append(f"ikona: tekstura {key} nie jest stolem craftingu "
+                                f"({item_textures.get(key)})")
+
     if problems:
         fail("model klatki veloce_integrale:\n  " + "\n  ".join(problems))
     print(f"    OK (klatka: {len(bars)} pretow + szyba {glass_texture}, "
-          f"6 zaslepek stron, translucent)")
+          f"6 zaslepek stron, translucent; fasada stolu + ikona z stolem)")
 
 
 def game_running():

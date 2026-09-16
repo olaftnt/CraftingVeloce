@@ -217,6 +217,19 @@ public class VeloceRegistry {
             "veloce_integrale",
             VELOCE_INTEGRALE);
 
+    /**
+     * Stol craftingu W KLATCE - jeden przedmiot (rama + stol).
+     *
+     * <p>Powstaje przy zbiciu stacji (patrz {@code VeloceCraftingTableBlock
+     * #getDrops}) i stawia ten sam blok co zwykly stol, ale w stanie
+     * {@code facade}. Rejestrujemy go jako zwykly item (a nie
+     * {@code registerSimpleBlockItem}), bo potrzebuje wlasnej nazwy i ikony.
+     */
+    public static final DeferredItem<com.craftingveloce.item.VeloceIntegraleCraftingItem>
+            VELOCE_INTEGRALE_CRAFTING_ITEM = ITEMS.register("veloce_integrale_crafting",
+            () -> new com.craftingveloce.item.VeloceIntegraleCraftingItem(
+                    VELOCE_CRAFTING_TABLE.get(), new Item.Properties()));
+
     @FunctionalInterface
     public interface BlockEntityFactory<T extends BlockEntity> {
         T create(net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state);

@@ -26,7 +26,10 @@ import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.phys.BlockHitResult;
 
 import javax.annotation.Nullable;
@@ -40,12 +43,73 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
 
     public static final MapCodec<VeloceCraftingTableBlock> CODEC = ChestBlock.simpleCodec(properties -> new VeloceCraftingTableBlock());
 
+    /**
+     * Czy ten stol stoi w KLATCE Veloce Integrale.
+     *
+     * <p><b>Po co osobny stan, a nie osobny blok.</b> Gracz chce, zeby stol
+     * stojacy w klatce byl PRAWDZIWYM stolem: ta sama logika craftingu, ten sam
+     * GUI, ten sam bufor i ten sam blok dla modow od receptur ("tu tez mozna
+     * craftowac"). Osobny blok znaczylby drugi zestaw tych rzeczy do
+     * utrzymania. Rozni je wylacznie WYGLAD, a to jest dokladnie stan bloku:
+     * {@code false} = zwykly stol, {@code true} = rama klatki + gablota
+     * (patrz blockstate i renderer).
+     */
+    public static final BooleanProperty FACADE = BooleanProperty.create("facade");
+
     public VeloceCraftingTableBlock() {
         super(BlockBehaviour.Properties.of()
                 .mapColor(MapColor.COLOR_CYAN)
                 .sound(SoundType.WOOD)
                 .strength(2.5F)
                 .lightLevel(s -> 7));
+        registerDefaultState(stateDefinition.any().setValue(FACADE, false));
+    }
+
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        builder.add(FACADE);
+        VeloceIntegraleFrame.addProperties(builder);
+    }
+
+    /**
+     * Czy ten stan to stol ukryty w klatce (fasada).
+     *
+     * <p>Sprawdzamy tez typ bloku: stan innego bloku nie ma tej wlasciwosci,
+     * a {@code getValue} rzucilby wyjatkiem.
+     */
+    public static boolean isFacade(BlockState state) {
+        return state.getBlock() instanceof VeloceCraftingTableBlock && state.getValue(FACADE);
+    }
+
+    /**
+     * Zaslepki okien ruszaja sie TYLKO w fasadzie.
+     *
+     * <p>Zwykly stol nie pokazuje ramy, wiec jego zaslepki nie maja znaczenia -
+     * a przeliczanie ich znaczyloby pakiet aktualizacji bloku przy kazdym
+     * postawieniu rury obok.
+     */
+    @Override
+    protected BlockState updateShape(BlockState state, Direction facing, BlockState facingState,
+                                     LevelAccessor world, BlockPos pos, BlockPos facingPos) {
+        if (!state.getValue(FACADE)) {
+            return state;
+        }
+        return VeloceIntegraleFrame.withClosure(state, facing, facingState);
+    }
+
+    /**
+     * Zbicie stolu stojacego w klatce oddaje JEDEN przedmiot: rama + stol.
+     *
+     * <p>Bez tego wypadlby sam stol craftingu, a rama klatki przepadlaby -
+     * gracz stracilby material. Dla zwyklego stolu (bez fasady) zostaje
+     * normalna tabela lootu.
+     */
+    @Override
+    protected List<ItemStack> getDrops(BlockState state, LootParams.Builder params) {
+        if (isFacade(state)) {
+            return List.of(new ItemStack(VeloceRegistry.VELOCE_INTEGRALE_CRAFTING_ITEM.get()));
+        }
+        return super.getDrops(state, params);
     }
 
     @Override
@@ -60,6 +124,16 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
 
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos, Player player, BlockHitResult hit) {
+        // Shift + prawy klik na stacji (stol w klatce) zdejmuje stol z klatki.
+        // Bez tego nie byloby DROGI POWROTNEJ: zbita stacja oddaje jeden
+        // przedmiot "rama + stol", a ten stawia znow stacje - czyli pustej
+        // klatki nie da sie odzyskac inaczej niz komenda.
+        if (isFacade(state) && player.isShiftKeyDown()) {
+            if (!world.isClientSide) {
+                takeBackCraftingTable(world, pos, state);
+            }
+            return InteractionResult.sidedSuccess(world.isClientSide);
+        }
         com.craftingveloce.util.VeloceLog.Block.attempt(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
                 "auto-crafter right-clicked at %s by %s (client=%s)",
@@ -71,6 +145,26 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
             }
         }
         return InteractionResult.sidedSuccess(world.isClientSide);
+    }
+
+    /**
+     * Rozbiera stacje z powrotem na pusta klatke + stol craftingu.
+     *
+     * <p>Zwracamy zwykly stol craftingu, bo stacja nie pamieta, ktorym stolem
+     * ja zbudowano (a nasz stol Veloce nie ma przepisu - jest tylko
+     * w zakladce kreatywnej). Zaslepki okien przepisujemy, zeby klatka nie
+     * "otworzyla sie" przy rozbieraniu; zawartosc bufora wypuszcza
+     * {@link #onRemove} - dokladnie tak samo jak przy zbiciu bloku.
+     */
+    private static void takeBackCraftingTable(Level world, BlockPos pos, BlockState state) {
+        BlockState frame = VeloceIntegraleFrame.copyClosures(state,
+                VeloceRegistry.VELOCE_INTEGRALE.get().defaultBlockState());
+        world.setBlock(pos, frame, Block.UPDATE_ALL);
+        VeloceNodeBlocks.onNodePlaced(world, pos);
+        Block.popResource(world, pos,
+                new ItemStack(net.minecraft.world.item.Items.CRAFTING_TABLE));
+        world.playSound(null, pos, net.minecraft.sounds.SoundEvents.ITEM_FRAME_REMOVE_ITEM,
+                net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 1.2F);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.craftingveloce.client.render;
 
+import com.craftingveloce.block.VeloceCraftingTableBlock;
 import com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
@@ -9,10 +10,22 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
+import javax.annotation.Nullable;
+
 /**
- * Renderuje GABLOTE w srodku klatki Veloce Integrale - po stronie KLIENTA.
+ * Renderuje ZAWARTOSC klatki Veloce Integrale - po stronie KLIENTA.
+ *
+ * <p><b>Co pokazuje.</b> Zaleznie od tego, czym jest blok:
+ * <ul>
+ *   <li><b>fasada</b> ({@code veloce_crafting_table} ze stanem
+ *       {@code facade}) - stol craftingu stojacy w klatce, czyli widac, ze
+ *       w tym bloku naprawde mozna craftowac,</li>
+ *   <li><b>gablota</b> (klatka z eksponatem) - blok, ktory gracz wlozyl do
+ *       srodka.</li>
+ * </ul>
  *
  * <p><b>Po co wlasny renderer, a nie encja {@code BlockDisplay}.</b> Encja
  * block display istnieje na serwerze: trzeba ja stworzyc, zapisac, wyslac
@@ -26,8 +39,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * gry, wiec klatka animacji nie zalezy od tickow i wyglada plynnie.
  *
  * <p>Renderer wisi na block entity STOLU craftingu (klatka dzieli je ze
- * stolem), a gdy gabloty nie ma - wychodzi od razu, wiec zwykly stol nie
- * kosztuje nic.
+ * stolem), a gdy nie ma czego pokazac - wychodzi od razu, wiec zwykly stol
+ * nie kosztuje nic.
  */
 public class VeloceDisplayRenderer implements BlockEntityRenderer<VeloceCraftingTableBlockEntity> {
 
@@ -37,20 +50,27 @@ public class VeloceDisplayRenderer implements BlockEntityRenderer<VeloceCrafting
     /** Predkosc obrotu w stopniach na tick (pelny obrot ~10 s). */
     private static final float SPIN_DEGREES_PER_TICK = 0.6F;
 
+    /**
+     * Co pokazac w fasadzie: zwykly stol craftingu.
+     *
+     * <p>Ten sam model, ktory widnieje na ikonie itemu "stol w klatce" - gracz
+     * ma zobaczyc w swiecie dokladnie to, co trzyma w rece.
+     */
+    private static final BlockState FACADE_CONTENT = Blocks.CRAFTING_TABLE.defaultBlockState();
+
     public VeloceDisplayRenderer(BlockEntityRendererProvider.Context context) {
     }
 
     @Override
     public void render(VeloceCraftingTableBlockEntity be, float partialTick, PoseStack pose,
                        MultiBufferSource buffers, int packedLight, int packedOverlay) {
-        ItemStack display = be.getDisplayItem();
-        if (display.isEmpty() || !(display.getItem() instanceof BlockItem blockItem)) {
-            return;   // zwykly stol craftingu - nic nie renderujemy
-        }
         if (be.getLevel() == null) {
             return;
         }
-        BlockState state = blockItem.getBlock().defaultBlockState();
+        BlockState shown = shownBlock(be);
+        if (shown == null) {
+            return;   // zwykly stol craftingu - nic nie renderujemy
+        }
         float time = be.getLevel().getGameTime() + partialTick;
 
         pose.pushPose();
@@ -65,7 +85,25 @@ public class VeloceDisplayRenderer implements BlockEntityRenderer<VeloceCrafting
         pose.scale(DISPLAY_SCALE, DISPLAY_SCALE, DISPLAY_SCALE);
         pose.translate(-0.5D, -0.5D, -0.5D);
         Minecraft.getInstance().getBlockRenderer()
-                .renderSingleBlock(state, pose, buffers, packedLight, packedOverlay);
+                .renderSingleBlock(shown, pose, buffers, packedLight, packedOverlay);
         pose.popPose();
+    }
+
+    /**
+     * Model do pokazania w srodku, albo {@code null} gdy nic nie ma.
+     *
+     * <p>Fasada pokazuje stol craftingu (to jest jej tresc), a zwykla klatka -
+     * eksponat wlozony przez gracza.
+     */
+    @Nullable
+    private static BlockState shownBlock(VeloceCraftingTableBlockEntity be) {
+        if (VeloceCraftingTableBlock.isFacade(be.getBlockState())) {
+            return FACADE_CONTENT;
+        }
+        ItemStack display = be.getDisplayItem();
+        if (display.isEmpty() || !(display.getItem() instanceof BlockItem blockItem)) {
+            return null;
+        }
+        return blockItem.getBlock().defaultBlockState();
     }
 }

@@ -48,6 +48,14 @@ public class VeloceBlockInfoProvider implements IBlockComponentProvider {
                     : Component.translatable("gui.craftingveloce.jade.integrale.empty"));
             tooltip.add(Component.translatable("gui.craftingveloce.jade.integrale.closed",
                     veloce.getInt("coveredSides")));
+            if (veloce.getBoolean("integraleHint")) {
+                tooltip.add(Component.translatable("gui.craftingveloce.jade.integrale.hint"));
+            }
+        }
+
+        // Stol stojacy w klatce: to on jest crafterem, a nie sama klatka.
+        if (veloce.getBoolean("integraleCase")) {
+            tooltip.add(Component.translatable("gui.craftingveloce.jade.integrale.crafting"));
         }
 
         // Crafter (takze klatka po wypelnieniu).

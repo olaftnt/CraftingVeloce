@@ -110,23 +110,44 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
   dekoracją, a force-loady mają trzymać to, co naprawdę pracuje
 - Blockstate jest **wielocześciowy** (`multipart`): model ramy + po jednej
   blasze na stronę (`veloce_integrale_panel_<strona>`), a nie 64 warianty
-- **Gabłota w środku**: right-click **z crafting table** (waniliowym albo
-  naszym) wkłada ją do klatki — w środku pojawia się renderowany model
-  crafting table, który **delikatnie się obraca i buja** (lewo-prawo, góra-dół),
-  a sama klatka staje się **prawdziwym Veloce Crafterem** (auto-crafter, GUI,
-  bufor). Right-click bez itemu otwiera to samo GUI co crafting table
+- **Stol craftingu w klatce (podmiana bloku)**: right-click **z crafting table**
+  (waniliowym albo naszym) **podmienia całą klatkę** na nasz
+  `veloce_crafting_table` w stanie `facade`. W świecie stoi wtedy **prawdziwy
+  stół craftingu** (auto-crafter, GUI, bufor, węzeł sieci), a nie atrapa;
+  wygląda jak klatka (rama + blachy), a w środku renderuje się model crafting
+  table, który **delikatnie się obraca i buja** (lewo-prawo, góra-dół)
+- **Dlaczego podmiana bloku, a nie własny block entity**: pierwsza wersja
+  trzymała w klatce BE stołu i **udawała** craftera — ale wtedy klatka nie była
+  stołem, więc mod od receptur (JEI/EMI) nie miał czego rozpoznać, a sieć
+  musiała znać wyjątek „klatka bywa crafterem”. Teraz wystarczy spojrzeć na
+  **typ bloku** (`isActiveCrafter`), a `facade` zmienia tylko wygląd
+- **Gabłota na dowolny blok**: right-click innym blokiem wystawia go w środku,
+  a right-click z pustą ręką **oddaje eksponat** (jak ramka na przedmioty)
+- **Droga powrotna**: shift + right-click z pustą ręką na stole w klatce
+  rozbiera stację na **pustą klatkę + crafting table** — bez tego pustej klatki
+  nie dałoby się odzyskać, bo zbita stacja oddaje jeden przedmiot „rama + stół”
+- **Jeden przedmiot na wyjściu**: zbicie stacji wypuszcza
+  `veloce_integrale_crafting` („Veloce Integrale (Crafting)”) — rama + stół
+  w jednym przedmiocie, z własną ikoną (rama z crafting table w środku), żeby
+  gracz i mody od receptur widziały, że w tym bloku można craftować
 - **Wszystko po stronie klienta**: zamiast encji `BlockDisplay` (którą trzeba by
   tworzyć, zapisywać i utrzymywać na serwerze) klient czyta *jeden stos* z block
   entity i renderuje jego model — serwer nie robi nic ponad zapis NBT.
   Renderer (`VeloceDisplayRenderer`) wisi na BE stolu craftingu i wychodzi od
-  razu, gdy gabłoty nie ma, więc zwykły crafting table nic nie kosztuje
-- Zbicie takiej klatki wypuszcza **oba** przedmioty (klatkę z loot table
-  i gabłotę z block entity) — schowek nie zjada przedmiotów
-- Pusta klatka **nie jest** crafterem (`isActiveCrafter`), nie wystawia bufora
-  sieci i nie trzyma chunku; wypełniona — jest, wystawia i trzyma
-- Modelu pilnuje `validate_integrale_model` w `build.py` (12 prętów, szyba
-  wcięta i ze szkła, `render_type: translucent`, `ambientocclusion: false`,
-  6 blach dokładnie w świetle okna i 6 warunków w blockstate)
+  razu, gdy nie ma czego pokazać, więc zwykły crafting table nic nie kosztuje
+- Zbicie klatki z eksponatem wypuszcza go (a samą klatkę loot table) — schowek
+  nie zjada przedmiotów
+- Pusta klatka **nie jest** crafterem (decyduje typ bloku), nie wystawia bufora
+  sieci i nie trzyma chunku; stół, który powstaje z podmiany — jest, wystawia
+  i trzyma
+- Modelu i ikony pilnuje `validate_integrale_model` w `build.py` (12 prętów,
+  szyba wcięta i ze szkła, `render_type: translucent`, `ambientocclusion: false`,
+  6 blach dokładnie w świetle okna, 6 warunków w blockstate, model stolu dla
+  `facade=true` i ikona z kostką stolu 4..12), a samej mechaniki — 
+  `validate_integrale_display` (podmiana bloku, zgłoszenie węzła do sieci,
+  gablota, droga powrotna). Ikona jest **generowana** z modelu ramy
+  (`scripts/gen_integrale_crafting_item.py`), więc nie może rozjechać się z ramą
+
 
 ---
 
@@ -191,7 +212,10 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
 │   └── lang/en_us.json         # Tłumaczenia
 ├── data/                        # Data pack (Tom's Storage tags, loot tables)
 ├── scripts/
-│   └── cp.txt                   # Classpath do kompilacji (generowany, ogromny)
+│   ├── cp.txt                   # Classpath do kompilacji (generowany, ogromny)
+│   ├── build.py                 # Kompilacja + pakowanie + kontrole jakości (krok 4)
+│   ├── gen_loot_tables.py       # Loot table i tagi „mineable” z rejestru bloków
+│   └── gen_integrale_crafting_item.py  # Ikona itemu „stół w klatce” z modelu ramy
 ├── mod_jar/                     # Zewnętrzne JARy dla kompilacji (inventoryexchange)
 ├── craftingveloce_classes/      # Skompilowane klasy (output javac)
 ├── craftingveloce_jar_root/     # Staging dir dla JAR (klasy + assets + META-INF)
@@ -383,8 +407,9 @@ stanem** — dla **wszystkich** bloków w namespace `craftingveloce`:
 
 | Blok | Linie |
 |------|-------|
-| crafter / wypełniona klatka | auto-crafting włączony (ile itemów wyłączonych), rozmiar bufora |
-| klatka Integrale | pusty schowek / „Display: &lt;item&gt;”, ile stron zabudowanych |
+| crafter (także stół w klatce) | auto-crafting włączony (ile itemów wyłączonych), rozmiar bufora |
+| klatka Integrale | pusty schowek / „Display: &lt;item&gt;”, ile stron zabudowanych, podpowiedź o prawym kliku |
+| stół w klatce (`facade`) | „Integrale case: crafting table inside” |
 | piec paliwowy i elektryczny | nazwa źródła ciepła + ile operacji, „Powered: tak/nie” |
 | moduły Create / Mekanism / Alchemistry | id modułu, ile operacji zostało, „Powered” |
 | kontroler | ile typów itemów w sieci, ile itemów ma stały trend |
