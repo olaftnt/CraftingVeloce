@@ -15,7 +15,7 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty;
  * <p><b>Dlaczego osobna klasa.</b> Te same szesc zaslepek (okno od strony, z
  * ktorej dochodzi rura, zamyka sie blacha) opisuja dzis dwa bloki:
  * <ul>
- *   <li>{@link VeloceIntegraleBlock} - ozdobna klatka (gablota),</li>
+ *   <li>{@link VeloceIntegraleBlock} - ozdobna klatka (obudowa maszyny),</li>
  *   <li>{@link VeloceCraftingTableBlock} w stanie {@code facade} - prawdziwy
  *       stol craftingu stojacy w klatce (patrz {@code VeloceIntegraleBlock}
  *       "podmiana bloku").</li>
@@ -93,13 +93,21 @@ public final class VeloceIntegraleFrame {
 
     /**
      * Przepisuje zaslepki z jednego stanu na drugi - uzywane przy PODMIANIE
-     * bloku (klatka -&gt; stol w klatce): nowy blok ma wygladac tak samo.
+     * bloku (klatka -&gt; maszyna): blok, ktory ma rame, wyglada tak samo.
+     *
+     * <p>Blok docelowy bez ramy (zwykla maszyna Veloce) po prostu pomija te
+     * wlasciwosci - dlatego metoda nie wymaga, by mial je wszystkie.
      */
     public static BlockState copyClosures(BlockState from, BlockState to) {
+        BlockState result = to;
         for (Direction direction : Direction.values()) {
-            to = to.setValue(property(direction), isClosed(from, direction));
+            BooleanProperty property = property(direction);
+            if (property == null || !result.hasProperty(property)) {
+                continue;
+            }
+            result = result.setValue(property, isClosed(from, direction));
         }
-        return to;
+        return result;
     }
 
     private static BooleanProperty property(Direction direction) {

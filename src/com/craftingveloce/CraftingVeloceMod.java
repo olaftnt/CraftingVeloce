@@ -121,15 +121,15 @@ public class CraftingVeloceMod {
             com.craftingveloce.compat.mekanism.MekanismCompat.register(modEventBus);
         }
 
-        // Renderer gabloty w klatce Veloce Integrale. Wisi na block entity
-        // STOLU craftingu (klatka dzieli je ze stolem), a gdy gabloty nie ma -
-        // wychodzi od razu, wiec zwykly stol nic nie kosztuje. Cala praca jest
-        // po stronie klienta: serwer zapisuje tylko jeden stos w block entity.
+        // Renderer stolu stojacego w klatce Veloce Integrale (stan "facade").
+        // Wychodzi od razu dla zwyklego stolu craftingu, wiec nic nie kosztuje,
+        // a cala praca jest po stronie klienta - wynik podmiany widac w stanie
+        // bloku, wiec serwer nie synchronizuje zadnych przedmiotow.
         modEventBus.addListener(
                 net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class,
                 event -> event.registerBlockEntityRenderer(
                         VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(),
-                        com.craftingveloce.client.render.VeloceDisplayRenderer::new));
+                        com.craftingveloce.client.render.VeloceFacadeRenderer::new));
 
         modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent.class, event -> {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);

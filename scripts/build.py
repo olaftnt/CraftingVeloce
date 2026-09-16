@@ -1239,146 +1239,164 @@ def validate_mods_toml():
 
 def validate_integrale_display():
     """
-    Klatka Veloce Integrale: PODMIANA BLOKU na prawdziwy stol craftingu.
+    Klatka Veloce Integrale: OBUDOWA, ktora zamienia sie w nasza maszyne.
 
-    Gracz wybral to rozwiazanie swiadomie ("najprosciej byloby podmieniac
-    klocka"): klatka nie udaje craftera, tylko przy prawym kliku stolem
-    craftingu zamienia sie w nasz blok stolu ze stanem `facade`. Dzieki temu
-    w swiecie stoi prawdziwy stol (auto-crafter, GUI, bufor, ten sam blok dla
-    modow od receptur), a nie atrapa z wlasnym wyjatkiem w sieci.
+    Gracz: "jak wkladam furnace to robi sie furnace display - ma sie zmieniac
+    w normalne itemki veloce". Klatka nie wystawia wiec niczego i nie udaje
+    craftera: prawy klik odpowiednim waniliowym klockiem PODMIENIA ja na
+    prawdziwy blok Veloce wedlug tabeli (VeloceIntegraleConversions): z pulpitu
+    powstaje kontroler, z dozownika ekstraktor, z obserwatora sensor progu,
+    ze stolu craftingu stol (ten jeden w obudowie), z pieca piec.
 
-    Sprawdzamy szesc rzeczy, ktore musza byc spojne - kazda z nich latwo zgubic
-    przy refaktorze, a objaw jest cichy (klatka wyglada dobrze, tylko nie da
-    sie w niej craftowac albo nie ma jak odzyskac ramy):
-      1. klatka przyjmuje eksponat (gablota) i oddaje go z powrotem,
-      2. klatka PODMIENIA sie na stol (stan FACADE) i zglasza nowy wezel sieci,
-      3. zbita stacja oddaje JEDEN przedmiot (rama + stol),
-      4. jest DROGA POWROTNA (shift + prawy klik zdejmuje stol z klatki),
-      5. klient renderuje zawartosc (eksponat ALBO stol w fasadzie),
-      6. klatka NIE jest crafterem dla sieci (decyduje typ bloku).
+    Sprawdzamy:
+      1. tabela przepisan mapuje wlasciwe pary,
+      2. klatka pyta te tabele i podmienia blok, zglaszajac nowy wezel sieci,
+      3. stary system "eksponatow" zniknal CALKOWICIE (polowiczny refaktor
+         zostawilby w swiecie blok, ktory nic nie robi),
+      4. stol w obudowie oddaje przy zbiciu JEDEN przedmiot i ma droge powrotna,
+      5. klient renderuje stol w obudowie (a nie "eksponat"),
+      6. klatka nie jest crafterem dla sieci, a jej przedmiot ma podpowiedz
+         generowana z tabeli przepisan.
     """
     problems = []
 
+    conv_path = "src/com/craftingveloce/block/VeloceIntegraleConversions.java"
+    if not os.path.exists(conv_path):
+        fail("klatka / maszyny:\n  brak tabeli przepisan VeloceIntegraleConversions")
+    conversions = open(conv_path, encoding="utf-8").read()
+    for input_block, target in (("Blocks.CRAFTING_TABLE", "VELOCE_CRAFTING_TABLE"),
+                                ("Blocks.LECTERN", "VELOCE_CONTROLLER"),
+                                ("Blocks.DISPENSER", "VELOCE_EXTRACTOR"),
+                                ("Blocks.OBSERVER", "THRESHOLD_SENSOR"),
+                                ("Blocks.FURNACE", "VELOCITY_FURNACE")):
+        pair = f"add({input_block}, () -> VeloceRegistry.{target}.get())"
+        if pair not in conversions:
+            problems.append(f"tabela przepisan bez pary {input_block} -> {target}")
+
     integrale = "src/com/craftingveloce/block/VeloceIntegraleBlock.java"
     text = open(integrale, encoding="utf-8").read()
-
-    # Podmiana: samo wystapienie "onNodePlaced" w pliku nic nie znaczy - to
-    # samo wywolanie jest tez przy postawieniu bloku. Sprawdzamy TRESC metody.
-    swap = _method_body(text, "private static void swapIntoCraftingStation")
-    if swap is None:
-        problems.append("klatka nie ma metody podmiany na stol craftingu")
+    for need, what in (("VeloceIntegraleConversions.forItem", "wgladu do tabeli przepisan"),
+                       ("world.setBlock(pos, result", "podmiany bloku"),
+                       ("VeloceNodeBlocks.onNodePlaced", "zgloszenia nowego bloku do sieci")):
+        if need not in text:
+            problems.append("klatka bez " + what)
+    # Samo wystapienie onNodePlaced w pliku nic nie znaczy - to samo wywolanie
+    # jest przy postawieniu bloku, wiec sprawdzamy TRESC metody podmiany.
+    convert = _method_body(text, "private static void convert")
+    if convert is None:
+        problems.append("klatka nie ma metody zamiany na maszyne")
     else:
-        for need, what in (("VeloceCraftingTableBlock.FACADE, true", "ustawienia stanu fasady"),
-                           ("world.setBlock(pos, station", "postawienia stolu w miejscu klatki"),
-                           ("VeloceNodeBlocks.onNodePlaced", "zgloszenia nowego bloku do sieci")):
-            if need not in swap:
-                problems.append("podmiana klatki na stol bez " + what)
-
-    put = _method_body(text, "private static void putOnDisplay")
-    take = _method_body(text, "private static void takeOffDisplay")
-    if put is None:
-        problems.append("klatka bez wkladania eksponatu (gablota)")
-    if take is None:
-        problems.append("klatka bez oddawania eksponatu (gablota)")
-    elif "getInventory().add" not in take:
-        problems.append("gablota nie oddaje eksponatu do plecaka gracza")
-
-    # Same metody nic nie znacza, jesli nikt ich nie wola - sprawdzamy OBA
-    # wejscia (prawy klik z itemem i bez itemu).
+        for need, what in (("world.setBlock(pos, result", "postawienia maszyny"),
+                           ("VeloceNodeBlocks.onNodePlaced", "zgloszenia nowego wezla sieci")):
+            if need not in convert:
+                problems.append("zamiana klatki na maszyne bez " + what)
     use_item = _method_body(text, "protected ItemInteractionResult useItemOn")
-    if use_item is None or "swapIntoCraftingStation" not in use_item:
-        problems.append("prawy klik stolem craftingu nie podmienia klatki na stol")
-    use_bare = _method_body(text, "protected InteractionResult useWithoutItem")
-    if use_bare is None or "takeOffDisplay" not in use_bare:
-        problems.append("prawy klik z pusta reka nie oddaje eksponatu z gabloty")
-
-    # Widmo magazynu: po podmianie klatki na stol (i z powrotem) endpoint
-    # bufora musi znikac. Walidacja endpointu nie moze wiec opierac sie na
-    # samym block entity (klatka ma TEN SAM BE co stol), tylko pytac wezel
-    # o regule - dokladnie tak, jak przy rejestracji.
-    manager = open("src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
-                   encoding="utf-8").read()
-    buffer_case = manager.partition("case CRAFTING_BUFFER")[2][:400]
-    if "exposesCraftingBuffer" not in buffer_case:
-        problems.append("walidacja bufora craftera nie pyta wezla o regule - "
-                        "klatka zostawialaby widmo magazynu po podmianie bloku")
-
-    if "VeloceCraftingTableBlockEntity(pos, state)" not in text:
-        problems.append("klatka bez block entity pamietajacego eksponat")
+    if use_item is None or "convert(" not in use_item:
+        problems.append("prawy klik nie zamienia klatki na maszyne")
     if "exposesCraftingBuffer" in text:
-        problems.append("klatka wystawia bufor craftingu, choc crafterem nie jest "
-                        "(crafterem jest stol, ktory powstaje z podmiany)")
+        problems.append("klatka wystawia bufor craftingu, choc crafterem nie jest")
+
+    # 3. Stary system eksponatow ma zniknac z CALEGO moda. Sprawdzamy to
+    # plik po pliku, bo najczestszy polowiczny refaktor zostawia metode, ktora
+    # juz nikt nie wola, albo pole, ktore nadal jedzie w NBT.
+    #
+    # UWAGA (sprawdzone na prawdziwych klasach wanilii): usuniecie wlasciwosci
+    # stanu bloku NIE psuje zapisanych swiatow - od 1.20.5 stan bloku jedzie
+    # w palecie jako mapa {Name, Properties}, a nieznane klucze sa pomijane
+    # (test: {Name:"minecraft:oak_fence",Properties:{filled:"true"}} parsuje sie
+    # bez bledu, tak samo jak zla wartosc znanej wlasciwosci).
+    leftovers = []
+    for path in sorted(glob.glob("src/com/craftingveloce/**/*.java", recursive=True)):
+        body = open(path, encoding="utf-8").read()
+        for need in ("FILLED", "isDisplayable", "putOnDisplay", "takeOffDisplay",
+                     "getDisplayItem()", "setDisplayItem(",
+                     'tag.put("DisplayItem"', 'tag.getCompound("DisplayItem")'):
+            if need in body:
+                leftovers.append(f"{path.replace(os.sep, '/')} -> {need}")
+    if leftovers:
+        problems.append("zostal stary system eksponatow:\n  " + "\n  ".join(leftovers))
 
     table = open("src/com/craftingveloce/block/VeloceCraftingTableBlock.java",
                  encoding="utf-8").read()
     if 'BooleanProperty.create("facade")' not in table:
-        problems.append("stol craftingu bez stanu fasady")
+        problems.append("stol craftingu bez stanu obudowy (facade)")
 
     drops = _method_body(table, "protected List<ItemStack> getDrops")
     if drops is None:
         problems.append("stol craftingu bez wlasnego wypadu przy zbiciu")
     else:
-        for need, what in (("isFacade(state)", "rozpoznania stacji"),
+        for need, what in (("isFacade(state)", "rozpoznania stolu w obudowie"),
                            ("VELOCE_INTEGRALE_CRAFTING_ITEM", "przedmiotu rama + stol")):
             if need not in drops:
-                problems.append("wypad stacji bez " + what)
+                problems.append("wypad stolu w obudowie bez " + what)
 
     revert = _method_body(table, "private static void takeBackCraftingTable")
     if revert is None:
-        problems.append("stol craftingu bez drogi powrotnej (rozebranie stacji)")
+        problems.append("stol craftingu bez drogi powrotnej (rozebranie obudowy)")
     else:
         for need, what in (("VELOCE_INTEGRALE.get()", "przywrocenia pustej klatki"),
                            ("CRAFTING_TABLE", "oddania stolu craftingu")):
             if need not in revert:
-                problems.append("rozebranie stacji bez " + what)
+                problems.append("rozebranie obudowy bez " + what)
 
     use = _method_body(table, "protected InteractionResult useWithoutItem")
     if use is None or "takeBackCraftingTable" not in use:
-        problems.append("shift + prawy klik nie rozbiera stacji - pustej klatki "
+        problems.append("shift + prawy klik nie rozbiera obudowy - pustej klatki "
                         "nie da sie odzyskac")
     elif "isFacade(state) && player.isShiftKeyDown()" not in use:
-        problems.append("rozbiorka stacji wisi na martwym warunku (galaz nigdy "
+        problems.append("rozbiorka obudowy wisi na martwym warunku (galaz nigdy "
                         "sie nie wykona)")
 
     be_path = "src/com/craftingveloce/block/entity/VeloceCraftingTableBlockEntity.java"
     be = open(be_path, encoding="utf-8").read()
-    for need, what in (('tag.put("DisplayItem"', "zapisu gabloty (NBT)"),
-                       ('tag.getCompound("DisplayItem")', "odczytu gabloty (NBT)"),
-                       ("getUpdateTag", "pakietu aktualizacji dla klienta"),
-                       ("instanceof com.craftingveloce.block.VeloceCraftingTableBlock",
-                        "rozpoznania craftera po TYPIE bloku (klatka crafterem nie jest)")):
-        if need not in be:
-            problems.append("brak " + what + " w block entity stolu")
+    if "instanceof com.craftingveloce.block.VeloceCraftingTableBlock" not in be:
+        problems.append("block entity stolu nie rozpoznaje craftera po TYPIE bloku")
+
+    # Widmo magazynu: endpoint bufora musi znikac, gdy blok przestaje byc
+    # crafterem - walidacja nie moze wiec opierac sie na samym block entity.
+    manager = open("src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
+                   encoding="utf-8").read()
+    buffer_case = manager.partition("case CRAFTING_BUFFER")[2][:400]
+    if "exposesCraftingBuffer" not in buffer_case:
+        problems.append("walidacja bufora craftera nie pyta wezla o regule - "
+                        "po podmianie bloku zostaje widmo magazynu")
 
     registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
-    if "integraleBlock()" not in registry:
-        problems.append("typ block entity stolu NIE dopuszcza bloku klatki")
+    if "integraleBlock()" in registry:
+        problems.append("klatka nadal ma wlasny block entity stolu (ma go nie miec)")
     if '"veloce_integrale_crafting"' not in registry:
         problems.append("brak rejestracji przedmiotu 'veloce_integrale_crafting'")
 
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
-    if "VELOCE_CRAFTING_TABLE_BE.get()" not in mod or "VeloceDisplayRenderer" not in mod:
-        problems.append("brak rejestracji renderera gabloty (RegisterRenderers)")
+    if "VELOCE_CRAFTING_TABLE_BE.get()" not in mod or "VeloceFacadeRenderer" not in mod:
+        problems.append("brak rejestracji renderera stolu w obudowie (RegisterRenderers)")
     if "VELOCE_INTEGRALE_CRAFTING_ITEM.get()" not in mod:
         problems.append("przedmiotu 'rama + stol' nie ma w zakladce kreatywnej "
                         "(nie da sie go zdobyc inaczej niz komenda)")
 
-    renderer = "src/com/craftingveloce/client/render/VeloceDisplayRenderer.java"
+    renderer = "src/com/craftingveloce/client/render/VeloceFacadeRenderer.java"
     if not os.path.exists(renderer):
-        problems.append("brak klasy renderera gabloty")
+        problems.append("brak klasy renderera stolu w obudowie")
     else:
         body = open(renderer, encoding="utf-8").read()
-        for need, what in (("isFacade", "rozpoznania stolu w klatce (fasada)"),
-                           ("getDisplayItem()", "odczytu gabloty z block entity"),
+        for need, what in (("isFacade", "rozpoznania stolu w obudowie"),
                            ("getBlockRenderer", "renderowania modelu bloku"),
                            ("rotationDegrees", "animacji (obrot)"),
                            ("Math.sin", "animacji (bujanie)")):
             if need not in body:
                 problems.append("renderer bez " + what)
 
+    item = "src/com/craftingveloce/item/VeloceIntegraleItem.java"
+    if not os.path.exists(item):
+        problems.append("klatka bez wlasnej klasy przedmiotu (podpowiedz z tabeli)")
+    elif "VeloceIntegraleConversions.all()" not in open(item, encoding="utf-8").read():
+        problems.append("podpowiedz klatki nie jest generowana z tabeli przepisan "
+                        "(rozjedzie sie z nia)")
+
     if problems:
-        fail("klatka / stol w klatce:\n  " + "\n  ".join(problems))
-    print("    OK (klatka: podmiana na stol z fasada + gablota + droga powrotna)")
+        fail("klatka / maszyny z klatki:\n  " + "\n  ".join(problems))
+    print(f"    OK (klatka: {len(conversions.split('add(Blocks.')) - 1} przepisan, "
+          f"stol w obudowie + droga powrotna, brak eksponatow)")
 
 
 def validate_integrale_model():

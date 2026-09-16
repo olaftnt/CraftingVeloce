@@ -842,9 +842,8 @@ public class VelocePipeNetworkManager extends SavedData {
                     RefinedStorageHelper.hasRSNetwork(level, pos, ep.getAccessSide());
             // Bufor craftera nie jest magazynem w swiecie - pytamy o TA SAMA
             // regule, co przy rejestracji (o buforze decyduje STAN bloku).
-            // Sam "block entity stolu" nie wystarczy: klatka Veloce Integrale
-            // uzywa tego samego block entity (pamieta eksponat), ale crafterem
-            // nie jest - po podmianie bloku zostalby po niej widmo magazynu.
+            // Sam typ bloku nie wystarczy: po podmianie klatki na maszyne
+            // (albo z powrotem) zostalby po niej widmo magazynu.
             case CRAFTING_BUFFER -> {
                 net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
                 yield state.getBlock() instanceof VeloceNetworkNode node

@@ -139,57 +139,17 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
     }
 
     /**
-     * Gabriota wyswietlana w srodku klatki (pusta = zwykly stol craftingu).
-     *
-     * <p>Tylko do WIDOKU i do zwrotu przy zbiciu - logika craftingu jej nie
-     * uzywa. Trzymana w block entity, bo stan bloku nie uniesie dowolnego
-     * przedmiotu.
-     */
-    private ItemStack displayItem = ItemStack.EMPTY;
-
-    /** Gabriota w srodku (pusta dla zwyklego stolu). */
-    public ItemStack getDisplayItem() {
-        return displayItem;
-    }
-
-    /** Ustawia gablote i wysyla ja klientowi (renderuje ja w srodku). */
-    public void setDisplayItem(ItemStack stack) {
-        this.displayItem = stack == null ? ItemStack.EMPTY : stack.copyWithCount(1);
-        setChanged();
-        if (level != null && !level.isClientSide) {
-            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(),
-                    net.minecraft.world.level.block.Block.UPDATE_ALL);
-        }
-    }
-
-    /**
      * Czy ten block entity jest CRAFTEREM dla sieci.
      *
-     * <p><b>Decyduje TYP BLOKU, nie zawartosc.</b> Klatka Veloce Integrale
-     * uzywa tego samego block entity co stol (zeby pamietac eksponat), ale
-     * klatka NIE JEST crafterem - dopiero prawy klik stolem craftingu podmienia
-     * ja na prawdziwy {@code veloce_crafting_table} (stan {@code facade}).
-     * Wczesniej klatka z eksponatem podawala sie za craftera i siec musiala
-     * znac ten wyjatek; teraz wystarczy spojrzec na typ bloku.
+     * <p><b>Decyduje TYP BLOKU.</b> Klatka Veloce Integrale nie ma juz nawet
+     * wlasnego block entity - prawy klik odpowiednim klockiem podmienia ja na
+     * prawdziwa maszyne (patrz {@code VeloceIntegraleConversions}), a stol
+     * craftingu tylko wtedy, gdy gracz wklada stol. Crafterem jest wiec
+     * wylacznie blok stolu craftingu.
      */
     public boolean isActiveCrafter() {
         return getBlockState().getBlock()
                 instanceof com.craftingveloce.block.VeloceCraftingTableBlock;
-    }
-
-    /** Pakiet z gablota dla klienta (klatka renderuje ja w srodku). */
-    @Override
-    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
-        CompoundTag tag = super.getUpdateTag(registries);
-        if (!displayItem.isEmpty()) {
-            tag.put("DisplayItem", displayItem.saveOptional(registries));
-        }
-        return tag;
-    }
-
-    @Override
-    public net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket getUpdatePacket() {
-        return net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket.create(this);
     }
 
     public VeloceCraftingTableBlockEntity(BlockPos pos, BlockState state) {
@@ -365,17 +325,11 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
 
         // Bufor nadwyzki produkcji.
         tag.put("Buffer", buffer.saveTo(registries));
-
-        // Gabriota w klatce (tylko do widoku).
-        if (!displayItem.isEmpty()) {
-            tag.put("DisplayItem", displayItem.saveOptional(registries));
-        }
     }
 
     @Override
     public void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        displayItem = ItemStack.parseOptional(registries, tag.getCompound("DisplayItem"));
         disabledItems = new HashSet<>();
         if (tag.contains("DisabledItems")) {
             ListTag list = tag.getList("DisabledItems", Tag.TAG_STRING);

@@ -154,11 +154,7 @@ public class VeloceRegistry {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity>> VELOCE_CRAFTING_TABLE_BE =
             BLOCK_ENTITY_TYPES.register("veloce_crafting_table", () -> createBEType(
                     (pos, state) -> new com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity(pos, state),
-                    VELOCE_CRAFTING_TABLE.get(),
-                    // Klatka UZYWA tego samego block entity: wypelniona jest
-                    // prawdziwym stolem craftingu (auto-crafter, GUI, bufor),
-                    // a klient renderuje w niej gablote.
-                    integraleBlock()));
+                    VELOCE_CRAFTING_TABLE.get()));
 
     // 6. Veloce Controller (monitoring sieci + filtrowanie itemow)
     public static final DeferredBlock<com.craftingveloce.block.VeloceControllerBlock> VELOCE_CONTROLLER = BLOCKS.register(
@@ -213,9 +209,10 @@ public class VeloceRegistry {
                                     .isSuffocating((state, world, pos) -> false)
                                     .requiresCorrectToolForDrops()));
 
-    public static final DeferredItem<BlockItem> VELOCE_INTEGRALE_ITEM = ITEMS.registerSimpleBlockItem(
+    public static final DeferredItem<BlockItem> VELOCE_INTEGRALE_ITEM = ITEMS.register(
             "veloce_integrale",
-            VELOCE_INTEGRALE);
+            () -> new com.craftingveloce.item.VeloceIntegraleItem(
+                    VELOCE_INTEGRALE.get(), new Item.Properties()));
 
     /**
      * Stol craftingu W KLATCE - jeden przedmiot (rama + stol).
@@ -233,18 +230,6 @@ public class VeloceRegistry {
     @FunctionalInterface
     public interface BlockEntityFactory<T extends BlockEntity> {
         T create(net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state);
-    }
-
-    /**
-     * Blok klatki dla rejestracji block entity stolu.
-     *
-     * <p>Osobna metoda, bo {@code VELOCE_INTEGRALE} jest zadeklarowany NIZEJ
-     * w pliku - odwolanie w lambdzie rejestru bylo by "illegal forward
-     * reference". Metoda rozwiazuje pole dopiero przy wywolaniu (rejestracja),
-     * czyli wtedy, gdy wszystko jest juz zainicjalizowane.
-     */
-    private static Block integraleBlock() {
-        return VELOCE_INTEGRALE.get();
     }
 
     private static <T extends BlockEntity> BlockEntityType<T> createBEType(

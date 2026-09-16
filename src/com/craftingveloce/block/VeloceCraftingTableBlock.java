@@ -51,7 +51,7 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
      * GUI, ten sam bufor i ten sam blok dla modow od receptur ("tu tez mozna
      * craftowac"). Osobny blok znaczylby drugi zestaw tych rzeczy do
      * utrzymania. Rozni je wylacznie WYGLAD, a to jest dokladnie stan bloku:
-     * {@code false} = zwykly stol, {@code true} = rama klatki + gablota
+     * {@code false} = zwykly stol, {@code true} = rama klatki + stol w obudowie
      * (patrz blockstate i renderer).
      */
     public static final BooleanProperty FACADE = BooleanProperty.create("facade");
