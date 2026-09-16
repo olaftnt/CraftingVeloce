@@ -226,7 +226,12 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
     }
 
     /**
-     * Stala pula SU niezaleznie od obrotow.
+     * Staly CALKOWITY pobor SU niezaleznie od obrotow.
+     *
+     * <p>Create liczy obciazenie jako {@code impact x |RPM|}, wiec zeby modul
+     * bral zawsze tyle samo (2048 SU, patrz {@code CreateKineticModules.STRESS_SU}),
+     * dzielimy te liczbe przez predkosc. Przekladnie zmieniaja wiec tylko
+     * moment (impact), a nie bilans mocy - zero darmowej mocy i zero strat.
      *
      * <p>{@code lastStressApplied} jest polem protected w KineticBlockEntity
      * i MUSI byc ustawione - Create czyta je przy liczeniu obciazenia sieci.

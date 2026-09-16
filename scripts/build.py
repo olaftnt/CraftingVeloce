@@ -1482,6 +1482,21 @@ def validate_create_mechanics():
     be_code = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
                    encoding="utf-8").read()
 
+    # Pobór mocy: STALY CALKOWITY (2048 SU) niezaleznie od RPM. Create liczy
+    # impact x RPM, wiec block entity dzieli stala przez predkosc - inaczej
+    # kazde przelozenie zmienialoby bilans (darmowa moc albo straty).
+    modules = open("src/com/craftingveloce/compat/create/CreateKineticModules.java",
+                   encoding="utf-8").read()
+    if "public static final float STRESS_SU = 2048.0F;" not in modules:
+        problems.append("brak stalej 2048 SU dla modulow")
+    if modules.count("STRESS_SU") < 8:
+        problems.append("nie kazdy modul bierze 2048 SU (ktos wpisal wlasna liczbe)")
+    stress_body = _method_body(be_code, "float calculateStressApplied()")
+    if stress_body is None or "module.constantSu() / speed" not in stress_body:
+        problems.append("brak kompensacji predkosci - pobor zmienialby sie z RPM")
+    if stress_body is None or "speed < 1f" not in stress_body:
+        problems.append("brak zabezpieczenia przy predkosci 0 (dzielenie przez zero)")
+
     # Kreatywnosc i middle click maja dawac maszyne WYPELNIONA (kruszarka: 2 kola,
     # crafter: 3x3), a nie pusta - inaczej gracz stawia pustke i wyglada jak blad.
     for need, what in (("public ItemStack filledStack()", "przedmiotu z zapisanymi elementami"),
