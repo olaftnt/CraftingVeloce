@@ -1359,14 +1359,22 @@ def validate_create_mechanics():
     # model bloku - modele blokow maszyn z modow sa okrojone (czesc rysuje ich
     # wlasny renderer / Flywheel), a modele itemow sa pelne. Transformacja
     # przedmiotu (FIXED) MUSI byc skompensowana, inaczej item jest maly i w rogu.
-    for need, what in (("ItemRenderer", "renderera przedmiotow"),
-                       ("ItemDisplayContext.FIXED", "kontekstu FIXED"),
-                       ("renderStatic(", "rysowania modelu itemu"),
-                       ("getTransforms()", "odczytu transformacji modelu"),
-                       ("transform.scale.x", "kompensacji rozmiaru"),
-                       ("transform.translation", "kompensacji przesuniecia")):
-        if need not in renderer:
-            problems.append("renderer obudowy bez " + what)
+    content_body = _method_body(renderer, "private void renderContent(")
+    if content_body is None:
+        problems.append("renderer obudowy bez renderContent")
+    else:
+        # Warunki sprawdzamy w CIELE renderContent - nazwy wystepuja tez
+        # w innych metodach (contentTransform), wiec sama obecnosc w pliku
+        # przepuscilaby np. podmiane kontekstu FIXED na NONE.
+        for need, what in (("ItemDisplayContext.FIXED", "kontekstu FIXED"),
+                           ("renderStatic(", "rysowania modelu itemu"),
+                           ("transform.scale.x", "kompensacji rozmiaru"),
+                           ("-transform.translation.x", "kompensacji przesuniecia")):
+            if need not in content_body:
+                problems.append("renderContent bez " + what)
+    if "getTransforms()" not in renderer or "getTransform(ItemDisplayContext.FIXED)" not in renderer:
+        problems.append("brak odczytu transformacji modelu itemu")
+
     if "renderSingleBlock" in renderer or "getBlockRenderer" in renderer:
         problems.append("renderer obudowy rysuje model BLOKU - modele blokow maszyn "
                         "sa okrojone (pelny jest model itemu)")
