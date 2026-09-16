@@ -67,11 +67,18 @@ public final class CVGetItemsCommand {
                     // ItemArgument daje podpowiadanie id itemow (jak /give),
                     // wiec nie trzeba ich znac na pamiec.
                     .then(Commands.argument("item", ItemArgument.item(buildContext))
-                        .executes(CVGetItemsCommand::run)))
+                        .executes(context -> run(context, 1))
+                        // Item moze miec kilka receptur (np. deski z kazdego
+                        // gatunku klody) - numer wybiera, ktora wziac.
+                        .then(Commands.argument("recipe",
+                                        com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
+                                .executes(context -> run(context,
+                                        com.mojang.brigadier.arguments.IntegerArgumentType
+                                                .getInteger(context, "recipe"))))))
         );
     }
 
-    private static int run(CommandContext<CommandSourceStack> context) {
+    private static int run(CommandContext<CommandSourceStack> context, int recipeNumber) {
         CommandSourceStack source = context.getSource();
         if (!(source.getEntity() instanceof ServerPlayer player)) {
             source.sendFailure(Component.literal(
@@ -102,17 +109,29 @@ public final class CVGetItemsCommand {
                     + " (§7" + itemId(item) + "§c)."));
             return 0;
         }
-        ProcessingEntry recipe = recipes.get(0);
-        Map<Item, Integer> needed = ingredientsOf(recipe);
+        if (recipeNumber > recipes.size()) {
+            source.sendFailure(Component.literal("§c[CraftingVeloce] Ten item ma tylko §f"
+                    + recipes.size() + "§c receptur(y) - wybierz numer od 1 do "
+                    + recipes.size() + "."));
+            return 0;
+        }
+        ProcessingEntry recipe = recipes.get(recipeNumber - 1);
+        Kit kit = ingredientsOf(recipe);
+        Map<Item, Integer> needed = kit.items();
         if (needed.isEmpty()) {
             source.sendFailure(Component.literal(
                     "§c[CraftingVeloce] Ta receptura nie ma zadnych skladnikow."));
             return 0;
         }
+        if (kit.emptyIngredients() > 0) {
+            source.sendSuccess(() -> Component.literal("§cUwaga: §e"
+                    + kit.emptyIngredients() + " skladnik(ow) nie ma zadnego itemu "
+                    + "(pusty tag) - zestaw bedzie niepelny."), false);
+        }
 
         report(source, player, item, recipe, recipes.size());
-        int missing = insertAll(handler, needed);
-        reportResult(source, target, needed.size() - missing);
+        Map<Item, Integer> leftovers = insertAll(handler, needed);
+        reportResult(source, target, needed, leftovers);
 
         // Zmiana zawartosci skrzyni musi byc widoczna dla gry i sieci.
         level.updateNeighborsAt(target, level.getBlockState(target).getBlock());
@@ -139,26 +158,54 @@ public final class CVGetItemsCommand {
     }
 
     /**
-     * Skladniki receptury jako "item -> ile sztuk".
+     * Skladniki receptury: "item -> ile sztuk" plus liczba skladnikow, ktore
+     * nie maja ZADNEJ opcji (pusty tag).
      *
      * <p>Z kazdego skladnika bierzemy PIERWSZA dostepna opcje (receptura moze
      * akceptowac kilka itemow, np. kazdy gatunek desek), a liczbe sztuk
      * przemnazamy przez liczbe wymaganych sztuk danego skladnika - tak samo
      * liczy to planer auto-craftera.
+     *
+     * <p>Pusty tag to nie "pusty slot": slot siatki bez skladnika pomijamy
+     * cicho (tak dziala receptura), ale skladnik, ktory NIE MA zadnego itemu,
+     * musi byc zgloszony - inaczej gracz dostalby niepelny zestaw i nie
+     * wiedzialby dlaczego.
      */
-    private static Map<Item, Integer> ingredientsOf(ProcessingEntry recipe) {
+    private record Kit(Map<Item, Integer> items, int emptyIngredients) {
+    }
+
+    private static Kit ingredientsOf(ProcessingEntry recipe) {
         Map<Item, Integer> out = new LinkedHashMap<>();
+        int empty = 0;
         List<Ingredient> ingredients = recipe.ingredients();
         for (int i = 0; i < ingredients.size(); i++) {
             ItemStack[] options = ingredients.get(i).getItems();
             if (options.length == 0) {
-                continue;   // pusty slot w siatce
+                // Slot siatki bez skladnika ma "pusta" liste opcji i to jest
+                // normalne; odrozniamy go od skladnika bez opcji po tym, ze
+                // receptura wymienia go jako skladnik niepusty.
+                if (isRealIngredient(recipe, i)) {
+                    empty++;
+                }
+                continue;
             }
             ItemStack chosen = options[0];
             int count = recipe.ingredientCount(i) * Math.max(1, chosen.getCount());
             out.merge(chosen.getItem(), count, Integer::sum);
         }
-        return out;
+        return new Kit(out, empty);
+    }
+
+    /**
+     * Czy skladnik na tej pozycji jest "prawdziwy" (nie pusty slot siatki).
+     *
+     * <p>Vanilla reprezentuje pusty slot siatki jako {@code Ingredient.EMPTY}
+     * - nie ma on zadnych itemow i tyle samo zwraca dla pustego tagu. Rozrozniamy
+     * je po tozsamosci z {@code Ingredient.EMPTY}, bo tylko ten drugi przypadek
+     * jest bledem danych.
+     */
+    private static boolean isRealIngredient(ProcessingEntry recipe, int index) {
+        return recipe.ingredients().get(index) != Ingredient.EMPTY;
     }
 
     /**
@@ -168,30 +215,33 @@ public final class CVGetItemsCommand {
      * przedmioty na ziemi (komenda ma przygotowac skrzynke, a nie zasmiecac
      * swiat).
      */
-    private static int insertAll(IItemHandler handler, Map<Item, Integer> needed) {
-        int missing = 0;
+    private static Map<Item, Integer> insertAll(IItemHandler handler,
+                                                Map<Item, Integer> needed) {
+        Map<Item, Integer> left = new LinkedHashMap<>();
         for (Map.Entry<Item, Integer> entry : needed.entrySet()) {
             // Wkladamy POJEDYNCZYMI stosami (max stack size), a nie jedna
             // wielka liczba: receptury mechaniczne Create maja po kilkadziesiat
             // sztuk jednego skladnika, a ItemStack wiekszy niz stack size bywa
             // odrzucany albo obcinany przez magazyny.
             int maxStack = Math.max(1, new ItemStack(entry.getKey()).getMaxStackSize());
-            int left = entry.getValue();
-            while (left > 0) {
-                int chunk = Math.min(left, maxStack);
+            int remainingCount = entry.getValue();
+            while (remainingCount > 0) {
+                int chunk = Math.min(remainingCount, maxStack);
                 ItemStack remaining = new ItemStack(entry.getKey(), chunk);
                 for (int slot = 0; slot < handler.getSlots() && !remaining.isEmpty(); slot++) {
                     remaining = handler.insertItem(slot, remaining, false);
                 }
                 int inserted = chunk - remaining.getCount();
                 if (inserted <= 0) {
-                    missing++;
                     break;   // magazyn pelny - nie krecimy sie w kolko
                 }
-                left -= inserted;
+                remainingCount -= inserted;
+            }
+            if (remainingCount > 0) {
+                left.put(entry.getKey(), remainingCount);
             }
         }
-        return missing;
+        return left;
     }
 
     private static void report(CommandSourceStack source, ServerPlayer player, Item item,
@@ -209,19 +259,52 @@ public final class CVGetItemsCommand {
         }
         source.sendSuccess(() -> Component.literal(
                 "§6[CraftingVeloce] Skladniki na §f" + name + " §7(" + itemId(item) + ")"), false);
+        int perCraft = Math.max(1, recipe.primaryResult().getCount());
         source.sendSuccess(() -> Component.literal(
                 "§7Receptura " + kind + ": §f" + recipe.id()
-                        + (recipeCount > 1 ? " §7(1 z " + recipeCount + ")" : "")), false);
+                        + (recipeCount > 1 ? " §7(1 z " + recipeCount + ")" : "")
+                        + " §7- jedno wykonanie daje §f" + perCraft + "x "
+                        + nameOf(item)), false);
         if (recipe.isFurnace()) {
             source.sendSuccess(() -> Component.literal(
                     "§eTo receptura PIECA - w skrzyni laduje surowiec, nie gotowy item."), false);
         }
     }
 
-    private static void reportResult(CommandSourceStack source, BlockPos pos, int insertedKinds) {
-        source.sendSuccess(() -> Component.literal("§aWlozylem §f" + insertedKinds
-                + "§a rodzaj(ow) skladnikow do magazynu na §f["
-                + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]§a."), false);
+    /**
+     * Podsumowanie: co dokladnie weszlo (z liczbami i nazwami) i co sie nie
+     * zmiescilo.
+     *
+     * <p>Nazwy sa wazne przy skladnikach z tagiem (np. "dowolne deski"): gracz
+     * musi widziec, ktora opcje komenda wybrala, bo tylko ta trafila do skrzyni.
+     * Dlatego mowimy to WPROST, a nie "wlozylem 3 rodzaje skladnikow".
+     */
+    private static void reportResult(CommandSourceStack source, BlockPos pos,
+                                     Map<Item, Integer> needed,
+                                     Map<Item, Integer> leftovers) {
+        List<String> inserted = new ArrayList<>();
+        List<String> missed = new ArrayList<>();
+        for (Map.Entry<Item, Integer> entry : needed.entrySet()) {
+            int left = leftovers.getOrDefault(entry.getKey(), 0);
+            int in = entry.getValue() - left;
+            if (in > 0) {
+                inserted.add("§f" + in + "x " + nameOf(entry.getKey()));
+            }
+            if (left > 0) {
+                missed.add("§c" + left + "x " + nameOf(entry.getKey()));
+            }
+        }
+        source.sendSuccess(() -> Component.literal("§aWlozylem do §f["
+                + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]§a: "
+                + String.join("§7, §r", inserted)), false);
+        if (!missed.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("§cNie zmiescilo sie: §r"
+                    + String.join("§7, §r", missed)), false);
+        }
+    }
+
+    private static String nameOf(Item item) {
+        return new ItemStack(item).getHoverName().getString();
     }
 
     /** Blok, na ktory patrzy gracz (albo {@code null}, gdy patrzy w powietrze). */
