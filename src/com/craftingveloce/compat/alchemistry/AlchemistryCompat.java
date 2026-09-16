@@ -59,6 +59,11 @@ public final class AlchemistryCompat {
         VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_COMPACTOR_MODULE.get(), () -> block("compactor"));
         VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_FISSION_MODULE.get(), () -> block("fission_chamber_controller"));
         VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_FUSION_MODULE.get(), () -> block("fusion_chamber_controller"));
+
+        VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_DISSOLVER_MODULE.get(), () -> block("dissolver"));
+        VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_LIQUIFIER_MODULE.get(), () -> block("liquifier"));
+        VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_ATOMIZER_MODULE.get(), () -> block("atomizer"));
+
     }
 
     /** Renderer zawartosci obudowy dla block entity modulow - TYLKO klient. */
@@ -68,12 +73,44 @@ public final class AlchemistryCompat {
                 event -> {
                     event.registerBlockEntityRenderer(AlchemistryBlockEntities.COMBINER_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
+
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.DISSOLVER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.LIQUIFIER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.ATOMIZER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+
                     event.registerBlockEntityRenderer(AlchemistryBlockEntities.COMPACTOR_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
+
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.DISSOLVER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.LIQUIFIER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.ATOMIZER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+
                     event.registerBlockEntityRenderer(AlchemistryBlockEntities.FISSION_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
+
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.DISSOLVER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.LIQUIFIER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.ATOMIZER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+
                     event.registerBlockEntityRenderer(AlchemistryBlockEntities.FUSION_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
+
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.DISSOLVER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.LIQUIFIER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.ATOMIZER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+
                 });
     }
 

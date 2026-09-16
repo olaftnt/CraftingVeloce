@@ -65,6 +65,18 @@ public final class AlchemistryRecipeFamily {
         return RecipeRegistry.FUSION_TYPE.get();
     }
 
+    public static RecipeType<?> dissolver() {
+        return RecipeRegistry.DISSOLVER_TYPE.get();
+    }
+
+    public static RecipeType<?> liquifier() {
+        return RecipeRegistry.LIQUIFIER_TYPE.get();
+    }
+
+    public static RecipeType<?> atomizer() {
+        return RecipeRegistry.ATOMIZER_TYPE.get();
+    }
+
     /** Typy receptur Alchemistry. Wolno wolac tylko gdy mod jest obecny. */
     public static Set<RecipeType<?>> types() {
         if (resolved == null) {
@@ -73,6 +85,9 @@ public final class AlchemistryRecipeFamily {
             out.add(combiner());
             out.add(fission());
             out.add(fusion());
+            out.add(dissolver());
+            out.add(liquifier());
+            out.add(atomizer());
             resolved = Set.copyOf(out);
         }
         return resolved;

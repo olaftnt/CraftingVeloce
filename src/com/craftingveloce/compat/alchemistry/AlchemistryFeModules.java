@@ -52,11 +52,22 @@ public final class AlchemistryFeModules {
             "alchemistry:fission", "Veloce Fission Module",
             750_000, 25_000_000, AlchemistryRecipeFamily::fission);
 
-    /** Fusion: 2 itemy -> 1 item. */
     public static final FeModule FUSION = new FeModule(
             "alchemistry:fusion", "Veloce Fusion Module",
             750_000, 25_000_000, AlchemistryRecipeFamily::fusion);
 
+    public static final FeModule DISSOLVER = new FeModule(
+            "alchemistry:dissolver", "Veloce Dissolver Module",
+            250_000, 25_000_000, AlchemistryRecipeFamily::dissolver);
+
+    public static final FeModule LIQUIFIER = new FeModule(
+            "alchemistry:liquifier", "Veloce Liquifier Module",
+            250_000, 25_000_000, AlchemistryRecipeFamily::liquifier);
+
+    public static final FeModule ATOMIZER = new FeModule(
+            "alchemistry:atomizer", "Veloce Atomizer Module",
+            250_000, 25_000_000, AlchemistryRecipeFamily::atomizer);
+
     /** Wszystkie maszyny itemowe v1 - do rejestracji i zakladki kreatywnej. */
-    public static final List<FeModule> ALL = List.of(COMPACTOR, COMBINER, FISSION, FUSION);
+    public static final List<FeModule> ALL = List.of(COMPACTOR, COMBINER, FISSION, FUSION, DISSOLVER, LIQUIFIER, ATOMIZER);
 }

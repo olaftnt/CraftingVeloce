@@ -64,6 +64,28 @@ public final class AlchemistryBlocks {
             ITEMS.registerSimpleBlockItem("veloce_alchemistry_fusion_module",
                     VELOCE_FUSION_MODULE);
 
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_DISSOLVER_MODULE =
+            BLOCKS.register("veloce_alchemistry_dissolver_module",
+                    () -> block(AlchemistryFeModules.DISSOLVER));
+    public static final DeferredItem<BlockItem> VELOCE_DISSOLVER_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_alchemistry_dissolver_module",
+                    VELOCE_DISSOLVER_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_LIQUIFIER_MODULE =
+            BLOCKS.register("veloce_alchemistry_liquifier_module",
+                    () -> block(AlchemistryFeModules.LIQUIFIER));
+    public static final DeferredItem<BlockItem> VELOCE_LIQUIFIER_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_alchemistry_liquifier_module",
+                    VELOCE_LIQUIFIER_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_ATOMIZER_MODULE =
+            BLOCKS.register("veloce_alchemistry_atomizer_module",
+                    () -> block(AlchemistryFeModules.ATOMIZER));
+    public static final DeferredItem<BlockItem> VELOCE_ATOMIZER_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_alchemistry_atomizer_module",
+                    VELOCE_ATOMIZER_MODULE);
+
+
     /** Jedna linia na maszyne: blok rdzenia + fabryka BE z tego modulu. */
     private static VeloceFeModuleBlock block(FeModule module) {
         return new VeloceFeModuleBlock(module, AlchemistryBlockEntities.factory(module),
@@ -95,5 +117,8 @@ public final class AlchemistryBlocks {
         output.accept(VELOCE_COMBINER_MODULE_ITEM.get());
         output.accept(VELOCE_FISSION_MODULE_ITEM.get());
         output.accept(VELOCE_FUSION_MODULE_ITEM.get());
+        output.accept(VELOCE_DISSOLVER_MODULE_ITEM.get());
+        output.accept(VELOCE_LIQUIFIER_MODULE_ITEM.get());
+        output.accept(VELOCE_ATOMIZER_MODULE_ITEM.get());
     }
 }

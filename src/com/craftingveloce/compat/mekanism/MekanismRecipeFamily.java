@@ -70,6 +70,83 @@ public final class MekanismRecipeFamily {
         return MekanismRecipeTypes.TYPE_SAWING.get();
     }
 
+    public static RecipeType<?> smelting() {
+        return MekanismRecipeTypes.TYPE_SMELTING.get();
+    }
+
+    public static RecipeType<?> compressing() {
+        return MekanismRecipeTypes.TYPE_COMPRESSING.get();
+    }
+
+    public static RecipeType<?> metallurgic_infusing() {
+        return MekanismRecipeTypes.TYPE_METALLURGIC_INFUSING.get();
+    }
+
+    public static RecipeType<?> purifying() {
+        return MekanismRecipeTypes.TYPE_PURIFYING.get();
+    }
+
+    public static RecipeType<?> injecting() {
+        return MekanismRecipeTypes.TYPE_INJECTING.get();
+    }
+
+    public static RecipeType<?> crystallizing() {
+        return MekanismRecipeTypes.TYPE_CRYSTALLIZING.get();
+    }
+
+    public static RecipeType<?> dissolution() {
+        return MekanismRecipeTypes.TYPE_DISSOLUTION.get();
+    }
+
+    public static RecipeType<?> washing() {
+        return MekanismRecipeTypes.TYPE_WASHING.get();
+    }
+
+    public static RecipeType<?> separating() {
+        return MekanismRecipeTypes.TYPE_SEPARATING.get();
+    }
+
+    public static RecipeType<?> reaction() {
+        return MekanismRecipeTypes.TYPE_REACTION.get();
+    }
+
+    public static RecipeType<?> rotary() {
+        return MekanismRecipeTypes.TYPE_ROTARY.get();
+    }
+
+    public static RecipeType<?> activating() {
+        return MekanismRecipeTypes.TYPE_ACTIVATING.get();
+    }
+
+    public static RecipeType<?> centrifuging() {
+        return MekanismRecipeTypes.TYPE_CENTRIFUGING.get();
+    }
+
+    public static RecipeType<?> nucleosynthesizing() {
+        return MekanismRecipeTypes.TYPE_NUCLEOSYNTHESIZING.get();
+    }
+
+    public static RecipeType<?> pigment_extracting() {
+        return MekanismRecipeTypes.TYPE_PIGMENT_EXTRACTING.get();
+    }
+
+    public static RecipeType<?> pigment_mixing() {
+        return MekanismRecipeTypes.TYPE_PIGMENT_MIXING.get();
+    }
+
+    public static RecipeType<?> painting() {
+        return MekanismRecipeTypes.TYPE_PAINTING.get();
+    }
+
+    public static RecipeType<?> oxidizing() {
+        return MekanismRecipeTypes.TYPE_OXIDIZING.get();
+    }
+
+    public static RecipeType<?> chemical_infusing() {
+        return MekanismRecipeTypes.TYPE_CHEMICAL_INFUSING.get();
+    }
+
+
     /** Typy receptur Mekanism. Wolno wolac tylko gdy mod jest obecny. */
     public static Set<RecipeType<?>> types() {
         if (resolved == null) {
@@ -78,6 +155,25 @@ public final class MekanismRecipeFamily {
             out.add(enriching());
             out.add(combining());
             out.add(sawing());
+            out.add(smelting());
+            out.add(compressing());
+            out.add(metallurgic_infusing());
+            out.add(purifying());
+            out.add(injecting());
+            out.add(crystallizing());
+            out.add(dissolution());
+            out.add(washing());
+            out.add(separating());
+            out.add(reaction());
+            out.add(rotary());
+            out.add(activating());
+            out.add(centrifuging());
+            out.add(nucleosynthesizing());
+            out.add(pigment_extracting());
+            out.add(pigment_mixing());
+            out.add(painting());
+            out.add(oxidizing());
+            out.add(chemical_infusing());
             resolved = Set.copyOf(out);
         }
         return resolved;

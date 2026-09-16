@@ -59,6 +59,22 @@ public final class AlchemistryBlockEntities {
                                     .create(pos, state),
                             AlchemistryBlocks.VELOCE_FUSION_MODULE.get()).build(null));
 
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceFeModuleBlockEntity>> DISSOLVER_MODULE =
+            TYPES.register("veloce_alchemistry_dissolver_module",
+                    () -> BlockEntityType.Builder.of((pos, state) -> factory(AlchemistryFeModules.DISSOLVER).create(pos, state),
+                            AlchemistryBlocks.VELOCE_DISSOLVER_MODULE.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceFeModuleBlockEntity>> LIQUIFIER_MODULE =
+            TYPES.register("veloce_alchemistry_liquifier_module",
+                    () -> BlockEntityType.Builder.of((pos, state) -> factory(AlchemistryFeModules.LIQUIFIER).create(pos, state),
+                            AlchemistryBlocks.VELOCE_LIQUIFIER_MODULE.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceFeModuleBlockEntity>> ATOMIZER_MODULE =
+            TYPES.register("veloce_alchemistry_atomizer_module",
+                    () -> BlockEntityType.Builder.of((pos, state) -> factory(AlchemistryFeModules.ATOMIZER).create(pos, state),
+                            AlchemistryBlocks.VELOCE_ATOMIZER_MODULE.get()).build(null));
+
+
     public static void register(IEventBus modEventBus) {
         TYPES.register(modEventBus);
     }
@@ -87,6 +103,16 @@ public final class AlchemistryBlockEntities {
         }
         if (module == AlchemistryFeModules.FUSION) {
             return FUSION_MODULE;
+        }
+        
+        if (module == AlchemistryFeModules.DISSOLVER) {
+            return DISSOLVER_MODULE;
+        }
+        if (module == AlchemistryFeModules.LIQUIFIER) {
+            return LIQUIFIER_MODULE;
+        }
+        if (module == AlchemistryFeModules.ATOMIZER) {
+            return ATOMIZER_MODULE;
         }
         throw new IllegalArgumentException("brak typu block entity dla maszyny " + module.id());
     }

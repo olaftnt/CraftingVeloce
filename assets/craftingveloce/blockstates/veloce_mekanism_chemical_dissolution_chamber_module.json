@@ -1,0 +1,57 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "craftingveloce:block/veloce_mekanism_chemical_dissolution_chamber_module"
+      }
+    },
+    {
+      "when": {
+        "north": "true"
+      },
+      "apply": {
+        "model": "craftingveloce:block/veloce_integrale_panel_north"
+      }
+    },
+    {
+      "when": {
+        "east": "true"
+      },
+      "apply": {
+        "model": "craftingveloce:block/veloce_integrale_panel_east"
+      }
+    },
+    {
+      "when": {
+        "south": "true"
+      },
+      "apply": {
+        "model": "craftingveloce:block/veloce_integrale_panel_south"
+      }
+    },
+    {
+      "when": {
+        "west": "true"
+      },
+      "apply": {
+        "model": "craftingveloce:block/veloce_integrale_panel_west"
+      }
+    },
+    {
+      "when": {
+        "up": "true"
+      },
+      "apply": {
+        "model": "craftingveloce:block/veloce_integrale_panel_up"
+      }
+    },
+    {
+      "when": {
+        "down": "true"
+      },
+      "apply": {
+        "model": "craftingveloce:block/veloce_integrale_panel_down"
+      }
+    }
+  ]
+}

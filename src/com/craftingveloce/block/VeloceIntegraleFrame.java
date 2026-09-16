@@ -32,10 +32,31 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty;
  */
 public final class VeloceIntegraleFrame {
 
-    /** Szesc okien klatki: czy okno z danej strony jest ZABUDOWANE. */
+    /**
+     * Szesc okien klatki: czy okno z danej strony jest ZABUDOWANE.
+     *
+     * <p><b>WLASNE wlasciwosci, nie pozyczone z {@code PipeBlock}.</b>
+     * Zgloszenie gracza: "niektore bloki jako defaultowy state maja to, ze sa
+     * jakby zamkniete, mimo ze nic nie jest podlaczone". Pozyczone
+     * {@code PipeBlock.*} mialy domyslna wartosc TRUE, wiec KAZDA postawiona
+     * maszyna startowala z wszystkimi scianami zamknietymi (potwierdzone
+     * w grze: pusty piecyk pokazywal `down=true, east=true, ... west=true`).
+     * Wlasne wlasciwosci maja domyslne FALSE: maszyna startuje otwarta,
+     * a zaslepki zamyka dopiero sasiad-rura (patrz withClosure).
+     *
+     * <p>Nazwy zostaja te same (north/east/south/west/up/down), bo na nich
+     * opieraja sie blockstate'y (multipart) i zapisane stany w swiecie.
+     */
+    public static final BooleanProperty DOWN = BooleanProperty.create("down");
+    public static final BooleanProperty UP = BooleanProperty.create("up");
+    public static final BooleanProperty NORTH = BooleanProperty.create("north");
+    public static final BooleanProperty SOUTH = BooleanProperty.create("south");
+    public static final BooleanProperty WEST = BooleanProperty.create("west");
+    public static final BooleanProperty EAST = BooleanProperty.create("east");
+
+    /** Szesc okien klatki w kolejnosci: dol, gora, polnoc, poludnie, zachod, wschod. */
     public static final BooleanProperty[] CLOSED_BY_DIRECTION = {
-            PipeBlock.DOWN, PipeBlock.UP, PipeBlock.NORTH,
-            PipeBlock.SOUTH, PipeBlock.WEST, PipeBlock.EAST,
+            DOWN, UP, NORTH, SOUTH, WEST, EAST,
     };
 
     private VeloceIntegraleFrame() {
@@ -116,7 +137,14 @@ public final class VeloceIntegraleFrame {
     }
 
     private static BooleanProperty property(Direction direction) {
-        return PipeBlock.PROPERTY_BY_DIRECTION.get(direction);
+        return switch (direction) {
+            case DOWN -> DOWN;
+            case UP -> UP;
+            case NORTH -> NORTH;
+            case SOUTH -> SOUTH;
+            case WEST -> WEST;
+            case EAST -> EAST;
+        };
     }
 
     private static boolean isPipe(BlockState state) {

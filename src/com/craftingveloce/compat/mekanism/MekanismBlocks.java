@@ -62,6 +62,121 @@ public final class MekanismBlocks {
     public static final DeferredItem<BlockItem> VELOCE_SAWMILL_MODULE_ITEM =
             ITEMS.registerSimpleBlockItem("veloce_mekanism_sawmill_module", VELOCE_SAWMILL_MODULE);
 
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_SMELTING_MODULE =
+            BLOCKS.register("veloce_mekanism_energized_smelter_module",
+                    () -> block(MekanismFeModules.SMELTING));
+    public static final DeferredItem<BlockItem> VELOCE_SMELTING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_energized_smelter_module", VELOCE_SMELTING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_COMPRESSING_MODULE =
+            BLOCKS.register("veloce_mekanism_osmium_compressor_module",
+                    () -> block(MekanismFeModules.COMPRESSING));
+    public static final DeferredItem<BlockItem> VELOCE_COMPRESSING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_osmium_compressor_module", VELOCE_COMPRESSING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_METALLURGIC_INFUSING_MODULE =
+            BLOCKS.register("veloce_mekanism_metallurgic_infuser_module",
+                    () -> block(MekanismFeModules.METALLURGIC_INFUSING));
+    public static final DeferredItem<BlockItem> VELOCE_METALLURGIC_INFUSING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_metallurgic_infuser_module", VELOCE_METALLURGIC_INFUSING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_PURIFYING_MODULE =
+            BLOCKS.register("veloce_mekanism_purification_chamber_module",
+                    () -> block(MekanismFeModules.PURIFYING));
+    public static final DeferredItem<BlockItem> VELOCE_PURIFYING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_purification_chamber_module", VELOCE_PURIFYING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_INJECTING_MODULE =
+            BLOCKS.register("veloce_mekanism_chemical_injection_chamber_module",
+                    () -> block(MekanismFeModules.INJECTING));
+    public static final DeferredItem<BlockItem> VELOCE_INJECTING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_chemical_injection_chamber_module", VELOCE_INJECTING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_CRYSTALLIZING_MODULE =
+            BLOCKS.register("veloce_mekanism_chemical_crystallizer_module",
+                    () -> block(MekanismFeModules.CRYSTALLIZING));
+    public static final DeferredItem<BlockItem> VELOCE_CRYSTALLIZING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_chemical_crystallizer_module", VELOCE_CRYSTALLIZING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_DISSOLUTION_MODULE =
+            BLOCKS.register("veloce_mekanism_chemical_dissolution_chamber_module",
+                    () -> block(MekanismFeModules.DISSOLUTION));
+    public static final DeferredItem<BlockItem> VELOCE_DISSOLUTION_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_chemical_dissolution_chamber_module", VELOCE_DISSOLUTION_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_WASHING_MODULE =
+            BLOCKS.register("veloce_mekanism_chemical_washer_module",
+                    () -> block(MekanismFeModules.WASHING));
+    public static final DeferredItem<BlockItem> VELOCE_WASHING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_chemical_washer_module", VELOCE_WASHING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_SEPARATING_MODULE =
+            BLOCKS.register("veloce_mekanism_electrolytic_separator_module",
+                    () -> block(MekanismFeModules.SEPARATING));
+    public static final DeferredItem<BlockItem> VELOCE_SEPARATING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_electrolytic_separator_module", VELOCE_SEPARATING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_REACTION_MODULE =
+            BLOCKS.register("veloce_mekanism_pressurized_reaction_chamber_module",
+                    () -> block(MekanismFeModules.REACTION));
+    public static final DeferredItem<BlockItem> VELOCE_REACTION_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_pressurized_reaction_chamber_module", VELOCE_REACTION_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_ROTARY_MODULE =
+            BLOCKS.register("veloce_mekanism_rotary_condensentrator_module",
+                    () -> block(MekanismFeModules.ROTARY));
+    public static final DeferredItem<BlockItem> VELOCE_ROTARY_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_rotary_condensentrator_module", VELOCE_ROTARY_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_ACTIVATING_MODULE =
+            BLOCKS.register("veloce_mekanism_solar_neutron_activator_module",
+                    () -> block(MekanismFeModules.ACTIVATING));
+    public static final DeferredItem<BlockItem> VELOCE_ACTIVATING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_solar_neutron_activator_module", VELOCE_ACTIVATING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_CENTRIFUGING_MODULE =
+            BLOCKS.register("veloce_mekanism_isotopic_centrifuge_module",
+                    () -> block(MekanismFeModules.CENTRIFUGING));
+    public static final DeferredItem<BlockItem> VELOCE_CENTRIFUGING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_isotopic_centrifuge_module", VELOCE_CENTRIFUGING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_NUCLEOSYNTHESIZING_MODULE =
+            BLOCKS.register("veloce_mekanism_antiprotonic_nucleosynthesizer_module",
+                    () -> block(MekanismFeModules.NUCLEOSYNTHESIZING));
+    public static final DeferredItem<BlockItem> VELOCE_NUCLEOSYNTHESIZING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_antiprotonic_nucleosynthesizer_module", VELOCE_NUCLEOSYNTHESIZING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_PIGMENT_EXTRACTING_MODULE =
+            BLOCKS.register("veloce_mekanism_pigment_extractor_module",
+                    () -> block(MekanismFeModules.PIGMENT_EXTRACTING));
+    public static final DeferredItem<BlockItem> VELOCE_PIGMENT_EXTRACTING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_pigment_extractor_module", VELOCE_PIGMENT_EXTRACTING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_PIGMENT_MIXING_MODULE =
+            BLOCKS.register("veloce_mekanism_pigment_mixer_module",
+                    () -> block(MekanismFeModules.PIGMENT_MIXING));
+    public static final DeferredItem<BlockItem> VELOCE_PIGMENT_MIXING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_pigment_mixer_module", VELOCE_PIGMENT_MIXING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_PAINTING_MODULE =
+            BLOCKS.register("veloce_mekanism_painting_machine_module",
+                    () -> block(MekanismFeModules.PAINTING));
+    public static final DeferredItem<BlockItem> VELOCE_PAINTING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_painting_machine_module", VELOCE_PAINTING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_OXIDIZING_MODULE =
+            BLOCKS.register("veloce_mekanism_chemical_oxidizer_module",
+                    () -> block(MekanismFeModules.OXIDIZING));
+    public static final DeferredItem<BlockItem> VELOCE_OXIDIZING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_chemical_oxidizer_module", VELOCE_OXIDIZING_MODULE);
+
+    public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_CHEMICAL_INFUSING_MODULE =
+            BLOCKS.register("veloce_mekanism_chemical_infuser_module",
+                    () -> block(MekanismFeModules.CHEMICAL_INFUSING));
+    public static final DeferredItem<BlockItem> VELOCE_CHEMICAL_INFUSING_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_mekanism_chemical_infuser_module", VELOCE_CHEMICAL_INFUSING_MODULE);
+
+
     /** Jedna linia na maszyne: blok rdzenia + fabryka BE z tego modulu. */
     private static VeloceFeModuleBlock block(FeModule module) {
         return new VeloceFeModuleBlock(module, MekanismBlockEntities.factory(module),
@@ -96,5 +211,25 @@ public final class MekanismBlocks {
         output.accept(VELOCE_ENRICHMENT_MODULE_ITEM.get());
         output.accept(VELOCE_COMBINER_MODULE_ITEM.get());
         output.accept(VELOCE_SAWMILL_MODULE_ITEM.get());
+
+        output.accept(VELOCE_SMELTING_MODULE_ITEM.get());
+        output.accept(VELOCE_COMPRESSING_MODULE_ITEM.get());
+        output.accept(VELOCE_METALLURGIC_INFUSING_MODULE_ITEM.get());
+        output.accept(VELOCE_PURIFYING_MODULE_ITEM.get());
+        output.accept(VELOCE_INJECTING_MODULE_ITEM.get());
+        output.accept(VELOCE_CRYSTALLIZING_MODULE_ITEM.get());
+        output.accept(VELOCE_DISSOLUTION_MODULE_ITEM.get());
+        output.accept(VELOCE_WASHING_MODULE_ITEM.get());
+        output.accept(VELOCE_SEPARATING_MODULE_ITEM.get());
+        output.accept(VELOCE_REACTION_MODULE_ITEM.get());
+        output.accept(VELOCE_ROTARY_MODULE_ITEM.get());
+        output.accept(VELOCE_ACTIVATING_MODULE_ITEM.get());
+        output.accept(VELOCE_CENTRIFUGING_MODULE_ITEM.get());
+        output.accept(VELOCE_NUCLEOSYNTHESIZING_MODULE_ITEM.get());
+        output.accept(VELOCE_PIGMENT_EXTRACTING_MODULE_ITEM.get());
+        output.accept(VELOCE_PIGMENT_MIXING_MODULE_ITEM.get());
+        output.accept(VELOCE_PAINTING_MODULE_ITEM.get());
+        output.accept(VELOCE_OXIDIZING_MODULE_ITEM.get());
+        output.accept(VELOCE_CHEMICAL_INFUSING_MODULE_ITEM.get());
     }
 }
