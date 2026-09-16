@@ -411,7 +411,7 @@ Jak to działa (`compat/jade/`):
 |---------|------|
 | `VeloceJadePlugin` (`@WailaPlugin`) | rejestruje dane serwera dla **wszystkich** block entity i komponent tooltipa dla **wszystkich** bloków |
 | `VeloceModuleDataProvider` | `shouldRequestData` pyta tylko o BE implementujące `VeloceModuleInfoSource`; `appendServerData` wkłada gotowy `moduleInfo(ServerLevel)` |
-| `VeloceModuleComponentProvider` | dokłada linie z `VeloceModuleInfoLines` — **te same**, których używa GUI |
+| `VeloceModuleComponentProvider` | dokłada **jedną** linię: status pracy (pracuje / za mało siły / za mało energii) |
 
 Trzy rzeczy, które łatwo tu zepsuć i dlatego pilnuje ich `validate_jade_info`:
 
@@ -529,52 +529,24 @@ Jak dołożyć kolejny moduł — cała procedura:
 
 Rdzeń nie wymaga przy tym żadnej zmiany.
 
-#### Okno modułu (prawy klik)
+#### Okno maszyny (prawy klik)
 
-Prawy klik na module otwiera okno z aktualnym stanem maszyny. Liczby liczy
-**serwer** (`moduleInfo(ServerLevel)` → `OpenModuleInfoPKT` → `VeloceModuleInfoScreen`),
-więc okno nic nie zgaduje i nie odpytuje sieci co klatkę. Dwa warianty w jednym
-oknie, rozpoznawane po polach z pakietu:
+**Zwykły kontener — identyczny jak okno pieca.** Ten sam `AbstractContainerMenu`
++ `AbstractContainerScreen`, ta sama tekstura (`electric_furnace.png`), ten sam
+układ: tytuł z nazwą bloku, podpis „Inventory” i ekwipunek gracza (x=26, y=84/142).
+Żadnych własnych okien, pakietów ani rysowania po ekranie.
 
-* **kinetyczne (Create)**: prędkość aktualna / wymagana / maksymalna, pobór SU,
-  liczba wklikanych elementów,
-* **na energię (Mekanism, Alchemistry)**: stan akumulatora (pasek), koszt
-  operacji i ile operacji jeszcze z niego wyjdzie.
+* **maszyna na energię** (Mekanism, Alchemistry): pasek baterii jak w piecu
+  i liczba operacji, na które jeszcze stac akumulator,
+* **maszyna kinetyczna** (Create): **bez baterii** — w jej miejscu trzy linie
+  tekstu: jaką dostajemy prędkość, czy to wystarcza i ile SU zużywa blok.
 
-W obu dochodzi stan podpiętej sieci rur (węzły, magazyny, typy itemów) i status
-(`powered` / `enoughSpeed`). Esc zamyka okno, **E nie** — E otwiera ekwipunek
-i okno znikałoby w chwili, gdy gracz chce je obejrzeć.
-
-Okno rysuje **nieprzezroczysty panel 176×166** w stylu vanilla
-(`assets/craftingveloce/textures/gui/module_info.png`, generator:
-`scripts/gen_module_gui_texture.py`) i ciemny tekst na nim — tak samo jak okna
-pieca, extractora i sensora. Pierwsza wersja rysowała półprzezroczysty prostokąt
-na rozmytym świecie i biały tekst bez cienia, przez co wyglądało to jak tooltip
-schowany za blurem (zgłoszenie gracza). Pilnuje tego `validate_module_info_gui`:
-panel musi istnieć jako tekstura ≥ 176×166, a `renderPanel` musi go rysować
-przez `blit` (a nie `fill`).
-
-**Tło okna nie jest rozmywane.** `renderBackground` woła tylko
-`renderTransparentBackground` (przygaszenie), bez `renderBlurredBackground`.
-Vanilla rozmywa przy każdym ekranie wszystko, co jest pod nim — razem z paskiem
-akcji i napisami HUD — więc teksty wystające spod panelu wyglądały jak rozmazane
-plamy (zgłoszenie: „na naszych nowych GUI dalej jest jakiś dziwny blur”). W oknie
-informacyjnym nie ma nic, co miałoby być rozmyte, więc świat i HUD zostają ostre.
-
-**Linie opisują jedno źródło.** Teksty składają się w
-`VeloceModuleInfoLines.build(CompoundTag)` i korzysta z nich **także** tooltip
-Jade — dzięki temu opis przy celowniku i w oknie nie mogą się rozjechać.
-Pierwsza linia wariantu na energię jest nagłówkiem, pod którym GUI rysuje pasek
-baterii (`isEnergy`).
+Liczby czyta menu z block entity u klienta (`VeloceModuleDisplay.moduleDisplay()`);
+prędkość kinetyczną synchronizuje Create, energię nasz block entity.
 
 ---
 
 ## 🌐 Network (Packets)
-
-`OpenModuleInfoPKT` otwiera **GUI modułu Create** (prawy klik na maszynę):
-prędkość aktualna / wymagana / maksymalna, pobór SU i pojemność sieci oraz stan
-podpiętej sieci rur (węzły, magazyny, typy itemów). Liczby wylicza serwer, więc
-okno ich nie zgaduje.
 
 Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 
@@ -586,7 +558,6 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `CraftingTableToggleItemPKT` | C→S | `BlockPos pos, Item item` |
 | `ExtractorToggleCraftingPKT` | C→S | `BlockPos pos, int filterIndex` |
 | `OpenControllerScreenPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnacePowered, Set<Item> furnacePreferred` |
-| `OpenModuleInfoPKT` | S→C | `BlockPos pos, CompoundTag info` |
 | `OpenCraftingTableScreenPKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents` |
 | `OpenFilterPKT` | C→S | `BlockPos pos, int filterIndex` |
 | `OpenFilterPickerPKT` | S→C | `BlockPos pos, int filterIndex` |

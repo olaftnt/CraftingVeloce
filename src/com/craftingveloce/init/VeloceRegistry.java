@@ -220,6 +220,14 @@ public class VeloceRegistry {
             () -> new com.craftingveloce.item.VeloceIntegraleItem(
                     VELOCE_INTEGRALE.get(), new Item.Properties()));
 
+    // Okno maszyny (prawy klik) - zwykly kontener, jak piec.
+    public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>,
+            net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceModuleMenu>> VELOCE_MODULE_MENU =
+            MENU_TYPES.register("veloce_module_menu",
+                    () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(
+                            (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceModuleMenu(
+                                    windowId, inv, data.readBlockPos())));
+
     @FunctionalInterface
     public interface BlockEntityFactory<T extends BlockEntity> {
         T create(net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state);

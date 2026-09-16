@@ -43,7 +43,8 @@ import java.util.Set;
 public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         implements VeloceProcessingSource, com.craftingveloce.block.VeloceCaseSpin,
         com.craftingveloce.block.VeloceCaseBuildable,
-        com.craftingveloce.block.entity.VeloceModuleInfoSource {
+        com.craftingveloce.block.entity.VeloceModuleInfoSource,
+        com.craftingveloce.block.entity.VeloceModuleDisplay {
 
     /**
      * Pula operacji dla planera, gdy maszyna sie kreci.
@@ -150,6 +151,19 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
      * <p>Liczone na SERWERZE (tylko tam sa prawdziwe liczby sieci kinetycznej
      * i magazynow), a klient dostaje gotowe pola razem z otwarciem okna.
      */
+    /** Pola okna u KLIENTA (predkosc kinetyczna synchronizuje Create). */
+    @Override
+    public net.minecraft.nbt.CompoundTag moduleDisplay() {
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        tag.putFloat("speed", Math.abs(getSpeed()));
+        tag.putInt("requiredSpeed",
+                com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED);
+        tag.putFloat("suDraw", module.constantSu());
+        tag.putInt("parts", parts);
+        tag.putBoolean("enoughSpeed", hasEnoughRotationSpeed());
+        return tag;
+    }
+
     @Override
     public net.minecraft.nbt.CompoundTag moduleInfo(
             net.minecraft.server.level.ServerLevel level) {

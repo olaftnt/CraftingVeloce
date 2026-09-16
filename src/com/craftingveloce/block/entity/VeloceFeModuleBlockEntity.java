@@ -30,7 +30,8 @@ import java.util.Set;
  * energia jest rozliczana dokladnie raz na wykonana recepture.
  */
 public class VeloceFeModuleBlockEntity extends BlockEntity
-        implements VeloceProcessingSource, IEnergyStorage, VeloceModuleInfoSource {
+        implements VeloceProcessingSource, IEnergyStorage, VeloceModuleInfoSource,
+        VeloceModuleDisplay {
 
     /**
      * Fabryka block entity - dostarczana przez modul.
@@ -80,6 +81,19 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
      * aktualny stan zmagazynowanego pradu". Okno liczy sie na serwerze (tylko
      * tam sa prawdziwe liczby), a klient rysuje pasek baterii z tych pol.
      */
+    /** Pola okna u KLIENTA (energia jest synchronizowana przez block entity). */
+    @Override
+    public net.minecraft.nbt.CompoundTag moduleDisplay() {
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        tag.putLong("energy", energy);
+        tag.putLong("energyCapacity", module.capacity());
+        tag.putLong("fePerOperation", module.fePerOperation());
+        tag.putLong("operations", module.fePerOperation() <= 0 ? 0L
+                : energy / module.fePerOperation());
+        tag.putBoolean("powered", isPowered());
+        return tag;
+    }
+
     @Override
     public net.minecraft.nbt.CompoundTag moduleInfo(net.minecraft.server.level.ServerLevel level) {
         net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();

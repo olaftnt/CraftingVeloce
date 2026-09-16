@@ -300,14 +300,11 @@ public class VeloceKineticModuleBlock extends KineticBlock
             BlockState state, Level world, BlockPos pos,
             net.minecraft.world.entity.player.Player player,
             net.minecraft.world.phys.BlockHitResult hit) {
-        if (!world.isClientSide
-                && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
-                && world.getBlockEntity(pos)
-                instanceof com.craftingveloce.block.entity.VeloceModuleInfoSource source
-                && world instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(serverPlayer,
-                    new com.craftingveloce.network.OpenModuleInfoPKT(pos,
-                            source.moduleInfo(serverLevel)));
+        // Zwykle okno kontenera - jak w piecu (menu + ta sama tekstura).
+        if (!world.isClientSide && player instanceof net.minecraft.server.level.ServerPlayer) {
+            player.openMenu(new net.minecraft.world.SimpleMenuProvider(
+                    (id, inv, p) -> new com.craftingveloce.inventory.VeloceModuleMenu(id, inv, pos),
+                    state.getBlock().getName()));
         }
         return net.minecraft.world.InteractionResult.sidedSuccess(world.isClientSide);
     }

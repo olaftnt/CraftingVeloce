@@ -13,7 +13,6 @@ public class VelocePacketHandler {
             registrar.playToClient(SyncTerminalCountsPKT.TYPE, SyncTerminalCountsPKT.STREAM_CODEC, SyncTerminalCountsPKT::handle);
             registrar.playToClient(OpenFilterPickerPKT.TYPE, OpenFilterPickerPKT.STREAM_CODEC, OpenFilterPickerPKT::handle);
             registrar.playToClient(SyncExtractorFiltersPKT.TYPE, SyncExtractorFiltersPKT.STREAM_CODEC, SyncExtractorFiltersPKT::handle);
-            registrar.playToClient(OpenModuleInfoPKT.TYPE, OpenModuleInfoPKT.STREAM_CODEC, OpenModuleInfoPKT::handle);
             registrar.playToClient(OpenCraftingTableScreenPKT.TYPE, OpenCraftingTableScreenPKT.STREAM_CODEC, OpenCraftingTableScreenPKT::handle);
             registrar.playToClient(SyncCraftingTableStatePKT.TYPE, SyncCraftingTableStatePKT.STREAM_CODEC, SyncCraftingTableStatePKT::handle);
             registrar.playToClient(OpenControllerScreenPKT.TYPE, OpenControllerScreenPKT.STREAM_CODEC, OpenControllerScreenPKT::handle);

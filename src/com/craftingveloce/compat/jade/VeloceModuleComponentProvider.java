@@ -1,7 +1,6 @@
 package com.craftingveloce.compat.jade;
 
 import com.craftingveloce.block.entity.VeloceModuleInfoSource;
-import com.craftingveloce.crafting.VeloceModuleInfoLines;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import snownee.jade.api.BlockAccessor;
@@ -37,10 +36,10 @@ public enum VeloceModuleComponentProvider implements IComponentProvider<BlockAcc
         }
         CompoundTag info = accessor.getServerData();
         if (info == null || info.isEmpty()) {
-            // Jade nie przyslal danych (np. gra bez naszego providera po stronie
-            // serwera) - lepiej nie pokazywac nic niz pokazywac same zera.
             return;
         }
-        tooltip.addAll(VeloceModuleInfoLines.build(info));
+        // JEDNA linia: pracuje albo nie ma sily/energii. Gracz nie chce tu nic
+        // wiecej (zadnych predkosci, SU, energii ani sieci).
+        tooltip.add(com.craftingveloce.crafting.VeloceModuleStatus.message(info));
     }
 }

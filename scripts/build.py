@@ -1260,32 +1260,18 @@ JEI_CATEGORIES = {
 
 def validate_jade_info():
     """
-    Jade: opis maszyny (predkosc/SU/energia + status) przy celowniku.
+    Jade: JEDNA linia statusu (pracuje / za malo sily / za malo energii).
 
-    Gracz kazal wyrzucic wlasny napis "not enough rotation speed" rysowany po
-    ekranie i pokazac te informacje przez Jade ("ten mod, co pokazuje, na co sie
-    patrzysz"). Lancuch jest dlugi, a kazde ogniwo psuje sie PO CICHU (tooltip
-    po prostu nic nie pokaze), dlatego sprawdzamy wszystkie:
-      1. plugin {@code @WailaPlugin} rejestruje sie bez znajomosci innych modow
-         ({@code BlockEntity.class} + {@code Block.class} i filtr po rdzeniowym
-         {@code VeloceModuleInfoSource}), wiec dziala takze bez Create/Mekanism/
-         Alchemistry,
-      2. dane liczy SERWER ({@code shouldRequestData} + {@code appendServerData}),
-      3. tooltip sklada DOKLADNIE te same linie co okno po prawym kliku
-         ({@code VeloceModuleInfoLines.build}) - jedno zrodlo tekstow,
-      4. okno po prawym kliku nie rozmywa tla (zgloszenie gracza o "dziwnym
-         blurze" na naszych nowych GUI),
-      5. Jade jest w {@code FOREIGN_PACKAGES} - inaczej wyciek w JARze bylby
-         niewidoczny dla kontroli izolacji.
+    Gracz: "wypierdol wszystko, co pisze w integracji Jade i zostaw tylko
+    powered/working". Sprawdzamy, ze plugin istnieje, dziala bez modulow maszyn
+    i dopisuje DOKLADNIE jedna linie - bez predkosci, SU, energii i sieci.
     """
     problems = []
     plugin = "src/com/craftingveloce/compat/jade/VeloceJadePlugin.java"
     data_provider = "src/com/craftingveloce/compat/jade/VeloceModuleDataProvider.java"
     component = "src/com/craftingveloce/compat/jade/VeloceModuleComponentProvider.java"
-    lines_path = "src/com/craftingveloce/crafting/VeloceModuleInfoLines.java"
-    screen = "src/com/craftingveloce/client/gui/VeloceModuleInfoScreen.java"
     for path, what in ((plugin, "pluginu Jade"), (data_provider, "danych dla Jade"),
-                       (component, "tooltipa Jade"), (lines_path, "wspolnych linii opisu")):
+                       (component, "tooltipa Jade")):
         if not os.path.exists(path):
             problems.append("brak " + what)
     if problems:
@@ -1293,20 +1279,13 @@ def validate_jade_info():
 
     plugin_text = open(plugin, encoding="utf-8").read()
     if "@WailaPlugin" not in plugin_text or "IWailaPlugin" not in plugin_text:
-        problems.append("plugin Jade nie jest pluginem Jade (@WailaPlugin/IWailaPlugin)")
+        problems.append("plugin Jade nie jest pluginem Jade")
     common = _method_body(plugin_text, "public void register(")
-    if common is None or "registerBlockDataProvider(" not in common \
-            or "BlockEntity.class" not in common:
-        problems.append("plugin Jade nie rejestruje danych serwera dla maszyn")
+    if common is None or "registerBlockDataProvider(" not in common:
+        problems.append("plugin Jade nie rejestruje danych serwera")
     client = _method_body(plugin_text, "public void registerClient(")
-    if client is None or "registerBlockComponent(" not in client \
-            or "Block.class" not in client:
+    if client is None or "registerBlockComponent(" not in client:
         problems.append("plugin Jade nie rejestruje skladnika tooltipa")
-
-    # Plugin jest ladowany przez Jade TAKZE bez modulow maszyn, wiec nie moze
-    # dotykac ich klas (NoClassDefFoundError u gracza bez Create/Mekanism).
-    # Patrzymy na IMPORTY, a nie na caly tekst: wzmianka w komentarzu nie
-    # tworzy zaleznosci, a import - tak.
     for path in sorted(glob.glob("src/com/craftingveloce/compat/jade/*.java")):
         for name in _imports_of(path):
             if name.startswith(("com.craftingveloce.compat.create",
@@ -1317,47 +1296,27 @@ def validate_jade_info():
     data_text = open(data_provider, encoding="utf-8").read()
     should = _method_body(data_text, "public boolean shouldRequestData(")
     if should is None or "VeloceModuleInfoSource" not in should:
-        problems.append("Jade pyta o dane o byle jaki block entity (ma filtrowac po interfejsie)")
-    append = _method_body(data_text, "public void appendServerData(")
-    if append is None or "moduleInfo(" not in append or "ServerLevel" not in append:
-        problems.append("Jade nie wypelnia danych z serwera")
+        problems.append("Jade pyta o dane o byle jaki block entity")
 
     component_text = open(component, encoding="utf-8").read()
     tooltip = _method_body(component_text, "public void appendTooltip(")
-    if tooltip is None or "VeloceModuleInfoSource" not in tooltip:
-        problems.append("tooltip Jade nie filtruje naszych maszyn")
-    elif "getServerData()" not in tooltip:
-        problems.append("tooltip Jade nie czyta danych z serwera")
-    elif "VeloceModuleInfoLines.build(" not in tooltip:
-        problems.append("tooltip Jade sklada wlasne linie zamiast wspolnych z GUI")
-
-    lines_text = open(lines_path, encoding="utf-8").read()
-    for need, what in (("enoughSpeed", "statusu 'za malo sily'"),
-                       ("noPower", "statusu braku pradu"),
-                       ("speedRequired", "wymaganej predkosci")):
-        if need not in lines_text:
-            problems.append("wspolne linie opisu bez " + what)
-
-    screen_text = open(screen, encoding="utf-8").read()
-    if "VeloceModuleInfoLines.build(" not in screen_text:
-        problems.append("okno modulu nie uzywa wspolnych linii (GUI i Jade by sie rozjechaly)")
-    background = _method_body(screen_text, "public void renderBackground(")
-    if background is None or "renderTransparentBackground(" not in background \
-            or "super.renderBackground" in background:
-        problems.append("okno modulu rozmywa tlo (zgloszenie gracza: 'dziwny blur')")
-
-    mods = "src/com/craftingveloce/compat/VeloceMods.java"
-    if os.path.exists(mods) and 'JADE("jade")' not in open(mods, encoding="utf-8").read():
-        problems.append("VeloceMods bez wpisu Jade")
-    toml = "src_meta/META-INF/neoforge.mods.toml"
-    if os.path.exists(toml) and 'modId="jade"' not in open(toml, encoding="utf-8").read():
-        problems.append("neoforge.mods.toml bez opcjonalnej zaleznosci jade")
-    if "snownee.jade" not in FOREIGN_PACKAGES:
-        problems.append("snownee.jade poza FOREIGN_PACKAGES - wyciek bylby niewidoczny")
+    if tooltip is None:
+        problems.append("tooltip Jade bez metody")
+    else:
+        if "VeloceModuleStatus.message(" not in tooltip:
+            problems.append("Jade nie pokazuje statusu pracy")
+        extra = [line.strip() for line in tooltip.splitlines()
+                 if "tooltip.add" in line and "VeloceModuleStatus.message(" not in line
+                 and "addAll" not in line]
+        if extra:
+            problems.append("Jade dopisuje wiecej niz status: " + " | ".join(extra[:3]))
+        for forbidden in ("speed", "suDraw", "energy", "networkNodes"):
+            if forbidden in tooltip:
+                problems.append(f"Jade nadal wypisuje {forbidden}")
 
     if problems:
-        fail("Jade (opis maszyny przy celowniku):\n  " + "\n  ".join(problems))
-    print("    OK (Jade: predkosc/SU/energia + status, te same linie co okno modulu)")
+        fail("Jade (tylko status pracy):\n  " + "\n  ".join(problems))
+    print("    OK (Jade: jedna linia statusu - pracuje / za malo sily / za malo energii)")
 
 
 def validate_terminal_craft_error():
@@ -1589,132 +1548,66 @@ def validate_jei_catalysts():
 
 def validate_module_info_gui():
     """
-    GUI modulu (prawy klik): predkosc, SU i sieć.
+    Okno maszyny: ZWYKLY kontener - identyczny jak okno pieca.
 
-    Gracz: "jak klikne prawym na modul, to otwiera sie GUI z aktualna predkosc,
-    maksymalna/minimalna wymagana, ile dostaje SU / ile potrzebuje, i
-    informacjami o sieci". Sprawdzamy komplet ogniw, bo kazde z nich latwo
-    zgubic pojedynczo:
-      1. pakiet istnieje i jest zarejestrowany (inaczej okno sie nie otworzy),
-      2. prawy klik faktycznie go wysyla,
-      3. block entity wypelnia pola (predkosc, SU, sieć),
-      4. ekran istnieje i zamyka sie Esc (a nie E - gracz tego nie chce).
+    Gracz: "maja byc proste, maja doslownie wszystkie te interfejsy wygladac tak
+    jak interfejs z pieca ... bez zadnych kombinacji". Dlatego sprawdzamy, ze:
+      1. MenuType jest zarejestrowany, a ekran podpiety pod niego,
+      2. prawy klik OBU typow maszyn otwiera MENU (a nie wysyla pakietu),
+      3. ekran uzywa TEJ SAMEJ tekstury co piec i rysuje tylko tekst: trzy linie
+         (predkosc, czy wystarcza, ile SU) albo baterie dla maszyn na FE,
+      4. oba block entity umieja podac te liczby takze KLIENTOWI
+         ({@code VeloceModuleDisplay}), bo menu czyta je u siebie,
+      5. po starych, kombinowanych okienkach nie zostal ani plik, ani pakiet.
     """
     problems = []
-    pkt = "src/com/craftingveloce/network/OpenModuleInfoPKT.java"
-    screen = "src/com/craftingveloce/client/gui/VeloceModuleInfoScreen.java"
-    be = "src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java"
-    block = "src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java"
-    for path, what in ((pkt, "pakietu okna"), (screen, "ekranu okna")):
+    inventory = "src/com/craftingveloce/inventory/VeloceModuleMenu.java"
+    screen = "src/com/craftingveloce/client/gui/VeloceModuleScreen.java"
+    for path, what in ((inventory, "menu maszyny"), (screen, "ekranu maszyny")):
         if not os.path.exists(path):
             problems.append("brak " + what)
-    if os.path.exists(pkt):
-        handler = open("src/com/craftingveloce/network/VelocePacketHandler.java",
-                       encoding="utf-8").read()
-        if "OpenModuleInfoPKT.TYPE" not in handler:
-            problems.append("pakiet okna nie jest zarejestrowany")
-    if os.path.exists(block):
-        body = _method_body(open(block, encoding="utf-8").read(), "protected net.minecraft.world.InteractionResult useWithoutItem(")
-        if body is None or "OpenModuleInfoPKT" not in body:
-            problems.append("prawy klik nie otwiera okna modulu")
-    if os.path.exists(be):
-        text = open(be, encoding="utf-8").read()
-        info = _method_body(text, "public net.minecraft.nbt.CompoundTag moduleInfo(")
-        if info is None:
-            problems.append("block entity nie opisuje sie do okna")
-        else:
-            for need, what in (('tag.putFloat("speed"', "predkosci"),
-                               ('tag.putFloat("suDraw"', "poboru SU"),
-                               ('tag.putFloat("suCapacity"', "pojemnosci sieci"),
-                               ('tag.putInt("networkNodes"', "wezlow sieci rur"),
-                               ('tag.putInt("networkStorages"', "magazynow sieci"),
-                               ("getActualStressOf", "poboru tej maszyny")):
-                if need not in info:
-                    problems.append("okno modulu bez " + what)
-    if os.path.exists(screen):
-        text = open(screen, encoding="utf-8").read()
-        if "GLFW_KEY_ESCAPE" not in text:
-            problems.append("okno modulu nie zamyka sie Escape")
-        lang = json.load(open("assets/craftingveloce/lang/en_us.json", encoding="utf-8"))
-        if not any(key.startswith("gui.craftingveloce.module.info.") for key in lang):
-            problems.append("brak kluczy jezyka dla okna modulu")
-    # Moduly na energie: 25M FE bufora (jak elektryczny piec), koszt operacji
-    # w skali pieca (200 000 FE) i okno z BATERIA.
-    fe_be = "src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
-    fe_block = "src/com/craftingveloce/block/VeloceFeModuleBlock.java"
-    if not os.path.exists(fe_be) or "VeloceModuleInfoSource" not in open(fe_be, encoding="utf-8").read():
-        problems.append("modul FE nie opisuje sie do okna")
-    else:
-        info = _method_body(open(fe_be, encoding="utf-8").read(),
-                            "public net.minecraft.nbt.CompoundTag moduleInfo(")
-        if info is None:
-            problems.append("modul FE bez metody moduleInfo")
-        else:
-            for need, what in (('tag.putLong("energy"', "stanu energii"),
-                               ('tag.putLong("energyCapacity"', "pojemnosci akumulatora"),
-                               ('tag.putLong("fePerOperation"', "kosztu operacji"),
-                               ('tag.putBoolean("powered"', "informacji o zasileniu"),
-                               ('tag.putInt("networkNodes"', "wezlow sieci rur")):
-                if need not in info:
-                    problems.append("okno modulu FE bez " + what)
-    if os.path.exists(fe_block):
-        body = _method_body(open(fe_block, encoding="utf-8").read(),
-                           "protected InteractionResult useWithoutItem(")
-        if body is None or "OpenModuleInfoPKT" not in body:
-            problems.append("prawy klik na module FE nie otwiera okna")
-    if os.path.exists(screen):
-        text = open(screen, encoding="utf-8").read()
-        if "energyCapacity" not in text:
-            problems.append("okno modulu nie uzywa pojemnosci do paska")
-        # Panel: okno rysuje NIEPRZEZROCZYSTA teksture w stylu vanilla, a nie
-        # polprzezroczysty prostokat na rozmytym swiecie. Gracz zglosil to jako
-        # "tekst za blurem, jak tooltip w tle" - i ten blad wraca natychmiast,
-        # gdy ktos zamieni panel z powrotem na fill().
-        render_body = _method_body(text, "public void render(")
-        if render_body is None or "renderBackground(" not in render_body \
-                or "renderPanel(" not in render_body:
-            problems.append("okno modulu nie rysuje panelu (renderBackground + renderPanel)")
-        panel_body = _method_body(text, "private void renderPanel(")
-        if panel_body is None:
-            problems.append("okno modulu bez metody rysujacej panel")
-        else:
-            for need, what in (("blit(", "nieprzezroczystej tekstury panelu"),
-                               ("drawString(", "tekstu na panelu"),
-                               ("drawBattery(", "baterii przy energii")):
-                if need not in panel_body:
-                    problems.append("okno modulu bez " + what)
-        panel_tex = "assets/craftingveloce/textures/gui/module_info.png"
-        if "textures/gui/module_info.png" not in text:
-            problems.append("okno modulu nie wskazuje tekstury panelu")
-        if not os.path.exists(panel_tex):
-            problems.append("brak tekstury panelu okna (" + panel_tex + ")")
-        else:
-            head = open(panel_tex, "rb").read(24)
-            if not head.startswith(b"\x89PNG") or len(head) < 24:
-                problems.append("tekstura panelu okna nie jest poprawnym PNG")
-            else:
-                tex_w = int.from_bytes(head[16:20], "big")
-                tex_h = int.from_bytes(head[20:24], "big")
-                if tex_w < 176 or tex_h < 166:
-                    problems.append(f"tekstura panelu okna ma {tex_w}x{tex_h}, "
-                                    f"a panel ma 176x166")
-        if "PANEL_WIDTH = 176" not in text or "PANEL_HEIGHT = 166" not in text:
-            problems.append("okno modulu nie ma panelu 176x166 jak pozostale GUI")
+    for gone in ("src/com/craftingveloce/client/gui/VeloceModuleInfoScreen.java",
+                 "src/com/craftingveloce/network/OpenModuleInfoPKT.java",
+                 "src/com/craftingveloce/crafting/VeloceModuleInfoLines.java"):
+        if os.path.exists(gone):
+            problems.append("zostalo stare okno: " + os.path.basename(gone))
 
-    for path, table in (("src/com/craftingveloce/compat/mekanism/MekanismFeModules.java", "Mekanism"),
-                        ("src/com/craftingveloce/compat/alchemistry/AlchemistryFeModules.java", "Alchemistry")):
-        body = open(path, encoding="utf-8").read()
-        if body.count("25_000_000") < 4:
-            problems.append(f"{table}: nie kazdy modul ma bufor 25 000 000 FE")
-        for match in re.findall(r"new FeModule\([^)]*\)", body):
-            numbers = re.findall(r"([\d_]+), 25_000_000", match)
-            if numbers and int(numbers[0].replace("_", "")) < 100_000:
-                problems.append(f"{table}: koszt operacji {numbers[0]} FE jest za maly "
-                                f"(punkt odniesienia: piec 200 000 FE)")
+    registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    if "VELOCE_MODULE_MENU =" not in registry or "veloce_module_menu" not in registry:
+        problems.append("MenuType maszyny nie jest zarejestrowany")
+    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    if "VELOCE_MODULE_MENU.get()" not in mod or "VeloceModuleScreen::new" not in mod:
+        problems.append("ekran maszyny nie jest podpiety pod menu")
+
+    for path, what in (("src/com/craftingveloce/block/VeloceFeModuleBlock.java",
+                        "maszyna na energie"),
+                       ("src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
+                        "maszyna kinetyczna")):
+        # Cialo metody, a nie caly plik: komentarz z "openMenu(" nie otwiera okna.
+        text = open(path, encoding="utf-8").read()
+        body = _method_body(text, "protected net.minecraft.world.InteractionResult useWithoutItem(")
+        if body is None:
+            body = _method_body(text, "protected InteractionResult useWithoutItem(")
+        if body is None or "openMenu(" not in body or "OpenModuleInfoPKT" in body:
+            problems.append(f"{what}: prawy klik nie otwiera zwyklego menu")
+    for path in ("src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java",
+                 "src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java"):
+        if "moduleDisplay()" not in open(path, encoding="utf-8").read():
+            problems.append(f"{os.path.basename(path)}: brak pol okna dla klienta")
+
+    if os.path.exists(screen):
+        text = open(screen, encoding="utf-8").read()
+        for need, what in (("AbstractContainerScreen<VeloceModuleMenu>", "zwyklego ekranu kontenera"),
+                           ("electric_furnace.png", "tekstury pieca"),
+                           ("gui.craftingveloce.module.info.speed", "predkosci w oknie"),
+                           ("VeloceModuleStatus.message(", "statusu w oknie"),
+                           ("drawBattery(", "baterii dla maszyn na FE")):
+            if need not in text:
+                problems.append("okno maszyny bez " + what)
 
     if problems:
-        fail("GUI modulu:\n  " + "\n  ".join(problems))
-    print("    OK (GUI modulu: panel 176x166 + pakiet + prawy klik + pola SU/predkosc/sieć + Esc)")
+        fail("okno maszyny (jak piec):\n  " + "\n  ".join(problems))
+    print("    OK (okno maszyny: zwykly kontener jak piec, tekst zamiast baterii dla Create)")
 
 
 def validate_showcase_command():
