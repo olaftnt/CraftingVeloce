@@ -383,11 +383,18 @@ miały żadnego wymogu, więc na serwerze mógł ich użyć każdy gracz.
 | `/cv chunk on\|off\|status\|cleanup` | Podgląd / sprzątanie force-loadów chunków |
 | `/cv trace` | Przełącznik szczegółowego logowania zdarzeń sieci |
 | `/cv testnet [build]` | Buduje sieć testową i wypisuje wynik skanu |
+| `/cv getitems <item>` | Wkłada do skrzyni, na którą patrzysz, **wszystkie składniki** receptury podanego itemu (id podpowiada się jak w `/give`; dla itemów powstających tylko w piecu bierze recepturę pieca i mówi o tym) |
 
 Uprawnienia są zdefiniowane w **jednym** miejscu: `CVCommandRoot.root()`.
-Trzy pliki komend rejestrują ten sam korzeń `cv` (Brigadier scala je w jeden
+Cztery pliki komend rejestrują ten sam korzeń `cv` (Brigadier scala je w jeden
 węzeł), więc wspólny warunek dostępu musi być identyczny — inaczej jedna
 komenda mogłaby po cichu decydować o dostępie do wszystkich.
+
+`/cv getitems` bierze składniki z **tego samego indeksu receptur, którego używa
+auto-crafter** (`VeloceRecipeRegistry`), więc pokazuje dokładnie tę recepturę,
+którą automat naprawdę wykona. Daje **jeden poziom** składników (nie rozwija
+drzewa typu deski → kłody) i nic nie wyrzuca na ziemię: to, co się nie zmieściło
+w skrzyni, jest wypisane w czacie.
 
 ### ClientTerminalHelper
 

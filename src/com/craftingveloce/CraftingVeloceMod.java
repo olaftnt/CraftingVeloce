@@ -169,6 +169,10 @@ public class CraftingVeloceMod {
             CVDebugCommand.register(event.getDispatcher());
             com.craftingveloce.commands.CVTestNetworkCommand.register(event.getDispatcher());
             com.craftingveloce.commands.CVTraceCommand.register(event.getDispatcher());
+            // getitems potrzebuje build contextu - ItemArgument podpowiada
+            // identyfikatory itemow, wiec gracz nie musi ich znac na pamiec.
+            com.craftingveloce.commands.CVGetItemsCommand.register(
+                    event.getDispatcher(), event.getBuildContext());
         });
 
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock.class, event -> {
