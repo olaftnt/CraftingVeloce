@@ -75,9 +75,19 @@ public final class VeloceIntegraleConversions {
         register(input, result);
     }
 
-    /** Przepisanie dla przedmiotu w rece, albo {@code null} (brak = nic sie nie dzieje). */
+    /**
+     * Przepisanie dla przedmiotu w rece, albo {@code null} (brak = nic sie nie dzieje).
+     *
+     * <p>Sprawdzamy tez, czy blok docelowy naprawde istnieje: wiersze dokladane
+     * z modulow {@code compat/} moga wskazywac na blok, ktorego w tej sesji nie
+     * ma (brak moda) - wtedy lepiej nie zrobic NIC, niz podmienic klatke na nic
+     * i zjesc graczowi wlozony klocek.
+     */
     public static Conversion forItem(ItemStack stack) {
-        return stack.getItem() instanceof BlockItem blockItem ? forBlock(blockItem.getBlock()) : null;
+        Conversion conversion = stack.getItem() instanceof BlockItem blockItem
+                ? forBlock(blockItem.getBlock())
+                : null;
+        return conversion != null && conversion.resultBlock() != null ? conversion : null;
     }
 
     /** Przepisanie dla bloku, albo {@code null}. */
@@ -92,6 +102,6 @@ public final class VeloceIntegraleConversions {
 
     /** Wszystkie przepisania (podpowiedz itemu, dokumentacja, testy). */
     public static List<Conversion> all() {
-        return List.copyOf(CONVERSIONS);
+        return CONVERSIONS.stream().filter(entry -> entry.resultBlock() != null).toList();
     }
 }
