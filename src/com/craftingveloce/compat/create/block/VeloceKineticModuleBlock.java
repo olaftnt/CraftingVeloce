@@ -234,6 +234,60 @@ public class VeloceKineticModuleBlock extends KineticBlock
         return java.util.List.of(stack);
     }
 
+    /**
+     * Ile elementow ma miec przedmiot tej maszyny "z pudełka".
+     *
+     * <p>Gracz: "jak wezmę ten itemek middle clickiem albo z ekwipunku
+     * kreatywnego, to dostaję pusty, a nie chcę pustego - crushing wheel ma
+     * mieć dwa koła, a crafter grid 3x3". Maszyny bez elementow zwracaja 0.
+     */
+    public int defaultParts() {
+        if (module == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING) {
+            return 2;
+        }
+        if (module == com.craftingveloce.compat.create.CreateKineticModules.MECHANICAL_CRAFTING) {
+            return 9;   // 3x3
+        }
+        return 0;
+    }
+
+    /**
+     * Przedmiot tej maszyny z ZAPISANYMI elementami (kreatywnosc, middle click).
+     *
+     * <p>Dzieki temu postawiony egzemplarz od razu ma komplet i wyglada jak
+     * maszyna, a nie pusta obudowa. Licznik jedzie w tych samych danych block
+     * entity, ktore zapisuje zbicie maszyny, wiec mechanizm jest jeden.
+     */
+    public ItemStack filledStack() {
+        ItemStack stack = new ItemStack(this);
+        int parts = defaultParts();
+        if (parts > 0) {
+            net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+            tag.putInt("VeloceParts", parts);
+            net.minecraft.world.item.BlockItem.setBlockEntityData(stack,
+                    blockEntityType.get(), tag);
+        }
+        return stack;
+    }
+
+    /**
+     * Middle click (pick block) daje przedmiot WYPELNIONY, nie pusty.
+     *
+     * <p>Gracz chce od razu dostac maszyne z elementami - inaczej kazdy
+     * egzemplarz z kreatywnosci trzeba by klikac od zera.
+     */
+    @Override
+    public ItemStack getCloneItemStack(BlockState state, net.minecraft.world.phys.HitResult target,
+                                       net.minecraft.world.level.LevelReader level, BlockPos pos,
+                                       net.minecraft.world.entity.player.Player player) {
+        return filledStack();
+    }
+
+    /** Czy ta maszyna ma ignorowac moc w MODELU (crafter: zero reakcji na naped). */
+    public boolean ignoresPowerInModel() {
+        return module == com.craftingveloce.compat.create.CreateKineticModules.MECHANICAL_CRAFTING;
+    }
+
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return blockEntityFactory.create(pos, state);
@@ -274,6 +328,12 @@ public class VeloceKineticModuleBlock extends KineticBlock
                                    BlockPos fromPos, boolean isMoving) {
         super.neighborChanged(state, world, pos, fromBlock, fromPos, isMoving);
         if (world.isClientSide) {
+            return;
+        }
+        if (ignoresPowerInModel()) {
+            // Crafter mechaniczny nie moze zmieniac stanu (a wiec i modelu)
+            // pod wplywem podlaczonego napedu - gracz: "niech w zadnym sposob
+            // nie reaguje na dostarczana moc".
             return;
         }
         Direction.Axis axis = neighbourAxis(world, fromPos, world.getBlockState(fromPos));

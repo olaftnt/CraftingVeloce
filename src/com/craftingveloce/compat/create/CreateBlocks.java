@@ -114,8 +114,10 @@ public final class CreateBlocks {
     public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
         output.accept(VELOCE_MILLSTONE_MODULE_ITEM.get());
         output.accept(VELOCE_SAW_MODULE_ITEM.get());
-        output.accept(VELOCE_CRUSHING_MODULE_ITEM.get());
-        output.accept(VELOCE_MECHANICAL_CRAFTER_MODULE_ITEM.get());
+        // Maszyny z elementami ida do zakladki WYPELNIONE (gracz nie chce pustych).
+        output.accept(VELOCE_CRUSHING_MODULE.get().filledStack());
+        // Maszyny z elementami ida do zakladki WYPELNIONE (gracz nie chce pustych).
+        output.accept(VELOCE_MECHANICAL_CRAFTER_MODULE.get().filledStack());
         output.accept(VELOCE_PRESS_MODULE_ITEM.get());
         output.accept(VELOCE_MIXER_MODULE_ITEM.get());
         output.accept(VELOCE_DEPLOYER_MODULE_ITEM.get());

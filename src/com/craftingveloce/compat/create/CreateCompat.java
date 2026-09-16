@@ -77,9 +77,9 @@ public final class CreateCompat {
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MECHANICAL_CRAFTER_MODULE.get(),
                 () -> block("mechanical_crafter"), 0.5F, 0.0F, false);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_PRESS_MODULE.get(),
-                () -> block("mechanical_press"), 0.5F, 0.0F, false);
+                () -> block("mechanical_press"), 0.5F, 180.0F, false);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MIXER_MODULE.get(),
-                () -> block("mechanical_mixer"), 0.5F, 0.0F, false);
+                () -> block("mechanical_mixer"), 0.5F, 180.0F, false);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_DEPLOYER_MODULE.get(),
                 () -> block("deployer"), 0.5F, -90.0F, false);
     }

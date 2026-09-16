@@ -1479,6 +1479,41 @@ def validate_create_mechanics():
         if need not in compat_create:
             problems.append("brak " + what)
 
+    be_code = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
+                   encoding="utf-8").read()
+
+    # Kreatywnosc i middle click maja dawac maszyne WYPELNIONA (kruszarka: 2 kola,
+    # crafter: 3x3), a nie pusta - inaczej gracz stawia pustke i wyglada jak blad.
+    for need, what in (("public ItemStack filledStack()", "przedmiotu z zapisanymi elementami"),
+                       ("public int defaultParts()", "domyslnej liczby elementow"),
+                       ("getCloneItemStack", "wypelnionego middle clicka"),
+                       ("return 9;", "domyslnego gridu 3x3 dla craftera"),
+                       ("return 2;", "domyslnych dwoch kol dla kruszarki")):
+        if need not in block_code:
+            problems.append("maszyna bez " + what)
+    blocks_registry = open("src/com/craftingveloce/compat/create/CreateBlocks.java",
+                           encoding="utf-8").read()
+    for need, what in (("VELOCE_CRUSHING_MODULE.get().filledStack()", "wypelnionej kruszarki w zakladce"),
+                       ("VELOCE_MECHANICAL_CRAFTER_MODULE.get().filledStack()",
+                        "wypelnionego craftera w zakladce")):
+        if need not in blocks_registry:
+            problems.append("brak " + what)
+
+    # Crafter mechaniczny NIE reaguje na moc: ani animacja, ani stan bloku.
+    if "ignoresPowerInModel()" not in block_code:
+        problems.append("maszyna nie ma znacznika 'ignoruje moc w modelu'")
+    neighbour = _method_body(block_code, "protected void neighborChanged(")
+    if neighbour is None or "ignoresPowerInModel()" not in neighbour:
+        problems.append("crafter zmienia stan (model) pod wplywem podlaczonego napedu")
+    speed_body = _method_body(be_code, "public float caseSpinDegreesPerTick()")
+    if speed_body is None or "ignoresPowerInModel()" not in speed_body:
+        problems.append("animacja craftera zalezy od napedu (ma byc stala)")
+
+    for need, what in (('block("mechanical_press"), 0.5F, 180.0F', "prasy obroconej o 180 stopni"),
+                       ('block("mechanical_mixer"), 0.5F, 180.0F', "miksera obroconego o 180 stopni")):
+        if need not in compat_create:
+            problems.append("brak " + what)
+
     # Obrot per maszyna musi byc stosowany, a zerowanie przechylu musi omijac
     # maszyny, ktore maja zostac w swojej orientacji (kolo mlynskie).
     for need, what in (("contentPitch", "obrotu per maszyna"),

@@ -150,6 +150,11 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
      */
     @Override
     public float caseSpinDegreesPerTick() {
+        if (!(getBlockState().getBlock()
+                instanceof com.craftingveloce.compat.create.block.VeloceKineticModuleBlock moduleBlock)
+                || moduleBlock.ignoresPowerInModel()) {
+            return 0.0F;   // crafter: model nie reaguje na naped w zaden sposob
+        }
         return Math.abs(getSpeed()) * 0.3F;
     }
 
