@@ -41,7 +41,7 @@ import java.util.Set;
  * dlatego jest tworzona wylacznie przez bramke {@code CreateCompat}.
  */
 public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
-        implements VeloceProcessingSource {
+        implements VeloceProcessingSource, com.craftingveloce.block.VeloceCaseSpin {
 
     /**
      * Pula operacji dla planera, gdy maszyna sie kreci.
@@ -120,6 +120,24 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
 
     /** Gorna granica siatki craftera (Create podnosi limit wanilii do 9x9). */
     public static final int GRID_LIMIT = 9;
+
+    /** Ile elementow pokazac w obudowie (kola mlynskie / oczka craftera). */
+    @Override
+    public int caseParts() {
+        return parts;
+    }
+
+    /**
+     * Predkosc obrotu elementow w stopniach na tick.
+     *
+     * <p>{@code getSpeed()} Create zwraca RPM, a renderer liczy w stopniach na
+     * tick: 1 RPM = 360 stopni / 60 s = 6 stopni/s = 0.3 stopnia/tick.
+     * Dzieki temu szybszy naped = szybsze kola (a nie stala animacja).
+     */
+    @Override
+    public float caseSpinDegreesPerTick() {
+        return Math.abs(getSpeed()) * 0.3F;
+    }
 
     @Override
     protected void write(net.minecraft.nbt.CompoundTag tag,

@@ -1,6 +1,7 @@
 package com.craftingveloce.client.render;
 
 import com.craftingveloce.block.VeloceCaseContents;
+import com.craftingveloce.block.VeloceCaseSpin;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
@@ -54,6 +55,13 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         }
         float time = be.getLevel().getGameTime() + partialTick;
 
+        // Maszyna z wlasnymi elementami (kola mlynskie) rysuje je OBOK SIEBIE
+        // i kreci z predkoscia, ktora podaje sama maszyna (Create).
+        if (be instanceof VeloceCaseSpin spin && spin.caseParts() > 0) {
+            renderParts(spin, content, pose, buffers, packedLight, packedOverlay, time);
+            return;
+        }
+
         pose.pushPose();
         pose.translate(0.5D, 0.5D, 0.5D);
         pose.mulPose(Axis.YP.rotationDegrees((time * SPIN_DEGREES_PER_TICK) % 360.0F));
@@ -66,4 +74,33 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 .renderSingleBlock(content.defaultBlockState(), pose, buffers, packedLight, packedOverlay);
         pose.popPose();
     }
+
+    /**
+     * Elementy maszyny obok siebie (np. dwa kola mlynskie).
+     *
+     * <p>Kazde kreci sie wokol wlasnej osi, a sasiednie w PRZECIWNA strone -
+     * dokladnie tak wygladaja zazebione kola w Create. Predkosc bierze sie
+     * z maszyny (RPM z sieci kinetycznej), wiec szybszy naped = szybszy obrot,
+     * a zatrzymany naped = kola stoja (nadal widoczne).
+     */
+    private void renderParts(VeloceCaseSpin spin, Block content, PoseStack pose,
+                             MultiBufferSource buffers, int packedLight, int packedOverlay,
+                             float time) {
+        int parts = spin.caseParts();
+        float speed = spin.caseSpinDegreesPerTick();
+        for (int i = 0; i < parts; i++) {
+            float offset = (i - (parts - 1) / 2.0F) * 0.34F;
+            float direction = (i % 2 == 0) ? 1.0F : -1.0F;
+            pose.pushPose();
+            pose.translate(0.5D + offset, 0.5D, 0.5D);
+            pose.mulPose(Axis.ZP.rotationDegrees((time * speed * direction) % 360.0F));
+            pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
+            pose.translate(-0.5D, -0.5D, -0.5D);
+            Minecraft.getInstance().getBlockRenderer()
+                    .renderSingleBlock(content.defaultBlockState(), pose, buffers,
+                            packedLight, packedOverlay);
+            pose.popPose();
+        }
+    }
+
 }

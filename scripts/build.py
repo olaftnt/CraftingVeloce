@@ -1375,6 +1375,7 @@ def validate_integrale_display():
     else:
         body = open(renderer, encoding="utf-8").read()
         for need, what in (("VeloceCaseContents.contentFor", "zawartosci z tabeli obudow"),
+                           ("VeloceCaseSpin", "obrotu elementow z predkoscia maszyny"),
                            ("getBlockRenderer", "renderowania modelu bloku"),
                            ("rotationDegrees", "animacji (obrot)"),
                            ("Math.sin", "animacji (bujanie)")):
