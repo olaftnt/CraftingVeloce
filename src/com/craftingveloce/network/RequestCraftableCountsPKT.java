@@ -111,7 +111,31 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             if (!(be instanceof com.craftingveloce.block.entity.VeloceCraftCountSource source)) {
                 return;
             }
+            // Siec tej maszyny - z niej idzie cache (jeden na siec, wspolny dla
+            // terminala i kontrolera).
+            var serverLevel = (net.minecraft.server.level.ServerLevel) player.level();
+            var network = com.craftingveloce.network.pipe.VelocePipeNetworkManager
+                    .get(serverLevel)
+                    .getNetworkForTerminal(serverLevel, pkt.pos());
+
+            // 1) NATYCHMIAST cache: gracz otwiera GUI i od razu widzi cyferki,
+            //    ktore siec juz policzyla. Bez tego liczenie widocznej strony
+            //    zaczynalo sie od zera i cyferki "wchodzily" po kolei.
+            if (network != null) {
+                var memo = network.getCraftableMemo();
+                if (!memo.isEmpty()) {
+                    PacketDistributor.sendToPlayer(player,
+                            new SyncCraftableCountsPKT(pkt.pos(), memo, false));
+                }
+            }
+
+            // 2) Dopiero teraz dzisiejsza logika: liczy WIDOCZNA strone
+            //    i dopisuje wynik do cache (cache sam sie doucza - bez osobnego
+            //    budowania w tle i bez obciazania serwera).
             var result = source.computeCraftableCounts(pkt.items());
+            if (network != null) {
+                network.rememberCraftable(result.counts());
+            }
             PacketDistributor.sendToPlayer(player,
                     new SyncCraftableCountsPKT(pkt.pos(), result.counts(), result.complete()));
         });
