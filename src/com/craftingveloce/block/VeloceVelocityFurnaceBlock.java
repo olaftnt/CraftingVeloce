@@ -146,6 +146,13 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock
         com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
     }
 
+    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    @Override
+    public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
+        return com.craftingveloce.block.VeloceIntegraleFrame.withPlacementClosures(
+                context.getLevel(), context.getClickedPos(), defaultBlockState());
+    }
+
     /** Domkniecie blachy na scianie, przy ktorej stoi rura Veloce. */
     @Override
     protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
