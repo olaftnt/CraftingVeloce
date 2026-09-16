@@ -2,18 +2,18 @@
     "multipart": [
         {
             "when": {
-                "facade": "false"
-            },
-            "apply": {
-                "model": "craftingveloce:block/veloce_crafting_table"
-            }
-        },
-        {
-            "when": {
                 "facade": "true"
             },
             "apply": {
                 "model": "craftingveloce:block/veloce_integrale_frame"
+            }
+        },
+        {
+            "when": {
+                "facade": "false"
+            },
+            "apply": {
+                "model": "craftingveloce:block/veloce_crafting_table"
             }
         },
         {

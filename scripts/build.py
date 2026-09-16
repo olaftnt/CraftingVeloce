@@ -1565,6 +1565,18 @@ def validate_integrale_model():
             if not plain:
                 problems.append("blockstate stolu: brak zwyklego modelu dla facade=false")
 
+            # Kolejnosc ma znaczenie: MultiPartBakedModel bierze particleIcon
+            # z PIERWSZEJ czesci listy (bytecode: iterator().next().getRight()
+            # .getParticleIcon()) - niezaleznie od stanu bloku. Gdy pierwszy byl
+            # zwykly stol, przy zbiciu obudowy lecialy particles STAREJ tekstury
+            # stolu zamiast ramy klatki (zgloszenie gracza).
+            first_model = (table_parts[0].get("apply", {}).get("model")
+                           if table_parts else None)
+            if first_model != "craftingveloce:block/veloce_integrale_frame":
+                problems.append(f"blockstate stolu: pierwsza czesc to {first_model}, "
+                                f"a musi byc rama klatki (inaczej particles przy "
+                                f"zbiciu pochodza ze starej tekstury stolu)")
+
     # 6) Ikona przedmiotu "rama + stol": rama klatki + kostka stolu w srodku.
     #    To ona mowi graczowi (i modom od receptur), ze w tym bloku jest stol.
     item_path = "assets/craftingveloce/models/item/veloce_integrale_crafting.json"
