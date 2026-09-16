@@ -90,11 +90,13 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
             return;   // rura, terminal albo zwykly blok - nic nie renderujemy
         }
         float contentScale = VeloceCaseContents.contentScale(be.getBlockState());
+        float contentPitch = VeloceCaseContents.contentPitch(be.getBlockState());
+        boolean keepRotation = VeloceCaseContents.keepsItemRotation(be.getBlockState());
         float time = be.getLevel().getGameTime() + partialTick;
 
         if (be instanceof VeloceCaseSpin spin) {
             if (spin.caseParts() > 0) {
-                renderParts(spin, content, contentScale, pose, buffers, packedLight, packedOverlay, time);
+                renderParts(spin, content, contentScale, contentPitch, keepRotation, pose, buffers, packedLight, packedOverlay, time);
                 return;
             }
             if (spin.caseBuiltFromParts()) {
@@ -102,16 +104,18 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 return;
             }
         }
-        renderStandard(content, contentScale, pose, buffers, packedLight, packedOverlay, time);
+        renderStandard(content, contentScale, contentPitch, keepRotation, pose, buffers, packedLight, packedOverlay, time);
     }
 
     /** Zwykla animacja zawartosci: obrot wokol pionowej osi + bujanie. */
-    private void renderStandard(Block content, float contentScale, PoseStack pose,
+    private void renderStandard(Block content, float contentScale, float contentPitch,
+                                boolean keepRotation, PoseStack pose,
                                 MultiBufferSource buffers, int packedLight, int packedOverlay,
                                 float time) {
         pose.pushPose();
         beginStandardAnimation(pose, time);
-        renderContent(content, contentScale, pose, buffers, packedLight, packedOverlay);
+        renderContent(content, contentScale, contentPitch, keepRotation, pose, buffers,
+                packedLight, packedOverlay);
         pose.popPose();
     }
 
@@ -133,7 +137,8 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      * (tak sie zazebiaja). Rozmiar elementu wynika z gestosci siatki, wiec
      * 81 oczek jest odpowiednio mniejsze niz jedno.
      */
-    private void renderParts(VeloceCaseSpin spin, Block content, float contentScale, PoseStack pose,
+    private void renderParts(VeloceCaseSpin spin, Block content, float contentScale,
+                             float contentPitch, boolean keepRotation, PoseStack pose,
                              MultiBufferSource buffers, int packedLight, int packedOverlay,
                              float time) {
         int parts = spin.caseParts();
@@ -165,7 +170,8 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
             // skalujemy wzgledem niej (a nie drugi raz od zera).
             float factor = scale / (CONTENT_SCALE * contentScale);
             pose.scale(factor, factor, factor);
-            renderContent(content, contentScale, pose, buffers, packedLight, packedOverlay);
+            renderContent(content, contentScale, contentPitch, keepRotation, pose, buffers,
+                    packedLight, packedOverlay);
             pose.popPose();
         }
         pose.popPose();
@@ -175,7 +181,8 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      * Rysuje klocek bazowy jako PRZEDMIOT - tak, jak wyglada jako encja na
      * ziemi, ale przeskalowany i wysrodkowany w obudowie.
      */
-    private void renderContent(Block content, float contentScale, PoseStack pose,
+    private void renderContent(Block content, float contentScale, float contentPitch,
+                               boolean keepRotation, PoseStack pose,
                                MultiBufferSource buffers, int packedLight, int packedOverlay) {
         ItemStack stack = CONTENT_STACKS.computeIfAbsent(content,
                 block -> new ItemStack(block.asItem()));
@@ -185,6 +192,11 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         }
         ItemTransform transform = contentTransform(content, stack);
         pose.pushPose();
+        // Obrt per maszyna (piła i deployer maja patrzec w DOL) - najzewnetrzniejszy,
+        // wiec kreci cala zawartosc wokol srodka obudowy, a nie wokol jej rogu.
+        if (contentPitch != 0.0F) {
+            pose.mulPose(Axis.XP.rotationDegrees(contentPitch));
+        }
         // Kompensacja transformacji przedmiotu: model itemu rysuje sie z wlasnym
         // przesunieciem i zmniejszeniem (FIXED), wiec bez tego zawartosc wychodzi
         // mala i przesunieta. Skalujemy do CONTENT_SCALE i zerujemy przesuniecie.
@@ -194,9 +206,11 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         // w ekwipunku: 30/225 stopni). Gracz: "saw i deployer patrzA na bok,
         // a maja patrzec w gore". Odwrotnosc rotacji = rotationZYX z minusami,
         // bo JOML buduje ja jako Rx * Ry * Rz.
-        float deg = (float) (Math.PI / 180.0);
-        pose.mulPose(new Quaternionf().rotationZYX(-transform.rotation.z * deg,
-                -transform.rotation.y * deg, -transform.rotation.x * deg));
+        if (!keepRotation) {
+            float deg = (float) (Math.PI / 180.0);
+            pose.mulPose(new Quaternionf().rotationZYX(-transform.rotation.z * deg,
+                    -transform.rotation.y * deg, -transform.rotation.x * deg));
+        }
         pose.translate(-transform.translation.x, -transform.translation.y,
                 -transform.translation.z);
         renderer.renderStatic(stack, ItemDisplayContext.FIXED, packedLight, packedOverlay,

@@ -29,12 +29,21 @@ public final class VeloceCaseContents {
     /**
      * Wiersz tabeli: nasz blok -&gt; co pokazac w jego obudowie.
      *
-     * @param scale wzgledny rozmiar zawartosci (1.0 = domyslny). Maszyny, ktore
-     *              sa wieksze od okna obudowy (kruszarka, crafter, prasa,
-     *              mixer, deployer), dostaja mniejsza wartosc - inaczej przy
-     *              animacji wychodza gora ponad szybe.
+     * @param scale              wzgledny rozmiar zawartosci (1.0 = domyslny).
+     *                           Maszyny wieksze od okna obudowy (kruszarka,
+     *                           crafter, prasa, mixer, deployer) dostaja
+     *                           mniejsza wartosc - inaczej przy animacji
+     *                           wychodza gora ponad szybe.
+     * @param pitch              dodatkowy obrot wokol osi X w stopniach
+     *                           (0 = prosto). Piła i deployer maja patrzec
+     *                           w DOL, wiec dostaja -90.
+     * @param keepItemRotation   czy ZACHOWAC obrot z transformacji przedmiotu.
+     *                           Domyslnie zerujemy przechyl (zawartosc stoi
+     *                           prosto), ale kolo mlynskie wyglada lepiej
+     *                           w swojej wlasnej orientacji.
      */
-    public record Entry(Supplier<Block> machine, Supplier<Block> content, float scale) {
+    public record Entry(Supplier<Block> machine, Supplier<Block> content, float scale,
+                        float pitch, boolean keepItemRotation) {
     }
 
     private static final List<Entry> ENTRIES = new ArrayList<>();
@@ -59,23 +68,46 @@ public final class VeloceCaseContents {
      * zanim ich bloki istnieja.
      */
     public static void register(Supplier<Block> machine, Supplier<Block> content) {
-        register(machine, content, 1.0F);
+        register(machine, content, 1.0F, 0.0F, false);
     }
 
     /** Jak {@link #register(Supplier, Supplier)}, ale z wlasnym rozmiarem zawartosci. */
     public static void register(Supplier<Block> machine, Supplier<Block> content, float scale) {
-        ENTRIES.add(new Entry(machine, content, scale));
+        register(machine, content, scale, 0.0F, false);
+    }
+
+    /** Wariant z obrotem (piła i deployer patrzA w dol) i zachowaniem obrotu modelu. */
+    public static void register(Supplier<Block> machine, Supplier<Block> content, float scale,
+                                float pitch, boolean keepItemRotation) {
+        ENTRIES.add(new Entry(machine, content, scale, pitch, keepItemRotation));
     }
 
     /** Wzgledny rozmiar zawartosci tej maszyny (1.0, gdy nikt nie ustawil inaczej). */
     public static float contentScale(BlockState state) {
+        Entry entry = entryFor(state);
+        return entry == null ? 1.0F : entry.scale();
+    }
+
+    /** Dodatkowy obrot zawartosci wokol osi X (0 = prosto). */
+    public static float contentPitch(BlockState state) {
+        Entry entry = entryFor(state);
+        return entry == null ? 0.0F : entry.pitch();
+    }
+
+    /** Czy zawartosc ma zachowac obrot z transformacji przedmiotu. */
+    public static boolean keepsItemRotation(BlockState state) {
+        Entry entry = entryFor(state);
+        return entry != null && entry.keepItemRotation();
+    }
+
+    private static Entry entryFor(BlockState state) {
         Block block = state.getBlock();
         for (Entry entry : ENTRIES) {
             if (entry.machine().get() == block) {
-                return entry.scale();
+                return entry;
             }
         }
-        return 1.0F;
+        return null;
     }
 
     private static void add(Supplier<Block> machine, Supplier<Block> content) {

@@ -1464,16 +1464,29 @@ def validate_create_mechanics():
     contents = open("src/com/craftingveloce/block/VeloceCaseContents.java", encoding="utf-8").read()
     if "public static float contentScale(BlockState state)" not in contents:
         problems.append("tabela obudow bez skali zawartosci")
-    if "record Entry(Supplier<Block> machine, Supplier<Block> content, float scale)" not in contents:
-        problems.append("wpis tabeli obudow bez rozmiaru zawartosci")
+    for need, what in (("float scale,", "rozmiaru zawartosci we wpisie tabeli"),
+                       ("float pitch,", "obrotu maszyny we wpisie tabeli"),
+                       ("boolean keepItemRotation", "wyboru orientacji modelu we wpisie tabeli")):
+        if need not in contents:
+            problems.append("wpis tabeli obudow bez " + what)
     compat_create = open("src/com/craftingveloce/compat/create/CreateCompat.java", encoding="utf-8").read()
-    for need, what in (('block("crushing_wheel"), 0.5F', "mocno zmniejszonej kruszarki"),
-                       ('block("mechanical_crafter"), 0.6F', "zmniejszonego craftera"),
-                       ('block("mechanical_press"), 0.6F', "zmniejszonej prasy"),
-                       ('block("mechanical_mixer"), 0.6F', "zmniejszonego miksera"),
-                       ('block("deployer"), 0.6F', "zmniejszonego deployera")):
+    for need, what in (('block("crushing_wheel"), 0.4F, 0.0F, true', "mocno zmniejszonej kruszarki"),
+                       ('block("mechanical_crafter"), 0.5F', "zmniejszonego craftera"),
+                       ('block("mechanical_press"), 0.5F', "zmniejszonej prasy"),
+                       ('block("mechanical_mixer"), 0.5F', "zmniejszonego miksera"),
+                       ('block("deployer"), 0.5F, -90.0F', "deployera patrzacego w dol"),
+                       ('block("mechanical_saw"), 0.7F, -90.0F', "pily patrzacej w dol")):
         if need not in compat_create:
             problems.append("brak " + what)
+
+    # Obrot per maszyna musi byc stosowany, a zerowanie przechylu musi omijac
+    # maszyny, ktore maja zostac w swojej orientacji (kolo mlynskie).
+    for need, what in (("contentPitch", "obrotu per maszyna"),
+                       ("keepsItemRotation", "wyboru, czy zerowac przechyl"),
+                       ("Axis.XP.rotationDegrees(contentPitch)", "stosowania obrotu maszyny"),
+                       ("if (!keepRotation)", "omijania zerowania dla wybranych maszyn")):
+        if need not in renderer:
+            problems.append("renderer obudowy bez " + what)
 
     if "renderSingleBlock" in renderer or "getBlockRenderer" in renderer:
         problems.append("renderer obudowy rysuje model BLOKU - modele blokow maszyn "
