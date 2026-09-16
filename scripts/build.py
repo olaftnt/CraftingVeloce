@@ -1376,6 +1376,11 @@ def validate_create_mechanics():
             problems.append("warstwy zawartosci sa w zlej kolejnosci (blok -> renderer BE -> item)")
         if "BROKEN_CONTENT_RENDERERS" not in content_body:
             problems.append("renderContent nie pamieta nieudanych rendererow")
+        # Warunek warstwy 1 musi byc PRAWDZIWYM sprawdzeniem geometrii, a nie
+        # "if (false)" - inaczej model bloku nigdy sie nie rysuje (a nazwa
+        # renderSingleBlock zostaje w martwej galezi i sama obecnosc nie wystarcza).
+        if "if (blockModelUsable(content))" not in content_body:
+            problems.append("warstwa modelu bloku wisi na martwym warunku")
     custom_body = _method_body(renderer, "private static Optional<ContentRenderer> contentRenderer(")
     if custom_body is None or "getBlockEntityRenderDispatcher()" not in custom_body \
             or "getRenderer(" not in custom_body:
