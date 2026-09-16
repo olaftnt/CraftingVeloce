@@ -28,6 +28,23 @@ public class VelocePipeNetwork {
     private final Map<BlockPos, ConnectedEndpointInfo> endpoints = new HashMap<>();
 
     /**
+     * CACHE liczb "ile da sie dorobic" - JEDEN na siec, wspolny dla terminala
+     * i kontrolera.
+     *
+     * <p>Gracz: "cyferki ladują sie powoli od lewej do prawej ... chcialbym,
+     * zeby sie keszowaly na serwerze dla tego terminala ... klient przy
+     * otwarciu GUI instant dostaje gotowy kesz, a dopiero potem odpala sie
+     * logika liczenia widocznego". Cache zyje przy SIECI (nie przy terminalu
+     * ani kontrolerze), bo oba GUI pokazuja praktycznie te same dane - dwa
+     * osobne kesze rozjechalyby sie.
+     *
+     * <p>Wypelnia go kazde liczenie, ktore juz sie odbywa (widoczna strona
+     * terminala/kontrolera) - cache sam sie doucza, bez osobnego budowania
+     * w tle i bez obciazania serwera.
+     */
+    private final Map<Item, Long> craftableMemo = new HashMap<>();
+
+    /**
      * Itemy, dla ktorych gracz woli PRZEPALANIE od craftingu.
      *
      * <p><b>To PREFERENCJA, nie filtr.</b> Mowi tylko, ktora droga jest
@@ -198,6 +215,29 @@ public class VelocePipeNetwork {
      * zapytanie skanowalo od zera wszystkie inwentarze sieci, a ze cache
      * pytal o to co kilka tickow, watek serwera spalil sie na samym czytaniu.
      */
+    /** Dopisuje swiezo policzone liczby do cache'u sieci (nadpisuje starsze). */
+    public void rememberCraftable(Map<Item, Long> counts) {
+        if (counts == null || counts.isEmpty()) {
+            return;
+        }
+        craftableMemo.putAll(counts);
+    }
+
+    /** Migawka cache'u - to leci do klienta NATYCHMIAST po otwarciu GUI. */
+    public Map<Item, Long> getCraftableMemo() {
+        return new HashMap<>(craftableMemo);
+    }
+
+    /**
+     * Kasuje cache, gdy zmienilo sie cos, co zmienia wynik.
+     *
+     * <p>Wolane przy zmianach sieci (magazyn, maszyna, wlaczniki auto-craftingu,
+     * przeladowanie chunkow) - inaczej gracz widzialby stare liczby.
+     */
+    public void clearCraftableMemo() {
+        craftableMemo.clear();
+    }
+
     public Map<Item, Long> getAllItemCounts(ServerLevel level) {
         return getAllItemCounts(level, false);
     }
