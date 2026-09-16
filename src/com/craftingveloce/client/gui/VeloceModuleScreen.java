@@ -113,9 +113,9 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
         int x = this.leftPos + BATTERY_X;
         int y = this.topPos + 20;
         
-        graphics.drawString(this.font, Component.literal("Speed: " + speed + " / " + required + " RPM")
+        graphics.drawString(this.font, Component.literal("Min " + Math.round(required) + " RPM")
                 .withStyle(enough ? net.minecraft.ChatFormatting.GREEN : net.minecraft.ChatFormatting.RED), x, y, 0xFFFFFF, false);
-        graphics.drawString(this.font, Component.literal("Stress: " + su + " SU")
+        graphics.drawString(this.font, Component.literal(Math.round(su) + " SU")
                 .withStyle(net.minecraft.ChatFormatting.GRAY), x, y + 12, 0xFFFFFF, false);
     }
 
