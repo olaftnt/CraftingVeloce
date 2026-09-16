@@ -1254,8 +1254,10 @@ def validate_create_mechanics():
     block_code = open("src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
                       encoding="utf-8").read()
     for need, what in (("BlockStateProperties.AXIS", "stanu osi obrotu"),
-                       ("side.getAxis() == state.getValue(BlockStateProperties.AXIS)",
+                       ("side.getAxis() == own",
                         "walu z kazdej strony zgodnej z osia"),
+                       ("neighbourAxis(world, pos.relative(side)",
+                        "walu od strony sasiada z napedem"),
                        ("return state.getValue(BlockStateProperties.AXIS)",
                         "osi obrotu czytanej ze stanu"),
                        ("instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity",
