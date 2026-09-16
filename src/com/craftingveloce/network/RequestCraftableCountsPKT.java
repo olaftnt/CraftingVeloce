@@ -132,12 +132,33 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             // 2) Dopiero teraz dzisiejsza logika: liczy WIDOCZNA strone
             //    i dopisuje wynik do cache (cache sam sie doucza - bez osobnego
             //    budowania w tle i bez obciazania serwera).
-            var result = source.computeCraftableCounts(pkt.items());
-            if (network != null) {
-                network.rememberCraftable(result.counts());
+            // Punkt 3: liczymy TYLKO to, czego NIE MA w cache sieci. Raz
+            // policzona liczba jest wspolna dla calej sieci, wiec drugi
+            // terminal (albo to samo GUI otwarte drugi raz) nie liczy tego
+            // samego od nowa - dostaje wpis z cache.
+            java.util.Map<Item, Long> known = network == null
+                    ? java.util.Map.of() : network.getCraftableMemo();
+            java.util.Map<Item, Long> result = new java.util.HashMap<>();
+            java.util.List<Item> unknown = new java.util.ArrayList<>();
+            for (Item item : pkt.items()) {
+                Long cached = known.get(item);
+                if (cached != null) {
+                    result.put(item, cached);
+                } else {
+                    unknown.add(item);
+                }
+            }
+            boolean complete = true;
+            if (!unknown.isEmpty()) {
+                var computed = source.computeCraftableCounts(unknown);
+                result.putAll(computed.counts());
+                complete = computed.complete();
+                if (network != null) {
+                    network.rememberCraftable(computed.counts());
+                }
             }
             PacketDistributor.sendToPlayer(player,
-                    new SyncCraftableCountsPKT(pkt.pos(), result.counts(), result.complete()));
+                    new SyncCraftableCountsPKT(pkt.pos(), result, complete));
         });
     }
 }
