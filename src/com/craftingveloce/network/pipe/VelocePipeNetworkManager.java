@@ -34,6 +34,9 @@ import java.util.UUID;
 public class VelocePipeNetworkManager extends SavedData {
 
     private final Map<UUID, VelocePipeNetwork> networks = new HashMap<>();
+    /** Diagnostyka cache liczb: czy zapis/wczytanie w ogole sie odbywa. */
+    private static final org.slf4j.Logger CACHE_LOG =
+            org.slf4j.LoggerFactory.getLogger("craftingveloce-cache");
 
     /**
      * Cache liczb przetrwaly restart, kluczowany po ITEMIE.
@@ -1792,6 +1795,8 @@ public class VelocePipeNetworkManager extends SavedData {
                     .getKey(e.getKey()).toString(), e.getValue());
         }
         tag.put("CraftableByItem", persisted);
+        CACHE_LOG.info("[Veloce][CACHE] save: sieci={}, itemow w cache={}",
+                networks.size(), persistedCraftable.size());
         tag.put("Networks", netList);
         return tag;
     }
@@ -1862,6 +1867,8 @@ public class VelocePipeNetworkManager extends SavedData {
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id),
                     persisted.getLong(key));
         }
+        CACHE_LOG.info("[Veloce][CACHE] load: itemow w cache={}, sieci={}",
+                manager.persistedCraftable.size(), manager.networks.size());
         ListTag netList = tag.getList("Networks", Tag.TAG_COMPOUND);
         for (int i = 0; i < netList.size(); i++) {
             CompoundTag netTag = netList.getCompound(i);
