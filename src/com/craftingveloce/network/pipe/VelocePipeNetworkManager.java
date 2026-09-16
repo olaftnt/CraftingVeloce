@@ -840,9 +840,16 @@ public class VelocePipeNetworkManager extends SavedData {
         return switch (ep.getType()) {
             case REFINED_STORAGE ->
                     RefinedStorageHelper.hasRSNetwork(level, pos, ep.getAccessSide());
-            // Bufor craftera nie jest magazynem w swiecie - ma wlasny warunek.
-            case CRAFTING_BUFFER -> level.getBlockEntity(pos)
-                    instanceof com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity;
+            // Bufor craftera nie jest magazynem w swiecie - pytamy o TA SAMA
+            // regule, co przy rejestracji (o buforze decyduje STAN bloku).
+            // Sam "block entity stolu" nie wystarczy: klatka Veloce Integrale
+            // uzywa tego samego block entity (pamieta eksponat), ale crafterem
+            // nie jest - po podmianie bloku zostalby po niej widmo magazynu.
+            case CRAFTING_BUFFER -> {
+                net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
+                yield state.getBlock() instanceof VeloceNetworkNode node
+                        && node.exposesCraftingBuffer(state);
+            }
             case INVENTORY -> {
                 net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
                 if (state.isAir()) {

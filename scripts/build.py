@@ -1331,6 +1331,17 @@ def validate_integrale_display():
     if use_bare is None or "takeOffDisplay" not in use_bare:
         problems.append("prawy klik z pusta reka nie oddaje eksponatu z gabloty")
 
+    # Widmo magazynu: po podmianie klatki na stol (i z powrotem) endpoint
+    # bufora musi znikac. Walidacja endpointu nie moze wiec opierac sie na
+    # samym block entity (klatka ma TEN SAM BE co stol), tylko pytac wezel
+    # o regule - dokladnie tak, jak przy rejestracji.
+    manager = open("src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
+                   encoding="utf-8").read()
+    buffer_case = manager.partition("case CRAFTING_BUFFER")[2][:400]
+    if "exposesCraftingBuffer" not in buffer_case:
+        problems.append("walidacja bufora craftera nie pyta wezla o regule - "
+                        "klatka zostawialaby widmo magazynu po podmianie bloku")
+
     if "VeloceCraftingTableBlockEntity(pos, state)" not in text:
         problems.append("klatka bez block entity pamietajacego eksponat")
     if "exposesCraftingBuffer" in text:
