@@ -55,6 +55,7 @@ public final class VeloceCaseContents {
         add(() -> VeloceRegistry.THRESHOLD_SENSOR.get(), () -> Blocks.OBSERVER);
         add(() -> VeloceRegistry.VELOCITY_FURNACE.get(), () -> Blocks.FURNACE);
         add(() -> VeloceRegistry.ELECTRIC_FURNACE.get(), () -> Blocks.BLAST_FURNACE);
+        add(() -> VeloceRegistry.BREWING_STAND.get(), () -> Blocks.BREWING_STAND);
     }
 
     private VeloceCaseContents() {

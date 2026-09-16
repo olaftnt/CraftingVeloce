@@ -78,6 +78,7 @@
   "gui.craftingveloce.module.info.speedRequired": "Required speed: %s RPM",
   "gui.craftingveloce.module.info.stress": "Stress: %s / %s SU (module draws %s SU)",
   "gui.craftingveloce.module.info.stressNeeded": "Module needs: %s SU",
+  "block.craftingveloce.brewing_stand": "Veloce Brewing Stand",
   "gui.craftingveloce.module.info.title": "Veloce module",
   "gui.craftingveloce.module.info.minimum": "Min: %s RPM - %s SU",
   "gui.craftingveloce.sensor.filterChange": "Left-click to clear",

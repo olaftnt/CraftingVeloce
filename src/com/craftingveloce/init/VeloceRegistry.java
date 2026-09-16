@@ -114,6 +114,25 @@ public class VeloceRegistry {
                                     windowId, inv, data.readBlockPos())));
 
     // 3c. Velocity Electric Furnace (zrodlo ciepla na Forge Energy)
+    public static final DeferredBlock<com.craftingveloce.block.VeloceBrewingStandBlock> BREWING_STAND =
+            BLOCKS.register("brewing_stand",
+                    () -> new com.craftingveloce.block.VeloceBrewingStandBlock(
+                            net.minecraft.world.level.block.state.BlockBehaviour.Properties.of()
+        .noOcclusion()
+        .isViewBlocking((state, world, pos) -> false)
+        .isSuffocating((state, world, pos) -> false)
+                                    .strength(3.5f)
+                                    .requiresCorrectToolForDrops()));
+
+    public static final DeferredItem<BlockItem> BREWING_STAND_ITEM = ITEMS.registerSimpleBlockItem(
+            "brewing_stand", BREWING_STAND);
+
+    public static final DeferredHolder<BlockEntityType<?>,
+            BlockEntityType<com.craftingveloce.block.entity.VeloceBrewingStandBlockEntity>> BREWING_STAND_BE =
+            BLOCK_ENTITY_TYPES.register("brewing_stand", () -> createBEType(
+                    (pos, state) -> new com.craftingveloce.block.entity.VeloceBrewingStandBlockEntity(pos, state),
+                    BREWING_STAND.get()));
+
     public static final DeferredBlock<com.craftingveloce.block.VeloceElectricFurnaceBlock> ELECTRIC_FURNACE =
             BLOCKS.register("electric_furnace",
                     () -> new com.craftingveloce.block.VeloceElectricFurnaceBlock(
@@ -234,6 +253,13 @@ public class VeloceRegistry {
             MENU_TYPES.register("veloce_kinetic_menu",
                     () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(
                             (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceKineticMenu(
+                                    windowId, inv, data.readBlockPos())));
+
+    public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>,
+            net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceBrewingStandMenu>> BREWING_STAND_MENU =
+            MENU_TYPES.register("brewing_stand_menu",
+                    () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(
+                            (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceBrewingStandMenu(
                                     windowId, inv, data.readBlockPos())));
 
     @FunctionalInterface

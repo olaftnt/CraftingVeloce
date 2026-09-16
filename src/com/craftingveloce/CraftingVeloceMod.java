@@ -148,6 +148,8 @@ public class CraftingVeloceMod {
                     com.craftingveloce.client.gui.VeloceModuleScreen::new);
             event.register(VeloceRegistry.VELOCITY_FURNACE_MENU.get(),
                     com.craftingveloce.client.gui.VeloceVelocityFurnaceScreen::new);
+            event.register(VeloceRegistry.BREWING_STAND_MENU.get(),
+                    com.craftingveloce.client.gui.VeloceBrewingStandScreen::new);
             event.register(VeloceRegistry.ELECTRIC_FURNACE_MENU.get(),
                     com.craftingveloce.client.gui.VeloceElectricFurnaceScreen::new);
             event.register(VeloceRegistry.THRESHOLD_SENSOR_MENU.get(),
