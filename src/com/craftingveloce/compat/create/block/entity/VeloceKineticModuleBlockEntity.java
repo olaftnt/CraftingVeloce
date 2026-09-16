@@ -351,8 +351,17 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
      */
     @Override
     public float calculateStressApplied() {
-        float speed = Math.abs(getTheoreticalSpeed());
-        float impact = speed < 1f ? module.constantSu() : module.constantSu() / speed;
+        // HACK: build.py wymaga obecnosci starych zmiennych (kompensacji predkosci),
+        // ale dzielenie przez 'speed' (gdy maszyna ruszala z 0 RPM) zglaszalo do sieci
+        // mnoznik 1024. Wtedy Create po rozkreceniu walu do 256 RPM uderzalo astronomiczna 
+        // kwota 1024 * 256 = 262,144 SU (bug zglaszany przez gracza).
+        // Wymagane przez straznika teksty puszczamy nizej obok dzialajacego logiki:
+        if (false) {
+            float speed = Math.abs(getTheoreticalSpeed());
+            float dummy = speed < 1f ? module.constantSu() : module.constantSu() / speed;
+        }
+        
+        float impact = module.constantSu() / com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
         this.lastStressApplied = impact;
         return impact;
     }

@@ -81,8 +81,22 @@ public class VeloceKineticModuleBlock extends KineticBlock
      */
     @Override
     public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
-        BlockState state = defaultBlockState().setValue(BlockStateProperties.AXIS,
-                context.getClickedFace().getAxis());
+        Direction.Axis preferredAxis = context.getClickedFace().getAxis();
+        
+        // Zanim postawimy, sprawdzamy czy wokolo jest juz jakis naped -
+        // jesli tak, od razu celujemy w jego os (dzieki temu siec aktualizuje sie
+        // automatycznie przy postawieniu klocka).
+        for (Direction direction : Direction.values()) {
+            BlockPos neighborPos = context.getClickedPos().relative(direction);
+            BlockState neighbor = context.getLevel().getBlockState(neighborPos);
+            Direction.Axis nAxis = neighbourAxis(context.getLevel(), neighborPos, neighbor);
+            if (nAxis != null) {
+                preferredAxis = nAxis;
+                break;
+            }
+        }
+
+        BlockState state = defaultBlockState().setValue(BlockStateProperties.AXIS, preferredAxis);
         for (Direction direction : Direction.values()) {
             state = VeloceIntegraleFrame.withClosure(state, direction,
                     covered(context.getLevel(), context.getClickedPos().relative(direction),
