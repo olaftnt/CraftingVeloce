@@ -1663,6 +1663,68 @@ def validate_module_info_gui():
     print("    OK (okna maszyn: FE jak piec z bateria, Create osobny ekran bez energii)")
 
 
+def validate_craftable_cache():
+    """
+    Cache liczb "ile da sie dorobic": serwerowy, JEDEN na siec, instant dla GUI.
+
+    Gracz: "cyferki w terminalu laduja sie powoli od lewej do prawej, a kontroler
+    pokazuje kilka pierwszych i przestaje; chce, zeby sie keszowaly na serwerze
+    i zeby klient przy otwarciu GUI instant dostal gotowy kesz, a dopiero potem
+    odpalila sie logika liczenia widocznego".
+
+    Sprawdzamy cale ogniwo, bo kazde psuje sie po cichu (cyferki po prostu
+    znikaja albo wracaja do powolnego doliczania):
+      1. cache zyje przy SIECI (nie przy terminalu ani kontrolerze) - inaczej
+         dwa GUI maja dwa rozne kesze, ktore sie rozjezdzaja,
+      2. pakiet najpierw wysyla migawke cache, a DOPIERO POTEM liczy widoczna
+         strone (odwrotna kolejnosc = powrot do "ladowania od lewej"),
+      3. swiezo policzone liczby trafiaja do cache (bez tego cache nigdy sie
+         nie zapelni i instant nie ma czego pokazac),
+      4. zmiany sieci kasuja cache (inaczej gracz widzi stare liczby),
+      5. kontroler idzie TA SAMA sciezka co terminal (bez wlasnego toru liczb).
+    """
+    problems = []
+    network = "src/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
+    packet = "src/com/craftingveloce/network/RequestCraftableCountsPKT.java"
+    nodes = "src/com/craftingveloce/network/pipe/VeloceNodeBlocks.java"
+    toggle = "src/com/craftingveloce/network/CraftingTableToggleItemPKT.java"
+    controller = "src/com/craftingveloce/client/gui/VeloceControllerScreen.java"
+
+    net_text = open(network, encoding="utf-8").read()
+    for need, what in (("craftableMemo", "mapy cache"),
+                       ("public void rememberCraftable(", "zapisu do cache"),
+                       ("public Map<Item, Long> getCraftableMemo()", "migawki cache"),
+                       ("public void clearCraftableMemo()", "kasowania cache")):
+        if need not in net_text:
+            problems.append("VelocePipeNetwork bez " + what)
+
+    handle = _method_body(open(packet, encoding="utf-8").read(), "public static void handle(")
+    if handle is None:
+        problems.append("brak obslugi zadania liczb")
+    else:
+        if "getCraftableMemo()" not in handle:
+            problems.append("pakiet nie wysyla cache (instant cyferek nie ma)")
+        if "rememberCraftable(" not in handle:
+            problems.append("pakiet nie dopisuje wyniku do cache")
+        if "getCraftableMemo()" in handle and "computeCraftableCounts(" in handle \
+                and handle.index("getCraftableMemo()") > handle.index("computeCraftableCounts("):
+            problems.append("cache leci PO liczeniu (ma byc instant, przed)")
+
+    for path, what in ((nodes, "wezly sieci"), (toggle, "przelacznik craftera")):
+        if "clearCraftableMemo(" not in open(path, encoding="utf-8").read():
+            problems.append(f"{what}: zmiana nie kasuje cache")
+
+    ctrl = open(controller, encoding="utf-8").read()
+    if "craftableCounts.request(" not in ctrl:
+        problems.append("kontroler nie zamawia liczb ta sama sciezka co terminal")
+    if "updateCraftableCounts(" not in ctrl:
+        problems.append("kontroler nie odbiera liczb z tej samej sciezki")
+
+    if problems:
+        fail("cache liczb craftowalnych:\n  " + "\n  ".join(problems))
+    print("    OK (cache liczb: siec + instant migawka + douczanie + kasowanie przy zmianach)")
+
+
 def validate_block_probe():
     """
     `/cv block`: statystyki klocka pod celownikiem + tolerancja progu RPM.
@@ -2765,6 +2827,7 @@ def main():
     validate_loot_item_ids()
     validate_showcase_command()
     validate_block_probe()
+    validate_craftable_cache()
     validate_module_info_gui()
     validate_jade_info()
     validate_terminal_craft_error()
