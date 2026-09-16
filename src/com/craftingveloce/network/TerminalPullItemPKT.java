@@ -128,7 +128,16 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
                 var net = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
                         .getNetworkForTerminal(serverLevel, pkt.terminalPos());
                 if (net != null) {
-                    net.noteCrafted(extracted.getItem(), extracted.getCount());
+                    // TYLKO gdy naprawde CRAFTOWALISMY, a nie gdy item byl na
+                    // stanie. Gracz: "jak wyjmuje cos z inventory, to i tak
+                    // odejmujesz -1 od tego, ile moge scraftowac". Stan liczymy
+                    // PRZED wyciagnieciem: jesli siec miala dosc sztuk, to byl
+                    // to stock, a stock nie zmienia liczby "ile da sie dorobic".
+                    long stock = net.getAllItemCounts(serverLevel)
+                            .getOrDefault(extracted.getItem(), 0L);
+                    if (stock < extracted.getCount()) {
+                        net.noteCrafted(extracted.getItem(), extracted.getCount());
+                    }
                     com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
                             .markDirty();
                     PacketDistributor.sendToPlayer(serverPlayer,
