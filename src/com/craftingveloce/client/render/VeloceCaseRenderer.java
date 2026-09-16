@@ -4,6 +4,7 @@ import com.craftingveloce.block.VeloceCaseContents;
 import com.craftingveloce.block.VeloceCaseSpin;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import org.joml.Quaternionf;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
@@ -88,11 +89,12 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         if (content == null) {
             return;   // rura, terminal albo zwykly blok - nic nie renderujemy
         }
+        float contentScale = VeloceCaseContents.contentScale(be.getBlockState());
         float time = be.getLevel().getGameTime() + partialTick;
 
         if (be instanceof VeloceCaseSpin spin) {
             if (spin.caseParts() > 0) {
-                renderParts(spin, content, pose, buffers, packedLight, packedOverlay, time);
+                renderParts(spin, content, contentScale, pose, buffers, packedLight, packedOverlay, time);
                 return;
             }
             if (spin.caseBuiltFromParts()) {
@@ -100,15 +102,16 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 return;
             }
         }
-        renderStandard(content, pose, buffers, packedLight, packedOverlay, time);
+        renderStandard(content, contentScale, pose, buffers, packedLight, packedOverlay, time);
     }
 
     /** Zwykla animacja zawartosci: obrot wokol pionowej osi + bujanie. */
-    private void renderStandard(Block content, PoseStack pose, MultiBufferSource buffers,
-                                int packedLight, int packedOverlay, float time) {
+    private void renderStandard(Block content, float contentScale, PoseStack pose,
+                                MultiBufferSource buffers, int packedLight, int packedOverlay,
+                                float time) {
         pose.pushPose();
         beginStandardAnimation(pose, time);
-        renderContent(content, pose, buffers, packedLight, packedOverlay);
+        renderContent(content, contentScale, pose, buffers, packedLight, packedOverlay);
         pose.popPose();
     }
 
@@ -130,14 +133,14 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      * (tak sie zazebiaja). Rozmiar elementu wynika z gestosci siatki, wiec
      * 81 oczek jest odpowiednio mniejsze niz jedno.
      */
-    private void renderParts(VeloceCaseSpin spin, Block content, PoseStack pose,
+    private void renderParts(VeloceCaseSpin spin, Block content, float contentScale, PoseStack pose,
                              MultiBufferSource buffers, int packedLight, int packedOverlay,
                              float time) {
         int parts = spin.caseParts();
         int cols = Math.max(1, spin.caseGridColumns());
         int rows = Math.max(1, spin.caseGridRows());
         float spacing = Math.min(0.72F / cols, 0.72F / rows);
-        float scale = Math.min(CONTENT_SCALE, spacing * 0.9F);
+        float scale = Math.min(CONTENT_SCALE * contentScale, spacing * 0.9F);
         boolean individually = spin.casePartsSpinIndividually();
         float speed = spin.caseSpinDegreesPerTick();
         int[][] order = centreOrder(Math.max(cols, rows));
@@ -160,9 +163,9 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
             }
             // Zawartosc rysuje sie w skali CONTENT_SCALE, wiec element siatki
             // skalujemy wzgledem niej (a nie drugi raz od zera).
-            float factor = scale / CONTENT_SCALE;
+            float factor = scale / (CONTENT_SCALE * contentScale);
             pose.scale(factor, factor, factor);
-            renderContent(content, pose, buffers, packedLight, packedOverlay);
+            renderContent(content, contentScale, pose, buffers, packedLight, packedOverlay);
             pose.popPose();
         }
         pose.popPose();
@@ -172,8 +175,8 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      * Rysuje klocek bazowy jako PRZEDMIOT - tak, jak wyglada jako encja na
      * ziemi, ale przeskalowany i wysrodkowany w obudowie.
      */
-    private void renderContent(Block content, PoseStack pose, MultiBufferSource buffers,
-                               int packedLight, int packedOverlay) {
+    private void renderContent(Block content, float contentScale, PoseStack pose,
+                               MultiBufferSource buffers, int packedLight, int packedOverlay) {
         ItemStack stack = CONTENT_STACKS.computeIfAbsent(content,
                 block -> new ItemStack(block.asItem()));
         ItemRenderer renderer = Minecraft.getInstance().getItemRenderer();
@@ -185,8 +188,15 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         // Kompensacja transformacji przedmiotu: model itemu rysuje sie z wlasnym
         // przesunieciem i zmniejszeniem (FIXED), wiec bez tego zawartosc wychodzi
         // mala i przesunieta. Skalujemy do CONTENT_SCALE i zerujemy przesuniecie.
-        float factor = CONTENT_SCALE / Math.max(0.01F, transform.scale.x);
+        float factor = (CONTENT_SCALE * contentScale) / Math.max(0.01F, transform.scale.x);
         pose.scale(factor, factor, factor);
+        // ZERUJEMY PRZECHYL modelu (transformacja FIXED przekreca przedmiot jak
+        // w ekwipunku: 30/225 stopni). Gracz: "saw i deployer patrzA na bok,
+        // a maja patrzec w gore". Odwrotnosc rotacji = rotationZYX z minusami,
+        // bo JOML buduje ja jako Rx * Ry * Rz.
+        float deg = (float) (Math.PI / 180.0);
+        pose.mulPose(new Quaternionf().rotationZYX(-transform.rotation.z * deg,
+                -transform.rotation.y * deg, -transform.rotation.x * deg));
         pose.translate(-transform.translation.x, -transform.translation.y,
                 -transform.translation.z);
         renderer.renderStatic(stack, ItemDisplayContext.FIXED, packedLight, packedOverlay,

@@ -396,6 +396,14 @@ Maszyny mają **elementy**, które dokłada gracz prawym klikiem:
 | mechanical crafter | **oczka** (do 9×9 = 81) | siatka receptury liczona z receptury (`getWidth()/getHeight()`) i porównywana z zbudowanymi polami; zbudowane 25 oczek = wszystko z packa; po każdym kliknięciu na pasku akcji pojawia się sam układ siatki (`1x2`, `1x3`, … `9x9`) |
 | deployer | — | receptury `create:deploying` (np. precision mechanism): nakłada item na item |
 
+**Wygląd zawartości**: model jest rysowany **prosto** (zerujemy przechył z
+transformacji przedmiotu, bo gracz: „saw i deployer patrzą na bok, a mają
+patrzeć w górę") i ze **skalą per maszyna** (`VeloceCaseContents.register(...,
+skala)`) — maszyny większe od okna obudowy są zmniejszone, żeby przy animacji
+nie wychodziły górą ponad szybę: kruszarka 0.5, crafter 0.6, prasa/mixer/
+deployer 0.6, piła 0.75, młyn 0.8. Wartości są w jednym miejscu (bramka
+`CreateCompat`), więc można je dostroić jednym wierszem.
+
 **Rozkładanie maszyny**: zbita maszyna zapisuje w NBT przedmiotu **liczbę
 wbudowanych elementów** (`VeloceParts`), a postawienie odtwarza ją z NBT.
 Włożenie takiego przedmiotu do **stołu craftingu** daje z powrotem **pustą

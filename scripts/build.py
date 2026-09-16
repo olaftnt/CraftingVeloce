@@ -1450,8 +1450,30 @@ def validate_create_mechanics():
                            ("-transform.translation.x", "kompensacji przesuniecia")):
             if need not in content_body:
                 problems.append("renderContent bez " + what)
+        # Model musi stac PROSTO: transformacja FIXED przekreca przedmiot jak
+        # w ekwipunku (30/225 stopni), przez co gracz widzial "saw i deployer
+        # patrzA na bok". Zerujemy rotacje odwrotnoscia rotationZYX.
+        if "rotationZYX(" not in content_body or "transform.rotation" not in content_body:
+            problems.append("zawartosc nie stoi prosto (przechyl z transformacji FIXED)")
+        if "contentScale" not in content_body:
+            problems.append("zawartosc nie uzywa skali maszyny (duze maszyny wystaja gora)")
     if "getTransforms()" not in renderer or "getTransform(ItemDisplayContext.FIXED)" not in renderer:
         problems.append("brak odczytu transformacji modelu itemu")
+
+    # Skala per maszyna zyje w tabeli obudow.
+    contents = open("src/com/craftingveloce/block/VeloceCaseContents.java", encoding="utf-8").read()
+    if "public static float contentScale(BlockState state)" not in contents:
+        problems.append("tabela obudow bez skali zawartosci")
+    if "record Entry(Supplier<Block> machine, Supplier<Block> content, float scale)" not in contents:
+        problems.append("wpis tabeli obudow bez rozmiaru zawartosci")
+    compat_create = open("src/com/craftingveloce/compat/create/CreateCompat.java", encoding="utf-8").read()
+    for need, what in (('block("crushing_wheel"), 0.5F', "mocno zmniejszonej kruszarki"),
+                       ('block("mechanical_crafter"), 0.6F', "zmniejszonego craftera"),
+                       ('block("mechanical_press"), 0.6F', "zmniejszonej prasy"),
+                       ('block("mechanical_mixer"), 0.6F', "zmniejszonego miksera"),
+                       ('block("deployer"), 0.6F', "zmniejszonego deployera")):
+        if need not in compat_create:
+            problems.append("brak " + what)
 
     if "renderSingleBlock" in renderer or "getBlockRenderer" in renderer:
         problems.append("renderer obudowy rysuje model BLOKU - modele blokow maszyn "

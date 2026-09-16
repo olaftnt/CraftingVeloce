@@ -26,8 +26,15 @@ import java.util.function.Supplier;
  */
 public final class VeloceCaseContents {
 
-    /** Wiersz tabeli: nasz blok -&gt; co pokazac w jego obudowie. */
-    public record Entry(Supplier<Block> machine, Supplier<Block> content) {
+    /**
+     * Wiersz tabeli: nasz blok -&gt; co pokazac w jego obudowie.
+     *
+     * @param scale wzgledny rozmiar zawartosci (1.0 = domyslny). Maszyny, ktore
+     *              sa wieksze od okna obudowy (kruszarka, crafter, prasa,
+     *              mixer, deployer), dostaja mniejsza wartosc - inaczej przy
+     *              animacji wychodza gora ponad szybe.
+     */
+    public record Entry(Supplier<Block> machine, Supplier<Block> content, float scale) {
     }
 
     private static final List<Entry> ENTRIES = new ArrayList<>();
@@ -52,7 +59,23 @@ public final class VeloceCaseContents {
      * zanim ich bloki istnieja.
      */
     public static void register(Supplier<Block> machine, Supplier<Block> content) {
-        ENTRIES.add(new Entry(machine, content));
+        register(machine, content, 1.0F);
+    }
+
+    /** Jak {@link #register(Supplier, Supplier)}, ale z wlasnym rozmiarem zawartosci. */
+    public static void register(Supplier<Block> machine, Supplier<Block> content, float scale) {
+        ENTRIES.add(new Entry(machine, content, scale));
+    }
+
+    /** Wzgledny rozmiar zawartosci tej maszyny (1.0, gdy nikt nie ustawil inaczej). */
+    public static float contentScale(BlockState state) {
+        Block block = state.getBlock();
+        for (Entry entry : ENTRIES) {
+            if (entry.machine().get() == block) {
+                return entry.scale();
+            }
+        }
+        return 1.0F;
     }
 
     private static void add(Supplier<Block> machine, Supplier<Block> content) {

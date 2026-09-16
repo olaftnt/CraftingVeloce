@@ -69,19 +69,19 @@ public final class CreateCompat {
     /** Wiersze tabeli obudow: nasz modul -&gt; blok bazowy z Create. */
     private static void registerCases() {
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MILLSTONE_MODULE.get(),
-                () -> block("millstone"));
+                () -> block("millstone"), 0.8F);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_SAW_MODULE.get(),
-                () -> block("mechanical_saw"));
+                () -> block("mechanical_saw"), 0.75F);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_CRUSHING_MODULE.get(),
-                () -> block("crushing_wheel"));
+                () -> block("crushing_wheel"), 0.5F);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MECHANICAL_CRAFTER_MODULE.get(),
-                () -> block("mechanical_crafter"));
+                () -> block("mechanical_crafter"), 0.6F);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_PRESS_MODULE.get(),
-                () -> block("mechanical_press"));
+                () -> block("mechanical_press"), 0.6F);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MIXER_MODULE.get(),
-                () -> block("mechanical_mixer"));
+                () -> block("mechanical_mixer"), 0.6F);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_DEPLOYER_MODULE.get(),
-                () -> block("deployer"));
+                () -> block("deployer"), 0.6F);
     }
 
     /**
