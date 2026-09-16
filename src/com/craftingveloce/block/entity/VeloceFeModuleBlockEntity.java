@@ -268,9 +268,24 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
         return manager.getNetworkForTerminal(sl, worldPosition);
     }
 
+    private int clientSyncCooldown = 10;
+    private int lastSyncedEnergy = -1;
+
     public void serverTick() {
+        if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) {
+            return;
+        }
         chargeFromItem();
         pullFromNetwork();
+        
+        if (--clientSyncCooldown > 0) {
+            return;
+        }
+        clientSyncCooldown = 10;
+        if (energy != lastSyncedEnergy) {
+            lastSyncedEnergy = energy;
+            sl.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
     }
 
     /**

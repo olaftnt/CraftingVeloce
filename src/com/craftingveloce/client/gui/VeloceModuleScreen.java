@@ -55,7 +55,9 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         graphics.blit(GUI_TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight);
-        drawBattery(graphics);
+        if (display.contains("energy")) {
+            drawBattery(graphics);
+        }
     }
 
     /** Maszyna na energie: bateria i liczba operacji - jak w piecu. */
@@ -76,13 +78,13 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
         }
     }
 
-    /** Podpowiedz na baterii - DOKLADNIE ta sama co w piecu. */
     private void renderBatteryTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!display.contains("energy")) {
+            return;
+        }
         if (!isHovering(BATTERY_X, BATTERY_Y, BATTERY_W + NUB_W, BATTERY_H, mouseX, mouseY)) {
             return;
         }
-        // STRUKTURA 1:1 Z PIECA (te same klucze i te same trzy linie):
-        // energia, liczba cykli, koszt cyklu.
         long energy = display.getLong("energy");
         long capacity = Math.max(1L, display.getLong("energyCapacity"));
         long perCycle = Math.max(1L, display.getLong("fePerOperation"));
@@ -98,6 +100,24 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
                 .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
         graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
     }
+    
+    private void drawCreateData(GuiGraphics graphics) {
+        if (!display.contains("speed")) {
+            return;
+        }
+        float speed = display.getFloat("speed");
+        float required = display.getFloat("requiredSpeed");
+        float su = display.getFloat("suDraw");
+        boolean enough = display.getBoolean("enoughSpeed");
+        
+        int x = this.leftPos + BATTERY_X;
+        int y = this.topPos + 20;
+        
+        graphics.drawString(this.font, Component.literal("Speed: " + speed + " / " + required + " RPM")
+                .withStyle(enough ? net.minecraft.ChatFormatting.GREEN : net.minecraft.ChatFormatting.RED), x, y, 0xFFFFFF, false);
+        graphics.drawString(this.font, Component.literal("Stress: " + su + " SU")
+                .withStyle(net.minecraft.ChatFormatting.GRAY), x, y + 12, 0xFFFFFF, false);
+    }
 
     @Override
     public void containerTick() {
@@ -108,6 +128,7 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
+        drawCreateData(graphics);
         renderBatteryTooltip(graphics, mouseX, mouseY);
         this.renderTooltip(graphics, mouseX, mouseY);
     }
