@@ -73,6 +73,52 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      * od nowa.
      */
     private static final Map<Block, Boolean> BLOCK_MODEL_USABLE = new ConcurrentHashMap<>();
+
+    /**
+     * Kolejnosc pol w kwadracie: od SRODKA na zewnatrz (spirala).
+     *
+     * <p>Gracz: "ma sie rozszerzac od srodka do zewnatrz w kwadracie". Dzieki
+     * temu pierwsze oczka sa w srodku obudowy, a kolejne dokladaja sie jako
+     * pierscienie wokol nich - zamiast rosnac w jednym rogu.
+     */
+    private static final Map<Integer, int[][]> SPIRAL_ORDER = new ConcurrentHashMap<>();
+
+    private static int[][] spiralOrder(int side) {
+        return SPIRAL_ORDER.computeIfAbsent(side, s -> {
+            // Sortowanie po odleglosci od srodka zamiast chodzenia spirala:
+            // spacery po siatce potrafily sie zapetlic przy parzystym boku
+            // (krok wychodzil poza mape i brakujace pole nigdy sie nie
+            // wypelnialo). Sortowanie jest zawsze skonczone i pokrywa
+            // wszystkie pola.
+            double centre = (s - 1) / 2.0;
+            java.util.List<int[]> cells = new java.util.ArrayList<>(s * s);
+            for (int x = 0; x < s; x++) {
+                for (int y = 0; y < s; y++) {
+                    cells.add(new int[]{x, y});
+                }
+            }
+            cells.sort(java.util.Comparator
+                    .comparingDouble((int[] c) -> Math.max(Math.abs(c[0] - centre),
+                            Math.abs(c[1] - centre)))
+                    .thenComparingDouble(c -> Math.pow(c[0] - centre, 2)
+                            + Math.pow(c[1] - centre, 2))
+                    .thenComparingInt(c -> c[1])
+                    .thenComparingInt(c -> c[0]));
+            return cells.toArray(new int[0][]);
+        });
+    }
+
+    /**
+     * Decyzja "model bloku czy model itemu" - raz na blok i raz na generacje
+     * modeli.
+     *
+     * <p>Wiekszosc klockow ma normalny model bloku i wtedy rysujemy BLOK (tak
+     * wygladaja waniliowe klocki, mechanical crafter i wszystko z geometria).
+     * Maszyny, ktore rysuje wlasny renderer block entity (kola mlynskie,
+     * maszyny Mekanism), nie maja kwadratow w modelu bloku - dla nich jedynym
+     * sensownym wygladem jest model ITEMU. Klucz cache zawiera generacje
+     * ModelManager, wiec po przeladowaniu paczek decyzja liczy sie od nowa.
+     */
     private static int cachedGeneration = 0;
 
     private static boolean blockModelUsable(Block block) {
@@ -203,6 +249,8 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         float scale = Math.min(CONTENT_SCALE, spacing * 0.9F);
         boolean individually = spin.casePartsSpinIndividually();
         float speed = spin.caseSpinDegreesPerTick();
+        // Wypelnianie od srodka na zewnatrz (kwadrat), a nie rosnaca linia.
+        int[][] order = spiralOrder(Math.max(cols, rows));
 
         pose.pushPose();
         if (!individually) {
@@ -214,8 +262,8 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
             pose.translate(0.5D, 0.5D, 0.5D);
         }
         for (int i = 0; i < parts; i++) {
-            int col = i / rows;
-            int row = i % rows;
+            int col = order[i][0];
+            int row = order[i][1];
             pose.pushPose();
             pose.translate((col - (cols - 1) / 2.0F) * spacing,
                     -(row - (rows - 1) / 2.0F) * spacing, 0.0D);

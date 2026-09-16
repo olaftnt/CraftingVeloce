@@ -153,13 +153,20 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         return Math.abs(getSpeed()) * 0.3F;
     }
 
-    /** Kola mlynskie: obok siebie. Oczka craftera: 1x2, 1x3, ... 9x9. */
+    /**
+     * Uklad elementow: KWADRAT rosnący od srodka na zewnatrz.
+     *
+     * <p>Gracz: "ma sie robic jeden na jeden, dwa na dwa, trzy na trzy...
+     * w kwadracie, a nie w prostokacie". Bok to najmniejszy kwadrat, ktory
+     * miesci wklikane oczka: 1 -&gt; 1x1, 2..4 -&gt; 2x2, 5..9 -&gt; 3x3, ... 81 -&gt; 9x9.
+     * Kola mlynskie stoja obok siebie (osobny przypadek).
+     */
     @Override
     public int caseGridColumns() {
         if (caseSpinDegreesPerTick() != 0.0F) {
             return Math.max(1, parts);
         }
-        return Math.max(1, (int) Math.ceil(parts / (double) GRID_LIMIT));
+        return gridSide();
     }
 
     @Override
@@ -167,7 +174,12 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         if (caseSpinDegreesPerTick() != 0.0F) {
             return 1;
         }
-        return Math.max(1, Math.min(parts, GRID_LIMIT));
+        return gridSide();
+    }
+
+    /** Bok kwadratu, w ktory miesci sie tyle oczek (1, 2, 3, ... 9). */
+    private int gridSide() {
+        return Math.max(1, (int) Math.ceil(Math.sqrt(Math.max(1, parts))));
     }
 
     /** Tylko kola mlynskie krecA sie kazde wokol siebie (i zazebiaja sie). */

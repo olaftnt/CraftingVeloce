@@ -1406,6 +1406,16 @@ def validate_create_mechanics():
     if "spin.caseGridColumns()" not in renderer or "spin.caseGridRows()" not in renderer:
         problems.append("renderer nie uklada elementow tak, jak podaje maszyna")
 
+    # Siatka craftera rosnie KWADRATOWO od srodka na zewnatrz (1x1, 2x2, 3x3...),
+    # a nie jako rosnaca linia (1x2, 1x3...). Bok = ceil(sqrt(oczek)), a pola
+    # wypelniaja sie od srodka obudowy.
+    if "Math.ceil(Math.sqrt(Math.max(1, parts)))" not in be_code:
+        problems.append("siatka craftera nie rosnie kwadratowo (bok z pierwiastka oczek)")
+    if "spiralOrder(" not in renderer or "order[i][0]" not in renderer:
+        problems.append("elementy nie wypelniaja kwadratu od SRODKA na zewnatrz")
+    if "while (" in _method_body(renderer, "private static int[][] spiralOrder(") or "":
+        pass  # miejsca na przyszle reguly
+
     if "neighbourAxis" not in block_code or "Direction.Axis axis = neighbourAxis" not in block_code:
         problems.append("os maszyny nie dopasowuje sie do sasiada z napedem "
                         "(naped z boku nie zadziala)")
