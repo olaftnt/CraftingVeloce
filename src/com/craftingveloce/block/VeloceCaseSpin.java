@@ -34,4 +34,13 @@ public interface VeloceCaseSpin {
 
     /** Ile rzedow ma uklad elementow w obudowie (patrz {@link #caseGridColumns()}). */
     int caseGridRows();
+
+    /**
+     * Czy ta maszyna jest BUDOWANA z elementow (kola, oczka).
+     *
+     * <p>Rozroznia dwie sytuacje, ktore wygladaja tak samo, gdy licznik jest
+     * zerowy: kruszarka bez kol ma byc PUSTA obudowa, a mlynek bez kol (bo ich
+     * nie potrzebuje) ma pokazywac swoj klocek bazowy.
+     */
+    boolean caseBuiltFromParts();
 }

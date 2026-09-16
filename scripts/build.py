@@ -1340,11 +1340,32 @@ def validate_create_mechanics():
     renderer = open("src/com/craftingveloce/client/render/VeloceCaseRenderer.java",
                     encoding="utf-8").read()
     render_body = _method_body(renderer, "public void render(")
-    if render_body is None or "caseParts() <= 0" not in render_body:
+    if render_body is None or "caseParts() > 0" not in render_body \
+            or "caseBuiltFromParts()" not in render_body:
         problems.append("maszyna bez wklikanych elementow nie jest pusta obudowa "
                         "(z creative'a widac gotowy klocek)")
     if "for (int i = 0; i < parts; i++)" not in renderer:
         problems.append("renderer nie rysuje tylu modeli, ile gracz wklikal")
+
+    # Zawartosc MUSI byc rysowana jako MODEL ITEMU. Maszyny z innych modow
+    # (mlynek, pila, kruszarka, maszyny Mekanism) nie maja zwyklego modelu
+    # bloku - rysuja je wlasne renderery block entity, wiec renderSingleBlock
+    # pokazywal PUSTA obudowe (zgloszenie gracza: "inne itemki w ogole nie
+    # renderuja sie w srodku, tylko waniliowe").
+    for need, what in (("ItemRenderer", "renderera przedmiotow"),
+                       ("ItemDisplayContext", "kontekstu wyswietlania przedmiotu"),
+                       ("renderStatic(", "rysowania modelu itemu")):
+        if need not in renderer:
+            problems.append("renderer obudowy bez " + what)
+    if "getBlockRenderer" in renderer:
+        problems.append("renderer obudowy rysuje model BLOKU - maszyny z innych "
+                        "modow bylyby puste (maja wlasne renderery)")
+
+    spin_iface = open("src/com/craftingveloce/block/VeloceCaseSpin.java", encoding="utf-8").read()
+    if "boolean caseBuiltFromParts();" not in spin_iface:
+        problems.append("brak rozroznienia maszyny budowanej od maszyny ze stala zawartoscia")
+    if "caseBuiltFromParts()" not in renderer:
+        problems.append("renderer nie odroznia pustej maszyny budowanej od stalej zawartosci")
 
     # Siatka: uklad liczy MASZYNA (kolumny x rzedy), renderer i powiadomienie
     # musza korzystac z tego samego zrodla - inaczej gracz widzi "1x2",
@@ -1510,7 +1531,7 @@ def validate_integrale_display():
     else:
         body = open(renderer, encoding="utf-8").read()
         for need, what in (("VeloceCaseContents.contentFor", "zawartosci z tabeli obudow"),
-                           ("getBlockRenderer", "renderowania modelu bloku"),
+                           ("renderStatic(", "rysowania modelu itemu zawartosci"),
                            ("rotationDegrees", "animacji (obrot)"),
                            ("Math.sin", "animacji (bujanie)")):
             if need not in body:

@@ -8,7 +8,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
+import net.minecraft.client.renderer.entity.ItemRenderer;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -39,7 +45,32 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
     /** Predkosc obrotu w stopniach na tick (pelny obrot ~10 s). */
     private static final float SPIN_DEGREES_PER_TICK = 0.6F;
 
+    /**
+     * Model ITEMU zamiast modelu bloku.
+     *
+     * <p><b>Dlaczego.</b> Maszyny z innych modow (mlynek, pila, kruszarka,
+     * maszyny Mekanism) NIE sa rysowane zwyklym modelem bloku - maja wlasne
+     * renderery block entity (partial/OBJ). {@code renderSingleBlock} rysowal
+     * wiec PUSTKE i gracz widzial obudowe bez niczego w srodku. Ich modele
+     * itemow sa poprawne i reprezentatywne, wiec renderujemy je tak, jak
+     * renderuje sie przedmiot (z tym samym obrotem i bujaniem).
+     */
+    private static final Map<Block, ItemStack> CONTENT_STACKS = new ConcurrentHashMap<>();
+
     public VeloceCaseRenderer(BlockEntityRendererProvider.Context context) {
+    }
+
+    /** Rysuje klocek bazowy jako przedmiot (FIXED) - z obrotem i bujaniem. */
+    private void renderContent(Block content, PoseStack pose, MultiBufferSource buffers,
+                               int packedLight, int packedOverlay) {
+        ItemStack stack = CONTENT_STACKS.computeIfAbsent(content,
+                block -> new ItemStack(block.asItem()));
+        ItemRenderer renderer = Minecraft.getInstance().getItemRenderer();
+        if (stack.isEmpty() || renderer == null) {
+            return;
+        }
+        renderer.renderStatic(stack, ItemDisplayContext.FIXED, packedLight, packedOverlay,
+                pose, buffers, Minecraft.getInstance().level, 0);
     }
 
     @Override
@@ -58,12 +89,34 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         // Maszyna z wlasnymi elementami (kola mlynskie) rysuje je OBOK SIEBIE
         // i kreci z predkoscia, ktora podaje sama maszyna (Create).
         if (be instanceof VeloceCaseSpin spin) {
-            if (spin.caseParts() <= 0) {
-                // Maszyna, ktorej gracz jeszcze NIC nie wklikal, wyglada jak
-                // pusta obudowa - a nie jak maszyna z klockiem w srodku.
+            if (spin.caseParts() > 0) {
+                renderParts(spin, content, pose, buffers, packedLight, packedOverlay, time);
                 return;
             }
-            renderParts(spin, content, pose, buffers, packedLight, packedOverlay, time);
+            if (spin.caseBuiltFromParts()) {
+                // Kruszarka/crafter bez wklikanych elementow: PUSTA obudowa.
+                return;
+            }
+            // Maszyna ze stala zawartoscia (mlynek, pila, prasa, mixer,
+            // deployer): jeden klocek w srodku, obracajacy sie gdy jest naped.
+            if (spin.caseSpinDegreesPerTick() == 0.0F) {
+                pose.pushPose();
+                pose.translate(0.5D, 0.5D, 0.5D);
+                pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
+                pose.translate(-0.5D, -0.5D, -0.5D);
+                renderContent(content, pose, buffers, packedLight, packedOverlay);
+                pose.popPose();
+            } else {
+                // Napedzana maszyna obraca sie jak jej wlasne kolo robocze.
+                pose.pushPose();
+                pose.translate(0.5D, 0.5D, 0.5D);
+                pose.mulPose(Axis.YP.rotationDegrees(
+                        (time * spin.caseSpinDegreesPerTick()) % 360.0F));
+                pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
+                pose.translate(-0.5D, -0.5D, -0.5D);
+                renderContent(content, pose, buffers, packedLight, packedOverlay);
+                pose.popPose();
+            }
             return;
         }
 
@@ -75,8 +128,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 Math.cos(time * 0.045F) * 0.030D);
         pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
         pose.translate(-0.5D, -0.5D, -0.5D);
-        Minecraft.getInstance().getBlockRenderer()
-                .renderSingleBlock(content.defaultBlockState(), pose, buffers, packedLight, packedOverlay);
+        renderContent(content, pose, buffers, packedLight, packedOverlay);
         pose.popPose();
     }
 
@@ -115,9 +167,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
             }
             pose.scale(scale, scale, scale);
             pose.translate(-0.5D, -0.5D, -0.5D);
-            Minecraft.getInstance().getBlockRenderer()
-                    .renderSingleBlock(content.defaultBlockState(), pose, buffers,
-                            packedLight, packedOverlay);
+            renderContent(content, pose, buffers, packedLight, packedOverlay);
             pose.popPose();
         }
     }

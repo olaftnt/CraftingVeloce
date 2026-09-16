@@ -170,6 +170,12 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         return Math.max(1, Math.min(parts, GRID_LIMIT));
     }
 
+    /** Czy maszyna wymaga wklikanych elementow (kruszarka, crafter). */
+    @Override
+    public boolean caseBuiltFromParts() {
+        return partsLimit() > 0;
+    }
+
     /** Uklad siatki jako tekst dla gracza: "1x2", "5x5", "9x9" (bez slow). */
     public String gridLabel() {
         return caseGridColumns() + "x" + caseGridRows();
