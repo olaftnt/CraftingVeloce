@@ -32,6 +32,7 @@ public final class VeloceEnergyPull {
     private static long lastDiscoverLog;
     private static long lastPullLog;
     private static long lastPullLog2;
+    private static long lastSourceLog;
 
     /** Ile FE na tick najwyzej probujemy wziac z jednego zrodla. */
     public static final int MAX_PER_SOURCE_PER_TICK = 1_000_000;
@@ -113,6 +114,19 @@ public final class VeloceEnergyPull {
         }
     }
 
+
+    /** Pierwsza strona bloku, ktora oddaje energie (albo null). */
+    private static IEnergyStorage findExtracting(ServerLevel level, BlockPos pos) {
+        for (net.minecraft.core.Direction side : net.minecraft.core.Direction.values()) {
+            IEnergyStorage st = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
+            if (st != null && st.canExtract() && st.extractEnergy(1, true) > 0) {
+                return st;
+            }
+        }
+        IEnergyStorage any = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, null);
+        return any != null && any.canExtract() && any.extractEnergy(1, true) > 0 ? any : null;
+    }
+
     public static int pull(ServerLevel level, VelocePipeNetwork network,
                            IEnergyStorage receiver, int maxRate) {
         if (level == null || network == null || receiver == null || maxRate <= 0) {
@@ -151,9 +165,21 @@ public final class VeloceEnergyPull {
             if (!level.isLoaded(pos)) {
                 continue;   // nie wciagamy chunkow dla pradu
             }
-            IEnergyStorage source = level.getCapability(
-                    Capabilities.EnergyStorage.BLOCK, pos, null);
-            if (source == null || !source.canExtract()) {
+            // Zrodlo szukamy na KAZDEJ stronie bloku: Energy Cube Mekanismu
+            // potrafi nie oddawac energii z tej strony, od ktorej patrzymy.
+            IEnergyStorage source = findExtracting(level, pos);
+            if (source == null) {
+                if (System.currentTimeMillis() - lastSourceLog > 5_000L) {
+                    lastSourceLog = System.currentTimeMillis();
+                    IEnergyStorage any = level.getCapability(
+                            Capabilities.EnergyStorage.BLOCK, pos, null);
+                    LOG.info("[Veloce][ENERGY] zrodlo {} nie oddaje energii: storage={}, "
+                                    + "canExtract={}, stan={}/{}",
+                            pos.toShortString(), any != null,
+                            any != null && any.canExtract(),
+                            any == null ? -1 : any.getEnergyStored(),
+                            any == null ? -1 : any.getMaxEnergyStored());
+                }
                 continue;
             }
             int taken = source.extractEnergy(Math.min(budget, MAX_PER_SOURCE_PER_TICK), false);
