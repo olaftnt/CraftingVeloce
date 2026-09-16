@@ -90,11 +90,18 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
      */
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
-                                               Player player, BlockHitResult hit) {
+                                               net.minecraft.world.entity.player.Player player,
+                                               net.minecraft.world.phys.BlockHitResult hit) {
+        // Prawy klik otwiera okno modulu: wskaznik naladowania (bateryjka),
+        // koszt operacji i stan sieci rur. Prawdziwe liczby liczy serwer.
         if (!world.isClientSide
                 && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
-                && world.getBlockEntity(pos) instanceof VeloceFeModuleBlockEntity moduleEntity) {
-            moduleEntity.sendStatus(serverPlayer);
+                && world instanceof net.minecraft.server.level.ServerLevel serverLevel
+                && world.getBlockEntity(pos)
+                instanceof com.craftingveloce.block.entity.VeloceModuleInfoSource source) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(serverPlayer,
+                    new com.craftingveloce.network.OpenModuleInfoPKT(pos,
+                            source.moduleInfo(serverLevel)));
         }
         return InteractionResult.sidedSuccess(world.isClientSide);
     }

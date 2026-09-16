@@ -30,7 +30,7 @@ import java.util.Set;
  * energia jest rozliczana dokladnie raz na wykonana recepture.
  */
 public class VeloceFeModuleBlockEntity extends BlockEntity
-        implements VeloceProcessingSource, IEnergyStorage {
+        implements VeloceProcessingSource, IEnergyStorage, VeloceModuleInfoSource {
 
     /**
      * Fabryka block entity - dostarczana przez modul.
@@ -72,6 +72,33 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     // ------------------------------------------------------------------
     // VeloceProcessingSource
     // ------------------------------------------------------------------
+
+    /**
+     * Dane do okna modulu: energia, koszt operacji i sieć rur.
+     *
+     * <p>Gracz: "ma byc widoczny wskaznik naladowania (bateryjka) pokazujacy
+     * aktualny stan zmagazynowanego pradu". Okno liczy sie na serwerze (tylko
+     * tam sa prawdziwe liczby), a klient rysuje pasek baterii z tych pol.
+     */
+    @Override
+    public net.minecraft.nbt.CompoundTag moduleInfo(net.minecraft.server.level.ServerLevel level) {
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        tag.putLong("energy", energy);
+        tag.putLong("energyCapacity", module.capacity());
+        tag.putLong("fePerOperation", module.fePerOperation());
+        tag.putLong("operations", module.fePerOperation() <= 0 ? 0L
+                : energy / module.fePerOperation());
+        tag.putBoolean("powered", energy >= module.fePerOperation());
+        tag.putString("moduleLabel", module.label());
+        var pipes = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level)
+                .getNetworkForTerminal(level, worldPosition);
+        if (pipes != null) {
+            tag.putInt("networkNodes", pipes.getTerminals().size());
+            tag.putInt("networkStorages", pipes.getEndpoints().size());
+            tag.putInt("networkItems", pipes.getAllItemCounts(level).size());
+        }
+        return tag;
+    }
 
     @Override
     public String moduleId() {

@@ -24,6 +24,10 @@ import java.util.List;
  * wiazane dopiero po zdarzeniach rejestracji, a te stale powstaja w
  * konstruktorze moda.
  *
+ * <p><b>Koszt jak w elektrycznym piecu.</b> 25 000 000 FE bufora i koszt
+ * operacji przeskalowany x50 (punk odniesienia: piecyk 200 000 FE za
+ * przepalenie) - compactor 125 000, combiner 500 000, fission/fusion 750 000 FE.
+ *
  * <p><b>Czego tu nie ma.</b> Dissolver jest probabilistyczny (ProbabilitySet),
  * a Liquifier/Atomizer pracuja na plynnym chemicznym - oba wymagaja osobnej
  * polityki i warstwy plynow (pozniejsze etapy).
@@ -36,22 +40,22 @@ public final class AlchemistryFeModules {
     /** Compactor: 1 item (x count) -> 1 item. */
     public static final FeModule COMPACTOR = new FeModule(
             "alchemistry:compactor", "Veloce Compactor Module",
-            2_500, 100_000, AlchemistryRecipeFamily::compactor);
+            125_000, 25_000_000, AlchemistryRecipeFamily::compactor);
 
     /** Combiner: N itemow (kazdy z wlasnym count) -> 1 item. */
     public static final FeModule COMBINER = new FeModule(
             "alchemistry:combiner", "Veloce Alchemistry Combiner Module",
-            10_000, 100_000, AlchemistryRecipeFamily::combiner);
+            500_000, 25_000_000, AlchemistryRecipeFamily::combiner);
 
     /** Fission: 1 item -> 2 itemy. */
     public static final FeModule FISSION = new FeModule(
             "alchemistry:fission", "Veloce Fission Module",
-            15_000, 100_000, AlchemistryRecipeFamily::fission);
+            750_000, 25_000_000, AlchemistryRecipeFamily::fission);
 
     /** Fusion: 2 itemy -> 1 item. */
     public static final FeModule FUSION = new FeModule(
             "alchemistry:fusion", "Veloce Fusion Module",
-            15_000, 100_000, AlchemistryRecipeFamily::fusion);
+            750_000, 25_000_000, AlchemistryRecipeFamily::fusion);
 
     /** Wszystkie maszyny itemowe v1 - do rejestracji i zakladki kreatywnej. */
     public static final List<FeModule> ALL = List.of(COMPACTOR, COMBINER, FISSION, FUSION);

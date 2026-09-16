@@ -22,32 +22,37 @@ public final class MekanismFeModules {
     }
 
     /**
-     * Kruszarka: ruda/sztaba -> pyl. 20 FE/t * 200 t = 4000 FE.
+     * Kruszarka: ruda/sztaba -> pyl.
+     *
+     * <p><b>Koszt jak w elektrycznym piecu.</b> Piecyk bierze 200 000 FE za
+     * przepalenie i ma 25 000 000 FE bufora, wiec moduły maja te sama skale:
+     * koszt jednej operacji to 200 000 FE (dawniej 4 000 - bylo praktycznie
+     * darmowe), a akumulator 25 000 000 FE.
      */
     public static final FeModule CRUSHER = new FeModule(
             "mekanism:crusher", "Veloce Crusher Module",
-            4_000, 40_000, MekanismRecipeFamily::crushing);
+            200_000, 25_000_000, MekanismRecipeFamily::crushing);
 
     /**
      * Wzbogacanie: ruda -> 3 sztaby. Ten sam koszt co kruszarka.
      */
     public static final FeModule ENRICHMENT = new FeModule(
             "mekanism:enriching", "Veloce Enrichment Module",
-            4_000, 40_000, MekanismRecipeFamily::enriching);
+            200_000, 25_000_000, MekanismRecipeFamily::enriching);
 
     /**
      * Laczenie: dwa itemy -> jeden (Combiner). Ten sam koszt.
      */
     public static final FeModule COMBINER = new FeModule(
             "mekanism:combining", "Veloce Combiner Module",
-            4_000, 40_000, MekanismRecipeFamily::combining);
+            200_000, 25_000_000, MekanismRecipeFamily::combining);
 
     /**
      * Pilowanie: item -> deski + losowe trociny (Precision Sawmill).
      */
     public static final FeModule SAWMILL = new FeModule(
             "mekanism:sawing", "Veloce Sawmill Module",
-            4_000, 40_000, MekanismRecipeFamily::sawing);
+            200_000, 25_000_000, MekanismRecipeFamily::sawing);
 
     /** Wszystkie maszyny itemowe v1 - do rejestracji i zakladki kreatywnej. */
     public static final List<FeModule> ALL = List.of(CRUSHER, ENRICHMENT, COMBINER, SAWMILL);

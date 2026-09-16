@@ -1256,6 +1256,49 @@ def validate_module_info_gui():
         lang = json.load(open("assets/craftingveloce/lang/en_us.json", encoding="utf-8"))
         if not any(key.startswith("gui.craftingveloce.module.info.") for key in lang):
             problems.append("brak kluczy jezyka dla okna modulu")
+    # Moduly na energie: 25M FE bufora (jak elektryczny piec), koszt operacji
+    # w skali pieca (200 000 FE) i okno z BATERIA.
+    fe_be = "src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
+    fe_block = "src/com/craftingveloce/block/VeloceFeModuleBlock.java"
+    if not os.path.exists(fe_be) or "VeloceModuleInfoSource" not in open(fe_be, encoding="utf-8").read():
+        problems.append("modul FE nie opisuje sie do okna")
+    else:
+        info = _method_body(open(fe_be, encoding="utf-8").read(),
+                            "public net.minecraft.nbt.CompoundTag moduleInfo(")
+        if info is None:
+            problems.append("modul FE bez metody moduleInfo")
+        else:
+            for need, what in (('tag.putLong("energy"', "stanu energii"),
+                               ('tag.putLong("energyCapacity"', "pojemnosci akumulatora"),
+                               ('tag.putLong("fePerOperation"', "kosztu operacji"),
+                               ('tag.putBoolean("powered"', "informacji o zasileniu"),
+                               ('tag.putInt("networkNodes"', "wezlow sieci rur")):
+                if need not in info:
+                    problems.append("okno modulu FE bez " + what)
+    if os.path.exists(fe_block):
+        body = _method_body(open(fe_block, encoding="utf-8").read(),
+                           "protected InteractionResult useWithoutItem(")
+        if body is None or "OpenModuleInfoPKT" not in body:
+            problems.append("prawy klik na module FE nie otwiera okna")
+    if os.path.exists(screen):
+        text = open(screen, encoding="utf-8").read()
+        render_body = _method_body(text, "public void render(")
+        if render_body is None or "drawBattery(" not in render_body:
+            problems.append("okno modulu nie rysuje baterii przy energii")
+        if "energyCapacity" not in text:
+            problems.append("okno modulu nie uzywa pojemnosci do paska")
+
+    for path, table in (("src/com/craftingveloce/compat/mekanism/MekanismFeModules.java", "Mekanism"),
+                        ("src/com/craftingveloce/compat/alchemistry/AlchemistryFeModules.java", "Alchemistry")):
+        body = open(path, encoding="utf-8").read()
+        if body.count("25_000_000") < 4:
+            problems.append(f"{table}: nie kazdy modul ma bufor 25 000 000 FE")
+        for match in re.findall(r"new FeModule\([^)]*\)", body):
+            numbers = re.findall(r"([\d_]+), 25_000_000", match)
+            if numbers and int(numbers[0].replace("_", "")) < 100_000:
+                problems.append(f"{table}: koszt operacji {numbers[0]} FE jest za maly "
+                                f"(punkt odniesienia: piec 200 000 FE)")
+
     if problems:
         fail("GUI modulu:\n  " + "\n  ".join(problems))
     print("    OK (GUI modulu: pakiet + prawy klik + pola SU/predkosc/sieć + Esc)")
