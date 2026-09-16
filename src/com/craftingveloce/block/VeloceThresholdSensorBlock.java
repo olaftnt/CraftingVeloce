@@ -75,8 +75,28 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
         registerDefaultState(this.stateDefinition.any().setValue(POWERED, false));
     }
 
+
+    /**
+     * Domkniecie blachy na scianie, przy ktorej stoi rura Veloce.
+     *
+     * <p>Zgloszenie gracza: "kabel sie przelacza, ale scianki sie nie zamykaja
+     * - na crushing wheelu dziala, a na crafting table i piecyku nie".
+     * Przyczyna: te bloki nie mialy nawet WŁASCIWOSCI zaslepek
+     * ({@code CLOSED_BY_DIRECTION}), wiec nie bylo czego zamykac. Teraz maja je
+     * (patrz {@code createBlockStateDefinition}) i przeliczaja je tu - to
+     * waniliowa, bezpieczna sciezka: sasiad wysyla update, my zwracamy nowy
+     * stan (bez wlasnego setBlock przy stawianiu, co kiedys dawalo ghost bloki).
+     */
+    @Override
+    protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
+                                     BlockState facingState, net.minecraft.world.level.LevelAccessor world,
+                                     BlockPos pos, BlockPos facingPos) {
+        return com.craftingveloce.block.VeloceIntegraleFrame.withClosure(state, facing, facingState);
+    }
+
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
         builder.add(POWERED);
     }
 

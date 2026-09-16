@@ -120,4 +120,14 @@ public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock
     protected MapCodec<? extends BaseEntityBlock> codec() {
         return CODEC;
     }
+
+    /** Wlasciwosci zaslepek obudowy: po jednej na kazda strone swiata. */
+    @Override
+    protected void createBlockStateDefinition(
+            net.minecraft.world.level.block.state.StateDefinition.Builder<
+                    net.minecraft.world.level.block.Block, BlockState> builder) {
+        super.createBlockStateDefinition(builder);
+        com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
+    }
+
 }

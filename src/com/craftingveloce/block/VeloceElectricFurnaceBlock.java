@@ -123,4 +123,21 @@ public class VeloceElectricFurnaceBlock extends BaseEntityBlock
     protected com.mojang.serialization.MapCodec<? extends BaseEntityBlock> codec() {
         return simpleCodec(VeloceElectricFurnaceBlock::new);
     }
+
+    /** Wlasciwosci zaslepek obudowy: po jednej na kazda strone swiata. */
+    @Override
+    protected void createBlockStateDefinition(
+            net.minecraft.world.level.block.state.StateDefinition.Builder<
+                    net.minecraft.world.level.block.Block, BlockState> builder) {
+        super.createBlockStateDefinition(builder);
+        com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
+    }
+
+    /** Domkniecie blachy na scianie, przy ktorej stoi rura Veloce. */
+    @Override
+    protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
+                                     BlockState facingState, net.minecraft.world.level.LevelAccessor world,
+                                     BlockPos pos, BlockPos facingPos) {
+        return com.craftingveloce.block.VeloceIntegraleFrame.withClosure(state, facing, facingState);
+    }
 }
