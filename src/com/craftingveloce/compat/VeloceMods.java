@@ -40,7 +40,16 @@ public enum VeloceMods {
      * powstaje przy starcie JEI. Wpis jest tu po to, zeby lista modow byla
      * kompletna i zeby bylo widac w logu, czy JEI jest obecne.
      */
-    JEI("jei");
+    JEI("jei"),
+
+    /**
+     * Jade - podpowiedź przy celowniku; opisuje nasze maszyny.
+     *
+     * <p>Tak jak JEI: plugin ({@code compat/jade/VeloceJadePlugin}) znajduje samo
+     * Jade po adnotacji {@code @WailaPlugin}, wiec rdzen go nie wola. Wpis jest
+     * tu dla logu obecnosci i dla kontroli w buildzie.
+     */
+    JADE("jade");
 
     private final String id;
 

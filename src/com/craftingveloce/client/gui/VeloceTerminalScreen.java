@@ -39,6 +39,14 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      */
     private final VeloceCraftableCounts craftable = new VeloceCraftableCounts();
 
+    /**
+     * Powody nieudanych prob (serwer -> tooltip itemu).
+     *
+     * <p>Pasek akcji jest w GUI terminala niewidoczny, wiec powod nieudanego
+     * craftu pokazujemy w tooltipie tego itemu, ktory gracz kliknal.
+     */
+    private final VeloceCraftErrorHints craftErrors = new VeloceCraftErrorHints();
+
     @Nullable
 
     private static Method selectTabMethod;
@@ -126,6 +134,18 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                 "received instant counts for %d item(s) (complete=%s)",
                 craftable.size(), complete);
         this.craftable.update(craftable, complete);
+    }
+
+    /**
+     * Powod nieudanej proby z serwera - zapamietaj dla tooltipa itemu.
+     *
+     * <p>Pakiety z INNEGO terminala (gracz zdazyl przeskoczyc do drugiego)
+     * pomijamy: pokazanie powodu przy nie tym ekranie bylo by mylace.
+     */
+    public void setCraftError(BlockPos pos, ItemStack stack, String reason, String detail) {
+        if (pos != null && pos.equals(this.terminalPos)) {
+            this.craftErrors.record(stack, reason, detail);
+        }
     }
 
     @Override
@@ -248,8 +268,12 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             return lines;
         }
         // Czysty tooltip itemu buduje klasa bazowa (bez kategorii i tagow
-        // creative) - jedno zrodlo dla wszystkich czterech ekranow.
-        return super.getTooltipFromContainerItem(stack);
+        // creative) - jedno zrodlo dla wszystkich czterech ekranow. Dokladamy
+        // do niego powod nieudanego craftu, jesli ten item wlasnie sie nie udal
+        // (serwer nie moze juz uzyc paska akcji - pod GUI go nie widac).
+        List<Component> tooltip = new ArrayList<>(super.getTooltipFromContainerItem(stack));
+        craftErrors.appendTo(tooltip, stack);
+        return tooltip;
     }
 
     /**
@@ -500,6 +524,8 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             PacketDistributor.sendToServer(new com.craftingveloce.network.TerminalWatcherPKT(
                     terminalPos, false));
         }
+        // Powody nieudanych prob zyja tylko tak dlugo, jak ten ekran.
+        craftErrors.clear();
         // Trzymany stos obsluguje klasa bazowa - jedno zrodlo prawdy.
         super.removed();
 

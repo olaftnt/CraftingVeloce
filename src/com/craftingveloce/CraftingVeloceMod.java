@@ -191,12 +191,14 @@ public class CraftingVeloceMod {
             );
         });
 
-        // Overlay "not enough rotation speed" - tylko klient (klasa klienta nie
-        // moze sie ladowac na serwerze).
+        // Napis "not enough rotation speed" przy celowniku ZOSTAL USUNIETY.
+        //
+        // Gracz: "wywal to cos, zamiast tego zrob integracje z Jade" - te same
+        // informacje (predkosc, wymagana predkosc, pobor SU, energia i status)
+        // pokazuje teraz tooltip Jade (compat/jade) i okno po prawym kliku.
+        // Oba miejsca biora teksty z jednego zrodla (VeloceModuleInfoLines),
+        // wiec nie ma juz wlasnego rysowania po ekranie.
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
-            NeoForge.EVENT_BUS.addListener(
-                    net.neoforged.neoforge.client.event.RenderGuiEvent.Post.class,
-                    com.craftingveloce.client.VeloceModuleOverlay::onRenderGui);
         }
 
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {

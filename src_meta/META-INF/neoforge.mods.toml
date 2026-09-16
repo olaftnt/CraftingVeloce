@@ -109,3 +109,13 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="AFTER"
     side="BOTH"
 
+# JADE - podpowiedz przy celowniku: predkosc/SU/energia, stan sieci i status
+# ("za malo sily"). Tak samo jak JEI: plugin (compat/jade/VeloceJadePlugin) ma
+# obce typy w sygnaturach i laduje go samo Jade po adnotacji @WailaPlugin.
+[[dependencies.craftingveloce]]
+    modId="jade"
+    type="optional"
+    versionRange="[15.0.0,)"
+    ordering="AFTER"
+    side="BOTH"
+

@@ -81,6 +81,9 @@ COMPILE_ONLY = {
     "mezz.jei": (
         ("jei-1.21.1-neoforge-19.56.0.439.jar",),
     ),
+    "snownee.jade": (
+        ("Jade-1.21.1-NeoForge-15.10.6.jar",),
+    ),
 }
 
 # Katalogi, w ktorych szukamy JAR-ow compileOnly (w tej kolejnosci).
@@ -93,9 +96,9 @@ EXCLUDED_SRC = ("eatawesome", "moze_intel")
 # nie moze ich importowac, a modul compat/ danego moda nie moze importowac
 # innego obcego moda (latwo o pomylke przy kopiowaniu pliku).
 FOREIGN_PACKAGES = ("com.simibubi.create", "net.createmod",
-                    "com.smashingmods", "mekanism", "mezz.jei")
+                    "com.smashingmods", "mekanism", "mezz.jei", "snownee.jade")
 FOREIGN_JAR_PATHS = ("com/simibubi/create/", "net/createmod/",
-                     "com/smashingmods/", "mekanism/", "mezz/jei/")
+                     "com/smashingmods/", "mekanism/", "mezz/jei/", "snownee/jade/")
 
 
 # Smieci systemowe, ktore nie moga trafic do JARa.
@@ -767,6 +770,7 @@ def validate_core_isolation():
         "alchemistry": ("com.smashingmods",),
         "mekanism": ("mekanism",),
         "jei": ("mezz.jei",),
+        "jade": ("snownee.jade",),
     }
     core, cross, checked = [], [], 0
     for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
@@ -834,7 +838,8 @@ def validate_compat_gates(z):
     module_dirs = ("com/craftingveloce/compat/create/",
                    "com/craftingveloce/compat/alchemistry/",
                    "com/craftingveloce/compat/mekanism/",
-                   "com/craftingveloce/compat/jei/")
+                   "com/craftingveloce/compat/jei/",
+                   "com/craftingveloce/compat/jade/")
     gate_paths = {cls.replace(".", "/") + ".class" for cls in gates.values()}
 
     targets = []
@@ -1251,6 +1256,227 @@ JEI_CATEGORIES = {
         "alchemistry:fusion": "VELOCE_FUSION_MODULE_ITEM",
     },
 }
+
+
+def validate_jade_info():
+    """
+    Jade: opis maszyny (predkosc/SU/energia + status) przy celowniku.
+
+    Gracz kazal wyrzucic wlasny napis "not enough rotation speed" rysowany po
+    ekranie i pokazac te informacje przez Jade ("ten mod, co pokazuje, na co sie
+    patrzysz"). Lancuch jest dlugi, a kazde ogniwo psuje sie PO CICHU (tooltip
+    po prostu nic nie pokaze), dlatego sprawdzamy wszystkie:
+      1. plugin {@code @WailaPlugin} rejestruje sie bez znajomosci innych modow
+         ({@code BlockEntity.class} + {@code Block.class} i filtr po rdzeniowym
+         {@code VeloceModuleInfoSource}), wiec dziala takze bez Create/Mekanism/
+         Alchemistry,
+      2. dane liczy SERWER ({@code shouldRequestData} + {@code appendServerData}),
+      3. tooltip sklada DOKLADNIE te same linie co okno po prawym kliku
+         ({@code VeloceModuleInfoLines.build}) - jedno zrodlo tekstow,
+      4. okno po prawym kliku nie rozmywa tla (zgloszenie gracza o "dziwnym
+         blurze" na naszych nowych GUI),
+      5. Jade jest w {@code FOREIGN_PACKAGES} - inaczej wyciek w JARze bylby
+         niewidoczny dla kontroli izolacji.
+    """
+    problems = []
+    plugin = "src/com/craftingveloce/compat/jade/VeloceJadePlugin.java"
+    data_provider = "src/com/craftingveloce/compat/jade/VeloceModuleDataProvider.java"
+    component = "src/com/craftingveloce/compat/jade/VeloceModuleComponentProvider.java"
+    lines_path = "src/com/craftingveloce/crafting/VeloceModuleInfoLines.java"
+    screen = "src/com/craftingveloce/client/gui/VeloceModuleInfoScreen.java"
+    for path, what in ((plugin, "pluginu Jade"), (data_provider, "danych dla Jade"),
+                       (component, "tooltipa Jade"), (lines_path, "wspolnych linii opisu")):
+        if not os.path.exists(path):
+            problems.append("brak " + what)
+    if problems:
+        fail("Jade:\n  " + "\n  ".join(problems))
+
+    plugin_text = open(plugin, encoding="utf-8").read()
+    if "@WailaPlugin" not in plugin_text or "IWailaPlugin" not in plugin_text:
+        problems.append("plugin Jade nie jest pluginem Jade (@WailaPlugin/IWailaPlugin)")
+    common = _method_body(plugin_text, "public void register(")
+    if common is None or "registerBlockDataProvider(" not in common \
+            or "BlockEntity.class" not in common:
+        problems.append("plugin Jade nie rejestruje danych serwera dla maszyn")
+    client = _method_body(plugin_text, "public void registerClient(")
+    if client is None or "registerBlockComponent(" not in client \
+            or "Block.class" not in client:
+        problems.append("plugin Jade nie rejestruje skladnika tooltipa")
+
+    # Plugin jest ladowany przez Jade TAKZE bez modulow maszyn, wiec nie moze
+    # dotykac ich klas (NoClassDefFoundError u gracza bez Create/Mekanism).
+    # Patrzymy na IMPORTY, a nie na caly tekst: wzmianka w komentarzu nie
+    # tworzy zaleznosci, a import - tak.
+    for path in sorted(glob.glob("src/com/craftingveloce/compat/jade/*.java")):
+        for name in _imports_of(path):
+            if name.startswith(("com.craftingveloce.compat.create",
+                                "com.craftingveloce.compat.mekanism",
+                                "com.craftingveloce.compat.alchemistry")):
+                problems.append(f"{os.path.basename(path)}: plugin Jade importuje {name}")
+
+    data_text = open(data_provider, encoding="utf-8").read()
+    should = _method_body(data_text, "public boolean shouldRequestData(")
+    if should is None or "VeloceModuleInfoSource" not in should:
+        problems.append("Jade pyta o dane o byle jaki block entity (ma filtrowac po interfejsie)")
+    append = _method_body(data_text, "public void appendServerData(")
+    if append is None or "moduleInfo(" not in append or "ServerLevel" not in append:
+        problems.append("Jade nie wypelnia danych z serwera")
+
+    component_text = open(component, encoding="utf-8").read()
+    tooltip = _method_body(component_text, "public void appendTooltip(")
+    if tooltip is None or "VeloceModuleInfoSource" not in tooltip:
+        problems.append("tooltip Jade nie filtruje naszych maszyn")
+    elif "getServerData()" not in tooltip:
+        problems.append("tooltip Jade nie czyta danych z serwera")
+    elif "VeloceModuleInfoLines.build(" not in tooltip:
+        problems.append("tooltip Jade sklada wlasne linie zamiast wspolnych z GUI")
+
+    lines_text = open(lines_path, encoding="utf-8").read()
+    for need, what in (("enoughSpeed", "statusu 'za malo sily'"),
+                       ("noPower", "statusu braku pradu"),
+                       ("speedRequired", "wymaganej predkosci")):
+        if need not in lines_text:
+            problems.append("wspolne linie opisu bez " + what)
+
+    screen_text = open(screen, encoding="utf-8").read()
+    if "VeloceModuleInfoLines.build(" not in screen_text:
+        problems.append("okno modulu nie uzywa wspolnych linii (GUI i Jade by sie rozjechaly)")
+    background = _method_body(screen_text, "public void renderBackground(")
+    if background is None or "renderTransparentBackground(" not in background \
+            or "super.renderBackground" in background:
+        problems.append("okno modulu rozmywa tlo (zgloszenie gracza: 'dziwny blur')")
+
+    mods = "src/com/craftingveloce/compat/VeloceMods.java"
+    if os.path.exists(mods) and 'JADE("jade")' not in open(mods, encoding="utf-8").read():
+        problems.append("VeloceMods bez wpisu Jade")
+    toml = "src_meta/META-INF/neoforge.mods.toml"
+    if os.path.exists(toml) and 'modId="jade"' not in open(toml, encoding="utf-8").read():
+        problems.append("neoforge.mods.toml bez opcjonalnej zaleznosci jade")
+    if "snownee.jade" not in FOREIGN_PACKAGES:
+        problems.append("snownee.jade poza FOREIGN_PACKAGES - wyciek bylby niewidoczny")
+
+    if problems:
+        fail("Jade (opis maszyny przy celowniku):\n  " + "\n  ".join(problems))
+    print("    OK (Jade: predkosc/SU/energia + status, te same linie co okno modulu)")
+
+
+def validate_terminal_craft_error():
+    """
+    Powod nieudanego craftu w terminalu trafia do TOOLTIPA itemu.
+
+    Gracz: "jak czegos nie mozna zrobic w terminalu, to te komunikaty leca na
+    pasek w gierce, ktorego w GUI terminala nie widac - niech powod pokaze sie
+    w tooltipie tego itemu, ktorego nie udalo sie zrobic".
+
+    Lancuch jest dlugi i kazde ogniwo psuje sie PO CICHU (gracz znow nie widzi
+    nic albo widzi komunikat przy losowym itemie):
+      1. serwer wysyla powod PAKIETEM, a nie przez pasek akcji - i tylko
+         w galezi niepowodzenia (komunikaty o braku terminala i pelnym
+         ekwipunku zostaja, bo ich nic nie zastepuje),
+      2. pakiet jest zarejestrowany (inaczej nie dotrze),
+      3. ekran dokleja powod do tooltipa i czysci pamiec przy zamknieciu,
+      4. ekran porownuje pozycje terminala (pakiet z innego terminala nie moze
+         pokazac powodu przy tym ekranie),
+      5. pamiec powodow zna ITEM, wygasa i jest czerwona,
+      6. komunikat sklada wspolne zrodlo kluczy (VeloceCraftErrors), a nie
+         drugi, recznie pisany switch.
+    """
+    problems = []
+    pkt = "src/com/craftingveloce/network/TerminalCraftErrorPKT.java"
+    pull = "src/com/craftingveloce/network/TerminalPullItemPKT.java"
+    handler = "src/com/craftingveloce/network/VelocePacketHandler.java"
+    screen = "src/com/craftingveloce/client/gui/VeloceTerminalScreen.java"
+    hints = "src/com/craftingveloce/client/gui/VeloceCraftErrorHints.java"
+    helper = "src/com/craftingveloce/client/ClientTerminalHelper.java"
+    errors = "src/com/craftingveloce/crafting/VeloceCraftErrors.java"
+    for path, what in ((pkt, "pakietu powodu"), (hints, "pamieci powodow"),
+                       (errors, "wspolnych kluczy komunikatow")):
+        if not os.path.exists(path):
+            problems.append("brak " + what)
+
+    if os.path.exists(handler) and "TerminalCraftErrorPKT.TYPE" not in open(
+            handler, encoding="utf-8").read():
+        problems.append("pakiet powodu nie jest zarejestrowany")
+
+    if os.path.exists(pull):
+        body = _method_body(open(pull, encoding="utf-8").read(), "public static void handle(")
+        if body is None:
+            problems.append("brak obslugi wyciagania z terminala")
+        else:
+            branch = _failure_branch(body)
+            if branch is None:
+                problems.append("brak galezi niepowodzenia w obsludze terminala")
+            elif "sendCraftError(serverPlayer, pkt, pulled)" not in branch:
+                problems.append("niepowodzenie nie wysyla powodu do tooltipa")
+            elif "displayClientMessage" in branch:
+                problems.append("niepowodzenie nadal leci na pasek akcji (w GUI go nie widac)")
+            if "inventoryFull" not in body:
+                problems.append("zginela informacja o pelnym ekwipunku")
+
+    if os.path.exists(screen):
+        text = open(screen, encoding="utf-8").read()
+        tooltip = _method_body(text, "public List<Component> getTooltipFromContainerItem(")
+        if tooltip is None or "craftErrors.appendTo(" not in tooltip:
+            problems.append("tooltip itemu nie doklada powodu nieudanego craftu")
+        removed = _method_body(text, "public void removed(")
+        if removed is None or "craftErrors.clear()" not in removed:
+            problems.append("ekran nie czysci powodow przy zamknieciu")
+        setter = _method_body(text, "public void setCraftError(")
+        if setter is None or "pos.equals(this.terminalPos)" not in setter:
+            problems.append("ekran nie sprawdza, z ktorego terminala jest powod")
+
+    if os.path.exists(hints):
+        text = open(hints, encoding="utf-8").read()
+        for need, what in (("ChatFormatting.RED", "czerwonego koloru"),
+                           ("VeloceCraftErrors.message(", "wspolnego zrodla kluczy"),
+                           ("Map<Item, Hint>", "klucza po itemie")):
+            if need not in text:
+                problems.append("pamiec powodow bez " + what)
+        # WYGASANIE sprawdzamy w CIELE appendTo, a nie w calym pliku: sama
+        # deklaracja stalej LIFETIME_MS zostaje na miejscu nawet wtedy, gdy
+        # warunek z niej zniknie - i komunikat sprzed pol godziny wraca do
+        # tooltipa. Kalibracja: podmiana warunku na `if (false)` MUSI byc
+        # zlapana (a nie byla, dopoki kontrola patrzyla na caly plik).
+        append = _method_body(text, "public void appendTo(")
+        if append is None:
+            problems.append("pamiec powodow bez metody doklejajacej powod")
+        else:
+            for need, what in (("LIFETIME_MS", "wygasania powodow"),
+                               ("Util.getMillis()", "czasu zapisu powodu")):
+                if need not in append:
+                    problems.append("pamiec powodow bez " + what)
+
+    if os.path.exists(helper):
+        forward = _method_body(open(helper, encoding="utf-8").read(),
+                               "public static void handleCraftError(")
+        if forward is None or "screen.setCraftError(" not in forward:
+            problems.append("helper nie przekazuje powodu do ekranu terminala")
+
+    if os.path.exists(errors):
+        text = open(errors, encoding="utf-8").read()
+        for need in ("craftingveloce.craft.error.noBaseItem",
+                     "craftingveloce.craft.error.extractItem"):
+            if need not in text:
+                problems.append(f"wspolne klucze bez wariantu z detalem ({need})")
+
+    if problems:
+        fail("powod nieudanego craftu w terminalu:\n  " + "\n  ".join(problems))
+    print("    OK (terminal: powod nieudanego craftu w tooltipie itemu, nie na pasku akcji)")
+
+
+def _failure_branch(body):
+    """
+    Galez niepowodzenia z obslugi terminala: od warunku do jego {@code return}.
+
+    Sprawdzamy WLASNIE te kilka linii, bo tylko tam wolno (i trzeba) wyslac
+    powod. Kontrola calego ciala metody przepuscilaby powrot paska akcji -
+    w metodzie zostaje przeciez komunikat o pelnym ekwipunku.
+    """
+    start = body.find("if (pulled.stack().isEmpty()) {")
+    if start < 0:
+        return None
+    end = body.find("return;\n            }", start)
+    return body[start:end if end > 0 else len(body)]
 
 
 def validate_jei_catalysts():
@@ -1801,25 +2027,18 @@ def validate_create_mechanics():
     if powered_body is None or "hasEnoughRotationSpeed()" not in powered_body:
         problems.append("isPowered nie wymaga progu predkosci")
 
-    # Overlay przy celowniku: "not enough rotation speed" + wymagana wartosc.
-    overlay_path = "src/com/craftingveloce/client/VeloceModuleOverlay.java"
-    if not os.path.exists(overlay_path):
-        problems.append("brak overlayu o zbyt malej predkosci")
-    else:
-        overlay = open(overlay_path, encoding="utf-8").read()
-        for need, what in (("hasEnoughRotationSpeed", "tego samego warunku co serwer"),
-                           ("requiredSpeed()", "wymaganej predkosci w napisie"),
-                           ("RenderGuiEvent", "rysowania przy celowniku")):
-            if need not in overlay:
-                problems.append("overlay bez " + what)
-        land = json.load(open("assets/craftingveloce/lang/en_us.json", encoding="utf-8"))
-        for key in ("gui.craftingveloce.module.notEnoughSpeed",
-                    "gui.craftingveloce.module.requiredSpeed"):
-            if key not in land:
-                problems.append(f"brak klucza jezyka {key}")
-        mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
-        if "VeloceModuleOverlay::onRenderGui" not in mod or "dist.isClient()" not in mod:
-            problems.append("overlay nie jest podpiety po stronie klienta")
+    # Status "za malo sily" NIE jest juz rysowany wlasnym napisem po ekranie.
+    #
+    # Gracz: "wywal to cos, zamiast tego zrob integracje z Jade" - te informacje
+    # pokazuje teraz tooltip Jade i okno po prawym kliku (patrz validate_jade_info,
+    # ktory pilnuje, ze naprawde je pokazuja). Ten test pilnuje drugiego konca:
+    # ze wlasnego napisu przy celowniku nie ma.
+    gone = "src/com/craftingveloce/client/VeloceModuleOverlay.java"
+    if os.path.exists(gone):
+        problems.append("wrocil wlasny napis przy celowniku (ma byc w tooltipie Jade)")
+    own_mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    if "VeloceModuleOverlay" in own_mod:
+        problems.append("mod nadal podpina wlasny napis przy celowniku")
 
     # Kreatywnosc i middle click maja dawac maszyne WYPELNIONA (kruszarka: 2 kola,
     # crafter: 3x3), a nie pusta - inaczej gracz stawia pustke i wyglada jak blad.
@@ -2555,6 +2774,8 @@ def main():
     validate_loot_item_ids()
     validate_showcase_command()
     validate_module_info_gui()
+    validate_jade_info()
+    validate_terminal_craft_error()
     validate_jei_catalysts()
     validate_auto_crafter_ingredient_rule()
 

@@ -40,40 +40,19 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
     }
 
     /**
-     * Komunikat niepowodzenia: najpierw POWOD z serwera, a dopiero gdy go nie ma
-     * - ogolne "nie ma itemu w sieci".
+     * Wysyla graczowi POWOD niepowodzenia - trafi do tooltipa tego itemu.
+     *
+     * <p>Do tej pory szedl tu {@code displayClientMessage(..., true)}, czyli
+     * pasek akcji. W GUI terminala paska akcji NIE WIDAC, wiec gracz klikal
+     * item, ktorego sie nie da zrobic, i nie dowiadywal sie dlaczego. Powod
+     * i detal (oba to KLUCZE tlumaczen) jedzie teraz pakietem razem z itemem,
+     * a klient sklada z nich komunikat w swoim jezyku.
      */
-    private static net.minecraft.network.chat.MutableComponent failureMessage(
-            TerminalPullItemPKT pkt,
-            VeloceTomTerminalBlockEntity.PullResult pulled) {
-        String itemName = pkt.itemStack().getHoverName().getString();
-        String reason = pulled.reason();
-        String detail = pulled.detail();
-        if (!reason.isEmpty()) {
-            // Klucze z detalem maja jedno miejsce na nazwe (np. brakujacy
-            // skladnik); pozostale sa stale i tlumaczymy je bez argumentu.
-            if (!detail.isEmpty()) {
-                return Component.translatable(detailKey(reason), detail);
-            }
-            return Component.translatable(reason);
-        }
-        return Component.translatable("craftingveloce.message.itemNotInNetwork", itemName);
-    }
-
-    /** Klucz komunikatu z detalem dla danego powodu planera. */
-    private static String detailKey(String reason) {
-        return switch (reason) {
-            case "craftingveloce.craft.error.noBase" ->
-                    "craftingveloce.craft.error.noBaseItem";
-            case "craftingveloce.craft.error.extract" ->
-                    "craftingveloce.craft.error.extractItem";
-            // Brak maszyny modulu / maszyna bez pradu: klucz ma juz miejsce
-            // na nazwe (id modulu albo nazwe maszyny).
-            case "craftingveloce.craft.error.noModule" -> "craftingveloce.craft.error.noModule";
-            case "craftingveloce.craft.error.moduleUnpowered" ->
-                    "craftingveloce.craft.error.moduleUnpowered";
-            default -> reason;
-        };
+    private static void sendCraftError(ServerPlayer serverPlayer, TerminalPullItemPKT pkt,
+                                       VeloceTomTerminalBlockEntity.PullResult pulled) {
+        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(serverPlayer,
+                new TerminalCraftErrorPKT(pkt.terminalPos(), pkt.itemStack(),
+                        pulled.reason(), pulled.detail()));
     }
 
     public static void resyncInventories(ServerPlayer serverPlayer) {
@@ -126,15 +105,16 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
                             + pulled.stack().getItem()));
 
             if (pulled.stack().isEmpty()) {
-                // POWOD, A NIE TYLKO "NIE MA".
+                // POWOD, A NIE TYLKO "NIE MA", i to w miejscu, gdzie gracz go
+                // zobaczy: w TOOLTIPIE kliknietego itemu (pasek akcji jest
+                // schowany pod GUI terminala).
                 //
                 // Wczesniej kazde niepowodzenie konczylo sie identycznym
                 // "Item not in network: X" - gracz nie mogl odroznic braku
                 // skladnika od braku receptury, maszyny bez pradu czy planu,
                 // ktory nie zmiescil sie w budzecie. Zgloszenie "GUI pokazuje,
                 // ze moge, a nie moge zrobic" bylo wtedy nierozwiazywalne.
-                serverPlayer.displayClientMessage(failureMessage(pkt, pulled)
-                        .withStyle(net.minecraft.ChatFormatting.RED), true);
+                sendCraftError(serverPlayer, pkt, pulled);
                 resyncInventories(serverPlayer);
                 return;
             }

@@ -17,7 +17,8 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
 - Otwiera ekran w stylu Creative Inventory (bez hotbara) z listą wszystkich itemów w sieci
 - Kliknięcie na item wyciąga go z sieci (1 szt. LPM, max stack SHIFT+LPM)
 - Wyświetla liczby przy itemkach (zielone cyfry) pokazujące ilość w sieci
-- Tooltip: tylko domyślny MC (bez dodatkowych linijek)
+- Tooltip: domyślny MC + **czerwony powód nieudanego craftu** przy itemie, którego nie da się zrobić
+- **Dlaczego się nie udało** dowiesz się z tooltipa klikniętego itemu („Cannot craft: no furnace in the network”, „Cannot craft: missing iron ingot”, „recipe tree too complex”…). Serwer wysyła powód pakietem `TerminalCraftErrorPKT`, a nie `displayClientMessage` — pasek akcji jest w GUI terminala **niewidoczny**, więc gracz nie widział żadnej odpowiedzi. Powód trzyma się 30 s (`VeloceCraftErrorHints`) i jest liczony per item, tak jak liczniki sieci
 - Łączy się z siecią przez `IInventoryCable` (Tom's Storage)
 
 ### 2. Veloce Extractor (`veloce_extractor`)
@@ -392,6 +393,38 @@ Tabele kategorii wypełniają moduły integracji (`CreateJeiCatalysts`,
 rdzeń (`VeloceJeiCatalysts.registerDefaults()`), bo stół Veloce działa bez
 żadnego z tych modów.
 
+### Jade — opis maszyny przy celowniku
+
+Patrzysz na naszą maszynę i widzisz w podpowiedzi Jade to samo, co w oknie po
+prawym kliku: prędkość aktualną / wymaganą / maksymalną, pobór SU, liczbę
+wklikanych elementów, stan akumulatora (maszyny na FE), stan sieci rur
+i **status — w tym „za mało siły”**.
+
+To zastąpiło własny napis „not enough rotation speed”, który rysowaliśmy
+wcześniej na środku ekranu (`VeloceModuleOverlay` — **usunięty**). Powód był
+podwójny: gracz wprost o to poprosił („wywal to coś, zrób integrację z Jade”),
+a napis HUD i tak był widoczny spod GUI jako rozmazana plama.
+
+Jak to działa (`compat/jade/`):
+
+| Element | Rola |
+|---------|------|
+| `VeloceJadePlugin` (`@WailaPlugin`) | rejestruje dane serwera dla **wszystkich** block entity i komponent tooltipa dla **wszystkich** bloków |
+| `VeloceModuleDataProvider` | `shouldRequestData` pyta tylko o BE implementujące `VeloceModuleInfoSource`; `appendServerData` wkłada gotowy `moduleInfo(ServerLevel)` |
+| `VeloceModuleComponentProvider` | dokłada linie z `VeloceModuleInfoLines` — **te same**, których używa GUI |
+
+Trzy rzeczy, które łatwo tu zepsuć i dlatego pilnuje ich `validate_jade_info`:
+
+1. **Plugin nie zna Create/Mekanism/Alchemistry.** Ładuje go samo Jade
+   (skanowanie `@WailaPlugin`), więc istnieje także u gracza bez tych modów.
+   Filtr idzie po rdzeniowym interfejsie `VeloceModuleInfoSource`, a nie po
+   klasach block entity z modułów integracji.
+2. **Liczby liczy serwer.** Tylko on zna wymaganą prędkość, pobór SU i stan
+   sieci — klient dostaje je NBT-em Jade, tak samo jak pakietem dla okna.
+3. **Jedno źródło tekstów.** GUI i Jade składają linie z
+   `VeloceModuleInfoLines.build(...)`; własna kopia w pluginie rozjechałaby oba
+   opisy przy pierwszej zmianie.
+
 ### Moduły maszyn (bloki z `compat/*`)
 
 Zaimplementowane moduły: **Mekanism** i **Alchemistry**. Wszystkie maszyny
@@ -521,6 +554,19 @@ schowany za blurem (zgłoszenie gracza). Pilnuje tego `validate_module_info_gui`
 panel musi istnieć jako tekstura ≥ 176×166, a `renderPanel` musi go rysować
 przez `blit` (a nie `fill`).
 
+**Tło okna nie jest rozmywane.** `renderBackground` woła tylko
+`renderTransparentBackground` (przygaszenie), bez `renderBlurredBackground`.
+Vanilla rozmywa przy każdym ekranie wszystko, co jest pod nim — razem z paskiem
+akcji i napisami HUD — więc teksty wystające spod panelu wyglądały jak rozmazane
+plamy (zgłoszenie: „na naszych nowych GUI dalej jest jakiś dziwny blur”). W oknie
+informacyjnym nie ma nic, co miałoby być rozmyte, więc świat i HUD zostają ostre.
+
+**Linie opisują jedno źródło.** Teksty składają się w
+`VeloceModuleInfoLines.build(CompoundTag)` i korzysta z nich **także** tooltip
+Jade — dzięki temu opis przy celowniku i w oknie nie mogą się rozjechać.
+Pierwsza linia wariantu na energię jest nagłówkiem, pod którym GUI rysuje pasek
+baterii (`isEnergy`).
+
 ---
 
 ## 🌐 Network (Packets)
@@ -554,6 +600,7 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `SyncCraftingTableStatePKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes` |
 | `SyncExtractorFiltersPKT` | S→C | `BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting` |
 | `SyncTerminalCountsPKT` | S→C | `Map<Item, Long> itemCounts, Map<Item, Long> craftableCounts` |
+| `TerminalCraftErrorPKT` | S→C | `BlockPos terminalPos, ItemStack itemStack, String reason, String detail` |
 | `TerminalPullItemPKT` | C→S | `BlockPos terminalPos, ItemStack itemStack, int count` |
 | `TerminalStoreItemPKT` | C→S | `BlockPos terminalPos, int mode` |
 | `TerminalWatcherPKT` | C→S | `BlockPos pos, boolean watching` |
@@ -623,6 +670,7 @@ została w tyle, tak jak wcześniej lista pakietów i sekcja GUI):
 - `openCraftingTableScreen(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents)`
 - `updateCraftingTableState(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes)`
 - `handleCraftableCounts(BlockPos pos, Map<Item, Long> counts, boolean complete)` — odpowiedź serwera z liczbami "ile da się dorobić"
+- `handleCraftError(BlockPos pos, ItemStack stack, String reason, String detail)` — powód nieudanego craftu z terminala; ląduje w tooltipie **tego itemu** (pasek akcji w GUI widać nie było). Ekran porównuje pozycję terminala, więc pakiet z innego terminala jest ignorowany
 
 > **Liczby "ile da się dorobić" — dwie różne rzeczy, dwie różne miary.**
 > Liczba przy itemie odpowiada na pytanie „ile tego **mogę mieć** z tego, co

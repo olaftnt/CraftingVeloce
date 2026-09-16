@@ -208,10 +208,24 @@ public class ClientTerminalHelper {
         }
     }
 
+    /**
+     * Powod nieudanej proby z terminala - trafi do tooltipa tego itemu.
+     *
+     * <p>Serwer wysyla sam powod (klucz tlumaczenia) i detal; komunikat sklada
+     * ekran, zeby byl w jezyku gracza. Pakiet moze dotyczyc INNEGO terminala
+     * (gracz ma otwarty drugi) - wtedy ekran go zignoruje.
+     */
+    public static void handleCraftError(BlockPos pos, net.minecraft.world.item.ItemStack stack,
+                                        String reason, String detail) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof VeloceTerminalScreen screen) {
+            screen.setCraftError(pos, stack, reason, detail);
+        }
+    }
+
     /** Odpowiedz serwera z liczbami "ile da sie dorobic". */
     public static void handleCraftableCounts(BlockPos pos, Map<Item, Long> counts,
-                                             boolean complete) {
-        Minecraft mc = Minecraft.getInstance();
+                                             boolean complete) {        Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof VeloceTerminalScreen screen) {
             screen.updateCraftableCounts(counts, complete);
         } else if (mc.screen instanceof com.craftingveloce.client.gui.VeloceControllerScreen screen) {

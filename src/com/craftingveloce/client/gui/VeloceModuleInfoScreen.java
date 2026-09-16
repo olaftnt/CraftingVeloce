@@ -1,6 +1,5 @@
 package com.craftingveloce.client.gui;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -76,61 +75,37 @@ public class VeloceModuleInfoScreen extends Screen {
         Minecraft.getInstance().setScreen(new VeloceModuleInfoScreen(pos, info));
     }
 
-    private boolean hasEnergy() {
-        return info.contains("energy");
-    }
-
     @Override
     protected void init() {
         lines.clear();
-        batteryLine = -1;
-        if (hasEnergy()) {
-            long energy = info.getLong("energy");
-            long capacity = info.getLong("energyCapacity");
-            lines.add(header("gui.craftingveloce.module.info.energy", energy, capacity));
-            batteryLine = lines.size() - 1;
-            lines.add(text("gui.craftingveloce.module.info.operations",
-                    info.getLong("operations"), info.getLong("fePerOperation")));
-        } else {
-            float speed = info.getFloat("speed");
-            int required = info.getInt("requiredSpeed");
-            lines.add(header("gui.craftingveloce.module.info.speed", speed, required, required));
-            lines.add(text("gui.craftingveloce.module.info.speedRequired", required));
-            lines.add(text("gui.craftingveloce.module.info.stress",
-                    info.getFloat("suDraw"), info.getFloat("suCapacity"), info.getFloat("suNeeded")));
-            lines.add(text("gui.craftingveloce.module.info.parts", info.getInt("parts")));
-        }
-        lines.add(Component.empty());
-        lines.add(header("gui.craftingveloce.module.info.network",
-                info.getInt("networkNodes"), info.getInt("networkStorages"),
-                info.getInt("networkItems")));
-        boolean working = hasEnergy() ? info.getBoolean("powered") : info.getBoolean("enoughSpeed");
-        lines.add(working
-                ? Component.translatable("gui.craftingveloce.module.info.ok")
-                        .withStyle(ChatFormatting.DARK_GREEN)
-                : Component.translatable(hasEnergy()
-                        ? "gui.craftingveloce.module.info.noPower"
-                        : "gui.craftingveloce.module.info.notEnough")
-                        .withStyle(ChatFormatting.DARK_RED));
+        // Linie sklada WSPOLNE zrodlo (VeloceModuleInfoLines) - te same teksty
+        // pokazuje tooltip Jade, gdy gracz patrzy na maszyne.
+        lines.addAll(com.craftingveloce.crafting.VeloceModuleInfoLines.build(info));
+        // Naglowek wariantu na energie jest pierwsza linia - pod nia rysujemy
+        // pasek baterii.
+        batteryLine = com.craftingveloce.crafting.VeloceModuleInfoLines.isEnergy(info) ? 0 : -1;
         blockName = blockNameAt(pos);
-    }
-
-    /**
-     * Naglowek sekcji - pogrubiony, bez koloru (na jasnym panelu kolory z
-     * {@code ChatFormatting} typu YELLOW sa nieczytelne).
-     */
-    private Component header(String key, Object... args) {
-        return Component.translatable(key, args).withStyle(ChatFormatting.BOLD);
-    }
-
-    private Component text(String key, Object... args) {
-        return Component.translatable(key, args);
     }
 
     /** Nazwa bloku do paska tytulu; przed otwarciem swiata - tytul okna. */
     private Component blockNameAt(BlockPos at) {
         net.minecraft.world.level.Level level = Minecraft.getInstance().level;
         return level == null ? title : level.getBlockState(at).getBlock().getName();
+    }
+
+    /**
+     * Tlo okna BEZ rozmycia swiata.
+     *
+     * <p><b>Zgloszenie gracza: "na naszych nowych GUI jest jakis dziwny blur".</b>
+     * Vanilla przy kazdym ekranie rozmywa to, co jest pod nim - razem z paskiem
+     * akcji i napisami HUD - wiec teksty wystajace spod panelu wygladaly jak
+     * rozmazane plamy ("tooltip za blurem"). Okno informacyjne nie ma pod soba
+     * niczego, co mialoby byc rozmyte, wiec zostawiamy samo przygaszenie:
+     * swiat i HUD pozostaja ostre, a panel i tak jest nieprzezroczysty.
+     */
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        renderTransparentBackground(graphics);
     }
 
     @Override
