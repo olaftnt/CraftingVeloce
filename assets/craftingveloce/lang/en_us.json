@@ -77,5 +77,7 @@
   "craftingveloce.craft.error.noFurnace": "Cannot craft: no furnace in the network",
   "craftingveloce.craft.error.furnaceUnpowered": "Cannot craft: furnace has no fuel/power",
   "craftingveloce.craft.error.noModule": "Cannot craft: no machine for %s",
-  "craftingveloce.craft.error.moduleUnpowered": "Cannot craft: %s has no power"
+  "craftingveloce.craft.error.moduleUnpowered": "Cannot craft: %s has no power",
+  "craftingveloce.craft.error.noCrafter": "Cannot craft: no auto-crafter in the network",
+  "craftingveloce.craft.error.crafterDisabled": "Cannot craft: disabled in the auto-crafter"
 }

@@ -313,19 +313,26 @@ public final class VeloceAutoCrafter {
         // 3. Brakuje - trzeba wycraftowac. Wolno tylko gdy wlaczone.
         int missing = (int) Math.min(Integer.MAX_VALUE, count - available);
         if (!ctx.isEnabled(item)) {
+            // KONKRETNY powod, nie samo "disabled": brak craftera, item
+            // wylaczony w crafterze, brak pieca, maszyna modulu bez pradu...
+            VeloceCraftingRegistry.DisabledReason reason =
+                    VeloceCraftingRegistry.whyNotCraftable(level, network, item);
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
-                    "%s has auto-crafting disabled - cannot craft", item);
-            return CraftResult.fail("craftingveloce.craft.error.disabled");
+                    "%s is not craftable in this network: %s %s",
+                    item, reason.reasonKey(), reason.detail());
+            VeloceCraftTrace.log("item nie jest craftowalny: %s %s",
+                    reason.reasonKey(), reason.detail());
+            return CraftResult.fail(reason.reasonKey(), reason.detail());
         }
 
         // SLAD (tylko dla akcji gracza - patrz VeloceCraftTrace.begin):
         // zrzucamy WSZYSTKO, co decyduje o wyniku, zanim cokolwiek policzymy.
         if (VeloceCraftTrace.active()) {
+            // Srodowisko i receptury zrzuca juz terminal (przed bramka
+            // "czy w ogole wolno"), wiec tutaj dokladamy liczby.
             VeloceCraftTrace.log("zadanie: %sx %s (%s), w sieci=%d, w ekwipunku=%d, brakuje=%d",
                     count, VeloceCraftTrace.name(item), VeloceCraftTrace.id(item),
                     inNetwork, inInventory, missing);
-            VeloceCraftTrace.dumpEnvironment(level, network, item);
-            VeloceCraftTrace.dumpRecipes(level, network, item);
             VeloceCraftTrace.dumpStock(netStock, item,
                     VeloceRecipeFinder.all(level, item));
         }

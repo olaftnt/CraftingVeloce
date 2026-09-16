@@ -523,12 +523,39 @@ public final class VeloceCraftingCache {
      * sterownik, jedno miejsce.
      */
     public static void tickAll(ServerLevel level) {
-        if (CACHES.isEmpty()) {
+        if (shuttingDown) {
             return;
         }
-        for (Map.Entry<CacheKey, VeloceCraftingCache> e : CACHES.entrySet()) {
-            if (e.getKey().dimension().equals(level.dimension())) {
-                e.getValue().tickIdle(level);
+        com.craftingveloce.network.pipe.VelocePipeNetworkManager manager =
+                com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level);
+
+        // CACHE MUSI POWSTAC DLA KAZDEJ ZNANEJ SIECI - inaczej nie ma czego
+        // utrzymywac i force-loady nie dzialaja WCALE.
+        //
+        // BUG, ktory to naprawia (zgloszenie gracza: "nie moge skraftowac ani
+        // glass, ani crushing wheela"; w logu "2 node(s) of the network could
+        // not be read (chunk not loaded)"): po przeniesieniu utrzymania
+        // force-loadow z terminala na tick poziomu zostala tylko petla po
+        // ISTNIEJACYCH cache'ach, a cache nie tworzyl juz NIKT. Mapa byla
+        // pusta, wiec chunki z piecem, crafterem i maszynami modulow
+        // rozladowywaly sie, gdy gracz odszedl do terminala - a wtedy siec ich
+        // nie widziala i nic nie bylo craftowalne, mimo ze GUI pokazywalo
+        // liczby policzone wczesniej, gdy chunki byly jeszcze zaladowane.
+        java.util.Set<UUID> live = new java.util.HashSet<>();
+        for (VelocePipeNetwork network : manager.knownNetworks()) {
+            live.add(network.getId());
+            get(level, network).tickIdle(level);
+        }
+
+        // Cache po sieciach, ktore zniknely z menedzera - zwolnij chunki,
+        // zeby nie zostaly wymuszone do konca sesji.
+        for (CacheKey key : new java.util.ArrayList<>(CACHES.keySet())) {
+            if (!key.dimension().equals(level.dimension()) || live.contains(key.networkId())) {
+                continue;
+            }
+            VeloceCraftingCache dead = CACHES.remove(key);
+            if (dead != null) {
+                dead.release(level);
             }
         }
     }

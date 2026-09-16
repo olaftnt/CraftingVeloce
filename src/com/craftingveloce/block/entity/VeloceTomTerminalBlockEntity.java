@@ -724,17 +724,40 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                                             ItemStack requested, int count) {
         Item item = requested.getItem();
 
-        // Craftujemy tylko to, co ma wlaczony auto-crafting w jakims crafterze sieci.
-        if (com.craftingveloce.crafting.VeloceCraftingRegistry
-                .findEnabledCrafter(sl, net, item) == null) {
-            // Powod dla gracza: to NIE jest "brak itemu w sieci", tylko
-            // wylaczony auto-crafting dla tego itemu - i tak go nazywamy.
-            return new PullResult(ItemStack.EMPTY,
-                    "craftingveloce.craft.error.disabled", "");
+        // ZRZUT DIAGNOSTYCZNY PRZED JAKAKOLWIEK BRAMKA.
+        //
+        // Dzieki temu slad odpowiada takze wtedy, gdy craft NIE dojdzie do
+        // planowania (np. item nie jest w zbiorze craftowalnych) - gracz wlasnie
+        // o takim przypadku zglaszal "nie moge skraftowac".
+        if (com.craftingveloce.crafting.VeloceCraftTrace.active()) {
+            com.craftingveloce.crafting.VeloceCraftTrace.log(
+                    "zadanie z terminala: %dx %s (%s)", count,
+                    requested.getHoverName().getString(),
+                    com.craftingveloce.crafting.VeloceCraftTrace.id(item));
+            com.craftingveloce.crafting.VeloceCraftTrace.dumpEnvironment(sl, net, item);
+            com.craftingveloce.crafting.VeloceCraftTrace.dumpRecipes(sl, net, item);
         }
 
+        // CZY WOLNO CRAFTowac - decyduje ZBIOR WLACZONYCH ITEMOW.
+        //
+        // BUG, ktory to naprawia (zgloszenie gracza: "z piecyka veloce tez nic
+        // nie moge skraftowac"): bramka pytala o CRAFTER w sieci
+        // (findEnabledCrafter), a nie o to, czy siec potrafi zrobic ten item.
+        // Odkad moce przetwarzania sa modulami (piec, Create, Mekanism...),
+        // crafter nie jest juz potrzebny do receptur pieca ani do maszyn
+        // modulow - a GUI pokazywalo liczby z wlasnie tak policzonego zbioru.
+        // Skutek: GUI mowilo "mozesz", a craft konczyl sie "disabled".
         var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getAllEnabledItems(sl, net);
+        if (!enabled.contains(item)) {
+            // Powod dla gracza i do sladu: DLACZEGO nie ma tego w zbiorze.
+            var reason = com.craftingveloce.crafting.VeloceCraftingRegistry
+                    .whyNotCraftable(sl, net, item);
+            com.craftingveloce.crafting.VeloceCraftTrace.log(
+                    "item NIE jest w zbiorze craftowalnych: %s (szczegol: %s)",
+                    reason.reasonKey(), reason.detail());
+            return new PullResult(ItemStack.EMPTY, reason.reasonKey(), reason.detail());
+        }
         var preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getPreferredRecipes(sl, net);
 

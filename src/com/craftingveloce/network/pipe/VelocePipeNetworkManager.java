@@ -1036,6 +1036,18 @@ public class VelocePipeNetworkManager extends SavedData {
      * <p>Wynik jest cache'owany na jeden tick gry, zeby kilka odczytow w tej
      * samej komendzie nie budowalo sieci od nowa.
      */
+    /**
+     * Sieci JUZ ZBUDOWANE w tym wymiarze - bez przebudowy ze swiata.
+     *
+     * <p>Uzywane przez utrzymanie force-loadow ({@code VeloceCraftingCache
+     * .tickAll}): ono chodzi co tick, wiec nie moze sobie pozwolic na
+     * przebudowe sieci, a jednocześnie musi znac sieci, ktore istnieja - inaczej
+     * nie ma dla nich cache i chunki z maszynami sie rozladuja.
+     */
+    public Collection<VelocePipeNetwork> knownNetworks() {
+        return new java.util.ArrayList<>(networks.values());
+    }
+
     public Collection<VelocePipeNetwork> getAllNetworks(ServerLevel level) {
         long now = level.getGameTime();
         if (derivedNetworks != null && derivedNetworksTick == now) {

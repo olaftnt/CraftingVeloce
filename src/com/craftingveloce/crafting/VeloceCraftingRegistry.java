@@ -11,6 +11,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -88,6 +89,65 @@ public final class VeloceCraftingRegistry {
             }
         }
         return null;
+    }
+
+    /**
+     * DLACZEGO tego itemu nie ma w zbiorze craftowalnych - konkretny powod.
+     *
+     * <p>Uzywane przez terminal (komunikat dla gracza i slad diagnostyczny).
+     * Pytamy w kolejnosci, ktora wskazuje NAPRAWE:
+     * <ol>
+     *   <li>brak craftera (dla receptur bez infrastruktury),</li>
+     *   <li>item wylaczony w crafterze,</li>
+     *   <li>brak pieca / piec bez paliwa,</li>
+     *   <li>maszyna modulu nie stoi / nie ma pradu,</li>
+     *   <li>w ostatecznosci: brak receptury.</li>
+     * </ol>
+     */
+    public static DisabledReason whyNotCraftable(ServerLevel level, VelocePipeNetwork network,
+                                                 Item item) {
+        boolean freeRecipe = !VeloceRecipeRegistry.getRecipesFor(level, item).isEmpty();
+        List<VeloceCraftingTableBlockEntity> crafters = crafters(level, network);
+        if (freeRecipe && crafters.isEmpty()) {
+            return new DisabledReason("craftingveloce.craft.error.noCrafter", "");
+        }
+        if (freeRecipe) {
+            boolean disabledSomewhere = false;
+            for (VeloceCraftingTableBlockEntity crafter : crafters) {
+                if (!crafter.isEnabled(item)) {
+                    disabledSomewhere = true;
+                    break;
+                }
+            }
+            if (disabledSomewhere) {
+                return new DisabledReason("craftingveloce.craft.error.crafterDisabled", "");
+            }
+        }
+        if (!VeloceRecipeRegistry.getFurnaceRecipesFor(level, item).isEmpty()) {
+            if (!VeloceHeatSources.hasAnyHeatSource(level, network)) {
+                return new DisabledReason("craftingveloce.craft.error.noFurnace", "");
+            }
+            if (!VeloceHeatSources.hasPower(level, network)) {
+                return new DisabledReason("craftingveloce.craft.error.furnaceUnpowered", "");
+            }
+        }
+        for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
+            if (module.recipesAnywhere(level, item).isEmpty()) {
+                continue;
+            }
+            if (!module.available(level, network)) {
+                return new DisabledReason("craftingveloce.craft.error.noModule", module.id());
+            }
+            if (!module.powered(level, network)) {
+                return new DisabledReason("craftingveloce.craft.error.moduleUnpowered",
+                        module.id());
+            }
+        }
+        return new DisabledReason("craftingveloce.craft.error.disabled", "");
+    }
+
+    /** Powod, dla ktorego item nie jest craftowalny: klucz jezykowy + szczegol. */
+    public record DisabledReason(String reasonKey, String detail) {
     }
 
     /** Czy w sieci istnieje jakikolwiek crafter z wlaczona receptura dla itemu. */
