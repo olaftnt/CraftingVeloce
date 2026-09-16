@@ -11,18 +11,24 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 /** Menu brewing standa: 3 butelki, skladnik, blaze powder + ekwipunek gracza (jak piec). */
 public class VeloceBrewingStandMenu extends AbstractContainerMenu {
 
-    private static final int PLAYER_X = 26;
+    private static final int PLAYER_X = 8;
     private static final int PLAYER_Y = 84;
     private static final int BOTTLE_X = 56;
-    private static final int BOTTLE_Y = 53;
-    private static final int INGREDIENT_X = 56;
+    private static final int BOTTLE_Y = 51;
+    private static final int INGREDIENT_X = 79;
     private static final int INGREDIENT_Y = 17;
-    private static final int FUEL_X = 116;
-    private static final int FUEL_Y = 35;
+    private static final int FUEL_X = 17;
+    private static final int FUEL_Y = 17;
 
     private final BlockPos pos;
-
     private final net.minecraft.world.inventory.ContainerData dataAccess;
+
+    private boolean isBottle(ItemStack stack) {
+        return stack.is(net.minecraft.world.item.Items.POTION) ||
+               stack.is(net.minecraft.world.item.Items.SPLASH_POTION) ||
+               stack.is(net.minecraft.world.item.Items.LINGERING_POTION) ||
+               stack.is(net.minecraft.world.item.Items.GLASS_BOTTLE);
+    }
 
     public VeloceBrewingStandMenu(int id, Inventory playerInv, BlockPos pos) {
         this(id, playerInv, pos, new net.minecraft.world.inventory.SimpleContainerData(2));
@@ -39,13 +45,8 @@ public class VeloceBrewingStandMenu extends AbstractContainerMenu {
         final net.minecraft.world.item.alchemy.PotionBrewing potionBrewing = playerInv.player.level().potionBrewing();
 
         for (int bottle = 0; bottle < 3; bottle++) {
-            this.addSlot(new Slot(container, bottle, BOTTLE_X + bottle * 18, BOTTLE_Y) {
-                public boolean mayPlace(ItemStack stack) { 
-                    return stack.is(net.minecraft.world.item.Items.POTION) ||
-                           stack.is(net.minecraft.world.item.Items.SPLASH_POTION) ||
-                           stack.is(net.minecraft.world.item.Items.LINGERING_POTION) ||
-                           stack.is(net.minecraft.world.item.Items.GLASS_BOTTLE);
-                }
+            this.addSlot(new Slot(container, bottle, BOTTLE_X + bottle * 23, BOTTLE_Y + (bottle == 1 ? 7 : 0)) {
+                public boolean mayPlace(ItemStack stack) { return isBottle(stack); }
                 public int getMaxStackSize() { return 1; }
             });
         }
@@ -53,7 +54,7 @@ public class VeloceBrewingStandMenu extends AbstractContainerMenu {
             public boolean mayPlace(ItemStack stack) { return potionBrewing.isIngredient(stack); }
         });
         this.addSlot(new Slot(container, 4, FUEL_X, FUEL_Y) {
-            public boolean mayPlace(ItemStack stack) { return stack.is(net.minecraft.world.item.Items.BLAZE_POWDER); }
+            public boolean mayPlace(ItemStack stack) { return stack.getCapability(net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.ITEM) != null; }
         });
 
         for (int row = 0; row < 3; row++) {
@@ -73,7 +74,7 @@ public class VeloceBrewingStandMenu extends AbstractContainerMenu {
         return this.dataAccess.get(0);
     }
 
-    public int getFuel() {
+    public int getEnergy() {
         return this.dataAccess.get(1);
     }
 

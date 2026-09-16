@@ -25,7 +25,7 @@ import net.minecraft.world.level.block.state.BlockState;
  * zapis w NBT, menu dziala. Bez logiki mieszania - to dalszy etap.
  */
 public class VeloceBrewingStandBlockEntity extends BlockEntity
-        implements net.minecraft.world.Container, net.minecraft.world.MenuProvider {
+        implements net.minecraft.world.Container, net.minecraft.world.MenuProvider, net.neoforged.neoforge.energy.IEnergyStorage {
 
     /** 0-2 butelki, 3 skladnik, 4 blaze powder - dokladnie jak w wanilii. */
     private final SimpleContainer items = new SimpleContainer(5);
@@ -40,23 +40,40 @@ public class VeloceBrewingStandBlockEntity extends BlockEntity
         return net.minecraft.network.chat.Component.translatable("block.craftingveloce.brewing_stand");
     }
 
+
     public int brewTime = 0;
     private boolean[] lastPotionCount;
     private net.minecraft.world.item.Item ingredient;
-    public int fuel = 0;
+    public int energy = 0;
+    public static final int ENERGY_CAPACITY = 25_000_000;
+    public static final int FE_PER_BREW = 200_000;
+    public static final int MAX_PULL_PER_TICK = 1_000_000;
 
-    protected final net.minecraft.world.inventory.ContainerData dataAccess = new net.minecraft.world.inventory.ContainerData() {
+    private com.craftingveloce.network.pipe.VelocePipeNetwork networkFor(net.minecraft.server.level.ServerLevel sl) {
+        var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            net.minecraft.core.BlockPos side = worldPosition.relative(dir);
+            if (sl.isLoaded(side) && sl.getBlockState(side).getBlock() instanceof com.craftingveloce.block.VelocePipeBlock) {
+                var net = manager.getNetworkForPipe(sl, side);
+                if (net != null) return net;
+            }
+        }
+        return manager.getNetworkForTerminal(sl, worldPosition);
+    }
+
+
+protected final net.minecraft.world.inventory.ContainerData dataAccess = new net.minecraft.world.inventory.ContainerData() {
         public int get(int index) {
             switch (index) {
                 case 0: return VeloceBrewingStandBlockEntity.this.brewTime;
-                case 1: return VeloceBrewingStandBlockEntity.this.fuel;
+                case 1: return VeloceBrewingStandBlockEntity.this.energy;
                 default: return 0;
             }
         }
         public void set(int index, int value) {
             switch (index) {
                 case 0: VeloceBrewingStandBlockEntity.this.brewTime = value; break;
-                case 1: VeloceBrewingStandBlockEntity.this.fuel = value; break;
+                case 1: VeloceBrewingStandBlockEntity.this.energy = value; break;
             }
         }
         public int getCount() { return 2; }
@@ -71,7 +88,7 @@ public class VeloceBrewingStandBlockEntity extends BlockEntity
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         tag.putShort("BrewTime", (short)this.brewTime);
-        tag.putByte("Fuel", (byte)this.fuel);
+        tag.putInt("Energy", this.energy);
         tag.put("Items", items.createTag(registries));
     }
 
@@ -79,34 +96,34 @@ public class VeloceBrewingStandBlockEntity extends BlockEntity
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
         this.brewTime = tag.getShort("BrewTime");
-        this.fuel = tag.getByte("Fuel");
+        this.energy = tag.getInt("Energy");
         items.fromTag(tag.getList("Items", net.minecraft.nbt.Tag.TAG_COMPOUND), registries);
     }
 
-    public static void serverTick(net.minecraft.world.level.Level level, BlockPos pos, BlockState state, VeloceBrewingStandBlockEntity be) {
-        ItemStack fuelStack = be.items.getItem(4);
-        if (be.fuel <= 0 && fuelStack.is(net.minecraft.world.item.Items.BLAZE_POWDER)) {
-            be.fuel = 20;
-            fuelStack.shrink(1);
-            setChanged(level, pos, state);
-        }
+public static void serverTick(net.minecraft.world.level.Level level, BlockPos pos, BlockState state, VeloceBrewingStandBlockEntity be) {
+        if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) return;
+
+        be.chargeFromItem();
+        com.craftingveloce.network.pipe.VeloceEnergyPull.pull(sl, be.networkFor(sl), be, MAX_PULL_PER_TICK);
 
         boolean canBrew = isBrewable(level.potionBrewing(), be.items);
         boolean isBrewing = be.brewTime > 0;
         ItemStack ingredient = be.items.getItem(3);
 
         if (isBrewing) {
-            be.brewTime--;
-            boolean done = be.brewTime == 0;
-            if (done && canBrew) {
-                doBrew(level, pos, be.items);
-                setChanged(level, pos, state);
-            } else if (!canBrew || !ingredient.is(be.ingredient)) {
-                be.brewTime = 0;
-                setChanged(level, pos, state);
+            if (be.energy >= 500) {
+                be.energy -= 500;
+                be.brewTime--;
+                boolean done = be.brewTime == 0;
+                if (done && canBrew) {
+                    doBrew(level, pos, be.items);
+                    setChanged(level, pos, state);
+                } else if (!canBrew || !ingredient.is(be.ingredient)) {
+                    be.brewTime = 0;
+                    setChanged(level, pos, state);
+                }
             }
-        } else if (canBrew && be.fuel > 0) {
-            be.fuel--;
+        } else if (canBrew && be.energy >= 500) {
             be.brewTime = 400; // standard brew time
             be.ingredient = ingredient.getItem();
             setChanged(level, pos, state);
@@ -125,6 +142,26 @@ public class VeloceBrewingStandBlockEntity extends BlockEntity
                 level.setBlock(pos, newState, 2);
             }
         }
+    }
+
+    private void chargeFromItem() {
+        ItemStack battery = items.getItem(4);
+        if (battery.isEmpty()) return;
+        var itemEnergy = battery.getCapability(
+                net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.ITEM);
+        if (itemEnergy == null || !itemEnergy.canExtract()) return;
+
+        int space = ENERGY_CAPACITY - energy;
+        if (space <= 0) return;
+
+        int taken = itemEnergy.extractEnergy(space, false);
+        if (taken <= 0) return;
+
+        int accepted = receiveEnergy(taken, false);
+        if (accepted < taken) {
+            itemEnergy.receiveEnergy(taken - accepted, false);
+        }
+        if (accepted > 0) setChanged();
     }
 
     private boolean[] getPotionBits() {
@@ -170,6 +207,34 @@ public class VeloceBrewingStandBlockEntity extends BlockEntity
         }
         level.levelEvent(1035, pos, 0);
     }
+
+
+    @Override
+    public int receiveEnergy(int toReceive, boolean simulate) {
+        if (toReceive <= 0) return 0;
+        int space = ENERGY_CAPACITY - energy;
+        int accepted = Math.min(space, toReceive);
+        if (!simulate && accepted > 0) {
+            energy += accepted;
+            setChanged();
+        }
+        return accepted;
+    }
+
+    @Override
+    public int extractEnergy(int toExtract, boolean simulate) { return 0; }
+
+    @Override
+    public int getEnergyStored() { return energy; }
+
+    @Override
+    public int getMaxEnergyStored() { return ENERGY_CAPACITY; }
+
+    @Override
+    public boolean canExtract() { return false; }
+
+    @Override
+    public boolean canReceive() { return true; }
 
     // --- Container (5 slotow) -------------------------------------------------
     @Override

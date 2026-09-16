@@ -195,6 +195,13 @@ public class CraftingVeloceMod {
                     VeloceRegistry.ELECTRIC_FURNACE_BE.get(),
                     (be, side) -> be
             );
+            // Brewing Stand - Forge Energy
+            event.registerBlockEntity(
+                    net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                    VeloceRegistry.BREWING_STAND_BE.get(),
+                    (be, side) -> be
+            );
+
         });
 
         // Napis "not enough rotation speed" przy celowniku ZOSTAL USUNIETY.
