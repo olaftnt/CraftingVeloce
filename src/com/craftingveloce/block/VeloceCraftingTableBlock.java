@@ -63,6 +63,9 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
                 .mapColor(MapColor.COLOR_CYAN)
                 .sound(SoundType.WOOD)
                 .strength(2.5F)
+                .noOcclusion()
+                .isViewBlocking((state, world, pos) -> false)
+                .isSuffocating((state, world, pos) -> false)
                 .lightLevel(s -> 7));
     }
 

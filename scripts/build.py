@@ -1205,6 +1205,37 @@ def validate_block_models():
     print(f"    OK ({checked} odwolan do modeli i tekstur istnieje)")
 
 
+def validate_case_occlusion():
+    """
+    Kazdy nasz blok musi byc {@code noOcclusion()} + nie zaslaniac sasiadow.
+
+    BUG, ktory to wykryl (zgloszenie gracza): obudowy z zawartoscia w srodku
+    (kontroler, ekstraktor, sensory, piece, moduly) nie mialy {@code noOcclusion},
+    wiec gra traktowala je jak PELNY, nieprzezroczysty szescian i obcinala
+    sciany sasiadow tam, gdzie sie stykaly ("robila sie przezroczystosc i nie
+    bylo widac klocka obok"). Pusta klatka Integrale miala te opcje od poczatku -
+    dlatego dzialala i dlatego objaw wygladal na przypadkowy.
+    """
+    problems = []
+    files = ["src/com/craftingveloce/init/VeloceRegistry.java"]
+    files += sorted(glob.glob("src/com/craftingveloce/compat/*/*Blocks.java"))
+    files += sorted(glob.glob("src/com/craftingveloce/compat/*/block/*.java"))
+    for path in files:
+        if not os.path.exists(path):
+            continue
+        text = open(path, encoding="utf-8").read()
+        chains = text.count("Properties.of(")
+        if chains == 0:
+            continue
+        missing = chains - text.count("noOcclusion()")
+        if missing > 0:
+            problems.append(f"{path.replace(os.sep, '/')}: {missing} z {chains} "
+                            f"definicji blokow bez noOcclusion()")
+    if problems:
+        fail("przezroczystosc obudow (noOcclusion):\n  " + "\n  ".join(problems))
+    print("    OK (kazda definicja bloku: noOcclusion + nie zaslania sasiadow)")
+
+
 def validate_mods_toml():
     """
     `neoforge.mods.toml` musi sie PARSOWAC i miec wymagane zaleznosci.
@@ -1729,6 +1760,7 @@ def main():
     validate_integrale_model()
     validate_integrale_display()
     validate_mods_toml()
+    validate_case_occlusion()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))

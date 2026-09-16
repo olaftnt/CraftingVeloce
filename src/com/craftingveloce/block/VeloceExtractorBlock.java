@@ -49,6 +49,9 @@ public class VeloceExtractorBlock extends BaseEntityBlock
                 .mapColor(MapColor.COLOR_PURPLE)
                 .sound(SoundType.METAL)
                 .strength(3.0F)
+                .noOcclusion()
+                .isViewBlocking((state, world, pos) -> false)
+                .isSuffocating((state, world, pos) -> false)
                 .lightLevel(s -> 7));
     }
 

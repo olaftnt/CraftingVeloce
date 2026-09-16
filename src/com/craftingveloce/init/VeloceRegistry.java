@@ -91,6 +91,9 @@ public class VeloceRegistry {
             BLOCKS.register("velocity_furnace",
                     () -> new com.craftingveloce.block.VeloceVelocityFurnaceBlock(
                             net.minecraft.world.level.block.state.BlockBehaviour.Properties.of()
+        .noOcclusion()
+        .isViewBlocking((state, world, pos) -> false)
+        .isSuffocating((state, world, pos) -> false)
                                     .strength(3.5f)
                                     .requiresCorrectToolForDrops()));
 
@@ -115,6 +118,9 @@ public class VeloceRegistry {
             BLOCKS.register("electric_furnace",
                     () -> new com.craftingveloce.block.VeloceElectricFurnaceBlock(
                             net.minecraft.world.level.block.state.BlockBehaviour.Properties.of()
+        .noOcclusion()
+        .isViewBlocking((state, world, pos) -> false)
+        .isSuffocating((state, world, pos) -> false)
                                     .strength(3.5f)
                                     .requiresCorrectToolForDrops()));
 

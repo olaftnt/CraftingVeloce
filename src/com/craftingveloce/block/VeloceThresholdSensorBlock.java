@@ -68,6 +68,9 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
     public VeloceThresholdSensorBlock() {
         super(BlockBehaviour.Properties.of()
                 .strength(3.0F)
+                .noOcclusion()
+                .isViewBlocking((state, world, pos) -> false)
+                .isSuffocating((state, world, pos) -> false)
                 .requiresCorrectToolForDrops());
         registerDefaultState(this.stateDefinition.any().setValue(POWERED, false));
     }

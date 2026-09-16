@@ -73,7 +73,10 @@ public final class MekanismBlocks {
                 .mapColor(MapColor.METAL)
                 .sound(SoundType.METAL)
                 .strength(3.5F)
-                .requiresCorrectToolForDrops();
+                .requiresCorrectToolForDrops()
+        .noOcclusion()
+        .isViewBlocking((state, world, pos) -> false)
+        .isSuffocating((state, world, pos) -> false);
     }
 
     public static void register(IEventBus modEventBus) {
