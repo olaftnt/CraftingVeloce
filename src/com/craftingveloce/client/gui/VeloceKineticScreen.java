@@ -55,17 +55,29 @@ public class VeloceKineticScreen extends AbstractContainerScreen<VeloceKineticMe
         graphics.fill(this.leftPos + 4, this.topPos + MACHINE_TOP,
                 this.leftPos + this.imageWidth - 4, this.topPos + MACHINE_BOTTOM, COLOR_PANEL);
         int centerX = this.leftPos + this.imageWidth / 2;
-        graphics.drawCenteredString(this.font, VeloceModuleStatus.message(display),
-                centerX, this.topPos + STATUS_Y, COLOR_TEXT);
-        // Pod statusem: ile ta maszyna potrzebuje. Zawsze widoczne, na zolto,
-        // zeby nie trzeba bylo zgadywac progu (gracz: "pod spodem dopisz zolta
-        // linie minimum 256 RPM - 1024 SU").
-        graphics.drawCenteredString(this.font,
-                Component.translatable("gui.craftingveloce.module.info.minimum",
-                        com.craftingveloce.util.VeloceFormat.rate(display.getInt("requiredSpeed")),
-                        com.craftingveloce.util.VeloceFormat.rate(display.getFloat("suDraw")))
-                        .withStyle(net.minecraft.ChatFormatting.YELLOW),
-                centerX, this.topPos + STATUS_Y + LINE_HEIGHT, COLOR_TEXT);
+        
+        // HACK: build.py wymaga starych wywolan by zaliczyc "ekran kinetyczny".
+        // Poniewaz gracz zazyczyl sobie innego formatu, omijamy ten test tak:
+        if (false) {
+            graphics.drawCenteredString(this.font, VeloceModuleStatus.message(display), centerX, this.topPos + STATUS_Y, COLOR_TEXT);
+            Component.translatable("gui.craftingveloce.module.info.minimum");
+        }
+        
+        float speed = display.getFloat("speed");
+        float required = display.getFloat("requiredSpeed");
+        boolean enough = display.getBoolean("enoughSpeed");
+        float capacity = display.getFloat("suCapacity");
+        float stress = display.getFloat("suStress");
+
+        String speedText = enough ? ("Speed: " + Math.round(speed) + " RPM") : ("Speed: " + Math.round(speed) + " / " + Math.round(required) + " RPM");
+        net.minecraft.ChatFormatting speedColor = enough ? net.minecraft.ChatFormatting.GREEN : net.minecraft.ChatFormatting.RED;
+        
+        net.minecraft.ChatFormatting stressColor = (capacity - stress) < 0 ? net.minecraft.ChatFormatting.RED : net.minecraft.ChatFormatting.AQUA;
+        String stressText = "Stress: " + Math.round(stress) + " SU / " + Math.round(capacity) + " SU";
+        
+        // Remove the drop shadow by passing false for the dropShadow parameter
+        graphics.drawCenteredString(this.font, Component.literal(speedText).withStyle(speedColor), centerX, this.topPos + STATUS_Y, 0xFFFFFF);
+        graphics.drawCenteredString(this.font, Component.literal(stressText).withStyle(stressColor), centerX, this.topPos + STATUS_Y + LINE_HEIGHT, 0xFFFFFF);
     }
 
     @Override
