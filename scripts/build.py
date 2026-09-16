@@ -996,7 +996,52 @@ def validate_number_format():
     print("    OK (formaty liczb tylko w VeloceFormat)")
 
 
+def validate_module_recipe_access():
+    """
+    {@code recipesAnywhere} NIE moze filtrowac po maszynach ani zasilaniu.
+
+    Ta metoda istnieje wlasnie po to, zeby narzedzia (np. {@code /cv getitems})
+    mogly powiedziec "jak sie to robi" bez posiadania maszyny. Jesli ktos
+    dopisze do niej warunek "maszyna stoi i ma prad" (bo tak wyglada metoda
+    obok, {@code recipesFor}), komenda znowu zacznie klamac: dla itemu
+    powstajacego w maszynie modulu powie "nie ma receptury".
+
+    To nie jest hipoteza - ten blad juz wystapil w innej formie (komenda nie
+    widziala receptur modulow wcale), a objaw jest mylacy: brak informacji
+    udaje informacje. Dlatego pilnuje tego build.
+    """
+    problems, checked = [], 0
+    for path in sorted(glob.glob("src/com/craftingveloce/compat/*/*Module.java")):
+        text = open(path, encoding="utf-8").read()
+        start = text.find("recipesAnywhere")
+        if start < 0:
+            continue
+        checked += 1
+        brace = text.find("{", start)
+        depth, end = 0, brace
+        for i in range(brace, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        body = text[brace:end]
+        offenders = [w for w in ("hasPowered", "hasAny(", "isPowered",
+                                 "VeloceProcessingSources")
+                     if w in body]
+        if offenders:
+            problems.append(path.replace(os.sep, "/") + ": " + ", ".join(offenders))
+    if problems:
+        fail("recipesAnywhere filtruje po maszynach (a nie powinno):\n  "
+             + "\n  ".join(problems))
+    if checked:
+        print(f"    OK ({checked} modulow: recipesAnywhere bez gatingu maszyn)")
+
+
 def game_running():
+
 
 
     """
@@ -1181,6 +1226,7 @@ def main():
     validate_isolation_runtime(cp, toms, rs)
     validate_create_kinetics()
     validate_number_format()
+    validate_module_recipe_access()
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "

@@ -74,6 +74,21 @@ public interface VeloceProcessingModule {
     }
 
     /**
+     * Receptury tego modulu na dany item BEZ patrzenia na maszyny i zasilanie.
+     *
+     * <p><b>Po co osobna metoda.</b> {@link #recipesFor} odpowiada na pytanie
+     * planera: "co moge zrobic TERAZ" - wiec wymaga maszyny w sieci i pradu.
+     * Narzedzia (np. komenda {@code /cv getitems}) pytaja o cos innego: "JAK
+     * sie to w ogole robi" - i musza dostac recepture takze wtedy, gdy gracz
+     * nie ma jeszcze maszyny. Bez tego rozroznienia komenda twierdzila, ze
+     * item nie ma receptury, choc receptura istnieje (np. mechanical crafting
+     * Create) - a to najgorszy rodzaj bledu: brak informacji udajacy informacje.
+     */
+    default List<ProcessingEntry> recipesAnywhere(ServerLevel level, Item item) {
+        return List.of();
+    }
+
+    /**
      * Czysci pamiec modulu (indeksy receptur).
      *
      * <p>Wolane przy zmianie swiata / przeladowaniu danych. Domyslnie nic -

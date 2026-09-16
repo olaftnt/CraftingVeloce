@@ -109,6 +109,22 @@ public final class MekanismModule implements VeloceProcessingModule {
         return out;
     }
 
+    /**
+     * Receptury na dany item BEZ patrzenia na maszyny i zasilanie.
+     *
+     * <p>Dla narzedzi diagnostycznych (komenda getitems): gracz pyta "jak to
+     * sie robi", a nie "czy moge to teraz zrobic". Planer nadal uzywa
+     * recipesFor, ktore wymaga maszyny i pradu.
+     */
+    @Override
+    public List<ProcessingEntry> recipesAnywhere(ServerLevel level, Item item) {
+        List<ProcessingEntry> out = new ArrayList<>();
+        for (RecipeType<?> type : recipeTypes()) {
+            out.addAll(MekanismRecipeHarvest.forItem(level, type, item));
+        }
+        return out;
+    }
+
     @Override
     public void invalidate() {
         MekanismRecipeHarvest.invalidate();

@@ -1,6 +1,7 @@
 package com.craftingveloce.commands;
 
 import com.craftingveloce.crafting.ProcessingEntry;
+import com.craftingveloce.crafting.VeloceRecipeFinder;
 import com.craftingveloce.crafting.VeloceRecipeRegistry;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
@@ -119,16 +120,22 @@ public final class CVGetItemsCommand {
     }
 
     /**
-     * Receptury, z ktorych liczymy skladniki: najpierw crafting/stonecutting/
-     * smithing, a dopiero gdy ich nie ma - piec (wtedy w skrzyni wyladuje
-     * surowiec, o czym mowimy graczowi).
+     * Receptury, z ktorych liczymy skladniki.
+     *
+     * <p>Bierzemy je ze WSZYSTKICH zrodel ({@link VeloceRecipeFinder}):
+     * crafting table, rodziny modulow (Create/Alchemistry/Mekanism) i piec.
+     *
+     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> Wczesniej komenda
+     * pytala tylko indeks waniliowy, wiec dla itemu powstajacego w maszynie
+     * modulu (np. crushing wheel z Create, robiony wylacznie mechanical
+     * craftingiem) mowila "nie ma receptury" - mimo ze receptura istnieje.
+     * Brak informacji udawal informacje, a to najgorszy rodzaj bledu.
+     *
+     * <p>To CELOWO nie patrzy na maszyny i prad: gracz pyta "jak sie to robi",
+     * a nie "czy moge to zrobic w tej sieci".
      */
     private static List<ProcessingEntry> recipesFor(ServerLevel level, Item item) {
-        List<ProcessingEntry> recipes = VeloceRecipeRegistry.getRecipesFor(level, item);
-        if (recipes.isEmpty()) {
-            recipes = VeloceRecipeRegistry.getFurnaceRecipesFor(level, item);
-        }
-        return recipes;
+        return VeloceRecipeFinder.all(level, item);
     }
 
     /**
@@ -164,12 +171,24 @@ public final class CVGetItemsCommand {
     private static int insertAll(IItemHandler handler, Map<Item, Integer> needed) {
         int missing = 0;
         for (Map.Entry<Item, Integer> entry : needed.entrySet()) {
-            ItemStack remaining = new ItemStack(entry.getKey(), entry.getValue());
-            for (int slot = 0; slot < handler.getSlots() && !remaining.isEmpty(); slot++) {
-                remaining = handler.insertItem(slot, remaining, false);
-            }
-            if (!remaining.isEmpty()) {
-                missing++;
+            // Wkladamy POJEDYNCZYMI stosami (max stack size), a nie jedna
+            // wielka liczba: receptury mechaniczne Create maja po kilkadziesiat
+            // sztuk jednego skladnika, a ItemStack wiekszy niz stack size bywa
+            // odrzucany albo obcinany przez magazyny.
+            int maxStack = Math.max(1, new ItemStack(entry.getKey()).getMaxStackSize());
+            int left = entry.getValue();
+            while (left > 0) {
+                int chunk = Math.min(left, maxStack);
+                ItemStack remaining = new ItemStack(entry.getKey(), chunk);
+                for (int slot = 0; slot < handler.getSlots() && !remaining.isEmpty(); slot++) {
+                    remaining = handler.insertItem(slot, remaining, false);
+                }
+                int inserted = chunk - remaining.getCount();
+                if (inserted <= 0) {
+                    missing++;
+                    break;   // magazyn pelny - nie krecimy sie w kolko
+                }
+                left -= inserted;
             }
         }
         return missing;
@@ -178,7 +197,16 @@ public final class CVGetItemsCommand {
     private static void report(CommandSourceStack source, ServerPlayer player, Item item,
                                ProcessingEntry recipe, int recipeCount) {
         String name = new ItemStack(item).getHoverName().getString();
-        String kind = recipe.isFurnace() ? "pieca" : "craftingu";
+        String kind;
+        if (recipe.isFurnace()) {
+            kind = "pieca";
+        } else if (VeloceRecipeFinder.isModuleRecipe(recipe)) {
+            // Rodzina z innego moda - mowimy WPROST, ze potrzebna jest maszyna
+            // modulu, a nie crafting table.
+            kind = "maszyny: §f" + VeloceRecipeFinder.typeName(recipe.type()) + "§7";
+        } else {
+            kind = "craftingu";
+        }
         source.sendSuccess(() -> Component.literal(
                 "§6[CraftingVeloce] Skladniki na §f" + name + " §7(" + itemId(item) + ")"), false);
         source.sendSuccess(() -> Component.literal(
