@@ -62,6 +62,7 @@ public final class VeloceEnergyPull {
         int pipes = network.getPipes().size();
         int neighbours = 0;
         int found = 0;
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
         for (BlockPos pipe : network.getPipes()) {
             if (!level.isLoaded(pipe)) {
                 continue;
@@ -73,6 +74,9 @@ public final class VeloceEnergyPull {
                     continue;
                 }
                 neighbours++;
+                if (seen.size() < 6) {
+                    seen.add(level.getBlockState(side).getBlock() + " @" + side.toShortString());
+                }
                 if (level.getCapability(Capabilities.EnergyStorage.BLOCK, side,
                         dir.getOpposite()) != null) {
                     network.addEnergyEndpoint(side);
@@ -82,10 +86,10 @@ public final class VeloceEnergyPull {
         }
         if (found == 0 && System.currentTimeMillis() - lastDiscoverLog > 5_000L) {
             lastDiscoverLog = System.currentTimeMillis();
-            LOG.info("[Veloce][ENERGY] szukalem zrodel: rur w sieci={}, sprawdzonych sasiadow={}, "
-                            + "znalezionych zrodel={} - jesli Energy Cube stoi obok rury, a tu jest 0, "
-                            + "to jego capability nie jest widoczne z tej strony",
-                    pipes, neighbours, found);
+            LOG.info("[Veloce][ENERGY] szukalem zrodel: rur={}, sasiadow={}, zrodel={}, "
+                                    + "sasiedzi={} - jesli Energy Cube jest na liscie, "
+                                    + "a zrodel 0, to nie wystawia Forge Energy z tej strony",
+                            pipes, neighbours, found, seen);
         }
     }
 
