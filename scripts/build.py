@@ -2773,9 +2773,27 @@ def validate_integrale_model():
             problems.append(f"brak blockstate maszyny {machine}")
             continue
         machine_data = json.load(open(machine_bs, encoding="utf-8"))
-        machine_models = [v.get("model") for v in machine_data.get("variants", {}).values()]
-        if machine_models != ["craftingveloce:block/veloce_integrale_frame"]:
-            problems.append(f"blockstate {machine} nie jest obudowa Integrale: {machine_models}")
+        # MASZYNA MUSI BYC MULTIPARTEM ramy + paneli, nie statycznym modelem.
+        #
+        # BUG, ktory to naprawia (zgloszenie gracza powtarzane piec razy:
+        # "kabel sie przelacza, ale scianki sie nie zamykaja - na crushing wheelu
+        # dziala, a na crafting table i piecyku nie"): ten guard wymuszal
+        # POJEDYNCZY model ramy, wiec stany zaslepek (closed_*) nie mialy jak
+        # zmienic wygladu - blok nie mogl pokazac zamknietej sciany, choc stan
+        # byl poprawny. Crushing wheel i puste Integrale mialy multipart, dlatego
+        # u nich dzialalo.
+        parts = machine_data.get("multipart")
+        applied = [p.get("apply", {}).get("model") for p in (parts or [])]
+        if not parts or not applied or applied[0] != "craftingveloce:block/veloce_integrale_frame":
+            problems.append(f"blockstate {machine} nie jest obudowa Integrale "
+                            f"(pierwsza czesc musi byc rama - particleIcon): {applied[:2]}")
+        else:
+            for side in ("north", "east", "south", "west", "up", "down"):
+                if not any(p.get("when", {}).get(side) == "true"
+                           and p.get("apply", {}).get("model")
+                           == f"craftingveloce:block/veloce_integrale_panel_{side}"
+                           for p in parts):
+                    problems.append(f"blockstate {machine}: brak warunku zaslepki {side}")
 
     # 5b) Obudowa = model ramy (pierwsza czesc!) + ikona z ZAWARTOSCIA.
     #
