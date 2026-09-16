@@ -282,6 +282,44 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
         }
         if (accepted > 0) {
             batterySlot.setChanged();
+            syncEnergy();
+        }
+    }
+
+    /**
+     * Wysyla energie na KLIENTA.
+     *
+     * <p>BUG, ktory to naprawia (zgloszenie gracza): pasek baterii w oknie
+     * modulu pokazywal ciagle pusty akumulator. Okno czyta energie z block
+     * entity u siebie (jak piec), ale modul NIE wysylal jej na klienta -
+     * piec robi to od poczatku ({@code sendBlockUpdated} + pakiet z danymi).
+     */
+    private void syncEnergy() {
+        setChanged();
+        if (level != null && !level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+    }
+
+    @Override
+    public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+        CompoundTag tag = new CompoundTag();
+        tag.putInt("Energy", energy);
+        return tag;
+    }
+
+    @Override
+    public net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket getUpdatePacket() {
+        return net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    @Override
+    public void onDataPacket(net.minecraft.network.Connection connection,
+                             net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket pkt,
+                             HolderLookup.Provider registries) {
+        CompoundTag tag = pkt.getTag();
+        if (tag != null) {
+            energy = Math.max(0, Math.min(module.capacity(), tag.getInt("Energy")));
         }
     }
 

@@ -142,6 +142,8 @@ public class CraftingVeloceMod {
 
         modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent.class, event -> {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
+            event.register(VeloceRegistry.VELOCE_KINETIC_MENU.get(),
+                    com.craftingveloce.client.gui.VeloceKineticScreen::new);
             event.register(VeloceRegistry.VELOCE_MODULE_MENU.get(),
                     com.craftingveloce.client.gui.VeloceModuleScreen::new);
             event.register(VeloceRegistry.VELOCITY_FURNACE_MENU.get(),

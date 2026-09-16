@@ -1548,22 +1548,28 @@ def validate_jei_catalysts():
 
 def validate_module_info_gui():
     """
-    Okno maszyny: ZWYKLY kontener - identyczny jak okno pieca.
+    Okna maszyn: osobne dla energii i osobne dla Create (jak piec).
 
-    Gracz: "maja byc proste, maja doslownie wszystkie te interfejsy wygladac tak
-    jak interfejs z pieca ... bez zadnych kombinacji". Dlatego sprawdzamy, ze:
-      1. MenuType jest zarejestrowany, a ekran podpiety pod niego,
-      2. prawy klik OBU typow maszyn otwiera MENU (a nie wysyla pakietu),
-      3. ekran uzywa TEJ SAMEJ tekstury co piec i rysuje tylko tekst: trzy linie
-         (predkosc, czy wystarcza, ile SU) albo baterie dla maszyn na FE,
-      4. oba block entity umieja podac te liczby takze KLIENTOWI
-         ({@code VeloceModuleDisplay}), bo menu czyta je u siebie,
-      5. po starych, kombinowanych okienkach nie zostal ani plik, ani pakiet.
+    Gracz: "w GUI modulow z Create w tle widoczny jest pasek bateryjki oraz slot
+    na akumulator ... przygotuj osobny ekran dedykowany wylacznie blokom
+    kinetycznym (bez slotu i bez wskaznika energii)".
+
+    Sprawdzamy dwa ekrany i dwa menu:
+      * maszyna na FE: tekstura pieca, pasek baterii i tooltip 1:1 z piecem
+        (te same klucze: energia, cykle, koszt cyklu),
+      * maszyna kinetyczna: WLASNY ekran i WLASNE menu, zero baterii, zero
+        slotu, na srodku jeden wysrodkowany status (ten sam napis co w Jade),
+      * oba typy menu sa zarejestrowane i podpiete pod swoje ekrany,
+      * ladowanie: slot baterii + dobieranie pradu w ticku + ticker,
+      * stare, kombinowane okna nie wrocily.
     """
     problems = []
     inventory = "src/com/craftingveloce/inventory/VeloceModuleMenu.java"
+    kinetic_menu = "src/com/craftingveloce/inventory/VeloceKineticMenu.java"
     screen = "src/com/craftingveloce/client/gui/VeloceModuleScreen.java"
-    for path, what in ((inventory, "menu maszyny"), (screen, "ekranu maszyny")):
+    kinetic_screen = "src/com/craftingveloce/client/gui/VeloceKineticScreen.java"
+    for path, what in ((inventory, "menu maszyny FE"), (kinetic_menu, "menu maszyny kinetycznej"),
+                       (screen, "ekranu maszyny FE"), (kinetic_screen, "ekranu maszyny kinetycznej")):
         if not os.path.exists(path):
             problems.append("brak " + what)
     for gone in ("src/com/craftingveloce/client/gui/VeloceModuleInfoScreen.java",
@@ -1571,50 +1577,64 @@ def validate_module_info_gui():
                  "src/com/craftingveloce/crafting/VeloceModuleInfoLines.java"):
         if os.path.exists(gone):
             problems.append("zostalo stare okno: " + os.path.basename(gone))
+    if problems:
+        fail("okna maszyn:\n  " + "\n  ".join(problems))
 
     registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
-    if "VELOCE_MODULE_MENU =" not in registry or "veloce_module_menu" not in registry:
-        problems.append("MenuType maszyny nie jest zarejestrowany")
+    for need, what in (("VELOCE_MODULE_MENU =", "menu maszyny FE"),
+                       ("VELOCE_KINETIC_MENU =", "menu maszyny kinetycznej")):
+        if need not in registry:
+            problems.append("nie zarejestrowano " + what)
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
-    if "VELOCE_MODULE_MENU.get()" not in mod or "VeloceModuleScreen::new" not in mod:
-        problems.append("ekran maszyny nie jest podpiety pod menu")
+    for need, what in (("VELOCE_MODULE_MENU.get()", "ekranu FE"),
+                       ("VeloceModuleScreen::new", "ekranu FE"),
+                       ("VELOCE_KINETIC_MENU.get()", "ekranu kinetycznego"),
+                       ("VeloceKineticScreen::new", "ekranu kinetycznego")):
+        if need not in mod:
+            problems.append("brak podpiecia " + what)
 
-    for path, what in (("src/com/craftingveloce/block/VeloceFeModuleBlock.java",
-                        "maszyna na energie"),
-                       ("src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
-                        "maszyna kinetyczna")):
-        # Cialo metody, a nie caly plik: komentarz z "openMenu(" nie otwiera okna.
-        text = open(path, encoding="utf-8").read()
-        body = _method_body(text, "protected net.minecraft.world.InteractionResult useWithoutItem(")
-        if body is None:
-            body = _method_body(text, "protected InteractionResult useWithoutItem(")
-        if body is None or "openMenu(" not in body or "OpenModuleInfoPKT" in body:
-            problems.append(f"{what}: prawy klik nie otwiera zwyklego menu")
-    for path in ("src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java",
-                 "src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java"):
-        if "moduleDisplay()" not in open(path, encoding="utf-8").read():
-            problems.append(f"{os.path.basename(path)}: brak pol okna dla klienta")
+    # Maszyna kinetyczna: WLASNE menu (bez slotu baterii) i otwieranie go.
+    km = open(kinetic_menu, encoding="utf-8").read()
+    for need, what in (("VELOCE_KINETIC_MENU", "wlasnego typu menu"),
+                       ("VeloceModuleDisplay", "czytania pol maszyny")):
+        if need not in km:
+            problems.append("menu kinetyczne bez " + what)
+    if "getBatterySlot" in km or "isEnergyItem" in km:
+        problems.append("menu kinetyczne ma slot baterii (a nie powinno)")
+    block = "src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java"
+    block_text = open(block, encoding="utf-8").read()
+    if "VeloceKineticMenu" not in block_text:
+        problems.append("maszyna kinetyczna otwiera nie swoje menu")
+    body = _method_body(block_text,
+                        "protected net.minecraft.world.InteractionResult useWithoutItem(")
+    if body is None or "openMenu(" not in body:
+        problems.append("maszyna kinetyczna nie otwiera menu")
 
-    if os.path.exists(screen):
-        text = open(screen, encoding="utf-8").read()
-        for need, what in (("AbstractContainerScreen<VeloceModuleMenu>", "zwyklego ekranu kontenera"),
-                           ("electric_furnace.png", "tekstury pieca"),
-                           ("VeloceModuleStatus.message(", "statusu w oknie"),
-                           ("drawCenteredString(this.font, VeloceModuleStatus.message(display)",
-                            "statusu WYSRODKOWANEGO"),
-                           ("drawBattery(", "baterii dla maszyn na FE")):
-            if need not in text:
-                problems.append("okno maszyny bez " + what)
-        # Zadnych innych tekstow w oknie (gracz: "nic wiecej, tylko jeden string").
-        for forbidden, what in (("module.info.speed", "predkosci"),
-                                ("module.info.stress", "SU"),
-                                ("module.info.parts", "liczby elementow")):
-            if forbidden in text:
-                problems.append(f"okno maszyny nadal wypisuje {what}")
+    # Ekran kinetyczny: tylko wysrodkowany status, zero energii i slotow.
+    ks = open(kinetic_screen, encoding="utf-8").read()
+    for need, what in (("AbstractContainerScreen<VeloceKineticMenu>", "zwyklego ekranu kontenera"),
+                       ("electric_furnace.png", "tekstury pieca"),
+                       ("drawCenteredString(this.font, VeloceModuleStatus.message(display)",
+                        "wysrodkowanego statusu")):
+        if need not in ks:
+            problems.append("ekran kinetyczny bez " + what)
+    for forbidden, what in (("drawBattery", "wskaznika energii"), ("getBatterySlot", "slotu baterii"),
+                            ("module.info.speed", "predkosci"), ("module.info.stress", "SU")):
+        if forbidden in ks:
+            problems.append(f"ekran kinetyczny nadal pokazuje {what}")
 
-    # Ladowanie akumulatora: slot na baterie w menu + dobieranie pradu z itemu.
-    # Bez tego moduly na FE nie ladowaly sie ani z itemu, ani z zewnatrz
-    # (zgloszenie gracza: "slot jest nieaktywny, tylko w piecu dziala").
+    # Ekran FE: bateria + tooltip 1:1 z piecem.
+    fs = open(screen, encoding="utf-8").read()
+    for need, what in (("electric_furnace.png", "tekstury pieca"), ("drawBattery(", "baterii"),
+                       ("gui.craftingveloce.electric.energy", "linii energii"),
+                       ("gui.craftingveloce.electric.smelts", "linii cykli"),
+                       ("gui.craftingveloce.electric.perSmelt", "kosztu cyklu")):
+        if need not in fs:
+            problems.append("ekran FE bez " + what)
+    if "VeloceModuleStatus" in fs:
+        problems.append("ekran FE pokazuje status kinetyczny")
+
+    # Ladowanie akumulatora: slot baterii w menu + dobieranie pradu z itemu.
     menu = open(inventory, encoding="utf-8").read()
     for need, what in (("getBatterySlot()", "slotu na baterie w menu"),
                        ("isEnergyItem", "filtra: tylko itemy z energia")):
@@ -1624,25 +1644,22 @@ def validate_module_info_gui():
     fe_be_text = open(fe_be, encoding="utf-8").read()
     for need, what in (("private void chargeFromItem()", "metody dobierania pradu"),
                        ("getBatterySlot()", "wystawienia slotu baterii"),
-                       ('tag.put("Battery"', "zapisu baterii w NBT")):
+                       ('tag.put("Battery"', "zapisu baterii w NBT"),
+                       ("getUpdatePacket()", "wysylania energii na klienta")):
         if need not in fe_be_text:
             problems.append("modul FE bez " + what)
-    # WOLANIE sprawdzamy w ciele serverTick, nie w calym pliku: komentarz
-    # z "chargeFromItem()" nie laduje akumulatora.
     tick_body = _method_body(fe_be_text, "public void serverTick()")
     if tick_body is None or "        chargeFromItem();" not in tick_body:
         problems.append("modul FE nie dobiera pradu w ticku")
-    # Pelna sygnatura tickera: samo "getTicker(" przechodzi takze dla metody
-    # zwracajacej Object, a wtedy gra nie tyka block entity.
     ticker = ("public <T extends BlockEntity> "
               "net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(")
     if ticker not in open("src/com/craftingveloce/block/VeloceFeModuleBlock.java",
-                           encoding="utf-8").read():
+                          encoding="utf-8").read():
         problems.append("modul FE nie ma tickera (ladowanie z itemu nie zadziala)")
 
     if problems:
-        fail("okno maszyny (jak piec):\n  " + "\n  ".join(problems))
-    print("    OK (okno maszyny: zwykly kontener jak piec, tekst zamiast baterii dla Create)")
+        fail("okna maszyn (FE i kinetyczne):\n  " + "\n  ".join(problems))
+    print("    OK (okna maszyn: FE jak piec z bateria, Create osobny ekran bez energii)")
 
 
 def validate_showcase_command():

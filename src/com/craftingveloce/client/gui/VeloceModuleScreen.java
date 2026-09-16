@@ -1,7 +1,6 @@
 package com.craftingveloce.client.gui;
 
 import com.craftingveloce.CraftingVeloceMod;
-import com.craftingveloce.crafting.VeloceModuleStatus;
 import com.craftingveloce.inventory.VeloceModuleMenu;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -39,12 +38,6 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
     private static final int COLOR_BATTERY_EMPTY = 0xFF8B8B8B;
     private static final int COLOR_BATTERY_FILL = 0xFF39D353;
 
-    /** Tlo panelu - zaslaniamy nim wglebienie baterii w maszynie kinetycznej. */
-    private static final int COLOR_PANEL = 0xFFC6C6C6;
-
-    /** Jeden status, wysrodkowany w czesci maszyny (nad ekwipunkiem gracza). */
-    private static final int STATUS_Y = 38;
-    private static final int COLOR_TEXT = 0x404040;
 
     private CompoundTag display = new CompoundTag();
 
@@ -62,27 +55,7 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         graphics.blit(GUI_TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight);
-        if (VeloceModuleStatus.isEnergy(display)) {
-            drawBattery(graphics);
-        } else {
-            drawKineticText(graphics);
-        }
-    }
-
-    /**
-     * Maszyna kinetyczna: zaslaniamy wglebienie baterii i piszemy JEDEN,
-     * wysrodkowany status - dokladnie ten sam napis co w Jade.
-     *
-     * <p>Gracz: "na srodku interfejsu ma byc jeden prosty napis, to samo co
-     * pisze w Jade, czyli Powered working albo Not enough rotation speed ...
-     * nic wiecej". Kolor (zielony/czerwony) niesie sam tekst.
-     */
-    private void drawKineticText(GuiGraphics graphics) {
-        graphics.fill(this.leftPos + BATTERY_X, this.topPos + BATTERY_Y,
-                this.leftPos + BATTERY_X + BATTERY_W, this.topPos + BATTERY_Y + BATTERY_H,
-                COLOR_PANEL);
-        graphics.drawCenteredString(this.font, VeloceModuleStatus.message(display),
-                this.leftPos + this.imageWidth / 2, this.topPos + STATUS_Y, COLOR_TEXT);
+        drawBattery(graphics);
     }
 
     /** Maszyna na energie: bateria i liczba operacji - jak w piecu. */
@@ -108,12 +81,21 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
         if (!isHovering(BATTERY_X, BATTERY_Y, BATTERY_W + NUB_W, BATTERY_H, mouseX, mouseY)) {
             return;
         }
+        // STRUKTURA 1:1 Z PIECA (te same klucze i te same trzy linie):
+        // energia, liczba cykli, koszt cyklu.
+        long energy = display.getLong("energy");
+        long capacity = Math.max(1L, display.getLong("energyCapacity"));
+        long perCycle = Math.max(1L, display.getLong("fePerOperation"));
+        long cycles = energy / perCycle;
         java.util.List<Component> lines = new java.util.ArrayList<>();
-        lines.add(Component.translatable("gui.craftingveloce.module.info.energy",
-                com.craftingveloce.util.VeloceFormat.feCompact(display.getLong("energy")),
-                com.craftingveloce.util.VeloceFormat.feCompact(display.getLong("energyCapacity"))));
-        lines.add(Component.translatable("gui.craftingveloce.module.info.operations",
-                display.getLong("operations"), display.getLong("fePerOperation")));
+        lines.add(Component.translatable("gui.craftingveloce.electric.energy",
+                com.craftingveloce.util.VeloceFormat.feCompact(energy),
+                com.craftingveloce.util.VeloceFormat.feCompact(capacity)));
+        lines.add(Component.translatable("gui.craftingveloce.electric.smelts", cycles)
+                .withStyle(net.minecraft.ChatFormatting.GOLD));
+        lines.add(Component.translatable("gui.craftingveloce.electric.perSmelt",
+                        com.craftingveloce.util.VeloceFormat.feCompact(perCycle))
+                .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
         graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
     }
 
@@ -126,9 +108,7 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
-        if (VeloceModuleStatus.isEnergy(display)) {
-            renderBatteryTooltip(graphics, mouseX, mouseY);
-        }
+        renderBatteryTooltip(graphics, mouseX, mouseY);
         this.renderTooltip(graphics, mouseX, mouseY);
     }
 }

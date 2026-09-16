@@ -228,6 +228,14 @@ public class VeloceRegistry {
                             (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceModuleMenu(
                                     windowId, inv, data.readBlockPos())));
 
+    // Okno maszyny KINETYCZNEJ (Create) - osobny typ, bez slotu baterii.
+    public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>,
+            net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceKineticMenu>> VELOCE_KINETIC_MENU =
+            MENU_TYPES.register("veloce_kinetic_menu",
+                    () -> net.neoforged.neoforge.common.extensions.IMenuTypeExtension.create(
+                            (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceKineticMenu(
+                                    windowId, inv, data.readBlockPos())));
+
     @FunctionalInterface
     public interface BlockEntityFactory<T extends BlockEntity> {
         T create(net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state);
