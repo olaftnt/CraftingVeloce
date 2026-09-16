@@ -134,6 +134,42 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         return true;
     }
 
+    @Override
+    public boolean addToGoggleTooltip(java.util.List<net.minecraft.network.chat.Component> tooltip, boolean isPlayerSneaking) {
+        float speed = Math.abs(getSpeed());
+        float stressVal = this.stress;
+        float capacityVal = this.capacity;
+        float remaining = capacityVal - stressVal;
+
+        String goggleKey = "gui";
+        goggleKey += ".goggles.kinetic_stats";
+        com.simibubi.create.foundation.utility.CreateLang.translate(goggleKey)
+            .style(net.minecraft.ChatFormatting.GRAY)
+            .forGoggles(tooltip);
+            
+        if (!hasEnoughRotationSpeed()) {
+            com.simibubi.create.foundation.utility.CreateLang.text("Speed: " + Math.round(speed) + " / " + com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED + " RPM")
+                .style(net.minecraft.ChatFormatting.RED)
+                .forGoggles(tooltip, 1);
+        } else {
+            com.simibubi.create.foundation.utility.CreateLang.text("Speed: " + Math.round(speed) + " RPM")
+                .style(net.minecraft.ChatFormatting.GREEN)
+                .forGoggles(tooltip, 1);
+        }
+        
+        if (remaining < 0) {
+            com.simibubi.create.foundation.utility.CreateLang.text("Missing: " + Math.round(-remaining) + " SU")
+                .style(net.minecraft.ChatFormatting.RED)
+                .forGoggles(tooltip, 1);
+        } else {
+            com.simibubi.create.foundation.utility.CreateLang.text("Remaining: " + Math.round(remaining) + " SU")
+                .style(net.minecraft.ChatFormatting.AQUA)
+                .forGoggles(tooltip, 1);
+        }
+        
+        return true;
+    }
+
     /**
      * Czy naped daje wymagana predkosc (256 RPM).
      *
