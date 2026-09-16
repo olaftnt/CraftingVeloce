@@ -35,7 +35,17 @@ public class ConnectedEndpointInfo {
      * Rozpoznawany po typie, zeby po restarcie swiata odtworzyc wlasciwa
      * implementacje endpointu (patrz {@link CraftingBufferEndpoint}).
      */
-        CRAFTING_BUFFER
+        CRAFTING_BUFFER,
+
+        /**
+         * Obcy blok z Forge Energy (Energy Cube, generator, bank energii).
+         *
+         * <p>Nasze maszyny SAME z niego sciagaja prad (patrz VeloceEnergyPull):
+         * to jedyny kierunek, w jakim energia plynie przez nasze rury. Nasze
+         * rury nie sa przewodnikiem dla innych modow - nic nie moze z nich
+         * pobrac, a nasze maszyny sa wylacznie odbiornikami.
+         */
+        ENERGY
     }
 
     private final BlockPos pos;

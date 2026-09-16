@@ -215,6 +215,30 @@ public class VelocePipeNetwork {
      * zapytanie skanowalo od zera wszystkie inwentarze sieci, a ze cache
      * pytal o to co kilka tickow, watek serwera spalil sie na samym czytaniu.
      */
+    /**
+     * Pozycje OBCYCH zrodel energii podpietych do tej sieci.
+     *
+     * <p>Wypelnia je skan sieci (sasiad z capability {@code EnergyStorage.BLOCK},
+     * ktory NIE jest naszym blokiem). Nasze maszyny sciagaja z nich prad, ale
+     * tylko one moga to robic - i tylko gdy maja wolne miejsce.
+     */
+    private final java.util.Set<BlockPos> energyEndpoints = new java.util.HashSet<>();
+
+    /** Skan znalazl obce zrodlo energii - zapamietaj. */
+    public void addEnergyEndpoint(BlockPos pos) {
+        energyEndpoints.add(pos.immutable());
+    }
+
+    /** Pozycje obcych zrodel energii w tej sieci. */
+    public java.util.Set<BlockPos> getEnergyEndpoints() {
+        return java.util.Set.copyOf(energyEndpoints);
+    }
+
+    /** Skan od nowa wypelnia liste (topologia sie zmienila). */
+    public void clearEnergyEndpoints() {
+        energyEndpoints.clear();
+    }
+
     /** Dopisuje swiezo policzone liczby do cache'u sieci (nadpisuje starsze). */
     public void rememberCraftable(Map<Item, Long> counts) {
         if (counts == null || counts.isEmpty()) {

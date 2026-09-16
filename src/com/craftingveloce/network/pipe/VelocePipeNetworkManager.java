@@ -838,6 +838,12 @@ public class VelocePipeNetworkManager extends SavedData {
             return true;   // nie wiemy - zostawiamy (zasada zachowawcza)
         }
         return switch (ep.getType()) {
+            // Obce zrodlo energii: istnieje, dopoki w tym miejscu jest blok
+            // z capability Forge Energy (Energy Cube, generator).
+            case ENERGY -> level.getBlockState(pos).isAir() == false
+                    && level.getCapability(
+                            net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                            pos, ep.getAccessSide()) != null;
             case REFINED_STORAGE ->
                     RefinedStorageHelper.hasRSNetwork(level, pos, ep.getAccessSide());
             // Bufor craftera nie jest magazynem w swiecie - pytamy o TA SAMA
