@@ -496,6 +496,31 @@ Jak dołożyć kolejny moduł — cała procedura:
 
 Rdzeń nie wymaga przy tym żadnej zmiany.
 
+#### Okno modułu (prawy klik)
+
+Prawy klik na module otwiera okno z aktualnym stanem maszyny. Liczby liczy
+**serwer** (`moduleInfo(ServerLevel)` → `OpenModuleInfoPKT` → `VeloceModuleInfoScreen`),
+więc okno nic nie zgaduje i nie odpytuje sieci co klatkę. Dwa warianty w jednym
+oknie, rozpoznawane po polach z pakietu:
+
+* **kinetyczne (Create)**: prędkość aktualna / wymagana / maksymalna, pobór SU,
+  liczba wklikanych elementów,
+* **na energię (Mekanism, Alchemistry)**: stan akumulatora (pasek), koszt
+  operacji i ile operacji jeszcze z niego wyjdzie.
+
+W obu dochodzi stan podpiętej sieci rur (węzły, magazyny, typy itemów) i status
+(`powered` / `enoughSpeed`). Esc zamyka okno, **E nie** — E otwiera ekwipunek
+i okno znikałoby w chwili, gdy gracz chce je obejrzeć.
+
+Okno rysuje **nieprzezroczysty panel 176×166** w stylu vanilla
+(`assets/craftingveloce/textures/gui/module_info.png`, generator:
+`scripts/gen_module_gui_texture.py`) i ciemny tekst na nim — tak samo jak okna
+pieca, extractora i sensora. Pierwsza wersja rysowała półprzezroczysty prostokąt
+na rozmytym świecie i biały tekst bez cienia, przez co wyglądało to jak tooltip
+schowany za blurem (zgłoszenie gracza). Pilnuje tego `validate_module_info_gui`:
+panel musi istnieć jako tekstura ≥ 176×166, a `renderPanel` musi go rysować
+przez `blit` (a nie `fill`).
+
 ---
 
 ## 🌐 Network (Packets)

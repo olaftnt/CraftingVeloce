@@ -1438,11 +1438,42 @@ def validate_module_info_gui():
             problems.append("prawy klik na module FE nie otwiera okna")
     if os.path.exists(screen):
         text = open(screen, encoding="utf-8").read()
-        render_body = _method_body(text, "public void render(")
-        if render_body is None or "drawBattery(" not in render_body:
-            problems.append("okno modulu nie rysuje baterii przy energii")
         if "energyCapacity" not in text:
             problems.append("okno modulu nie uzywa pojemnosci do paska")
+        # Panel: okno rysuje NIEPRZEZROCZYSTA teksture w stylu vanilla, a nie
+        # polprzezroczysty prostokat na rozmytym swiecie. Gracz zglosil to jako
+        # "tekst za blurem, jak tooltip w tle" - i ten blad wraca natychmiast,
+        # gdy ktos zamieni panel z powrotem na fill().
+        render_body = _method_body(text, "public void render(")
+        if render_body is None or "renderBackground(" not in render_body \
+                or "renderPanel(" not in render_body:
+            problems.append("okno modulu nie rysuje panelu (renderBackground + renderPanel)")
+        panel_body = _method_body(text, "private void renderPanel(")
+        if panel_body is None:
+            problems.append("okno modulu bez metody rysujacej panel")
+        else:
+            for need, what in (("blit(", "nieprzezroczystej tekstury panelu"),
+                               ("drawString(", "tekstu na panelu"),
+                               ("drawBattery(", "baterii przy energii")):
+                if need not in panel_body:
+                    problems.append("okno modulu bez " + what)
+        panel_tex = "assets/craftingveloce/textures/gui/module_info.png"
+        if "textures/gui/module_info.png" not in text:
+            problems.append("okno modulu nie wskazuje tekstury panelu")
+        if not os.path.exists(panel_tex):
+            problems.append("brak tekstury panelu okna (" + panel_tex + ")")
+        else:
+            head = open(panel_tex, "rb").read(24)
+            if not head.startswith(b"\x89PNG") or len(head) < 24:
+                problems.append("tekstura panelu okna nie jest poprawnym PNG")
+            else:
+                tex_w = int.from_bytes(head[16:20], "big")
+                tex_h = int.from_bytes(head[20:24], "big")
+                if tex_w < 176 or tex_h < 166:
+                    problems.append(f"tekstura panelu okna ma {tex_w}x{tex_h}, "
+                                    f"a panel ma 176x166")
+        if "PANEL_WIDTH = 176" not in text or "PANEL_HEIGHT = 166" not in text:
+            problems.append("okno modulu nie ma panelu 176x166 jak pozostale GUI")
 
     for path, table in (("src/com/craftingveloce/compat/mekanism/MekanismFeModules.java", "Mekanism"),
                         ("src/com/craftingveloce/compat/alchemistry/AlchemistryFeModules.java", "Alchemistry")):
@@ -1457,7 +1488,7 @@ def validate_module_info_gui():
 
     if problems:
         fail("GUI modulu:\n  " + "\n  ".join(problems))
-    print("    OK (GUI modulu: pakiet + prawy klik + pola SU/predkosc/sieć + Esc)")
+    print("    OK (GUI modulu: panel 176x166 + pakiet + prawy klik + pola SU/predkosc/sieć + Esc)")
 
 
 def validate_showcase_command():
