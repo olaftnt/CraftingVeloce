@@ -1452,6 +1452,10 @@ public class VelocePipeNetworkManager extends SavedData {
         Set<BlockPos> visitedPipes = new HashSet<>();
         Set<BlockPos> discoveredTerminals = new HashSet<>();
         Map<BlockPos, ConnectedEndpointInfo> discoveredEndpoints = new HashMap<>();
+        // Obce zrodla energii (Energy Cube, generator) - osobna lista, bo to
+        // NIE sa magazyny itemow: nic z nich nie wyciagamy rura, tylko nasze
+        // maszyny SAME z nich sciagaja prad.
+        java.util.Set<BlockPos> discoveredEnergy = new java.util.HashSet<>();
         Set<UUID> intersectedOldNets = new HashSet<>();
         // Rury, ktore weszly do sieci z niezaladowanych chunkow. Ich block
         // entity jest niedostepne, wiec nie znamy ich zamknietych stron.
@@ -1558,6 +1562,19 @@ public class VelocePipeNetworkManager extends SavedData {
                         }
                     }
                     continue;
+                }
+
+                // 2b. Obcy blok z Forge Energy (Energy Cube, generator).
+                //
+                // Nasze bloki POMIJAMY: maszyny sa tylko odbiornikami, wiec nie
+                // moga byc dla siebie zrodlem (inaczej sciagalyby prad jedna
+                // drugiej). Nasza rura nie wystawia EnergyStorage, wiec nic
+                // obcego nie pobierze z niej pradu - kierunek jest jeden.
+                if (!(neighborState.getBlock() instanceof VeloceNetworkNode)
+                        && level.getCapability(
+                                net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                                neighborPos, dir.getOpposite()) != null) {
+                    discoveredEnergy.add(neighborPos.immutable());
                 }
 
                 // 3. Neighbor is Refined Storage
@@ -1671,6 +1688,10 @@ public class VelocePipeNetworkManager extends SavedData {
         VelocePipeNetwork newNet = persistentNetwork(finalId, true);
         newNet.getPipes().addAll(visitedPipes);
         newNet.getTerminals().addAll(discoveredTerminals);
+        newNet.clearEnergyEndpoints();
+        for (BlockPos energyPos : discoveredEnergy) {
+            newNet.addEnergyEndpoint(energyPos);
+        }
         newNet.getEndpoints().putAll(discoveredEndpoints);
         newNet.updateTrackedChunks();
 
