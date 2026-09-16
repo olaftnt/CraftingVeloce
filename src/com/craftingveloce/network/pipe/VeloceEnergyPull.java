@@ -100,8 +100,8 @@ public final class VeloceEnergyPull {
             }
         }
         if (found > 0) {
-            LOG.info("[Veloce][ENERGY] znalezione zrodla: {} (przejrzane rury={})", found,
-                    visited.size());
+            LOG.info("[Veloce][ENERGY] znalezione zrodla: {} (przejrzane rury={}, zrodla={})",
+                    found, visited.size(), network.getEnergyEndpoints());
         } else if (System.currentTimeMillis() - lastDiscoverLog > 5_000L) {
             lastDiscoverLog = System.currentTimeMillis();
             LOG.info("[Veloce][ENERGY] brak zrodel: przejrzane rury={}, sasiadow={}, "
@@ -126,10 +126,9 @@ public final class VeloceEnergyPull {
         if (network.getEnergyEndpoints().isEmpty()
                 && System.currentTimeMillis() - lastEmptyLog > 5_000L) {
             lastEmptyLog = System.currentTimeMillis();
-            LOG.info("[Veloce][ENERGY] maszyna {} ma wolne {} FE, ale siec nie zna "
-                            + "zadnego obcego zrodla (endpointy=0) - sprawdz, czy Energy Cube "
-                            + "stoi PRZY RURZE i czy siec byla skanowana po jego postawieniu",
-                    receiver.getEnergyStored(), free);
+            LOG.info("[Veloce][ENERGY] maszyna {} (klasa {}) ma wolne {} FE, ale siec nie zna "
+                            + "zadnego obcego zrodla (endpointy=0)",
+                    receiver, receiver.getClass().getSimpleName(), free);
         }
         // Jesli siec nie zna zrodel (np. Energy Cube postawiony PO skanie sieci
         // albo siec byla odbudowana z zapisu), znajdz je teraz - inaczej pobor
