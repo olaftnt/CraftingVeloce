@@ -1615,7 +1615,8 @@ def validate_module_info_gui():
     for need, what in (("AbstractContainerScreen<VeloceKineticMenu>", "zwyklego ekranu kontenera"),
                        ("electric_furnace.png", "tekstury pieca"),
                        ("drawCenteredString(this.font, VeloceModuleStatus.message(display)",
-                        "wysrodkowanego statusu")):
+                        "wysrodkowanego statusu"),
+                       ("module.info.minimum", "progu (min. RPM - SU)")):
         if need not in ks:
             problems.append("ekran kinetyczny bez " + what)
     for forbidden, what in (("drawBattery", "wskaznika energii"), ("getBatterySlot", "slotu baterii"),

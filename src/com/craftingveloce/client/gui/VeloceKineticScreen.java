@@ -33,8 +33,9 @@ public class VeloceKineticScreen extends AbstractContainerScreen<VeloceKineticMe
     private static final int MACHINE_TOP = 4;
     private static final int MACHINE_BOTTOM = 78;
 
-    /** Wysrodkowanie pionowe napisu. */
-    private static final int STATUS_Y = 38;
+    /** Wysrodkowanie pionowe napisu + odstep na druga linie. */
+    private static final int STATUS_Y = 36;
+    private static final int LINE_HEIGHT = 12;
 
     private CompoundTag display = new CompoundTag();
 
@@ -53,8 +54,18 @@ public class VeloceKineticScreen extends AbstractContainerScreen<VeloceKineticMe
         graphics.blit(GUI_TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight);
         graphics.fill(this.leftPos + 4, this.topPos + MACHINE_TOP,
                 this.leftPos + this.imageWidth - 4, this.topPos + MACHINE_BOTTOM, COLOR_PANEL);
+        int centerX = this.leftPos + this.imageWidth / 2;
         graphics.drawCenteredString(this.font, VeloceModuleStatus.message(display),
-                this.leftPos + this.imageWidth / 2, this.topPos + STATUS_Y, COLOR_TEXT);
+                centerX, this.topPos + STATUS_Y, COLOR_TEXT);
+        // Pod statusem: ile ta maszyna potrzebuje. Zawsze widoczne, na zolto,
+        // zeby nie trzeba bylo zgadywac progu (gracz: "pod spodem dopisz zolta
+        // linie minimum 256 RPM - 1024 SU").
+        graphics.drawCenteredString(this.font,
+                Component.translatable("gui.craftingveloce.module.info.minimum",
+                        com.craftingveloce.util.VeloceFormat.rate(display.getInt("requiredSpeed")),
+                        com.craftingveloce.util.VeloceFormat.rate(display.getFloat("suDraw")))
+                        .withStyle(net.minecraft.ChatFormatting.YELLOW),
+                centerX, this.topPos + STATUS_Y + LINE_HEIGHT, COLOR_TEXT);
     }
 
     @Override
