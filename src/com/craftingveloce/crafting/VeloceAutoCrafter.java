@@ -104,14 +104,25 @@ public final class VeloceAutoCrafter {
     private VeloceAutoCrafter() {
     }
 
-    /** Wynik operacji. */
-    public record CraftResult(boolean success, int produced, String reason) {
+    /**
+     * Wynik operacji.
+     *
+     * <p>{@code reason} to klucz jezykowy komunikatu, a {@code detail} jego
+     * dopelnienie (np. nazwa brakujacego itemu). Wczesniej powod byl tylko
+     * kluczem, ktorego NIKT nie pokazywal - gracz widzial ogolne "nie ma itemu
+     * w sieci", a w logu trzeba bylo szukac, o co chodzilo.
+     */
+    public record CraftResult(boolean success, int produced, String reason, String detail) {
         static CraftResult ok(int produced) {
-            return new CraftResult(true, produced, "");
+            return new CraftResult(true, produced, "", "");
         }
 
         static CraftResult fail(String reason) {
-            return new CraftResult(false, 0, reason);
+            return new CraftResult(false, 0, reason, "");
+        }
+
+        static CraftResult fail(String reason, String detail) {
+            return new CraftResult(false, 0, reason, detail == null ? "" : detail);
         }
     }
 
@@ -220,6 +231,14 @@ public final class VeloceAutoCrafter {
             return moduleSourcesCache.computeIfAbsent(type,
                     t -> VeloceProcessingSources.forType(level, network, t));
         }
+
+        /**
+         * Czego nie udalo sie pobrac przy wykonaniu - do komunikatu dla gracza.
+         *
+         * <p>Ustawiane w {@code runOnce}; czytane raz, przy budowie wyniku.
+         */
+        @Nullable
+        String lastMissingIngredient;
 
         private long heatOpsCache = -1L;
         private Map<RecipeType<?>, java.util.List<com.craftingveloce.block.entity.VeloceProcessingSource>>
@@ -338,7 +357,10 @@ public final class VeloceAutoCrafter {
                     return CraftResult.fail("craftingveloce.craft.error.tooComplex");
                 }
                 logPlanFailure(level, ctx, item, missing, stock);
-                return CraftResult.fail("craftingveloce.craft.error.noBase");
+                // MOWIMY, CZEGO BRAKUJE - inaczej gracz dostaje tylko "nie ma
+                // itemu w sieci" i nie wie, czy brakuje materialu, maszyny,
+                // czy receptury.
+                return diagnosePlanFailure(level, ctx, item, stock);
             }
         }
 
@@ -349,7 +371,9 @@ public final class VeloceAutoCrafter {
         if (!execute(level, ctx, plan)) {
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                     "execution failed for %s - ingredients vanished mid-craft", item);
-            return CraftResult.fail("craftingveloce.craft.error.extract");
+            String ingredient = ctx.lastMissingIngredient;
+            return CraftResult.fail("craftingveloce.craft.error.extract",
+                    ingredient == null ? "" : ingredient);
         }
         // Zwracamy ilosc, ktora REALNIE powstała - moze byc mniejsza od
         // zamowionej, gdy nie bylo dość materialu (patrz planAsMuchAsPossible).
@@ -708,58 +732,26 @@ public final class VeloceAutoCrafter {
     private static long planAsMuchAsPossible(ServerLevel level, Context ctx, Item item,
                                              long wanted, Map<Item, Long> stock, Plan plan,
                                              long planBudgetNanos) {
-        // Krok 1: znajdz JAKAKOLWIEK wykonalna ilosc, schodzac po polowie.
-        // To logarytmicznie malo prob.
-        long found = 0;
-        Plan best = null;
-        for (long tryAmount = wanted / 2; tryAmount >= 1; tryAmount /= 2) {
-            startEstimate(planBudgetNanos);
-            Map<Item, Long> copy = new HashMap<>(stock);
-            Plan candidate = new Plan(ctx.heatOps());
-            if (plan(level, ctx.network, ctx.enabledItems, ctx.preferred, item, tryAmount, copy,
-                    candidate, new HashSet<>(), 0)) {
-                found = tryAmount;
-                best = candidate;
-                break;
-            }
-            if (estimateAborted()) {
-                return 0;   // budzet - nie ma sensu probowac dalej
-            }
-        }
-        if (found <= 0 || best == null) {
+        // Ten SAM algorytm co przy liczeniu liczb (findMaxPlannable): najpierw
+        // TANIE proby (1, 2, 4, ...), potem bisekcja. Wczesniej ta metoda
+        // zaczynala od `wanted / 2`, wiec pierwsza proba byla najdrozsza -
+        // przy recepturze z 21 skladnikami (mechanical crafting Create)
+        // i zamowieniu 64 sztuk plan nie powstawal w budzecie i gracz dostawal
+        // "nie ma itemow", mimo ze GUI pokazywalo wykonalna liczbe.
+        Plan best = new Plan(ctx.heatOps());
+        long planned = findMaxPlannable(level, ctx.network, item, Math.max(1, wanted), stock,
+                ctx.enabledItems, ctx.preferred, ctx.heatOps(), planBudgetNanos, best);
+        if (planned <= 0) {
             return 0;
         }
-
-        // Krok 2: dobij do gory, o ile budzet pozwala.
-        //
-        // Samo schodzenie po polowie gubilo ilosci: przy zamowieniu 64
-        // znajdowalo 32 i konczylo, mimo ze wykonalne bylo np. 40. Zwiekszamy
-        // wiec krokami polowy pozostalej odleglosci, az przestanie sie udawac.
-        long lo = found;
-        long hi = wanted;
-        while (lo < hi && !estimateAborted()) {
-            // mid jest zawsze > lo, gdy lo < hi, wiec petla zawsze sie posuwa.
-            long mid = lo + (hi - lo + 1) / 2;
-            startEstimate(planBudgetNanos);
-            Map<Item, Long> copy = new HashMap<>(stock);
-            Plan candidate = new Plan(ctx.heatOps());
-            if (plan(level, ctx.network, ctx.enabledItems, ctx.preferred, item, mid, copy,
-                    candidate, new HashSet<>(), 0)) {
-                lo = mid;
-                best = candidate;
-            } else {
-                hi = mid - 1;
-                if (estimateAborted()) {
-                    break;
-                }
-            }
-        }
-
         plan.runs.clear();
         plan.runs.addAll(best.runs);
-        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                "%s: full amount %d not craftable, doing %d instead", item, wanted, lo);
-        return lo;
+        if (planned < wanted) {
+            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                    "%s: zamowione %d, wykonalne %d (plan w budzecie %d ms)",
+                    item, wanted, planned, planBudgetNanos / 1_000_000L);
+        }
+        return planned;
     }
 
     /**
@@ -1117,22 +1109,99 @@ public final class VeloceAutoCrafter {
             return fromStock;
         }
 
-        // Bisekcja: znajdz najwieksze N, dla ktorego planowanie sie udaje.
-        long lo = 0;
-        while (lo < hi) {
-            long mid = (lo + hi + 1) >>> 1;
-            if (canCraftAmount(level, network, item, mid, stock, enabled, preferred, heatOps)) {
-                lo = mid;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        // Budzet sie skonczyl w trakcie - wynik jest niemiarodajny.
-        // Zwracamy UNKNOWN, zeby GUI zachowalo poprzednia liczbe.
-        if (estimateAborted()) {
+        // Ile REALNIE da sie zrobic z tego stocku - wspolnym algorytmem
+        // (rosnace, TANIE proby, potem bisekcja). Bez tego liczenie zaczynalo
+        // od polowy gornej granicy, wiec pierwsza proba byla najdrozsza
+        // i budzet konczyl sie, zanim cokolwiek policzono.
+        long lo = findMaxPlannable(level, network, item, hi, stock, enabled, preferred,
+                heatOps, DEFAULT_ESTIMATE_BUDGET_NS, null);
+        if (lo <= 0 && estimateAborted()) {
+            // Budzet sie skonczyl i nie udalo sie nawet jednej sztuki - wynik
+            // jest niemiarodajny. Zwracamy UNKNOWN, zeby GUI zachowalo
+            // poprzednia liczbe zamiast pokazywac zero.
             return UNKNOWN_COUNT;
         }
         return fromStock + lo;
+    }
+
+    /**
+     * Najwieksza ilosc itemu, ktora planer potrafi wykonac - JEDEN algorytm dla
+     * liczenia liczb i dla wykonania.
+     *
+     * <p><b>Rosnace proby, nie schodzenie od gory.</b> Poprzednia wersja
+     * zaczynala od polowy zamowienia, wiec PIERWSZA proba byla najdrozsza:
+     * receptura z 21 skladnikami (mechanical crafting Create) razy 32 sztuki to
+     * setki operacji planowania i budzet konczyl sie, zanim cokolwiek policzono.
+     * Skutek widoczny u gracza: GUI pokazywalo liczbe (z wczesniejszego, taniego
+     * policzenia), a proba craftowania konczyla sie komunikatem o braku itemow,
+     * bo plan nie powstal w budzecie.
+     *
+     * <p>Teraz proby rosna od 1 (1, 2, 4, ...), wiec nawet maly budzet daje
+     * POPRAWNY plan na tyle sztuk, ile zdazylismy sprawdzic - a nie zero.
+     * Potem bisekcja domyka wynik miedzy ostatnim sukcesem a pierwsza porazka.
+     *
+     * @param resultPlan gdy nie {@code null}, zostaje wypelniony najlepszym planem
+     * @return najwieksza wykonalna ilosc (0, gdy nawet jedna sztuka sie nie udala)
+     */
+    private static long findMaxPlannable(ServerLevel level, VelocePipeNetwork network, Item item,
+                                         long upperBound, Map<Item, Long> stock,
+                                         Set<Item> enabled,
+                                         Map<Item, ResourceLocation> preferred,
+                                         long heatOps, long budgetNanos,
+                                         @Nullable Plan resultPlan) {
+        if (upperBound <= 0) {
+            return 0;
+        }
+        long found = 0;
+        long failed = 0;
+        Plan best = null;
+
+        // Krok 1: rosnace proby (1, 2, 4, ...) - tanie najpierw.
+        long amount = 1;
+        while (amount <= upperBound && !estimateAborted()) {
+            startEstimate(budgetNanos);
+            Map<Item, Long> copy = new HashMap<>(stock);
+            Plan candidate = new Plan(heatOps);
+            if (plan(level, network, enabled, preferred, item, amount, copy, candidate,
+                    new HashSet<>(), 0)) {
+                found = amount;
+                best = candidate;
+            } else {
+                failed = amount;
+                if (estimateAborted()) {
+                    break;   // dalsze proby tylko zjadalyby budzet
+                }
+            }
+            if (amount == upperBound) {
+                break;
+            }
+            amount = Math.min(upperBound, amount * 2);
+        }
+
+        // Krok 2: bisekcja miedzy ostatnim sukcesem a pierwsza porazka.
+        long hi = failed > 0 ? failed - 1 : upperBound;
+        while (found < hi && !estimateAborted()) {
+            long mid = found + (hi - found + 1) / 2;
+            startEstimate(budgetNanos);
+            Map<Item, Long> copy = new HashMap<>(stock);
+            Plan candidate = new Plan(heatOps);
+            if (plan(level, network, enabled, preferred, item, mid, copy, candidate,
+                    new HashSet<>(), 0)) {
+                found = mid;
+                best = candidate;
+            } else {
+                hi = mid - 1;
+                if (estimateAborted()) {
+                    break;
+                }
+            }
+        }
+
+        if (resultPlan != null && best != null) {
+            resultPlan.runs.clear();
+            resultPlan.runs.addAll(best.runs);
+        }
+        return found;
     }
 
     /**
@@ -1368,27 +1437,6 @@ public final class VeloceAutoCrafter {
         return cost;
     }
 
-    /**
-     * Czy da sie wytworzyc {@code amount} sztuk itemu z danego stocku.
-     *
-     * <p>Uzywa prawdziwego planowania na KOPII stocku, wiec nie rusza niczego
-     * na zewnatrz i nie zanieczyszcza stanu miedzy sprawdzeniami.
-     */
-    private static boolean canCraftAmount(ServerLevel level, VelocePipeNetwork network,
-                                          Item item, long amount,
-                                          Map<Item, Long> stock,
-                                          Set<Item> enabled,
-                                          Map<Item, ResourceLocation> preferred,
-                                          long heatOps) {
-        if (amount <= 0) {
-            return true;
-        }
-        Map<Item, Long> copy = new HashMap<>(stock);
-        Plan plan = new Plan(heatOps);
-        return plan(level, network, enabled, preferred, item, amount, copy, plan,
-                new HashSet<>(), 0);
-    }
-
     // ------------------------------------------------------------------
     // Faza wykonania - fizyczne ruszanie itemow
     // ------------------------------------------------------------------
@@ -1463,6 +1511,123 @@ public final class VeloceAutoCrafter {
         return false;
     }
 
+    /**
+     * DLACZEGO plan sie nie udal - komunikat, ktory gracz naprawde rozumie.
+     *
+     * <p><b>Kolejnosc pytan jest istotna</b>, bo kazde z nich prowadzi do innej
+     * naprawy:
+     * <ol>
+     *   <li>czy w sieci jest w ogole piec / maszyna modulu (brak maszyny),</li>
+     *   <li>czy ta maszyna ma paliwo/prad (stoi),</li>
+     *   <li>dopiero na koncu: ktorego SKLADNIKA brakuje.</li>
+     * </ol>
+     *
+     * <p>Wczesniej gracz dostawal jedno ogolne "nie ma itemu w sieci" - i nie
+     * dalo sie odroznic "brakuje zelaza" od "piec nie ma paliwa". Zgloszenia
+     * "GUI pokazuje, ze moge, a nie moge" byly przez to nierozwiazywalne.
+     */
+    private static CraftResult diagnosePlanFailure(ServerLevel level, Context ctx, Item item,
+                                                   Map<Item, Long> stock) {
+        // 1) Piec: receptura pieca istnieje, ale maszyny nie ma albo stoi.
+        if (!VeloceRecipeRegistry.getFurnaceRecipesFor(level, item).isEmpty()) {
+            if (!VeloceHeatSources.hasAnyHeatSource(level, ctx.network)) {
+                return CraftResult.fail("craftingveloce.craft.error.noFurnace");
+            }
+            if (!VeloceHeatSources.hasPower(level, ctx.network)) {
+                return CraftResult.fail("craftingveloce.craft.error.furnaceUnpowered");
+            }
+        }
+        // 2) Modul: maszyna stoi w sieci, ale nie jest zasilona (np. kruszarka
+        //    bez pradu albo maszyna kinetyczna bez obrotow).
+        for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
+            if (module.recipesAnywhere(level, item).isEmpty()) {
+                continue;
+            }
+            if (!module.available(level, ctx.network)) {
+                return CraftResult.fail("craftingveloce.craft.error.noModule", module.id());
+            }
+            if (!module.powered(level, ctx.network)) {
+                return CraftResult.fail("craftingveloce.craft.error.moduleUnpowered",
+                        module.id());
+            }
+        }
+        // 3) Zostaje brak skladnika - mowimy, ktorego.
+        return CraftResult.fail("craftingveloce.craft.error.noBase",
+                firstMissing(level, ctx, item, stock));
+    }
+
+    /**
+     * Pierwszy skladnik, ktorego brakuje i ktorego nie da sie zrobic.
+     *
+     * <p>Uzywane WYLACZNIE do komunikatu dla gracza (i do logu), gdy plan sie
+     * nie udal. Wczesniej gracz dostawal ogolne "nie ma itemu w sieci"
+     * i nie bylo sposobu ustalic, czy brakuje materialu, maszyny, czy receptury.
+     *
+     * <p>Schodzi po recepturach w dol (z ograniczona glebokoscia i ochrona
+     * przed cyklem) i zwraca NAZWE pierwszego skladnika, dla ktorego zadna
+     * opcja nie jest dostepna. Pusty napis = nie udalo sie ustalic.
+     */
+    private static String firstMissing(ServerLevel level, Context ctx, Item item,
+                                       Map<Item, Long> stock) {
+        String missing = findMissing(level, ctx, item, stock, new HashSet<>(), 0);
+        return missing == null ? "" : missing;
+    }
+
+    private static String findMissing(ServerLevel level, Context ctx, Item item,
+                                      Map<Item, Long> stock, Set<Item> visiting, int depth) {
+        if (stock.getOrDefault(item, 0L) > 0) {
+            return null;                       // jest w sieci
+        }
+        if (depth >= MISSING_MAX_DEPTH || !visiting.add(item)) {
+            return null;                       // zbyt gleboko albo cykl - nie zgadujemy
+        }
+        try {
+            List<ProcessingEntry> recipes = ctx.recipesFor(item);
+            if (recipes.isEmpty()) {
+                return name(item);             // nie ma receptury, ktorej mozemy uzyc
+            }
+            String firstGap = null;
+            for (ProcessingEntry recipe : recipes) {
+                String gap = null;
+                List<Ingredient> ingredients = recipe.ingredients();
+                for (int i = 0; i < ingredients.size(); i++) {
+                    if (!hasOptions(ingredients.get(i))) {
+                        continue;
+                    }
+                    boolean satisfied = false;
+                    for (ItemStack option : nonEmpty(ingredients.get(i))) {
+                        Item optItem = option.getItem();
+                        if (stock.getOrDefault(optItem, 0L) > 0
+                                || findMissing(level, ctx, optItem, stock, visiting, depth + 1) == null) {
+                            satisfied = true;
+                            break;
+                        }
+                    }
+                    if (!satisfied) {
+                        gap = firstOptionName(ingredients.get(i));
+                        break;
+                    }
+                }
+                if (gap == null) {
+                    return null;               // ta receptura jest wykonalna
+                }
+                if (firstGap == null) {
+                    firstGap = gap;
+                }
+            }
+            return firstGap;
+        } finally {
+            visiting.remove(item);
+        }
+    }
+
+    /** Glebokosc schodzenia przy szukaniu brakujacego skladnika. */
+    private static final int MISSING_MAX_DEPTH = 6;
+
+    private static String name(Item item) {
+        return new ItemStack(item).getHoverName().getString();
+    }
+
     /** Jedno wykonanie receptury: pobierz skladniki, wstaw wynik. */
     private static boolean runOnce(ServerLevel level, Context ctx,
                                    ProcessingEntry recipe,
@@ -1515,6 +1680,8 @@ public final class VeloceAutoCrafter {
                     // Bez tego w logu byl tylko komunikat "ingredients vanished
                     // mid-craft", a gracz zgłaszal "nie mam itemkow" - i nie
                     // dalo sie ustalic, ktorego skladnika dotyczy problem.
+                    String missingName = firstOptionName(ing);
+                    ctx.lastMissingIngredient = missingName;
                     VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                             "recipe %s: brak skladnika %s (sztuk na wykonanie: %d, opcji: %d)",
                             recipe.id(), describeOptions(ing), units, nonEmpty(ing).size());
@@ -1696,6 +1863,12 @@ public final class VeloceAutoCrafter {
     // ------------------------------------------------------------------
     // Pomocnicze
     // ------------------------------------------------------------------
+
+    /** Nazwa pierwszej opcji skladnika (do komunikatu dla gracza). */
+    private static String firstOptionName(Ingredient ing) {
+        List<ItemStack> options = nonEmpty(ing);
+        return options.isEmpty() ? "" : options.get(0).getHoverName().getString();
+    }
 
     /** Krotki opis skladnika do logu: lista id itemow, ktore go spelniaja. */
     private static String describeOptions(Ingredient ing) {

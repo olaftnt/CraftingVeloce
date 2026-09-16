@@ -71,5 +71,11 @@
   "block.craftingveloce.veloce_create_millstone_module": "Veloce Millstone Module",
   "block.craftingveloce.veloce_create_saw_module": "Veloce Saw Module",
   "block.craftingveloce.veloce_create_crushing_module": "Veloce Crushing Module",
-  "block.craftingveloce.veloce_create_mechanical_crafter_module": "Veloce Mechanical Crafter Module"
+  "block.craftingveloce.veloce_create_mechanical_crafter_module": "Veloce Mechanical Crafter Module",
+  "craftingveloce.craft.error.noBaseItem": "Cannot craft: missing %s",
+  "craftingveloce.craft.error.extractItem": "Cannot craft: could not take %s",
+  "craftingveloce.craft.error.noFurnace": "Cannot craft: no furnace in the network",
+  "craftingveloce.craft.error.furnaceUnpowered": "Cannot craft: furnace has no fuel/power",
+  "craftingveloce.craft.error.noModule": "Cannot craft: no machine for %s",
+  "craftingveloce.craft.error.moduleUnpowered": "Cannot craft: %s has no power"
 }

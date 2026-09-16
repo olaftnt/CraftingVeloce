@@ -384,15 +384,44 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
      * przez zaden fizyczny blok posredni.
      */
     public ItemStack extractItemFromConnectedNetwork(ItemStack requested, int count) {
-        return extractItemFromConnectedNetwork(requested, count, true);
+        return extractWithReason(requested, count, true).stack();
     }
 
     /**
      * @param allowCrafting czy wolno dotworzyc item auto-craftingiem, gdy brak go w sieci
      */
     public ItemStack extractItemFromConnectedNetwork(ItemStack requested, int count, boolean allowCrafting) {
+        return extractWithReason(requested, count, allowCrafting).stack();
+    }
+
+    /**
+     * Wynik pobrania razem z POWODEM niepowodzenia.
+     *
+     * <p><b>Po co.</b> Wczesniej gracz dostawal tylko ogolne "Item not in
+     * network: X" - bez roznicy miedzy "nie ma receptury", "brakuje
+     * skladnika", "maszyna bez pradu" i "plan nie zmiescil sie w budzecie".
+     * Zgloszenie "GUI pokazuje, ze moge, a nie moge zrobic" nie da sie wtedy
+     * rozwiazac inaczej niz czytaniem logow.
+     *
+     * @param reason klucz jezykowy powodu (pusty = brak powodu, np. itemu
+     *               po prostu nie ma w sieci), {@code detail} jego dopelnienie
+     */
+    public record PullResult(ItemStack stack, String reason, String detail) {
+        static PullResult ok(ItemStack stack) {
+            return new PullResult(stack, "", "");
+        }
+
+        static PullResult empty() {
+            return new PullResult(ItemStack.EMPTY, "", "");
+        }
+    }
+
+    /**
+     * @param allowCrafting czy wolno dotworzyc item auto-craftingiem, gdy brak go w sieci
+     */
+    public PullResult extractWithReason(ItemStack requested, int count, boolean allowCrafting) {
         if (level == null || level.isClientSide || !(level instanceof ServerLevel sl) || requested.isEmpty() || count <= 0) {
-            return ItemStack.EMPTY;
+            return PullResult.empty();
         }
 
         // 1. Veloce Pipe Network extraction (handles live and on-demand unloaded chunk ticketing)
@@ -415,23 +444,27 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                         com.craftingveloce.util.VeloceLog.Side.SERVER,
                         "took %sx %s from stock", extracted.getCount(), extracted.getItem());
                 syncCountsToAllWatchers();
-                return extracted;
+                return PullResult.ok(extracted);
             }
             com.craftingveloce.util.VeloceLog.Craft.why(
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
                     "%s not in stock, trying auto-crafting", requested.getItem());
             // 1b. Nie ma w sieci - sprobuj auto-craftingu (jesli wlaczony dla tego itemu).
             if (allowCrafting) {
-                ItemStack crafted = craftItemFromNetwork(sl, net, requested, count);
-                if (!crafted.isEmpty()) {
+                PullResult crafted = craftItemFromNetwork(sl, net, requested, count);
+                if (!crafted.stack().isEmpty()) {
                     // Craftowanie zmienilo stock. Klient sam poprosi o nowe
                     // liczby dla widocznej strony po dostaniu nowego stocku -
                     // nie ma tu czego uniewazniac, bo nic nie jest cache'owane.
                     syncCountsToAllWatchers();
                     return crafted;
                 }
+                // Craftowanie sie nie udalo - przekazujemy POWOD dalej.
+                if (!crafted.reason().isEmpty()) {
+                    return crafted;
+                }
             }
-            return ItemStack.EMPTY;
+            return PullResult.empty();
         }
 
         Direction connDir = getConnectionDirection();
@@ -442,7 +475,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
             ItemStack rsExtracted = RefinedStorageHelper.extractItem(level, targetPos, connDir.getOpposite(), requested, count);
             if (!rsExtracted.isEmpty()) {
                 syncCountsToAllWatchers();
-                return rsExtracted;
+                return PullResult.ok(rsExtracted);
             }
         }
 
@@ -451,14 +484,14 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
             StoredItemStack pulled = pullStack(new StoredItemStack(requested), count);
             if (pulled != null && !pulled.getActualStack().isEmpty()) {
                 syncCountsToAllWatchers();
-                return pulled.getActualStack();
+                return PullResult.ok(pulled.getActualStack());
             }
         } catch (Throwable t) {
             VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
                     "pulling %s from Tom's Storage at %s failed", requested, worldPosition);
         }
 
-        return ItemStack.EMPTY;
+        return PullResult.empty();
     }
 
     /**
@@ -672,14 +705,17 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
      *
      * @return wycraftowany stack albo {@link ItemStack#EMPTY}
      */
-    private ItemStack craftItemFromNetwork(ServerLevel sl, VelocePipeNetwork net,
-                                           ItemStack requested, int count) {
+    private PullResult craftItemFromNetwork(ServerLevel sl, VelocePipeNetwork net,
+                                            ItemStack requested, int count) {
         Item item = requested.getItem();
 
         // Craftujemy tylko to, co ma wlaczony auto-crafting w jakims crafterze sieci.
         if (com.craftingveloce.crafting.VeloceCraftingRegistry
                 .findEnabledCrafter(sl, net, item) == null) {
-            return ItemStack.EMPTY;
+            // Powod dla gracza: to NIE jest "brak itemu w sieci", tylko
+            // wylaczony auto-crafting dla tego itemu - i tak go nazywamy.
+            return new PullResult(ItemStack.EMPTY,
+                    "craftingveloce.craft.error.disabled", "");
         }
 
         var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
@@ -696,7 +732,10 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
                 .ensureAvailable(sl, net, item, count, ctx);
         if (!result.success()) {
-            return ItemStack.EMPTY;
+            // Powod z planera: noBase + nazwa brakujacego skladnika,
+            // tooComplex albo extract. Bez tego gracz widzial tylko ogolne
+            // "nie ma itemu w sieci".
+            return new PullResult(ItemStack.EMPTY, result.reason(), result.detail());
         }
 
         // Wynik craftowania trafia najpierw do bufora craftera (pamiec podreczna),
@@ -705,9 +744,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         // wlasnie z buforow, i tylko jako fallback z sieci.
         ItemStack fromBuffer = extractFromBuffers(buffers, item, count);
         if (!fromBuffer.isEmpty()) {
-            return fromBuffer;
+            return PullResult.ok(fromBuffer);
         }
-        return net.extractItem(sl, item, count);
+        return PullResult.ok(net.extractItem(sl, item, count));
     }
 
     /**
