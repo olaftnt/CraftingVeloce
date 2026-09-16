@@ -1,7 +1,7 @@
 {
     "variants": {
         "": {
-            "model": "craftingveloce:block/veloce_mekanism_sawmill_module"
+            "model": "craftingveloce:block/veloce_integrale_frame"
         }
     }
 }

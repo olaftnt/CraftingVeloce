@@ -1,5 +1,6 @@
 package com.craftingveloce.compat.alchemistry;
 
+import com.craftingveloce.block.VeloceCaseContents;
 import com.craftingveloce.compat.VeloceMods;
 import net.neoforged.bus.api.IEventBus;
 
@@ -28,6 +29,10 @@ public final class AlchemistryCompat {
         AlchemistryCapabilities.register(modEventBus);
         AlchemistryRecipeFamily.register(modEventBus);
         AlchemistryModule.register(modEventBus);
+        registerCases();
+        if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+            registerCaseRenderers(modEventBus);
+        }
     }
 
     /**
@@ -39,4 +44,35 @@ public final class AlchemistryCompat {
     public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
         AlchemistryBlocks.addCreativeItems(output);
     }
+
+    /** Blok bazowy z moda po ID (nazwa w rejestrze, nie pole klasy). */
+    private static net.minecraft.world.level.block.Block block(String id) {
+        return net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(
+                net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("alchemistry", id));
+    }
+
+    /** Wiersze tabeli obudow: nasz modul -&gt; blok bazowy z moda. */
+    private static void registerCases() {
+        VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_COMBINER_MODULE.get(), () -> block("combiner"));
+        VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_COMPACTOR_MODULE.get(), () -> block("compactor"));
+        VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_FISSION_MODULE.get(), () -> block("fission_chamber_controller"));
+        VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_FUSION_MODULE.get(), () -> block("fusion_chamber_controller"));
+    }
+
+    /** Renderer zawartosci obudowy dla block entity modulow - TYLKO klient. */
+    private static void registerCaseRenderers(IEventBus modEventBus) {
+        modEventBus.addListener(
+                net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class,
+                event -> {
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.COMBINER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.COMPACTOR_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.FISSION_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(AlchemistryBlockEntities.FUSION_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                });
+    }
+
 }
