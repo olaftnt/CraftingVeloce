@@ -64,13 +64,16 @@ public final class CreateModule implements VeloceProcessingModule {
     public Set<Item> producible(ServerLevel level, VelocePipeNetwork network) {
         Set<Item> out = new HashSet<>();
         for (RecipeType<?> type : recipeTypes()) {
-            if (!VeloceProcessingSources.hasAny(level, network, type)) {
+            // Maszyna BEZ pradu nie jest "dostepna" - gracz nie moze z niej
+            // korzystac, wiec nie moze tez pojawiac sie na liscie "co umiemy".
+            if (!VeloceProcessingSources.hasPowered(level, network, type)) {
                 continue;
             }
             int side = VeloceProcessingSources.maxGridSide(level, network, type);
+            int parts = VeloceProcessingSources.maxParts(level, network, type);
             CreateRecipeHarvest.index(level, type).forEach((item, entries) -> {
                 for (ProcessingEntry entry : entries) {
-                    if (entry.fitsGrid(side)
+                    if (entry.fitsGrid(side, parts)
                             && requirementsMet(level, network, type, entry)) {
                         out.add(item);
                         return;
@@ -108,8 +111,9 @@ public final class CreateModule implements VeloceProcessingModule {
             // Receptura z siatka wchodzi tylko wtedy, gdy maszyna ma dosc
             // zbudowanych pol (crafter mechaniczny buduje sie z oczek).
             int side = VeloceProcessingSources.maxGridSide(level, network, type);
+            int parts = VeloceProcessingSources.maxParts(level, network, type);
             for (ProcessingEntry entry : CreateRecipeHarvest.forItem(level, type, item)) {
-                if (entry.fitsGrid(side) && requirementsMet(level, network, type, entry)) {
+                if (entry.fitsGrid(side, parts) && requirementsMet(level, network, type, entry)) {
                     out.add(entry);
                 }
             }

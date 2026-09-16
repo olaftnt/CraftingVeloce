@@ -63,11 +63,22 @@ public final class VeloceProcessingSources {
      */
     public static int maxGridSide(ServerLevel level, VelocePipeNetwork network,
                                   RecipeType<?> type) {
+        return (int) Math.floor(Math.sqrt(maxParts(level, network, type)));
+    }
+
+    /**
+     * Najwieksza liczba ZBUDOWANYCH pol wsrod maszyn tego typu.
+     *
+     * <p>Sam bok nie wystarcza: receptura 3x3 potrzebuje DZIEWIECIU pol, a przy
+     * osmiu zbudowanych bok wynosi 3 - dlatego planer potrzebuje obu liczb.
+     */
+    public static int maxParts(ServerLevel level, VelocePipeNetwork network,
+                               RecipeType<?> type) {
         int best = 0;
         for (VeloceProcessingSource source : forType(level, network, type)) {
             best = Math.max(best, Math.max(0, source.availableParts()));
         }
-        return (int) Math.floor(Math.sqrt(best));
+        return best;
     }
 
     /** Czy w sieci stoi JAKAKOLWIEK maszyna dla tego typu receptury. */

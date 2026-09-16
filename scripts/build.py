@@ -1402,7 +1402,17 @@ def validate_create_mechanics():
             problems.append("maszyna kinetyczna bez " + what)
 
     entry = open("src/com/craftingveloce/crafting/ProcessingEntry.java", encoding="utf-8").read()
-    if "public boolean fitsGrid(int side)" not in entry:
+    if "public boolean fitsGrid(int side, int parts)" not in entry:
+        problems.append("ProcessingEntry nie sprawdza LICZBY pol (tylko bok siatki)")
+    if "gridWidth * gridHeight <= parts" not in entry:
+        problems.append("brak warunku na pokrycie wszystkich pol receptury")
+    processing_sources = open("src/com/craftingveloce/crafting/VeloceProcessingSources.java",
+                              encoding="utf-8").read()
+    if "public static int maxParts(" not in processing_sources:
+        problems.append("brak liczenia liczby zbudowanych pol")
+    if "return (int) Math.floor(Math.sqrt(maxParts(level, network, type)));" not in processing_sources:
+        problems.append("bok siatki nie liczy sie z liczby zbudowanych pol")
+    if "public boolean fitsGrid(int side)" in entry:
         problems.append("ProcessingEntry bez reguly dopasowania siatki")
     sources = open("src/com/craftingveloce/crafting/VeloceProcessingSources.java",
                    encoding="utf-8").read()
@@ -1666,6 +1676,14 @@ def validate_create_mechanics():
         problems.append("os maszyny nie dopasowuje sie do sasiada z napedem "
                         "(naped z boku nie zadziala)")
 
+
+    # Maszyna bez pradu nie jest dostepna: dotyczy WSZYSTKICH integracji.
+    for path, name in (("src/com/craftingveloce/compat/create/CreateModule.java", "Create"),
+                       ("src/com/craftingveloce/compat/mekanism/MekanismModule.java", "Mekanism"),
+                       ("src/com/craftingveloce/compat/alchemistry/AlchemistryModule.java", "Alchemistry")):
+        body = _method_body(open(path, encoding="utf-8").read(), "public Set<Item> producible(")
+        if body is None or "hasPowered" not in body:
+            problems.append(f"modul {name}: producible pokazuje maszyny BEZ pradu")
     if problems:
         fail("mechanika Create:\n  " + "\n  ".join(problems))
     print("    OK (Create: os z kazdej strony + blachy, siatka z receptury, "

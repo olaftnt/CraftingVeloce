@@ -64,7 +64,10 @@ public final class AlchemistryModule implements VeloceProcessingModule {
     public Set<Item> producible(ServerLevel level, VelocePipeNetwork network) {
         Set<Item> out = new HashSet<>();
         for (RecipeType<?> type : recipeTypes()) {
-            if (!VeloceProcessingSources.hasAny(level, network, type)) {
+            // Bez pradu maszyna nie jest dostepna dla gracza, wiec nie moze
+            // pojawiac sie na liscie "co umiemy" (gracz: "jesli nie maja pradu,
+            // to nie chcemy, zeby byly w sieci jako dostepne").
+            if (!VeloceProcessingSources.hasPowered(level, network, type)) {
                 continue;
             }
             out.addAll(AlchemistryRecipeHarvest.index(level, type).keySet());

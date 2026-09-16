@@ -76,18 +76,23 @@ public record ProcessingEntry(
     }
 
     /**
-     * Czy receptura zmiesci sie w siatce o boku {@code side}.
+     * Czy receptura zmiesci sie w siatce o boku {@code side} i {@code parts} polach.
      *
      * <p>Dotyczy tylko receptur z siatka (mechanical crafting Create): gracz
      * buduje crafter z osobnych oczek, wiec receptura 5x5 wymaga zbudowania
      * 25 oczek. Receptura bez siatki ({@code gridWidth} = 0) zawsze sie miesci -
      * dzieki temu ten sam filtr obsluguje wszystkie rodziny maszyn.
      */
-    public boolean fitsGrid(int side) {
+    public boolean fitsGrid(int side, int parts) {
         if (gridWidth <= 0 && gridHeight <= 0) {
             return true;
         }
-        return gridWidth <= side && gridHeight <= side;
+        // MUSZA zgadzac sie DWIE rzeczy: ksztalt receptury musi wejsc w kwadrat
+        // o boku "side" ORAZ liczba zbudowanych pol musi pokryc WSZYSTKIE
+        // pozycje receptury. Bez drugiego warunku 8 oczek (bok 3) przepuszczalo
+        // recepture 3x3, ktora potrzebuje 9 pol.
+        return gridWidth <= side && gridHeight <= side
+                && gridWidth * gridHeight <= parts;
     }
 
     /**
