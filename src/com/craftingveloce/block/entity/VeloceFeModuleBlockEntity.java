@@ -243,6 +243,31 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     }
 
     /** Co tick (serwer): dobierz prad z itemu w slocie baterii i z sieci. */
+
+    /**
+     * Siec, do ktorej NAPRAWDE nalezy ta maszyna.
+     *
+     * <p>BUG z logu: piec pytal o siec przez {@code getNetworkForTerminal}
+     * i dostawal CUDZA siec - w logu jej jedyna rura sasiadowala trawie
+     * i powietrzu, wiec Energy Cube ani pieca tam nie bylo i pobor nie mial
+     * z czego dzialac. Teraz najpierw szukamy rury OBOK maszyny i pytamy
+     * o siec tej rury; dopiero gdy takiej nie ma, wracamy do starej sciezki.
+     */
+    private com.craftingveloce.network.pipe.VelocePipeNetwork networkFor(net.minecraft.server.level.ServerLevel sl) {
+        var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            net.minecraft.core.BlockPos side = worldPosition.relative(dir);
+            if (sl.isLoaded(side)
+                    && sl.getBlockState(side).getBlock() instanceof com.craftingveloce.block.VelocePipeBlock) {
+                var net = manager.getNetworkForPipe(sl, side);
+                if (net != null) {
+                    return net;
+                }
+            }
+        }
+        return manager.getNetworkForTerminal(sl, worldPosition);
+    }
+
     public void serverTick() {
         chargeFromItem();
         pullFromNetwork();
@@ -259,8 +284,7 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
             return;
         }
         var serverLevel = (net.minecraft.server.level.ServerLevel) level;
-        var network = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
-                .getNetworkForTerminal(serverLevel, worldPosition);
+        var network = networkFor(serverLevel);
         com.craftingveloce.network.pipe.VeloceEnergyPull.pull(
                 serverLevel, network, this, MAX_PULL_PER_TICK);
     }

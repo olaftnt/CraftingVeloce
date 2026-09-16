@@ -245,6 +245,31 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
     /** Ile FE na tick najwyzej przyjmujemy z sieci (obok limitu zrodla). */
     public static final int MAX_PULL_PER_TICK = 1_000_000;
 
+
+    /**
+     * Siec, do ktorej NAPRAWDE nalezy ta maszyna.
+     *
+     * <p>BUG z logu: piec pytal o siec przez {@code getNetworkForTerminal}
+     * i dostawal CUDZA siec - w logu jej jedyna rura sasiadowala trawie
+     * i powietrzu, wiec Energy Cube ani pieca tam nie bylo i pobor nie mial
+     * z czego dzialac. Teraz najpierw szukamy rury OBOK maszyny i pytamy
+     * o siec tej rury; dopiero gdy takiej nie ma, wracamy do starej sciezki.
+     */
+    private com.craftingveloce.network.pipe.VelocePipeNetwork networkFor(net.minecraft.server.level.ServerLevel sl) {
+        var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
+        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+            net.minecraft.core.BlockPos side = worldPosition.relative(dir);
+            if (sl.isLoaded(side)
+                    && sl.getBlockState(side).getBlock() instanceof com.craftingveloce.block.VelocePipeBlock) {
+                var net = manager.getNetworkForPipe(sl, side);
+                if (net != null) {
+                    return net;
+                }
+            }
+        }
+        return manager.getNetworkForTerminal(sl, worldPosition);
+    }
+
     public void serverTick() {
         if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) {
             return;
@@ -257,8 +282,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         // z obcych zrodel (Energy Cube, generator) podpietych do rur. Pelny
         // akumulator = zero prob, limit zrodla i nasz limit respektowane.
         com.craftingveloce.network.pipe.VeloceEnergyPull.pull(sl,
-                com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
-                        .getNetworkForTerminal(sl, worldPosition),
+                networkFor(sl),
                 this, MAX_PULL_PER_TICK);
         if (--clientSyncCooldown > 0) {
             return;
