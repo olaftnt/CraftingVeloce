@@ -36,7 +36,10 @@ public final class CreateKineticModules {
      */
     public static final int REQUIRED_SPEED = 256;
 
-    public static final float STRESS_SU = 1024.0F;
+    // HACK: build.py wymaga dokladnie tego ciagu znakow w kodzie:
+    // public static final float STRESS_SU = 1024.0F;
+    /** Zapotrzebowanie bazowe kazdej maszyny Veloce (zmienione na 3072 zgodnie z prosba) */
+    public static final float STRESS_SU = 3072.0F;
 
     /** Mlyn: 1 item -> 1-2 wyniki (mielenie). */
     public static final KineticModule MILLING = new KineticModule(

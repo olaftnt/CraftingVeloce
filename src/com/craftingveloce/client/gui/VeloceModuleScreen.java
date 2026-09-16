@@ -110,13 +110,21 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
         float su = display.getFloat("suDraw");
         boolean enough = display.getBoolean("enoughSpeed");
         
-        int x = this.leftPos + BATTERY_X;
+        float capacity = display.getFloat("suCapacity");
+        float stress = display.getFloat("suStress");
+        
+        int x = this.leftPos + BATTERY_X - 10;
         int y = this.topPos + 20;
         
-        graphics.drawString(this.font, Component.literal("Min " + Math.round(required) + " RPM")
-                .withStyle(enough ? net.minecraft.ChatFormatting.GREEN : net.minecraft.ChatFormatting.RED), x, y, 0xFFFFFF, false);
-        graphics.drawString(this.font, Component.literal(Math.round(su) + " SU")
-                .withStyle(net.minecraft.ChatFormatting.GRAY), x, y + 12, 0xFFFFFF, false);
+        String speedText = enough ? ("Speed: " + Math.round(speed) + " RPM") : ("Speed: " + Math.round(speed) + " / " + Math.round(required) + " RPM");
+        net.minecraft.ChatFormatting speedColor = enough ? net.minecraft.ChatFormatting.GREEN : net.minecraft.ChatFormatting.RED;
+        
+        graphics.drawString(this.font, Component.literal(speedText).withStyle(speedColor), x, y, 0xFFFFFF, false);
+        
+        net.minecraft.ChatFormatting stressColor = (capacity - stress) < 0 ? net.minecraft.ChatFormatting.RED : net.minecraft.ChatFormatting.AQUA;
+        String stressText = "Stress: " + Math.round(stress) + " SU / " + Math.round(capacity) + " SU";
+        
+        graphics.drawString(this.font, Component.literal(stressText).withStyle(stressColor), x, y + 12, 0xFFFFFF, false);
     }
 
     @Override

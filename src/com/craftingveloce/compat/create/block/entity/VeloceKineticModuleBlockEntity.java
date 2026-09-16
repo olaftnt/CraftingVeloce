@@ -157,15 +157,10 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
                 .forGoggles(tooltip, 1);
         }
         
-        if (remaining < 0) {
-            com.simibubi.create.foundation.utility.CreateLang.text("Missing: " + Math.round(-remaining) + " SU")
-                .style(net.minecraft.ChatFormatting.RED)
-                .forGoggles(tooltip, 1);
-        } else {
-            com.simibubi.create.foundation.utility.CreateLang.text("Remaining: " + Math.round(remaining) + " SU")
-                .style(net.minecraft.ChatFormatting.AQUA)
-                .forGoggles(tooltip, 1);
-        }
+        net.minecraft.ChatFormatting color = remaining < 0 ? net.minecraft.ChatFormatting.RED : net.minecraft.ChatFormatting.AQUA;
+        com.simibubi.create.foundation.utility.CreateLang.text("Stress: " + Math.round(stressVal) + " SU / " + Math.round(capacityVal) + " SU")
+            .style(color)
+            .forGoggles(tooltip, 1);
         
         return true;
     }
@@ -205,6 +200,8 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         tag.putFloat("suDraw", module.constantSu());
         tag.putInt("parts", parts);
         tag.putBoolean("enoughSpeed", hasEnoughRotationSpeed());
+        tag.putFloat("suStress", this.stress);
+        tag.putFloat("suCapacity", this.capacity);
         return tag;
     }
 
