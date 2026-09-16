@@ -23,10 +23,12 @@ import java.util.Set;
  * "holder not bound" - dlatego rejestrujemy rodzine w zdarzeniu, ktore leci
  * PO rejestracji.
  *
- * <p><b>Zakres v1.</b> Cztery rodziny item -> item: milling, cutting, crushing
- * i mechanical crafting. Prasa, mixer i basin pracuja na zawartosci Basenu
- * (a nie na wlasnym wejsciu), a spout i fany na plynnym - oba wymagaja
- * osobnego modelu, wiec dochodza w dalszych etapach.
+ * <p><b>Zakres.</b> Szesc rodzin: milling, cutting, crushing, mechanical
+ * crafting, pressing i mixing. Receptury z Basenu i z cieplem sa obslugiwane -
+ * planer widzi je tylko wtedy, gdy w sieci jest Basen (press/mixer) albo Blaze
+ * Burner (cieplo). Rodziny plynne (spout, fany) poza zakresem: brak warstwy
+ * plynow.
+ *
  */
 public final class CreateRecipeFamily {
 
@@ -80,7 +82,7 @@ public final class CreateRecipeFamily {
     }
 
     /**
-     * Typy receptur Create obslugiwane w v1.
+     * Typy receptur Create obslugiwane przez modul.
      *
      * <p>Wolno wolac tylko gdy Create jest obecne - metoda dotyka typow obcego
      * moda. Wynik jest liczony raz i zapamietany.

@@ -29,10 +29,11 @@ import javax.annotation.Nullable;
 /**
  * Maszyna kinetyczna Veloce - jeden blok dla wszystkich rodzin Create.
  *
- * <p><b>Napęd.</b> Blok jest maszyna obrotowa Create: wal napedowy wchodzi od
- * DOLU (jak w mlynku Create), a os obrotu jest pionowa (Y). Rury Veloce mozna
- * podlaczyc z KAZDEJ strony - to dwie niezalezne rzeczy (naped mechaniczny
- * i siec logistyczna).
+ * <p><b>Naped.</b> Maszyna jest kinetyczna: os obrotu trzyma w STANIE bloku
+ * (`axis`) i dopasowuje ja automatycznie do sasiada z napedem, a wal
+ * przyjmujemy z obu koncow tej osi oraz z kazdej strony, gdzie stoi maszyna
+ * kinetyczna o zgodnej osi. Bok, z ktorego dochodzi naped (albo rura Veloce),
+ * zamyka sie blacha w obudowie.
  *
  * <p><b>Izolacja.</b> Klasa dziedziczy po {@code KineticBlock} z Create, wiec
  * moze istniec tylko w {@code compat/create} i jest tworzona wylacznie przez

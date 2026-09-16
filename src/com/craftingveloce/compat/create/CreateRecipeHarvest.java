@@ -122,7 +122,8 @@ public final class CreateRecipeHarvest {
     private static ProcessingEntry processing(ResourceLocation id,
                                               ProcessingRecipe<?, ?> recipe,
                                               RecipeType<?> type) {
-        // Plyny i cieplo - poza zakresem v1 (patrz komentarz klasy).
+        // Plyny poza zakresem (brak warstwy plynow). Cieplo NIE jest
+        // odrzucane - jedzie dalej z flaga requiresHeat.
         if (!recipe.getFluidIngredients().isEmpty() || !recipe.getFluidResults().isEmpty()) {
             return null;
         }

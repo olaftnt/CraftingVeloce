@@ -121,6 +121,10 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
   | `dispenser` (dozownik) | `veloce_extractor` |
   | `observer` (obserwator) | `threshold_sensor` |
   | `furnace` (piec) | `velocity_furnace` |
+  | `create:crushing_wheel` | `veloce_create_crushing_module` (1. klik = 1 koło) |
+  | `create:mechanical_crafter` | `veloce_create_mechanical_crafter_module` (1. klik = 1 oczko) |
+  | `create:millstone` / `mechanical_saw` | `veloce_create_millstone_module` / `..._saw_module` |
+  | `create:mechanical_press` / `mechanical_mixer` | `veloce_create_press_module` / `..._mixer_module` |
 
   Klocek spoza tabeli **nie robi nic** (żadnego „wystawiania w środku")
 - **Każdy klocek Veloce wygląda jak obudowa z zawartością w środku**: blok ma

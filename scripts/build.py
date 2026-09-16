@@ -1662,28 +1662,43 @@ def validate_integrale_model():
         if machine_models != ["craftingveloce:block/veloce_integrale_frame"]:
             problems.append(f"blockstate {machine} nie jest obudowa Integrale: {machine_models}")
 
-    # 5b) Kazdy blockstate, ktory jest obudowa, musi miec ikone z ZAWARTOSCIA
-    #     (#content). Bez tego blok wyglada jak obudowa, ale item ma stary
-    #     model, albo (gorzej) obudowa jest pusta, bo zapomniano wiersza tabeli.
+    # 5b) Obudowa = model ramy (pierwsza czesc!) + ikona z ZAWARTOSCIA.
+    #
+    # "Obudowa" rozpoznajemy po tym, ze blok ma rama w blockstate ALBO ikone
+    # z zawartoscia (#content) - dzieki temu rura i terminal (ktore obudowy nie
+    # maja) nie wpadaja do tego sprawdzenia, a blok, ktoremu podmieniono model
+    # na obcy, nadal jest sprawdzany.
+    #
+    # Kolejnosc czesci ma znaczenie: waniliowy MultiPartBakedModel bierze
+    # particleIcon z PIERWSZEJ czesci listy, wiec blacha (albo stary model) na
+    # poczatku = particles z zlej tekstury - dokladnie to zglosil gracz.
+    allowed_models = ("craftingveloce:block/veloce_integrale_frame",
+                      "craftingveloce:block/veloce_integrale_panel_")
     for bs_file in sorted(glob.glob("assets/craftingveloce/blockstates/*.json")):
         block_id = os.path.basename(bs_file)[:-len(".json")]
         bs_data = json.load(open(bs_file, encoding="utf-8"))
         bs_models = [v.get("model") for v in bs_data.get("variants", {}).values()]
         if not bs_models:
-            # Model wieloczesciowy: pierwsza czesc to obudowa (wazne takze dla
-            # particles - patrz komentarz przy blockstate stolu craftingu).
             bs_models = [part.get("apply", {}).get("model")
                          for part in bs_data.get("multipart", [])]
-        if not bs_models or bs_models[0] != "craftingveloce:block/veloce_integrale_frame":
+        if not bs_models:
             continue
         if block_id == "veloce_integrale":
             continue   # PUSTA obudowa: nie ma zawartosci i nie ma jej miec
         item_file = f"assets/craftingveloce/models/item/{block_id}.json"
-        if not os.path.exists(item_file):
-            problems.append(f"{block_id}: brak ikony itemu dla obudowy")
+        icon = open(item_file, encoding="utf-8").read() if os.path.exists(item_file) else ""
+        has_content = "#content" in icon
+        is_case = has_content or bs_models[0] == "craftingveloce:block/veloce_integrale_frame"
+        if not is_case:
             continue
-        if "#content" not in open(item_file, encoding="utf-8").read():
-            problems.append(f"{block_id}: ikona itemu bez zawartosci obudowy (#content)")
+        if not has_content:
+            problems.append(f"{block_id}: obudowa bez zawartosci w ikonie itemu (#content)")
+        wrong = [m for m in bs_models if m and not m.startswith(allowed_models)]
+        if wrong:
+            problems.append(f"{block_id}: obudowa z obcym modelem {wrong[0]}")
+        elif bs_models[0] != "craftingveloce:block/veloce_integrale_frame":
+            problems.append(f"{block_id}: pierwsza czesc obudowy to {bs_models[0]}, "
+                            f"a musi byc rama obudowy (particles przy zbiciu)")
 
     if problems:
         fail("model klatki veloce_integrale:\n  " + "\n  ".join(problems))

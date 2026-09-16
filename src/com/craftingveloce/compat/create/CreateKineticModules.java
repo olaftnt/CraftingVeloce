@@ -5,20 +5,14 @@ import java.util.List;
 /**
  * Maszyny kinetyczne Create - jeden wiersz danych na maszyne.
  *
- * <p><b>Zakres v1.</b> Cztery maszyny item -> item, ktore nie potrzebuja
- * Basenu ani ciepla:
- * <ul>
- *   <li>mlyn ({@code create:milling}),</li>
- *   <li>piła ({@code create:cutting}),</li>
- *   <li>kruszarka ({@code create:crushing}) - wyniki z prawdopodobienstwem,</li>
- *   <li>mechanical crafter ({@code create:mechanical_crafting}) - siatki
- *       wieksze niz 3x3.</li>
- * </ul>
- *
- * <p><b>Poza zakresem v1</b> (potrzebuja Basenu albo ciepla): press, mixer,
- * compacting/basin i spout. To nie sa maszyny "item -> item" z wlasnym
- * wejsciem - pracuja na zawartosci Basenu pod soba, wiec wymagaja osobnego
- * modelu (i, dla ciepla, blaze burnera).
+ * <p><b>Zakres.</b> Szesc maszyn kinetycznych Create: mlyn ({@code milling}),
+ * pila ({@code cutting}), kruszarka ({@code crushing}), mechanical crafter
+ * ({@code mechanical_crafting}), prasa ({@code pressing}) i mixer
+ * ({@code mixing}). Prasa i mixer pracuja na zawartosci Basenu, a receptury
+ * z cieplem wymagaja Blaze Burnera - jedno i drugie jest sprawdzane po
+ * OBECNOSCI w sieci (patrz {@code CreateModule.requirementsMet}), a nie przez
+ * model przeplywow. Poza zakresem sa maszyny na plynnym (spout, fany), bo nie
+ * mamy warstwy plynow.
  *
  * <p><b>Stala pula SU.</b> Create liczy obciazenie natywnie jako
  * {@code impact x |RPM|}. My chcemy stala pule niezalezna od obrotow, wiec
