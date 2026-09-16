@@ -40,21 +40,135 @@ public class VeloceBrewingStandBlockEntity extends BlockEntity
         return net.minecraft.network.chat.Component.translatable("block.craftingveloce.brewing_stand");
     }
 
+    public int brewTime = 0;
+    private boolean[] lastPotionCount;
+    private net.minecraft.world.item.Item ingredient;
+    public int fuel = 0;
+
+    protected final net.minecraft.world.inventory.ContainerData dataAccess = new net.minecraft.world.inventory.ContainerData() {
+        public int get(int index) {
+            switch (index) {
+                case 0: return VeloceBrewingStandBlockEntity.this.brewTime;
+                case 1: return VeloceBrewingStandBlockEntity.this.fuel;
+                default: return 0;
+            }
+        }
+        public void set(int index, int value) {
+            switch (index) {
+                case 0: VeloceBrewingStandBlockEntity.this.brewTime = value; break;
+                case 1: VeloceBrewingStandBlockEntity.this.fuel = value; break;
+            }
+        }
+        public int getCount() { return 2; }
+    };
+
     @Override
     public AbstractContainerMenu createMenu(int id, Inventory inv, Player player) {
-        return new com.craftingveloce.inventory.VeloceBrewingStandMenu(id, inv, getBlockPos());
+        return new com.craftingveloce.inventory.VeloceBrewingStandMenu(id, inv, getBlockPos(), this.dataAccess);
     }
 
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
+        tag.putShort("BrewTime", (short)this.brewTime);
+        tag.putByte("Fuel", (byte)this.fuel);
         tag.put("Items", items.createTag(registries));
     }
 
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
+        this.brewTime = tag.getShort("BrewTime");
+        this.fuel = tag.getByte("Fuel");
         items.fromTag(tag.getList("Items", net.minecraft.nbt.Tag.TAG_COMPOUND), registries);
+    }
+
+    public static void serverTick(net.minecraft.world.level.Level level, BlockPos pos, BlockState state, VeloceBrewingStandBlockEntity be) {
+        ItemStack fuelStack = be.items.getItem(4);
+        if (be.fuel <= 0 && fuelStack.is(net.minecraft.world.item.Items.BLAZE_POWDER)) {
+            be.fuel = 20;
+            fuelStack.shrink(1);
+            setChanged(level, pos, state);
+        }
+
+        boolean canBrew = isBrewable(level.potionBrewing(), be.items);
+        boolean isBrewing = be.brewTime > 0;
+        ItemStack ingredient = be.items.getItem(3);
+
+        if (isBrewing) {
+            be.brewTime--;
+            boolean done = be.brewTime == 0;
+            if (done && canBrew) {
+                doBrew(level, pos, be.items);
+                setChanged(level, pos, state);
+            } else if (!canBrew || !ingredient.is(be.ingredient)) {
+                be.brewTime = 0;
+                setChanged(level, pos, state);
+            }
+        } else if (canBrew && be.fuel > 0) {
+            be.fuel--;
+            be.brewTime = 400; // standard brew time
+            be.ingredient = ingredient.getItem();
+            setChanged(level, pos, state);
+        }
+        
+        boolean[] currentCount = be.getPotionBits();
+        if (!java.util.Arrays.equals(currentCount, be.lastPotionCount)) {
+            be.lastPotionCount = currentCount;
+            BlockState newState = state;
+            if (state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.HAS_BOTTLE_0)) {
+                newState = newState.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HAS_BOTTLE_0, currentCount[0]);
+                newState = newState.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HAS_BOTTLE_1, currentCount[1]);
+                newState = newState.setValue(net.minecraft.world.level.block.state.properties.BlockStateProperties.HAS_BOTTLE_2, currentCount[2]);
+            }
+            if (newState != state) {
+                level.setBlock(pos, newState, 2);
+            }
+        }
+    }
+
+    private boolean[] getPotionBits() {
+        boolean[] bits = new boolean[3];
+        for (int i = 0; i < 3; ++i) {
+            if (!this.items.getItem(i).isEmpty()) {
+                bits[i] = true;
+            }
+        }
+        return bits;
+    }
+
+    private static boolean isBrewable(net.minecraft.world.item.alchemy.PotionBrewing brewing, net.minecraft.world.SimpleContainer container) {
+        ItemStack ingredient = container.getItem(3);
+        if (ingredient.isEmpty()) return false;
+        if (!brewing.isIngredient(ingredient)) return false;
+        for (int i = 0; i < 3; i++) {
+            ItemStack bottle = container.getItem(i);
+            if (!bottle.isEmpty() && brewing.hasMix(bottle, ingredient)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void doBrew(net.minecraft.world.level.Level level, BlockPos pos, net.minecraft.world.SimpleContainer container) {
+        ItemStack ingredient = container.getItem(3);
+        net.minecraft.world.item.alchemy.PotionBrewing brewing = level.potionBrewing();
+        for (int i = 0; i < 3; i++) {
+            ItemStack bottle = container.getItem(i);
+            if (!bottle.isEmpty() && brewing.hasMix(bottle, ingredient)) {
+                container.setItem(i, brewing.mix(bottle, ingredient));
+            }
+        }
+        ingredient.shrink(1);
+        if (ingredient.getItem().hasCraftingRemainingItem()) {
+            ItemStack remainder = new ItemStack(ingredient.getItem().getCraftingRemainingItem());
+            if (ingredient.isEmpty()) {
+                container.setItem(3, remainder);
+            } else {
+                net.minecraft.world.Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), remainder);
+            }
+        }
+        level.levelEvent(1035, pos, 0);
     }
 
     // --- Container (5 slotow) -------------------------------------------------

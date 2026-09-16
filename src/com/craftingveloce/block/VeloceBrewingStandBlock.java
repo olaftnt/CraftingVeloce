@@ -63,6 +63,15 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
      * rozliczane przez craftera, ktory zabiera cieplo z tego akumulatora.
      * Bez tickera pasek w GUI zamarzlby na wartosci z chwili otwarcia okna.
      */
+    @Nullable
+    @Override
+    public <T extends BlockEntity> net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(
+            Level world, BlockState state, net.minecraft.world.level.block.entity.BlockEntityType<T> type) {
+        if (world.isClientSide) return null;
+        return createTickerHelper(type, com.craftingveloce.init.VeloceRegistry.BREWING_STAND_BE.get(),
+                VeloceBrewingStandBlockEntity::serverTick);
+    }
+
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
                                                Player player, BlockHitResult hit) {

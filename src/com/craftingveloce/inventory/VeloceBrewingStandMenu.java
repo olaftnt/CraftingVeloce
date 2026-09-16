@@ -22,18 +22,39 @@ public class VeloceBrewingStandMenu extends AbstractContainerMenu {
 
     private final BlockPos pos;
 
+    private final net.minecraft.world.inventory.ContainerData dataAccess;
+
     public VeloceBrewingStandMenu(int id, Inventory playerInv, BlockPos pos) {
+        this(id, playerInv, pos, new net.minecraft.world.inventory.SimpleContainerData(2));
+    }
+
+    public VeloceBrewingStandMenu(int id, Inventory playerInv, BlockPos pos, net.minecraft.world.inventory.ContainerData dataAccess) {
         super(com.craftingveloce.init.VeloceRegistry.BREWING_STAND_MENU.get(), id);
         this.pos = pos;
+        this.dataAccess = dataAccess;
         BlockEntity be = playerInv.player.level().getBlockEntity(pos);
         net.minecraft.world.Container container = be instanceof net.minecraft.world.Container c
                 ? c : new net.minecraft.world.SimpleContainer(5);
 
+        final net.minecraft.world.item.alchemy.PotionBrewing potionBrewing = playerInv.player.level().potionBrewing();
+
         for (int bottle = 0; bottle < 3; bottle++) {
-            this.addSlot(new Slot(container, bottle, BOTTLE_X + bottle * 18, BOTTLE_Y));
+            this.addSlot(new Slot(container, bottle, BOTTLE_X + bottle * 18, BOTTLE_Y) {
+                public boolean mayPlace(ItemStack stack) { 
+                    return stack.is(net.minecraft.world.item.Items.POTION) ||
+                           stack.is(net.minecraft.world.item.Items.SPLASH_POTION) ||
+                           stack.is(net.minecraft.world.item.Items.LINGERING_POTION) ||
+                           stack.is(net.minecraft.world.item.Items.GLASS_BOTTLE);
+                }
+                public int getMaxStackSize() { return 1; }
+            });
         }
-        this.addSlot(new Slot(container, 3, INGREDIENT_X, INGREDIENT_Y));
-        this.addSlot(new Slot(container, 4, FUEL_X, FUEL_Y));
+        this.addSlot(new Slot(container, 3, INGREDIENT_X, INGREDIENT_Y) {
+            public boolean mayPlace(ItemStack stack) { return potionBrewing.isIngredient(stack); }
+        });
+        this.addSlot(new Slot(container, 4, FUEL_X, FUEL_Y) {
+            public boolean mayPlace(ItemStack stack) { return stack.is(net.minecraft.world.item.Items.BLAZE_POWDER); }
+        });
 
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
@@ -44,6 +65,16 @@ public class VeloceBrewingStandMenu extends AbstractContainerMenu {
         for (int col = 0; col < 9; col++) {
             this.addSlot(new Slot(playerInv, col, PLAYER_X + col * 18, PLAYER_Y + 58));
         }
+
+        this.addDataSlots(dataAccess);
+    }
+
+    public int getBrewingTicks() {
+        return this.dataAccess.get(0);
+    }
+
+    public int getFuel() {
+        return this.dataAccess.get(1);
     }
 
     @Override
