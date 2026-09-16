@@ -2,8 +2,8 @@
     "parent": "block/block",
     "ambientocclusion": false,
     "textures": {
-        "frame": "craftingveloce:block/veloce_pipe",
-        "particle": "craftingveloce:block/veloce_pipe"
+        "frame": "craftingveloce:block/veloce_integrale",
+        "particle": "craftingveloce:block/veloce_integrale"
     },
     "elements": [
         {

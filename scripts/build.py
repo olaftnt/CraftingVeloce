@@ -1084,6 +1084,89 @@ def validate_auto_crafter_ingredient_rule():
     print("    OK (planer i wykonanie: jedna regula skladnikow)")
 
 
+def validate_block_models():
+    """
+    Kazdy blockstate i model itemu musi wskazywac na plik, ktory JEST w JARze.
+
+    BUG, ktory to wykryl (zgloszenie gracza: "model ma popsuty"): po zmianie
+    nazw blokow modulow Mekanism (veloce_crusher_module -> veloce_mekanism_
+    crusher_module) przenioslem pliki modeli, ale BLOCKSTATE'y dalej wskazywaly
+    stare nazwy. W grze cztery bloki nie mialy modelu (komunikat "Unable to load
+    model" leci do loga klienta), a wygladalo to jak zepsuty blok, a nie jak
+    blad w danych - dokladnie ten rodzaj rozjazdu dwoch miejsc, ktory w tym
+    projekcie wraca.
+
+    Sprawdzamy tez TEKSTURY: model musi wskazywac na istniejacy plik PNG.
+    """
+    asset_root = "assets/craftingveloce"
+    model_dir = os.path.join(asset_root, "models")
+    problems = []
+    checked = 0
+
+    def model_path(ref):
+        """craftingveloce:block/x -> sciezka pliku modelu."""
+        ns, _, path = ref.partition(":")
+        if not path:
+            ns, path = "minecraft", ns
+        if ns != "craftingveloce":
+            return None            # modele wanilii - nie nasza sprawa
+        return os.path.join(model_dir, path + ".json")
+
+    for bs in sorted(glob.glob(os.path.join(asset_root, "blockstates/*.json"))):
+        data = json.load(open(bs, encoding="utf-8"))
+        refs = []
+        for variant in data.get("variants", {}).values():
+            if isinstance(variant, dict):
+                refs.append(variant.get("model"))
+            elif isinstance(variant, list):
+                refs.extend(v.get("model") for v in variant)
+        for ref in refs:
+            if not ref:
+                continue
+            path = model_path(ref)
+            if path is None:
+                continue
+            checked += 1
+            if not os.path.exists(path):
+                problems.append(f"{bs.replace(os.sep, '/')}: brak modelu {ref} ({path})")
+
+    # Modele itemow i ich rodzic (model bloku) plus tekstury.
+    for item_model in sorted(glob.glob(os.path.join(model_dir, "item/*.json"))):
+        data = json.load(open(item_model, encoding="utf-8"))
+        parent = data.get("parent")
+        if parent:
+            path = model_path(parent)
+            checked += 1
+            if path is not None and not os.path.exists(path):
+                problems.append(f"{item_model.replace(os.sep, '/')}: brak rodzica {parent}")
+
+    for model_file in sorted(glob.glob(os.path.join(model_dir, "block/*.json"))):
+        data = json.load(open(model_file, encoding="utf-8"))
+        textures = data.get("textures", {})
+        refs = set()
+        for value in textures.values():
+            if isinstance(value, str) and ":" in value:
+                refs.add(value)
+        for element in data.get("elements", []):
+            for face in element.get("faces", {}).values():
+                texture = face.get("texture")
+                if isinstance(texture, str) and texture.startswith("#"):
+                    resolved = textures.get(texture[1:])
+                    if isinstance(resolved, str) and ":" in resolved:
+                        refs.add(resolved)
+        for ref in refs:
+            ns, _, path = ref.partition(":")
+            checked += 1
+            if ns != "craftingveloce":
+                continue
+            if not os.path.exists(os.path.join(asset_root, "textures", path + ".png")):
+                problems.append(f"{model_file.replace(os.sep, '/')}: brak tekstury {ref}")
+
+    if problems:
+        fail("modele blokow:\n  " + "\n  ".join(problems))
+    print(f"    OK ({checked} odwolan do modeli i tekstur istnieje)")
+
+
 def validate_integrale_model():
     """
     Klatka Veloce Integrale: TYLKO krawedzie, srodek pusty.
@@ -1351,6 +1434,7 @@ def main():
     validate_create_kinetics()
     validate_number_format()
     validate_module_recipe_access()
+    validate_block_models()
     validate_integrale_model()
     validate_auto_crafter_ingredient_rule()
 

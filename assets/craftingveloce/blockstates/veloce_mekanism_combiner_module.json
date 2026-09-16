@@ -1,7 +1,7 @@
 {
     "variants": {
         "": {
-            "model": "craftingveloce:block/veloce_combiner_module"
+            "model": "craftingveloce:block/veloce_mekanism_combiner_module"
         }
     }
 }

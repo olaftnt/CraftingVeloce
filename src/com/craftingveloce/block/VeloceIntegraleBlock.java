@@ -9,10 +9,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.shapes.BooleanOp;
-import net.minecraft.world.phys.shapes.CollisionContext;
-import net.minecraft.world.phys.shapes.Shapes;
-import net.minecraft.world.phys.shapes.VoxelShape;
 
 import javax.annotation.Nullable;
 
@@ -27,9 +23,11 @@ import javax.annotation.Nullable;
  * {@code render_type} (patrz decyzja o wylaczeniu przezroczystosci w tym
  * projekcie): brak geometrii = brak renderowania.
  *
- * <p><b>Kolizja.</b> Takze z krawedzi - srodek klatki jest przechodni, tak jak
- * wyglada. Dzieki temu mozna przez nia przejsc, a jednoczesnie da sie po niej
- * chodzic po krawedziach (np. zbudowac z niej szkielet konstrukcji).
+ * <p><b>Kolizja.</b> ZWYKLY PELNY BLOK - gracz tak wlasnie chcial: klatka
+ * wyglada jak szkielet, ale zachowuje sie jak normalny klocek (można po niej
+ * chodzic, nie da sie przez nia przejsc, nie wypada z niej nic). Nietypowy
+ * ksztalt kolizji byl bledem: utrudnial stawianie blokow obok i wygladal jak
+ * zepsuty model.
  *
  * <p><b>Swiatlo i widocznosc.</b> Blok nie zaslania sasiednich scian
  * ({@code noOcclusion}) i przepuszcza swiatlo dzienne, wiec stojaca obok
@@ -43,67 +41,8 @@ import javax.annotation.Nullable;
  */
 public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
 
-    /** Grubosc preta klatki w pikselach modelu (2/16 klocka). */
-    private static final double BAR = 2.0D;
-
-    /**
-     * Ksztalt kolizji: dwanascie pretow po krawedziach szescianu.
-     *
-     * <p>Budujemy go RAZ, przy ladowaniu klasy - to stala figura, wiec liczenie
-     * jej przy kazdym zapytaniu byloby marnowaniem czasu (a zapytan o ksztalt
-     * jest duzo: kolizje, wyswietlanie, AI).
-     */
-    private static final VoxelShape FRAME = buildFrame();
-
     public VeloceIntegraleBlock(Properties properties) {
         super(properties);
-    }
-
-    private static VoxelShape buildFrame() {
-        VoxelShape shape = Shapes.empty();
-        // 4 krawedzie pionowe (w naroznikach X/Z).
-        for (double x : new double[]{0.0D, 16.0D - BAR}) {
-            for (double z : new double[]{0.0D, 16.0D - BAR}) {
-                shape = Shapes.joinUnoptimized(shape,
-                        Shapes.box(x, 0.0D, z, x + BAR, 16.0D, z + BAR),
-                        BooleanOp.OR);
-            }
-        }
-        // 4 krawedzie poziome wzdluz X (gora i dol, przy obu Z).
-        for (double y : new double[]{0.0D, 16.0D - BAR}) {
-            for (double z : new double[]{0.0D, 16.0D - BAR}) {
-                shape = Shapes.joinUnoptimized(shape,
-                        Shapes.box(0.0D, y, z, 16.0D, y + BAR, z + BAR),
-                        BooleanOp.OR);
-            }
-        }
-        // 4 krawedzie poziome wzdluz Z (gora i dol, przy obu X).
-        for (double y : new double[]{0.0D, 16.0D - BAR}) {
-            for (double x : new double[]{0.0D, 16.0D - BAR}) {
-                shape = Shapes.joinUnoptimized(shape,
-                        Shapes.box(x, y, 0.0D, x + BAR, y + BAR, 16.0D),
-                        BooleanOp.OR);
-            }
-        }
-        return shape.optimize();
-    }
-
-    @Override
-    protected VoxelShape getShape(BlockState state, BlockGetter world, BlockPos pos,
-                                  CollisionContext context) {
-        return FRAME;
-    }
-
-    @Override
-    protected VoxelShape getCollisionShape(BlockState state, BlockGetter world, BlockPos pos,
-                                           CollisionContext context) {
-        return FRAME;
-    }
-
-    @Override
-    protected VoxelShape getVisualShape(BlockState state, BlockGetter world, BlockPos pos,
-                                        CollisionContext context) {
-        return FRAME;
     }
 
     @Override
@@ -162,8 +101,4 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
         return 1.0F;
     }
 
-    /** Pomocnicze dla diagnostyki i testow: ksztalt klatki (12 pretow). */
-    public static VoxelShape frameShape() {
-        return FRAME;
-    }
 }
