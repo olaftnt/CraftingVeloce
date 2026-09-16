@@ -69,6 +69,43 @@ public record ProcessingEntry(
             throw new IllegalArgumentException("ingredients=" + ingredients.size()
                     + " ale ingredientCounts=" + ingredientCounts.size() + " (" + id + ")");
         }
+
+        // PUSTE SLOTY SIATKI NIE SA SKLADNIKAMI - usuwamy je TUTAJ, dla
+        // wszystkich wolajacych.
+        //
+        // BUG, ktory to naprawia (zgloszenie gracza: "GUI pokazuje 2 crushing
+        // wheele, ale przy craftowaniu mowi, ze nie mam itemkow"): vanilla
+        // reprezentuje wolne pole siatki jako {@link Ingredient#EMPTY}, wiec
+        // siatka 5x5 miala 21 skladnikow i 4 puste sloty. Planer puste sloty
+        // pomijal, a WYKONANIE nie - probowalo "pobrac" pusty skladnik,
+        // natychmiast padalo i zwracalo komunikat o braku itemow. Objaw byl
+        // mylacy: liczba byla policzona poprawnie, a craft nie dzialal nigdy.
+        //
+        // Filtrujemy wylacznie {@code Ingredient.EMPTY} (puste pole siatki),
+        // a NIE skladniki bez zadnej opcji (pusty tag): ten drugi przypadek
+        // jest bledem danych i musi byc widoczny, a nie wyciszony.
+        if (containsBlankSlot(ingredients)) {
+            NonNullList<Ingredient> kept = NonNullList.create();
+            List<Integer> keptCounts = new ArrayList<>(ingredientCounts.size());
+            for (int i = 0; i < ingredients.size(); i++) {
+                if (ingredients.get(i) == Ingredient.EMPTY) {
+                    continue;
+                }
+                kept.add(ingredients.get(i));
+                keptCounts.add(ingredientCounts.get(i));
+            }
+            ingredients = kept;
+            ingredientCounts = List.copyOf(keptCounts);
+        }
+    }
+
+    private static boolean containsBlankSlot(NonNullList<Ingredient> ingredients) {
+        for (Ingredient ingredient : ingredients) {
+            if (ingredient == Ingredient.EMPTY) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

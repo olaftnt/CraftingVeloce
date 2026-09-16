@@ -975,10 +975,10 @@ public final class VeloceAutoCrafter {
         for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
             Ingredient ing = ingredientList.get(ingIndex);
             long perIngredient = recipe.ingredientCount(ingIndex);
-            List<ItemStack> options = nonEmpty(ing);
-            if (options.isEmpty()) {
-                continue;
+            if (!hasOptions(ing)) {
+                continue;   // pusty slot siatki albo skladnik bez zadnej opcji
             }
+            List<ItemStack> options = nonEmpty(ing);
             Map<Item, Long> snapshot = new HashMap<>(stock);
             int planMark = plan.runs.size();
 
@@ -1482,6 +1482,26 @@ public final class VeloceAutoCrafter {
         List<Ingredient> ingredientList = recipe.ingredients();
         for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
             Ingredient ing = ingredientList.get(ingIndex);
+            // TA SAMA REGULA CO W PLANERZE (hasOptions).
+            //
+            // BUG, ktory to naprawia (zgloszenie gracza: "GUI pokazuje 2
+            // crushing wheele, ale przy craftowaniu mowi, ze nie mam
+            // itemkow"): planer pomijal skladniki bez opcji, a wykonanie
+            // probowalo je "pobrac" i natychmiast padalo. Puste sloty siatki
+            // (Ingredient.EMPTY) sa teraz usuwane juz przy budowie receptury,
+            // ale skladnik z pustym tagiem nadal tu trafia - i musi byc
+            // pominiety tak samo, jak w planie, bo inaczej plan i wykonanie
+            // nie zgadzaja sie co do listy skladnikow.
+            //
+            // Gdyby plan i wykonanie liczyly skladniki ROZNYMI regulami,
+            // dostajemy dokladnie ten objaw: liczba jest policzona, a craft
+            // nie dziala nigdy.
+            if (!hasOptions(ing)) {
+                VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                        "recipe %s: pomijam skladnik bez zadnej opcji (pusty tag)",
+                        recipe.id());
+                continue;
+            }
             // Skladnik moze wymagac kilku sztuk na jedno wykonanie
             // (Alchemistry IngredientStack, Mekanism SizedIngredient).
             // Plan liczy sie z ta sama liczba, wiec wykonanie musi ja
@@ -1490,6 +1510,14 @@ public final class VeloceAutoCrafter {
             for (int unit = 0; unit < units; unit++) {
                 ItemStack taken = takeOne(level, ctx, ing);
                 if (taken.isEmpty()) {
+                    // MOWIMY WPROST, CZEGO ZABRAKLO.
+                    //
+                    // Bez tego w logu byl tylko komunikat "ingredients vanished
+                    // mid-craft", a gracz zgłaszal "nie mam itemkow" - i nie
+                    // dalo sie ustalic, ktorego skladnika dotyczy problem.
+                    VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                            "recipe %s: brak skladnika %s (sztuk na wykonanie: %d, opcji: %d)",
+                            recipe.id(), describeOptions(ing), units, nonEmpty(ing).size());
                     // Zwrot pobranych - nie gubimy itemow.
                     for (ItemStack s : consumed) {
                         deposit(level, ctx, s);
@@ -1668,6 +1696,34 @@ public final class VeloceAutoCrafter {
     // ------------------------------------------------------------------
     // Pomocnicze
     // ------------------------------------------------------------------
+
+    /** Krotki opis skladnika do logu: lista id itemow, ktore go spelniaja. */
+    private static String describeOptions(Ingredient ing) {
+        StringBuilder sb = new StringBuilder("[");
+        for (ItemStack option : nonEmpty(ing)) {
+            if (sb.length() > 1) {
+                sb.append(", ");
+            }
+            sb.append(net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(option.getItem()));
+        }
+        return sb.append(']').toString();
+    }
+
+    /**
+     * Czy ten skladnik ma JAKAKOLWIEK opcje (czym go zastapic)?
+     *
+     * <p>JEDNO miejsce z ta regula dla planera i dla wykonania - rozjazd tych
+     * dwoch miejsc daje objaw "liczba policzona, ale craft nigdy nie dziala".
+     */
+    private static boolean hasOptions(Ingredient ing) {
+        for (ItemStack option : ing.getItems()) {
+            if (!option.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private static List<ItemStack> nonEmpty(Ingredient ing) {
         List<ItemStack> out = new ArrayList<>();

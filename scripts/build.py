@@ -1040,7 +1040,52 @@ def validate_module_recipe_access():
         print(f"    OK ({checked} modulow: recipesAnywhere bez gatingu maszyn)")
 
 
+def validate_auto_crafter_ingredient_rule():
+    """
+    Planer i WYKONANIE musza uzywac tej samej reguly "co jest skladnikiem".
+
+    Objaw rozjazdu tych dwoch miejsc (zgloszenie gracza): "GUI pokazuje 2
+    crushing wheele, ale przy craftowaniu mowi, ze nie mam itemkow". Planer
+    pomijal puste sloty siatki, wykonanie probowalo je "pobrac" i padalo od
+    razu - liczba byla policzona poprawnie, a craft nie dzialal NIGDY.
+
+    Dlatego oba miejsca MUSZA pytac wspolna regule ({@code hasOptions}).
+    """
+    path = "src/com/craftingveloce/crafting/VeloceAutoCrafter.java"
+    if not os.path.exists(path):
+        return
+    text = open(path, encoding="utf-8").read()
+    if "private static boolean hasOptions(" not in text:
+        fail("brak wspolnej reguly hasOptions w VeloceAutoCrafter")
+    problems = []
+    for method in ("planRecipe", "runOnce"):
+        markers = [m.start() for m in re.finditer(r"\b" + method + r"\s*\(", text)]
+        # deklaracja metody jest ostatnim (lub jedynym wlasciwym) trafieniem;
+        # bierzemy pierwsze trafienie po slowie "private static" dla tej nazwy
+        decl = re.search(r"private static [\w<>\[\], .]*\b" + method + r"\s*\(", text)
+        if not decl:
+            problems.append(method + ": nie znaleziono deklaracji")
+            continue
+        start = text.index("{", decl.end())
+        depth, end = 0, start
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if "hasOptions(" not in text[start:end]:
+            problems.append(method + ": nie sprawdza hasOptions (regula rozjedzie sie "
+                                    "z drugim miejscem)")
+    if problems:
+        fail("regula skladnikow w auto-crafterze:\n  " + "\n  ".join(problems))
+    print("    OK (planer i wykonanie: jedna regula skladnikow)")
+
+
 def game_running():
+
 
 
 
@@ -1227,6 +1272,7 @@ def main():
     validate_create_kinetics()
     validate_number_format()
     validate_module_recipe_access()
+    validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))
     print(f"    klas: {classes}, plikow: {len(names)}, "
