@@ -86,6 +86,17 @@ public class VelocePipeBlockEntity extends PlatformBlockEntity implements Tickab
     /** Limit FE na tick - jak getRate(upgrade) w Pipezie. */
     private static final int ENERGY_RATE = 20_000;
 
+
+    /** Czy jakikolwiek bok jest jawnie oznaczony jako pobierajacy. */
+    private boolean anyExtractingSide() {
+        for (int i = 0; i < 6; i++) {
+            if (extractingSides[i] && !disconnectedSides[i]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Pobor z oznaczonych stron i rozdanie na pozostale (wzorzec z Pipeza). */
     private void tickEnergy() {
         if (level == null || level.isClientSide) {
@@ -112,6 +123,32 @@ public class VelocePipeBlockEntity extends PlatformBlockEntity implements Tickab
                 int accepted = energyBuffer.receiveEnergy(taken, false);
                 if (accepted < taken) {
                     source.receiveEnergy(taken - accepted, false);
+                }
+            }
+        }
+        // FALLBACK: jesli zaden bok nie jest oznaczony jako "extracting", a rura
+        // jeszcze nic nie ma, sprobuj pobrac z kazdego boku, ktory wystawia
+        // energie - zeby dzialalo od razu po postawieniu (gracz nie musi znac
+        // trybow per strona, a jawne oznaczenie nadal ma priorytet).
+        if (energyBuffer.getEnergyStored() <= 0 && !anyExtractingSide()) {
+            for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
+                int i = dir.ordinal();
+                if (disconnectedSides[i]) {
+                    continue;
+                }
+                var source = level.getCapability(
+                        net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                        worldPosition.relative(dir), dir.getOpposite());
+                if (source == null || !source.canExtract()) {
+                    continue;
+                }
+                int free = energyBuffer.getMaxEnergyStored() - energyBuffer.getEnergyStored();
+                int taken = source.extractEnergy(Math.min(free, ENERGY_RATE), false);
+                if (taken > 0) {
+                    int accepted = energyBuffer.receiveEnergy(taken, false);
+                    if (accepted < taken) {
+                        source.receiveEnergy(taken - accepted, false);
+                    }
                 }
             }
         }
