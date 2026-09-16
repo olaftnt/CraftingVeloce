@@ -42,10 +42,8 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
     /** Tlo panelu - zaslaniamy nim wglebienie baterii w maszynie kinetycznej. */
     private static final int COLOR_PANEL = 0xFFC6C6C6;
 
-    /** Tekst kinetyczny: trzy linie na wysokosci baterii. */
-    private static final int TEXT_X = 30;
-    private static final int TEXT_Y = 32;
-    private static final int LINE_HEIGHT = 12;
+    /** Jeden status, wysrodkowany w czesci maszyny (nad ekwipunkiem gracza). */
+    private static final int STATUS_Y = 38;
     private static final int COLOR_TEXT = 0x404040;
 
     private CompoundTag display = new CompoundTag();
@@ -71,24 +69,20 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
         }
     }
 
-    /** Maszyna kinetyczna: zaslaniamy wglebienie baterii i piszemy trzy linie. */
+    /**
+     * Maszyna kinetyczna: zaslaniamy wglebienie baterii i piszemy JEDEN,
+     * wysrodkowany status - dokladnie ten sam napis co w Jade.
+     *
+     * <p>Gracz: "na srodku interfejsu ma byc jeden prosty napis, to samo co
+     * pisze w Jade, czyli Powered working albo Not enough rotation speed ...
+     * nic wiecej". Kolor (zielony/czerwony) niesie sam tekst.
+     */
     private void drawKineticText(GuiGraphics graphics) {
-        int x = this.leftPos + BATTERY_X - 36;
-        int y = this.topPos + BATTERY_Y - 3;
-        graphics.fill(x, y, x + BATTERY_W + 60, y + BATTERY_H + 24, COLOR_PANEL);
-
-        int textY = this.topPos + TEXT_Y;
-        graphics.drawString(this.font,
-                Component.translatable("gui.craftingveloce.module.info.speed",
-                        display.getFloat("speed"), display.getInt("requiredSpeed"),
-                        display.getInt("requiredSpeed")), TEXT_X, textY, COLOR_TEXT, false);
-        textY += LINE_HEIGHT;
-        graphics.drawString(this.font, VeloceModuleStatus.message(display),
-                TEXT_X, textY, COLOR_TEXT, false);
-        textY += LINE_HEIGHT;
-        graphics.drawString(this.font,
-                Component.translatable("gui.craftingveloce.module.info.stressNeeded",
-                        display.getFloat("suDraw")), TEXT_X, textY, COLOR_TEXT, false);
+        graphics.fill(this.leftPos + BATTERY_X, this.topPos + BATTERY_Y,
+                this.leftPos + BATTERY_X + BATTERY_W, this.topPos + BATTERY_Y + BATTERY_H,
+                COLOR_PANEL);
+        graphics.drawCenteredString(this.font, VeloceModuleStatus.message(display),
+                this.leftPos + this.imageWidth / 2, this.topPos + STATUS_Y, COLOR_TEXT);
     }
 
     /** Maszyna na energie: bateria i liczba operacji - jak w piecu. */

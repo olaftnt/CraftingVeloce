@@ -1599,11 +1599,18 @@ def validate_module_info_gui():
         text = open(screen, encoding="utf-8").read()
         for need, what in (("AbstractContainerScreen<VeloceModuleMenu>", "zwyklego ekranu kontenera"),
                            ("electric_furnace.png", "tekstury pieca"),
-                           ("gui.craftingveloce.module.info.speed", "predkosci w oknie"),
                            ("VeloceModuleStatus.message(", "statusu w oknie"),
+                           ("drawCenteredString(this.font, VeloceModuleStatus.message(display)",
+                            "statusu WYSRODKOWANEGO"),
                            ("drawBattery(", "baterii dla maszyn na FE")):
             if need not in text:
                 problems.append("okno maszyny bez " + what)
+        # Zadnych innych tekstow w oknie (gracz: "nic wiecej, tylko jeden string").
+        for forbidden, what in (("module.info.speed", "predkosci"),
+                                ("module.info.stress", "SU"),
+                                ("module.info.parts", "liczby elementow")):
+            if forbidden in text:
+                problems.append(f"okno maszyny nadal wypisuje {what}")
 
     # Ladowanie akumulatora: slot na baterie w menu + dobieranie pradu z itemu.
     # Bez tego moduly na FE nie ladowaly sie ani z itemu, ani z zewnatrz
