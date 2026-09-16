@@ -125,6 +125,7 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
   | `create:mechanical_crafter` | `veloce_create_mechanical_crafter_module` (1. klik = 1 oczko) |
   | `create:millstone` / `mechanical_saw` | `veloce_create_millstone_module` / `..._saw_module` |
   | `create:mechanical_press` / `mechanical_mixer` | `veloce_create_press_module` / `..._mixer_module` |
+  | `create:deployer` | `veloce_create_deployer_module` |
 
   Klocek spoza tabeli **nie robi nic** (żadnego „wystawiania w środku")
 - **Każdy klocek Veloce wygląda jak obudowa z zawartością w środku**: blok ma
@@ -392,7 +393,8 @@ Maszyny mają **elementy**, które dokłada gracz prawym klikiem:
 | Maszyna | Elementy | Jak działa |
 |---------|----------|------------|
 | kruszarka | **2 koła młyńskie** (1 klik = 1 koło) | z jednym kołem kręci się, ale nic nie robi (`isPowered` wymaga kompletu) |
-| mechanical crafter | **oczka** (do 9×9 = 81) | siatka receptury liczona z receptury (`getWidth()/getHeight()`) i porównywana z zbudowanymi polami; zbudowane 25 oczek = wszystko z packa |
+| mechanical crafter | **oczka** (do 9×9 = 81) | siatka receptury liczona z receptury (`getWidth()/getHeight()`) i porównywana z zbudowanymi polami; zbudowane 25 oczek = wszystko z packa; po każdym kliknięciu na pasku akcji pojawia się sam układ siatki (`1x2`, `1x3`, … `9x9`) |
+| deployer | — | receptury `create:deploying` (np. precision mechanism): nakłada item na item |
 
 **Jak się buduje maszynę**: stawiasz **pustą obudowę** (`veloce_integrale`),
 bierzesz klocek bazowy z Create i klikasz prawym — **pierwszy klik zamienia
@@ -408,8 +410,8 @@ Burner), są dostępne wtedy, gdy te rzeczy są w sieci — nie budujemy modelu
 przepływów, pytamy o **obecność przedmiotu** (`basin`, `blaze_burner`).
 Receptury z płynami nadal są pomijane (nie mamy warstwy płynów).
 
-Gotowe maszyny kinetyczne: młyn, piła, kruszarka, mechanical crafter, prasa
-i mixer — każda jako obudowa Integrale z blokiem bazowym z Create w środku.
+Gotowe maszyny kinetyczne: młyn, piła, kruszarka, mechanical crafter, prasa,
+mixer i deployer — każda jako obudowa Integrale z blokiem bazowym z Create w środku.
 
 Jak dołożyć kolejny moduł — cała procedura:
 

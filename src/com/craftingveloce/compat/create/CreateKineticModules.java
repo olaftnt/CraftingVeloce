@@ -55,7 +55,13 @@ public final class CreateKineticModules {
             "create:mixing", "Veloce Mixer Module",
             CreateRecipeFamily::mixing, 4.0f);
 
+    /** Deployer: receptury {@code create:deploying} (precision mechanism itd.). */
+    public static final KineticModule DEPLOYING = new KineticModule(
+            "create:deploying", "Veloce Deployer Module",
+            CreateRecipeFamily::deploying, 4.0f);
+
     /** Wszystkie maszyny - do rejestracji i zakladki kreatywnej. */
     public static final List<KineticModule> ALL =
-            List.of(MILLING, CUTTING, CRUSHING, MECHANICAL_CRAFTING, PRESSING, MIXING);
+            List.of(MILLING, CUTTING, CRUSHING, MECHANICAL_CRAFTING, PRESSING, MIXING,
+                    DEPLOYING);
 }

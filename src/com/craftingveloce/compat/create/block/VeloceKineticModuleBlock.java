@@ -180,6 +180,12 @@ public class VeloceKineticModuleBlock extends KineticBlock
             }
             world.playSound(null, pos, net.minecraft.sounds.SoundEvents.ITEM_FRAME_ADD_ITEM,
                     net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 1.2F);
+            if (player != null) {
+                // Powiadomienie na pasku akcji: SAM uklad siatki ("1x2", "9x9"),
+                // bez zadnego tekstu - gracz chce widziec, ile pol ma maszyna.
+                player.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal(be.gridLabel()), true);
+            }
             return net.minecraft.world.ItemInteractionResult.sidedSuccess(false);
         }
         return net.minecraft.world.ItemInteractionResult.sidedSuccess(world.isClientSide);

@@ -153,6 +153,28 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         return Math.abs(getSpeed()) * 0.3F;
     }
 
+    /** Kola mlynskie: obok siebie. Oczka craftera: 1x2, 1x3, ... 9x9. */
+    @Override
+    public int caseGridColumns() {
+        if (caseSpinDegreesPerTick() != 0.0F) {
+            return Math.max(1, parts);
+        }
+        return Math.max(1, (int) Math.ceil(parts / (double) GRID_LIMIT));
+    }
+
+    @Override
+    public int caseGridRows() {
+        if (caseSpinDegreesPerTick() != 0.0F) {
+            return 1;
+        }
+        return Math.max(1, Math.min(parts, GRID_LIMIT));
+    }
+
+    /** Uklad siatki jako tekst dla gracza: "1x2", "5x5", "9x9" (bez slow). */
+    public String gridLabel() {
+        return caseGridColumns() + "x" + caseGridRows();
+    }
+
     @Override
     protected void write(net.minecraft.nbt.CompoundTag tag,
                          net.minecraft.core.HolderLookup.Provider registries, boolean clientPacket) {

@@ -23,4 +23,15 @@ public interface VeloceCaseSpin {
      * (maszyna zbudowana, a nie napedzana).
      */
     float caseSpinDegreesPerTick();
+
+    /**
+     * Ile kolumn ma uklad elementow w obudowie.
+     *
+     * <p>Kola mlynskie stoja obok siebie (kolumny = liczba kol), a oczka
+     * craftera rosna w slupku: 1x2, 1x3, ... az do 9x9.
+     */
+    int caseGridColumns();
+
+    /** Ile rzedow ma uklad elementow w obudowie (patrz {@link #caseGridColumns()}). */
+    int caseGridRows();
 }

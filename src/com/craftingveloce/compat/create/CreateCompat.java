@@ -49,6 +49,11 @@ public final class CreateCompat {
         // (VeloceKineticModuleBlockEntity.calculateStressApplied).
     }
 
+    /** ID klocka z Create (wygodne dla tabeli konwersji). */
+    private static net.minecraft.resources.ResourceLocation create(String id) {
+        return net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", id);
+    }
+
     /**
      * Blok bazowy z Create po ID.
      *
@@ -75,6 +80,8 @@ public final class CreateCompat {
                 () -> block("mechanical_press"));
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MIXER_MODULE.get(),
                 () -> block("mechanical_mixer"));
+        VeloceCaseContents.register(() -> CreateBlocks.VELOCE_DEPLOYER_MODULE.get(),
+                () -> block("deployer"));
     }
 
     /**
@@ -87,18 +94,20 @@ public final class CreateCompat {
      * klik trafia juz w modul i doklada kolejny element.
      */
     private static void registerConversions() {
-        VeloceIntegraleConversions.register(block("crushing_wheel"),
+        VeloceIntegraleConversions.register(create("crushing_wheel"),
                 () -> CreateBlocks.VELOCE_CRUSHING_MODULE.get());
-        VeloceIntegraleConversions.register(block("mechanical_crafter"),
+        VeloceIntegraleConversions.register(create("mechanical_crafter"),
                 () -> CreateBlocks.VELOCE_MECHANICAL_CRAFTER_MODULE.get());
-        VeloceIntegraleConversions.register(block("millstone"),
+        VeloceIntegraleConversions.register(create("millstone"),
                 () -> CreateBlocks.VELOCE_MILLSTONE_MODULE.get());
-        VeloceIntegraleConversions.register(block("mechanical_saw"),
+        VeloceIntegraleConversions.register(create("mechanical_saw"),
                 () -> CreateBlocks.VELOCE_SAW_MODULE.get());
-        VeloceIntegraleConversions.register(block("mechanical_press"),
+        VeloceIntegraleConversions.register(create("mechanical_press"),
                 () -> CreateBlocks.VELOCE_PRESS_MODULE.get());
-        VeloceIntegraleConversions.register(block("mechanical_mixer"),
+        VeloceIntegraleConversions.register(create("mechanical_mixer"),
                 () -> CreateBlocks.VELOCE_MIXER_MODULE.get());
+        VeloceIntegraleConversions.register(create("deployer"),
+                () -> CreateBlocks.VELOCE_DEPLOYER_MODULE.get());
     }
 
     /**
@@ -122,6 +131,8 @@ public final class CreateCompat {
                     event.registerBlockEntityRenderer(CreateBlockEntities.PRESS_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(CreateBlockEntities.MIXER_MODULE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(CreateBlockEntities.DEPLOYER_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                 });
     }

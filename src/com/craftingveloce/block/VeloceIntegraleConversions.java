@@ -1,6 +1,8 @@
 package com.craftingveloce.block;
 
 import com.craftingveloce.init.VeloceRegistry;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
@@ -17,6 +19,11 @@ import java.util.function.Supplier;
  * odpowiedni waniliowy klocek. Klatka <b>podmienia sie</b> na nasza maszyne
  * (patrz {@link VeloceIntegraleBlock#convert}) - w swiecie stoi wtedy prawdziwy
  * blok Veloce, a nie atrapa ani "eksponat".
+ *
+ * <p><b>Klucz to ID, nie referencja do bloku.</b> Bloki z innych modow moga
+ * jeszcze nie istniec w chwili, gdy bramka rejestruje swoje wpisy (kolejnosc
+ * rejestracji modow nie jest nasza), a wtedy referencja bylaby pustym blokiem
+ * i klik w obudowe nie robilby NIC. Po ID szukamy dopiero w chwili uzycia.
  *
  * <p><b>JEDNO miejsce z ta regula.</b> Mapowanie pochodzi ze starego projektu
  * (InventoryExchange), gdzie kontroler powstawal z pulpitu do czytania,
@@ -38,7 +45,7 @@ public final class VeloceIntegraleConversions {
      * rozstrzyga sie leniwie, a moduly z {@code compat/} dokladaja swoje
      * wiersze, zanim ich bloki istnieja.
      */
-    public record Conversion(Block input, Supplier<Block> result) {
+    public record Conversion(ResourceLocation inputId, Supplier<Block> result) {
 
         /** Blok, ktory powstaje z tego wejscia. */
         public Block resultBlock() {
@@ -67,12 +74,21 @@ public final class VeloceIntegraleConversions {
      * moda, a wynik jest naszym blokiem - dzieki temu integracja nie zmienia
      * rdzenia (patrz {@code VeloceMods}).
      */
-    public static void register(Block input, Supplier<Block> result) {
-        CONVERSIONS.add(new Conversion(input, result));
+    public static void register(ResourceLocation inputId, Supplier<Block> result) {
+        CONVERSIONS.add(new Conversion(inputId, result));
     }
 
+    /**
+     * Wpis dla posiadanego bloku (wanilia, nasze klocki): bierzemy jego ID.
+     *
+     * <p>Wanilia i nasze bloki sa zarejestrowane, zanim ktokolwiek siegnie do
+     * tej tabeli, wiec ID jest pewne.
+     */
     private static void add(Block input, Supplier<Block> result) {
-        register(input, result);
+        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(input);
+        if (id != null) {
+            register(id, result);
+        }
     }
 
     /**
@@ -92,8 +108,12 @@ public final class VeloceIntegraleConversions {
 
     /** Przepisanie dla bloku, albo {@code null}. */
     public static Conversion forBlock(Block block) {
+        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
+        if (id == null) {
+            return null;
+        }
         for (Conversion conversion : CONVERSIONS) {
-            if (conversion.input() == block) {
+            if (conversion.inputId().equals(id)) {
                 return conversion;
             }
         }

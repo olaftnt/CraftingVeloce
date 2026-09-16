@@ -66,6 +66,13 @@ public final class CreateBlockEntities {
                             (pos, state) -> create(CreateKineticModules.MIXING, pos, state),
                             CreateBlocks.VELOCE_MIXER_MODULE.get()).build(null));
 
+    public static final DeferredHolder<BlockEntityType<?>,
+            BlockEntityType<VeloceKineticModuleBlockEntity>> DEPLOYER_MODULE =
+            TYPES.register("veloce_create_deployer_module",
+                    () -> BlockEntityType.Builder.of(
+                            (pos, state) -> create(CreateKineticModules.DEPLOYING, pos, state),
+                            CreateBlocks.VELOCE_DEPLOYER_MODULE.get()).build(null));
+
     public static void register(IEventBus modEventBus) {
         TYPES.register(modEventBus);
     }
@@ -97,6 +104,9 @@ public final class CreateBlockEntities {
         }
         if (module == CreateKineticModules.MIXING) {
             return MIXER_MODULE;
+        }
+        if (module == CreateKineticModules.DEPLOYING) {
+            return DEPLOYER_MODULE;
         }
         throw new IllegalArgumentException("brak typu block entity dla maszyny " + module.id());
     }

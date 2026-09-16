@@ -76,6 +76,13 @@ public final class CreateBlocks {
     public static final DeferredItem<BlockItem> VELOCE_MIXER_MODULE_ITEM =
             ITEMS.registerSimpleBlockItem("veloce_create_mixer_module", VELOCE_MIXER_MODULE);
 
+    /** Deployer: receptury {@code create:deploying}. */
+    public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_DEPLOYER_MODULE =
+            BLOCKS.register("veloce_create_deployer_module",
+                    () -> block(CreateKineticModules.DEPLOYING));
+    public static final DeferredItem<BlockItem> VELOCE_DEPLOYER_MODULE_ITEM =
+            ITEMS.registerSimpleBlockItem("veloce_create_deployer_module", VELOCE_DEPLOYER_MODULE);
+
     /** Jedna linia na maszyne: blok + fabryka BE + typ BE z tego modulu. */
     private static VeloceKineticModuleBlock block(KineticModule module) {
         return new VeloceKineticModuleBlock(module,
@@ -111,5 +118,6 @@ public final class CreateBlocks {
         output.accept(VELOCE_MECHANICAL_CRAFTER_MODULE_ITEM.get());
         output.accept(VELOCE_PRESS_MODULE_ITEM.get());
         output.accept(VELOCE_MIXER_MODULE_ITEM.get());
+        output.accept(VELOCE_DEPLOYER_MODULE_ITEM.get());
     }
 }

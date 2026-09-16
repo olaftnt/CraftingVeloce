@@ -76,6 +76,11 @@ public final class CreateRecipeFamily {
         return AllRecipeTypes.MIXING.getType();
     }
 
+    /** Deployer: receptury {@code create:deploying} (nakladanie itemu na item). */
+    public static RecipeType<?> deploying() {
+        return AllRecipeTypes.DEPLOYING.getType();
+    }
+
     /** Mechanical crafter: receptury {@code create:mechanical_crafting}. */
     public static RecipeType<?> mechanicalCrafting() {
         return AllRecipeTypes.MECHANICAL_CRAFTING.getType();
@@ -96,6 +101,7 @@ public final class CreateRecipeFamily {
             out.add(mechanicalCrafting());
             out.add(pressing());
             out.add(mixing());
+            out.add(deploying());
             resolved = Set.copyOf(out);
         }
         return resolved;

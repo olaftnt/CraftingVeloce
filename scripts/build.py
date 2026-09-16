@@ -1316,9 +1316,20 @@ def validate_create_mechanics():
     if "registerConversions();" not in compat:
         problems.append("bramka Create nie rejestruje konwersji z pustej obudowy")
     for item in ("crushing_wheel", "mechanical_crafter", "millstone", "mechanical_saw",
-                 "mechanical_press", "mechanical_mixer"):
-        if f'VeloceIntegraleConversions.register(block("{item}")' not in compat:
+                 "mechanical_press", "mechanical_mixer", "deployer"):
+        if f'VeloceIntegraleConversions.register(create("{item}")' not in compat:
             problems.append(f"brak konwersji obudowy na modul z create:{item}")
+
+    # Klucz tabeli konwersji MUSI byc ID, nie referencja do bloku: bloki z
+    # innego moda moga jeszcze nie istniec, gdy bramka rejestruje wpisy, a wtedy
+    # wpis wskazywalby pusty blok i klik w obudowe nie robilby NIC.
+    conversions = open("src/com/craftingveloce/block/VeloceIntegraleConversions.java",
+                       encoding="utf-8").read()
+    if "record Conversion(ResourceLocation inputId" not in conversions:
+        problems.append("tabela konwersji kluczuje po bloku, a nie po ID "
+                        "(klik klockiem z moda moze nie dzialac)")
+    if "BuiltInRegistries.BLOCK.getKey(block)" not in conversions:
+        problems.append("konwersje nie szukaja wejscia po ID w chwili uzycia")
 
     integrale = open("src/com/craftingveloce/block/VeloceIntegraleBlock.java",
                      encoding="utf-8").read()
@@ -1332,9 +1343,23 @@ def validate_create_mechanics():
     if render_body is None or "caseParts() <= 0" not in render_body:
         problems.append("maszyna bez wklikanych elementow nie jest pusta obudowa "
                         "(z creative'a widac gotowy klocek)")
-    if "Math.sqrt(parts)" not in renderer:
-        problems.append("elementy maszyny nie ukladaja sie w siatke "
-                        "(ma byc tyle modeli, ile gracz wklikal)")
+    if "for (int i = 0; i < parts; i++)" not in renderer:
+        problems.append("renderer nie rysuje tylu modeli, ile gracz wklikal")
+
+    # Siatka: uklad liczy MASZYNA (kolumny x rzedy), renderer i powiadomienie
+    # musza korzystac z tego samego zrodla - inaczej gracz widzi "1x2",
+    # a w srodku rysuje sie cos innego.
+    if "gridLabel()" not in block_code or "displayClientMessage" not in block_code:
+        problems.append("brak powiadomienia na pasku o ukladzie siatki")
+    be_code = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
+                   encoding="utf-8").read()
+    for need, what in (("public int caseGridColumns()", "kolumn ukladu"),
+                       ("public int caseGridRows()", "rzedow ukladu"),
+                       ("public String gridLabel()", "tekstu ukladu dla gracza")):
+        if need not in be_code:
+            problems.append("maszyna bez " + what)
+    if "spin.caseGridColumns()" not in renderer or "spin.caseGridRows()" not in renderer:
+        problems.append("renderer nie uklada elementow tak, jak podaje maszyna")
 
     if "neighbourAxis" not in block_code or "Direction.Axis axis = neighbourAxis" not in block_code:
         problems.append("os maszyny nie dopasowuje sie do sasiada z napedem "

@@ -1,6 +1,7 @@
 package com.craftingveloce.item;
 
 import com.craftingveloce.block.VeloceIntegraleConversions;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.BlockItem;
@@ -37,8 +38,14 @@ public class VeloceIntegraleItem extends BlockItem {
                                 List<Component> tooltip, TooltipFlag flag) {
         tooltip.add(Component.translatable(CONVERT_KEY).withStyle(ChatFormatting.GRAY));
         for (VeloceIntegraleConversions.Conversion conversion : VeloceIntegraleConversions.all()) {
+            // Klucz to ID (blok z innego moda moze jeszcze nie istniec w chwili
+            // rejestracji wpisu), wiec nazwe rozwiazujemy dopiero tutaj.
+            Block input = BuiltInRegistries.BLOCK.get(conversion.inputId());
+            if (input == net.minecraft.world.level.block.Blocks.AIR) {
+                continue;
+            }
             tooltip.add(Component.literal(" ")
-                    .append(conversion.input().getName())
+                    .append(input.getName())
                     .append(Component.literal(" -> "))
                     .append(conversion.resultBlock().getName())
                     .withStyle(ChatFormatting.DARK_GRAY));

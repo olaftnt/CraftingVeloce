@@ -94,17 +94,19 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         int parts = spin.caseParts();
         // Uklad: tyle modeli, ile gracz wklikal - jeden element w srodku, dwa
         // kola obok siebie, 25 oczek jako siatka 5x5, 81 jako 9x9.
-        int side = Math.max(1, (int) Math.ceil(Math.sqrt(parts)));
-        int rows = Math.max(1, (parts + side - 1) / side);
-        float spacing = 0.72F / side;
+        // Uklad bierzemy z maszyny: kola obok siebie, oczka craftera w slupku
+        // (1x2, 1x3, ... 9x9) - ten sam uklad, ktory gracz widzi na pasku akcji.
+        int cols = Math.max(1, spin.caseGridColumns());
+        int rows = Math.max(1, spin.caseGridRows());
+        float spacing = Math.min(0.72F / cols, 0.72F / rows);
         float scale = Math.min(CONTENT_SCALE, spacing * 0.9F);
         float speed = spin.caseSpinDegreesPerTick();
         for (int i = 0; i < parts; i++) {
-            int col = i % side;
-            int row = i / side;
+            int col = i / rows;
+            int row = i % rows;
             float direction = (i % 2 == 0) ? 1.0F : -1.0F;
             pose.pushPose();
-            pose.translate(0.5D + (col - (side - 1) / 2.0F) * spacing,
+            pose.translate(0.5D + (col - (cols - 1) / 2.0F) * spacing,
                     0.5D - (row - (rows - 1) / 2.0F) * spacing, 0.5D);
             if (speed != 0.0F) {
                 // Kola mlynskie krecA sie w przeciwne strony (zazebienie);
