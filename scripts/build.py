@@ -1411,7 +1411,9 @@ def validate_create_mechanics():
     # wypelniaja sie od srodka obudowy.
     if "Math.ceil(Math.sqrt(Math.max(1, parts)))" not in be_code:
         problems.append("siatka craftera nie rosnie kwadratowo (bok z pierwiastka oczek)")
-    if "spiralOrder(" not in renderer or "order[i][0]" not in renderer:
+    # Sprawdzamy TRESC metody renderParts, nie samo wystapienie nazwy w pliku:
+    # definicja spiralOrder zostaje nawet wtedy, gdy pętla jej nie uzywa.
+    if parts_body is None or "spiralOrder(" not in parts_body or "order[i][0]" not in parts_body:
         problems.append("elementy nie wypelniaja kwadratu od SRODKA na zewnatrz")
     if "while (" in _method_body(renderer, "private static int[][] spiralOrder(") or "":
         pass  # miejsca na przyszle reguly
