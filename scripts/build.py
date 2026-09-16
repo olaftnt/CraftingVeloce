@@ -1169,19 +1169,20 @@ def validate_block_models():
 
 def validate_integrale_model():
     """
-    Klatka Veloce Integrale: TYLKO krawedzie, srodek pusty.
+    Klatka Veloce Integrale: rama z pretow + FIOLETOWE SZKLO w oknach.
 
-    Gracz opisal wyglad wprost: "ma tylko rogi i kance, tak jakby narysowac
-    kwadrat na kartce - widac linie tylko na rogach bez kolorowania srodka".
-    Model latwo zepsuc jedna literowka (element zamiast preta 2x2 zrobiony
-    16x2, albo srodek wypelniony przez pomylke) - a w grze wyglada to jak
-    zwykly klocek, czyli dokladnie odwrotnie niz ma byc.
+    Gracz opisal to w dwóch krokach: najpierw "tylko rogi i kance, bez
+    kolorowania srodka", a potem "te dziury w modelu bloczka zabarw na
+    fioletowo, jak purple stained glass". Model latwo zepsuc jedna literowka
+    (szyba nieprzezroczysta, szyba zlewajaca sie z rama, rama wypelniona),
+    a w grze wyglada to jak zwykly klocek - czyli odwrotnie niz ma byc.
 
     Sprawdzamy to, co widzi gracz:
-      * jest 12 elementow (tyle ma szescian krawedzi),
-      * kazdy element to CIENKI pret (dwa wymiary <= 2, trzeci >= 16),
-      * srodek kazdej sciany i sam srodek NIE sa niczym przykryte,
-      * wszystkie 12 krawedzi sa obecne (przynajmniej jednym elementem).
+      * 12 elementow ramy, kazdy CIENKI pret (2 wymiary <= 2, trzeci >= 16),
+      * srodki scian (miejsce okien) sa przykryte WYLACZNIE szyba, ktora jest
+        wcieta w ramę (nie dotyka plaszczyzn bloku - inaczej z-fighting),
+      * szyba bierze teksture szkla, a nie metalu ramy,
+      * model ma render_type translucent (bez tego fiolet jest nieprzezroczysty).
     """
     path = "assets/craftingveloce/models/block/veloce_integrale.json"
     if not os.path.exists(path):
@@ -1190,59 +1191,46 @@ def validate_integrale_model():
     elements = model.get("elements", [])
     problems = []
 
-    if len(elements) != 12:
-        problems.append(f"elementow: {len(elements)}, ma byc 12 (12 krawedzi szescianu)")
-
+    # 1) Rama: dokladnie 12 cienkich pretow.
+    bars = []
     for i, el in enumerate(elements):
-        f, t = el.get("from"), el.get("to")
-        if not f or not t:
-            problems.append(f"element {i}: brak from/to")
-            continue
-        sizes = [t[0] - f[0], t[1] - f[1], t[2] - f[2]]
-        thin = sum(1 for size in sizes if size <= 2)
-        long_side = max(sizes)
-        if thin < 2 or long_side < 16:
-            problems.append(f"element {i}: wymiary {sizes} - to nie cienki pret "
-                            f"(2 wymiary <= 2 i jeden >= 16)")
+        sizes = [el["to"][0] - el["from"][0], el["to"][1] - el["from"][1],
+                 el["to"][2] - el["from"][2]]
+        if sum(1 for size in sizes if size <= 2) >= 2 and max(sizes) >= 16:
+            bars.append((i, el))
+    if len(bars) != 12:
+        problems.append(f"pretow ramy: {len(bars)}, ma byc 12 (12 krawedzi szescianu)")
 
-    def covered(point):
-        x, y, z = point
-        for el in elements:
-            f, t = el["from"], el["to"]
-            if f[0] <= x <= t[0] and f[1] <= y <= t[1] and f[2] <= z <= t[2]:
-                return True
-        return False
+    # 2) Szyba: element WCIETY (zadna sciana nie lezy na plaszczyznie bloku).
+    glass = [(i, el) for i, el in enumerate(elements) if el not in [b[1] for b in bars]]
+    if len(glass) != 1:
+        problems.append(f"elementow szyby: {len(glass)}, ma byc 1")
+    for i, el in glass:
+        f, t = el["from"], el["to"]
+        if min(f) < 1.0 or max(t) > 15.0:
+            problems.append(f"szyba {f}..{t} dotyka plaszczyzny bloku "
+                            f"(z-fighting z rama) - ma byc wcieta")
+        if min(f) > 4.0 or max(t) < 12.0:
+            problems.append(f"szyba {f}..{t} jest za mala - okno ma 12x12 px")
+        textures = {face.get("texture") for face in el.get("faces", {}).values()}
+        if "#glass" not in textures:
+            problems.append(f"szyba nie uzywa tekstury #glass (ma {textures})")
 
-    # Srodki scian (1 jednostka w glab) i sam srodek - musza byc puste.
-    for label, point in (("sciana -Y", (8, 1, 8)), ("sciana +Y", (8, 15, 8)),
-                         ("sciana -X", (1, 8, 8)), ("sciana +X", (15, 8, 8)),
-                         ("sciana -Z", (8, 8, 1)), ("sciana +Z", (8, 8, 15)),
-                         ("srodek", (8, 8, 8))):
-        if covered(point):
-            problems.append(f"{label} {point}: przykryta - srodek ma byc PUSTY")
-
-    # Kazda z 12 krawedzi musi byc obecna (punkt w polowie krawedzi).
-    edges = []
-    for y in (1, 15):
-        for x in (1, 15):
-            for z in (1, 15):
-                edges.append((x, y, z))          # narozniki
-    for mid in ((8, 1, 1), (8, 1, 15), (8, 15, 1), (8, 15, 15),
-                (1, 1, 8), (15, 1, 8), (1, 15, 8), (15, 15, 8),
-                (1, 8, 1), (15, 8, 1), (1, 8, 15), (15, 8, 15)):
-        edges.append(mid)
-    missing = [p for p in edges if not covered(p)]
-    # narozniki sa czescia krawedzi, wiec wystarczy sprawdzic punkty srodkowe
-    missing = [p for p in missing if p in ((8, 1, 1), (1, 8, 1), (1, 1, 8))]
-    if missing:
-        problems.append(f"brak krawedzi w punktach: {missing}")
-
+    textures = model.get("textures", {})
+    glass_texture = textures.get("glass", "")
+    if "glass" not in glass_texture:
+        problems.append(f"tekstura szyby nie jest szklem: {glass_texture}")
     if model.get("ambientocclusion", True):
         problems.append("ambientocclusion nie jest false - cienie na pretach klatki")
 
+    render_type = model.get("render_type", "")
+    if "translucent" not in render_type:
+        problems.append(f"render_type={render_type!r} - bez translucent fiolet jest "
+                        f"nieprzezroczysty (gracz chce szklo)")
+
     if problems:
         fail("model klatki veloce_integrale:\n  " + "\n  ".join(problems))
-    print(f"    OK (klatka: {len(elements)} pretow po krawedziach, srodek pusty)")
+    print(f"    OK (klatka: {len(bars)} pretow + szyba {glass_texture}, translucent)")
 
 
 def game_running():

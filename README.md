@@ -87,18 +87,23 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
   jest drogi, a sensor służy do uruchamiania fabryki, nie do taktowania
 
 ### 9. Veloce Integrale (`veloce_integrale`)
-- **Ozdobna klatka**: widać TYLKO krawędzie i narożniki (12 cienkich prętów
-  2×2 px), środek każdej ściany jest pusty — jak narysowany kwadrat
-- Pusty środek to brak geometrii, a nie przezroczysta tekstura: nie potrzebuje
-  `render_type` (przezroczystość w tym modzie jest wyłączona celowo)
-- **Kolizja też z krawędzi** — przez środek można przejść, po prętach można
-  chodzić, `noOcclusion` + przepuszczanie światła (sąsiad nie renderuje się
-  „w dziurze”)
+- **Klatka z fioletowym szkłem**: rama to 12 cienkich prętów (2×2 px) po
+  krawędziach sześcianu, a okna wypełnia **fioletowe szkło** — wzięte wprost
+  z wanilii (`minecraft:block/purple_stained_glass`), więc wygląda dokładnie
+  jak `purple stained glass`
+- Szyba jest **wcięta o 2 px** (dokładnie w świetle ramy): nie dotyka
+  płaszczyzn bloku, więc nie ma z-fightingu z prętami
+- Model ma `render_type: minecraft:translucent` — bez tego fiolet byłby
+  nieprzezroczysty (przez szybę widać świat)
+- **Kolizja to zwykły pełny blok** — klatka wygląda jak szkielet, ale zachowuje
+  się jak normalny klocek (można po niej chodzić, nie da się przez nią przejść);
+  `noOcclusion` + przepuszczanie światła, żeby sąsiad nie renderował się
+  „w dziurze”
 - **Węzeł sieci Veloce**: rura łączy się z każdej strony, ale klatka **nie
   utrzymuje chunku** (`VeloceNetworkNode.keepChunkLoaded()` = `false`) — jest
   dekoracją, a force-loady mają trzymać to, co naprawdę pracuje
-- Modelu pilnuje `validate_integrale_model` w `build.py` (12 prętów, środek
-  każdej ściany i sam środek puste, `ambientocclusion: false`)
+- Modelu pilnuje `validate_integrale_model` w `build.py` (12 prętów, szyba
+  wcięta i ze szkła, `render_type: translucent`, `ambientocclusion: false`)
 
 ---
 
