@@ -65,6 +65,75 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         return module;
     }
 
+
+
+    // ------------------------------------------------------------------
+    // Elementy maszyny (kola mlynskie, oczka mechanical craftera)
+    // ------------------------------------------------------------------
+
+    /**
+     * Ile elementow maszyny jest zbudowanych.
+     *
+     * <p>Gracz doklada je prawym klikiem odpowiednim itemem Create: kruszarka
+     * potrzebuje DWOCH kol mlynskich (jedno na klik), a crafter mechaniczny
+     * zbiera oczka (do 9x9). Zadna inna maszyna nie ma elementow.
+     */
+    private int parts;
+
+    /** Ile elementow maszyna potrzebuje, zeby w ogole pracowac. */
+    public int requiredParts() {
+        return module() == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING ? 2 : 0;
+    }
+
+    /** Gorna granica liczby elementow (0 = maszyna ich nie przyjmuje). */
+    public int partsLimit() {
+        if (module() == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING) {
+            return 2;
+        }
+        if (module() == com.craftingveloce.compat.create.CreateKineticModules.MECHANICAL_CRAFTING) {
+            return GRID_LIMIT * GRID_LIMIT;
+        }
+        return 0;
+    }
+
+    /** Czy maszyna ma zbudowane wszystko, czego potrzebuje. */
+    public boolean hasRequiredParts() {
+        return parts >= requiredParts();
+    }
+
+    /**
+     * Dokłada jeden element (prawy klik). Zwraca false, gdy maszyna jest pelna
+     * albo w ogole nie przyjmuje elementow.
+     */
+    public boolean addPart() {
+        if (partsLimit() <= 0 || parts >= partsLimit()) {
+            return false;
+        }
+        parts++;
+        setChanged();
+        if (level != null && !level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(),
+                    net.minecraft.world.level.block.Block.UPDATE_ALL);
+        }
+        return true;
+    }
+
+    /** Gorna granica siatki craftera (Create podnosi limit wanilii do 9x9). */
+    public static final int GRID_LIMIT = 9;
+
+    @Override
+    protected void write(net.minecraft.nbt.CompoundTag tag,
+                         net.minecraft.core.HolderLookup.Provider registries, boolean clientPacket) {
+        super.write(tag, registries, clientPacket);
+        tag.putInt("VeloceParts", parts);
+    }
+
+    @Override
+    protected void read(net.minecraft.nbt.CompoundTag tag,
+                        net.minecraft.core.HolderLookup.Provider registries, boolean clientPacket) {
+        super.read(tag, registries, clientPacket);
+        parts = tag.getInt("VeloceParts");
+    }
     /**
      * Create wymaga tej metody, ale nasza maszyna nie ma zadnych zachowan
      * (nie ma ekwipunku, GUI ani filtrów) - dlatego pusto.
@@ -117,8 +186,10 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
     @Override
     public boolean isPowered() {
         // Create zwraca 0 takze przy overstress i zatrzymanej sieci, wiec to
-        // jest kompletny test "maszyna jest napedzana".
-        return getSpeed() != 0;
+        // jest kompletny test "maszyna jest napedzana". Dodatkowo maszyna
+        // musi byc ZBUDOWANA: kruszarka bez dwoch kol mlynskich kreci sie,
+        // ale nic nie robi (wlasnie tak dziala Create).
+        return getSpeed() != 0 && hasRequiredParts();
     }
 
     @Override

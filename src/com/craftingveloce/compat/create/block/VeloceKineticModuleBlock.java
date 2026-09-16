@@ -81,6 +81,50 @@ public class VeloceKineticModuleBlock extends KineticBlock
         return module;
     }
 
+    /**
+     * Prawy klik itemem bazowym dokłada element maszyny (kolo mlynskie, oczko
+     * craftera). Jeden klik = jeden element - tak gracz to opisal.
+     */
+    @Override
+    protected net.minecraft.world.ItemInteractionResult useItemOn(
+            net.minecraft.world.item.ItemStack stack, BlockState state, Level world, BlockPos pos,
+            net.minecraft.world.entity.player.Player player,
+            net.minecraft.world.InteractionHand hand,
+            net.minecraft.world.phys.BlockHitResult hit) {
+        net.minecraft.world.item.Item part = partItem();
+        if (part == null || !stack.is(part)) {
+            return net.minecraft.world.ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (!world.isClientSide
+                && world.getBlockEntity(pos) instanceof VeloceKineticModuleBlockEntity be
+                && be.addPart()) {
+            if (player == null || !player.isCreative()) {
+                stack.shrink(1);
+            }
+            world.playSound(null, pos, net.minecraft.sounds.SoundEvents.ITEM_FRAME_ADD_ITEM,
+                    net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 1.2F);
+            return net.minecraft.world.ItemInteractionResult.sidedSuccess(false);
+        }
+        return net.minecraft.world.ItemInteractionResult.sidedSuccess(world.isClientSide);
+    }
+
+    /** Item bazowy z Create, ktory dokladamy do tej maszyny (albo null). */
+    private net.minecraft.world.item.Item partItem() {
+        String id = module.id();
+        if ("create:crushing".equals(id)) {
+            return item("crushing_wheel");
+        }
+        if ("create:mechanical_crafting".equals(id)) {
+            return item("mechanical_crafter");
+        }
+        return null;
+    }
+
+    private static net.minecraft.world.item.Item item(String id) {
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
+                net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", id));
+    }
+
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return blockEntityFactory.create(pos, state);
