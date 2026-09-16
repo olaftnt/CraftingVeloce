@@ -29,6 +29,7 @@ public final class VeloceEnergyPull {
     private static final org.slf4j.Logger LOG =
             org.slf4j.LoggerFactory.getLogger("craftingveloce-energy");
     private static long lastEmptyLog;
+    private static long lastDiscoverLog;
 
     /** Ile FE na tick najwyzej probujemy wziac z jednego zrodla. */
     public static final int MAX_PER_SOURCE_PER_TICK = 1_000_000;
@@ -58,6 +59,9 @@ public final class VeloceEnergyPull {
         if (!network.getEnergyEndpoints().isEmpty()) {
             return;
         }
+        int pipes = network.getPipes().size();
+        int neighbours = 0;
+        int found = 0;
         for (BlockPos pipe : network.getPipes()) {
             if (!level.isLoaded(pipe)) {
                 continue;
@@ -68,11 +72,20 @@ public final class VeloceEnergyPull {
                         || level.getBlockState(side).getBlock() instanceof VeloceNetworkNode) {
                     continue;
                 }
+                neighbours++;
                 if (level.getCapability(Capabilities.EnergyStorage.BLOCK, side,
                         dir.getOpposite()) != null) {
                     network.addEnergyEndpoint(side);
+                    found++;
                 }
             }
+        }
+        if (found == 0 && System.currentTimeMillis() - lastDiscoverLog > 5_000L) {
+            lastDiscoverLog = System.currentTimeMillis();
+            LOG.info("[Veloce][ENERGY] szukalem zrodel: rur w sieci={}, sprawdzonych sasiadow={}, "
+                            + "znalezionych zrodel={} - jesli Energy Cube stoi obok rury, a tu jest 0, "
+                            + "to jego capability nie jest widoczne z tej strony",
+                    pipes, neighbours, found);
         }
     }
 
