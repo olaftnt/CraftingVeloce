@@ -26,23 +26,17 @@ public final class CreateKineticModules {
     }
 
     /**
-     * Bazowe zapotrzebowanie KAZDEGO modulu: 2048 SU przy 256 RPM.
+     * Wymagana predkosc obrotowa: 256 RPM.
      *
-     * <p><b>Staly pobor calkowity, nie staly "impact".</b> Create liczy pobor
-     * sieci jako {@code impact x |RPM|}, wiec zeby CALKOWITE zapotrzebowanie
-     * bylo stale niezaleznie od predkosci, block entity dzieli te liczbe przez
-     * predkosc ({@code VeloceKineticModuleBlockEntity.calculateStressApplied}).
-     * Dzieki temu:
-     * <ul>
-     *   <li>przy 256 RPM impact = 8, czyli 8 x 256 = 2048 SU,</li>
-     *   <li>przy 64 RPM impact = 32, czyli 32 x 64 = 2048 SU,</li>
-     *   <li>przy 512 RPM impact = 4, czyli 4 x 512 = 2048 SU.</li>
-     * </ul>
-     * Bilans jest wiec identyczny przy kazdym przelozeniu - przekladnie nie
-     * daja darmowej mocy ani nie powoduja strat. Cztery Large Water Wheele
-     * (4 x 512 SU) pokrywaja dokladnie jeden modul.
+     * <p>Gracz: "te maszyny, zeby dzialaly, musza dostawac max rotation speed
+     * z Create (256); jesli nie dostaja, to nie dzialaja". Wymog jest wiec
+     * PROGOWY, a nie stopniowy: przy 255 RPM maszyna stoi, przy 256 pracuje.
+     * Plynaca z tego korzysc: nie ma juz dzielenia przez predkosc, ktore przy
+     * niskich obrotach dawalo ogromny "impact" i sieć krzyczala overstressed.
      */
-    public static final float STRESS_SU = 2048.0F;
+    public static final int REQUIRED_SPEED = 256;
+
+    public static final float STRESS_SU = 1024.0F;
 
     /** Mlyn: 1 item -> 1-2 wyniki (mielenie). */
     public static final KineticModule MILLING = new KineticModule(

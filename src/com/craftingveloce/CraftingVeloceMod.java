@@ -189,6 +189,14 @@ public class CraftingVeloceMod {
             );
         });
 
+        // Overlay "not enough rotation speed" - tylko klient (klasa klienta nie
+        // moze sie ladowac na serwerze).
+        if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+            NeoForge.EVENT_BUS.addListener(
+                    net.neoforged.neoforge.client.event.RenderGuiEvent.Post.class,
+                    com.craftingveloce.client.VeloceModuleOverlay::onRenderGui);
+        }
+
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             CVDebugCommand.register(event.getDispatcher());
             // /cv showcase: stawia wszystkie nasze bloki do testow renderu.

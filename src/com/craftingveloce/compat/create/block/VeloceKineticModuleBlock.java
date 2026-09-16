@@ -288,6 +288,30 @@ public class VeloceKineticModuleBlock extends KineticBlock
         return module == com.craftingveloce.compat.create.CreateKineticModules.MECHANICAL_CRAFTING;
     }
 
+    /**
+     * Prawy klik bez itemu otwiera okno modulu (predkosc, SU, sieć).
+     *
+     * <p>Gracz: "jak klikne na nie prawym guzikiem myszy, to otwiera sie GUI,
+     * ktore pokazuje aktualna predkosc / maksymalna, minimalna wymagana,
+     * aktualnie ile dostaje SU / ile jest potrzebne, no i informacje o sieci".
+     */
+    @Override
+    protected net.minecraft.world.InteractionResult useWithoutItem(
+            BlockState state, Level world, BlockPos pos,
+            net.minecraft.world.entity.player.Player player,
+            net.minecraft.world.phys.BlockHitResult hit) {
+        if (!world.isClientSide
+                && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer
+                && world.getBlockEntity(pos)
+                instanceof com.craftingveloce.block.entity.VeloceModuleInfoSource source
+                && world instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(serverPlayer,
+                    new com.craftingveloce.network.OpenModuleInfoPKT(pos,
+                            source.moduleInfo(serverLevel)));
+        }
+        return net.minecraft.world.InteractionResult.sidedSuccess(world.isClientSide);
+    }
+
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return blockEntityFactory.create(pos, state);

@@ -456,6 +456,11 @@ Rdzeń nie wymaga przy tym żadnej zmiany.
 
 ## 🌐 Network (Packets)
 
+`OpenModuleInfoPKT` otwiera **GUI modułu Create** (prawy klik na maszynę):
+prędkość aktualna / wymagana / maksymalna, pobór SU i pojemność sieci oraz stan
+podpiętej sieci rur (węzły, magazyny, typy itemów). Liczby wylicza serwer, więc
+okno ich nie zgaduje.
+
 Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 
 | Packet | Kierunek | Zawartość |
@@ -466,6 +471,7 @@ Wszystkie packety używają NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `CraftingTableToggleItemPKT` | C→S | `BlockPos pos, Item item` |
 | `ExtractorToggleCraftingPKT` | C→S | `BlockPos pos, int filterIndex` |
 | `OpenControllerScreenPKT` | S→C | `BlockPos pos, Map<Item, Long> stock, Set<Item> craftingEnabled, Set<Item> furnaceCraftable, boolean furnacePowered, Set<Item> furnacePreferred` |
+| `OpenModuleInfoPKT` | S→C | `BlockPos pos, CompoundTag info` |
 | `OpenCraftingTableScreenPKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents` |
 | `OpenFilterPKT` | C→S | `BlockPos pos, int filterIndex` |
 | `OpenFilterPickerPKT` | S→C | `BlockPos pos, int filterIndex` |

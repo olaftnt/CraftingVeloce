@@ -1205,6 +1205,62 @@ def validate_block_models():
     print(f"    OK ({checked} odwolan do modeli i tekstur istnieje)")
 
 
+def validate_module_info_gui():
+    """
+    GUI modulu (prawy klik): predkosc, SU i sieć.
+
+    Gracz: "jak klikne prawym na modul, to otwiera sie GUI z aktualna predkosc,
+    maksymalna/minimalna wymagana, ile dostaje SU / ile potrzebuje, i
+    informacjami o sieci". Sprawdzamy komplet ogniw, bo kazde z nich latwo
+    zgubic pojedynczo:
+      1. pakiet istnieje i jest zarejestrowany (inaczej okno sie nie otworzy),
+      2. prawy klik faktycznie go wysyla,
+      3. block entity wypelnia pola (predkosc, SU, sieć),
+      4. ekran istnieje i zamyka sie Esc (a nie E - gracz tego nie chce).
+    """
+    problems = []
+    pkt = "src/com/craftingveloce/network/OpenModuleInfoPKT.java"
+    screen = "src/com/craftingveloce/client/gui/VeloceModuleInfoScreen.java"
+    be = "src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java"
+    block = "src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java"
+    for path, what in ((pkt, "pakietu okna"), (screen, "ekranu okna")):
+        if not os.path.exists(path):
+            problems.append("brak " + what)
+    if os.path.exists(pkt):
+        handler = open("src/com/craftingveloce/network/VelocePacketHandler.java",
+                       encoding="utf-8").read()
+        if "OpenModuleInfoPKT.TYPE" not in handler:
+            problems.append("pakiet okna nie jest zarejestrowany")
+    if os.path.exists(block):
+        body = _method_body(open(block, encoding="utf-8").read(), "protected net.minecraft.world.InteractionResult useWithoutItem(")
+        if body is None or "OpenModuleInfoPKT" not in body:
+            problems.append("prawy klik nie otwiera okna modulu")
+    if os.path.exists(be):
+        text = open(be, encoding="utf-8").read()
+        info = _method_body(text, "public net.minecraft.nbt.CompoundTag moduleInfo(")
+        if info is None:
+            problems.append("block entity nie opisuje sie do okna")
+        else:
+            for need, what in (('tag.putFloat("speed"', "predkosci"),
+                               ('tag.putFloat("suDraw"', "poboru SU"),
+                               ('tag.putFloat("suCapacity"', "pojemnosci sieci"),
+                               ('tag.putInt("networkNodes"', "wezlow sieci rur"),
+                               ('tag.putInt("networkStorages"', "magazynow sieci"),
+                               ("getActualStressOf", "poboru tej maszyny")):
+                if need not in info:
+                    problems.append("okno modulu bez " + what)
+    if os.path.exists(screen):
+        text = open(screen, encoding="utf-8").read()
+        if "GLFW_KEY_ESCAPE" not in text:
+            problems.append("okno modulu nie zamyka sie Escape")
+        lang = json.load(open("assets/craftingveloce/lang/en_us.json", encoding="utf-8"))
+        if not any(key.startswith("gui.craftingveloce.module.info.") for key in lang):
+            problems.append("brak kluczy jezyka dla okna modulu")
+    if problems:
+        fail("GUI modulu:\n  " + "\n  ".join(problems))
+    print("    OK (GUI modulu: pakiet + prawy klik + pola SU/predkosc/sieć + Esc)")
+
+
 def validate_showcase_command():
     """
     /cv showcase: lista blokow z REJESTRU, nie z recznej listy.
@@ -1482,20 +1538,48 @@ def validate_create_mechanics():
     be_code = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
                    encoding="utf-8").read()
 
-    # Pobór mocy: STALY CALKOWITY (2048 SU) niezaleznie od RPM. Create liczy
-    # impact x RPM, wiec block entity dzieli stala przez predkosc - inaczej
-    # kazde przelozenie zmienialoby bilans (darmowa moc albo straty).
+    # Naped: PROG 256 RPM + pobor 1024 SU. Wczesniejszy model (dzielenie stalej
+    # przez predkosc bez progu) dawal ogromny "impact" przy malych obrotach i
+    # sieć krzyczala overstressed - gracz to zglosil ("przy 256 sie zacina,
+    # przy 1 kreci normalnie").
     modules = open("src/com/craftingveloce/compat/create/CreateKineticModules.java",
                    encoding="utf-8").read()
-    if "public static final float STRESS_SU = 2048.0F;" not in modules:
-        problems.append("brak stalej 2048 SU dla modulow")
+    if "public static final int REQUIRED_SPEED = 256;" not in modules:
+        problems.append("brak progu wymaganej predkosci 256 RPM")
+    if "public static final float STRESS_SU = 1024.0F;" not in modules:
+        problems.append("brak stalej 1024 SU dla modulow")
     if modules.count("STRESS_SU") < 8:
-        problems.append("nie kazdy modul bierze 2048 SU (ktos wpisal wlasna liczbe)")
+        problems.append("nie kazdy modul bierze 1024 SU (ktos wpisal wlasna liczbe)")
     stress_body = _method_body(be_code, "float calculateStressApplied()")
     if stress_body is None or "module.constantSu() / speed" not in stress_body:
-        problems.append("brak kompensacji predkosci - pobor zmienialby sie z RPM")
+        problems.append("brak kompensacji predkosci w poborze")
     if stress_body is None or "speed < 1f" not in stress_body:
         problems.append("brak zabezpieczenia przy predkosci 0 (dzielenie przez zero)")
+    if "public boolean hasEnoughRotationSpeed()" not in be_code:
+        problems.append("brak sprawdzenia progu predkosci w maszynie")
+    powered_body = _method_body(be_code, "public boolean isPowered()")
+    if powered_body is None or "hasEnoughRotationSpeed()" not in powered_body:
+        problems.append("isPowered nie wymaga progu predkosci")
+
+    # Overlay przy celowniku: "not enough rotation speed" + wymagana wartosc.
+    overlay_path = "src/com/craftingveloce/client/VeloceModuleOverlay.java"
+    if not os.path.exists(overlay_path):
+        problems.append("brak overlayu o zbyt malej predkosci")
+    else:
+        overlay = open(overlay_path, encoding="utf-8").read()
+        for need, what in (("hasEnoughRotationSpeed", "tego samego warunku co serwer"),
+                           ("requiredSpeed()", "wymaganej predkosci w napisie"),
+                           ("RenderGuiEvent", "rysowania przy celowniku")):
+            if need not in overlay:
+                problems.append("overlay bez " + what)
+        land = json.load(open("assets/craftingveloce/lang/en_us.json", encoding="utf-8"))
+        for key in ("gui.craftingveloce.module.notEnoughSpeed",
+                    "gui.craftingveloce.module.requiredSpeed"):
+            if key not in land:
+                problems.append(f"brak klucza jezyka {key}")
+        mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+        if "VeloceModuleOverlay::onRenderGui" not in mod or "dist.isClient()" not in mod:
+            problems.append("overlay nie jest podpiety po stronie klienta")
 
     # Kreatywnosc i middle click maja dawac maszyne WYPELNIONA (kruszarka: 2 kola,
     # crafter: 3x3), a nie pusta - inaczej gracz stawia pustke i wyglada jak blad.
@@ -2218,6 +2302,7 @@ def main():
     validate_case_occlusion()
     validate_loot_item_ids()
     validate_showcase_command()
+    validate_module_info_gui()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))

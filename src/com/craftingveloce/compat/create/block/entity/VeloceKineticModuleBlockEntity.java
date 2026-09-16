@@ -42,7 +42,8 @@ import java.util.Set;
  */
 public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         implements VeloceProcessingSource, com.craftingveloce.block.VeloceCaseSpin,
-        com.craftingveloce.block.VeloceCaseBuildable {
+        com.craftingveloce.block.VeloceCaseBuildable,
+        com.craftingveloce.block.entity.VeloceModuleInfoSource {
 
     /**
      * Pula operacji dla planera, gdy maszyna sie kreci.
@@ -130,6 +131,59 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
                     net.minecraft.world.level.block.Block.UPDATE_ALL);
         }
         return true;
+    }
+
+    /**
+     * Czy naped daje wymagana predkosc (256 RPM).
+     *
+     * <p>Prog jest celowo twardy: przy 255 RPM maszyna stoi, przy 256 pracuje.
+     * Klient pyta o to samo (overlay "not enough rotation speed"), a wartosc
+     * pochodzi z {@code CreateKineticModules.REQUIRED_SPEED}.
+     */
+    public boolean hasEnoughRotationSpeed() {
+        return Math.abs(getSpeed()) >= com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
+    }
+
+    /**
+     * Dane do okna modulu: predkosc, pobor SU i sieć rur.
+     *
+     * <p>Liczone na SERWERZE (tylko tam sa prawdziwe liczby sieci kinetycznej
+     * i magazynow), a klient dostaje gotowe pola razem z otwarciem okna.
+     */
+    @Override
+    public net.minecraft.nbt.CompoundTag moduleInfo(
+            net.minecraft.server.level.ServerLevel level) {
+        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
+        tag.putFloat("speed", Math.abs(getSpeed()));
+        tag.putInt("requiredSpeed", com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED);
+        tag.putInt("maxSpeed", com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED);
+        tag.putFloat("suNeeded", module.constantSu());
+        tag.putBoolean("enoughSpeed", hasEnoughRotationSpeed());
+        tag.putInt("parts", parts);
+        try {
+            var kinetic = getOrCreateNetwork();
+            if (kinetic != null) {
+                tag.putFloat("suStress", kinetic.calculateStress());
+                tag.putFloat("suCapacity", kinetic.calculateCapacity());
+                tag.putFloat("suDraw", kinetic.getActualStressOf(this));
+            }
+        } catch (Throwable ignored) {
+            // Sieć kinetyczna bywa niedostepna (np. chwilowo po przeladowaniu) -
+            // okno pokaze wtedy same zera zamiast sie wywalic.
+        }
+        var pipes = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level)
+                .getNetworkForTerminal(level, worldPosition);
+        if (pipes != null) {
+            tag.putInt("networkNodes", pipes.getTerminals().size());
+            tag.putInt("networkStorages", pipes.getEndpoints().size());
+            tag.putInt("networkItems", pipes.getAllItemCounts(level).size());
+        }
+        return tag;
+    }
+
+    /** Wymagana predkosc do pokazania graczowi (overlay). */
+    public int requiredSpeed() {
+        return com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
     }
 
     /** Gorna granica siatki craftera (Create podnosi limit wanilii do 9x9). */
@@ -229,9 +283,10 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
      * Staly CALKOWITY pobor SU niezaleznie od obrotow.
      *
      * <p>Create liczy obciazenie jako {@code impact x |RPM|}, wiec zeby modul
-     * bral zawsze tyle samo (2048 SU, patrz {@code CreateKineticModules.STRESS_SU}),
-     * dzielimy te liczbe przez predkosc. Przekladnie zmieniaja wiec tylko
-     * moment (impact), a nie bilans mocy - zero darmowej mocy i zero strat.
+     * bral zawsze tyle samo (1024 SU, patrz {@code CreateKineticModules.STRESS_SU}),
+     * dzielimy te liczbe przez predkosc. Praca wymaga progu 256 RPM
+     * ({@link #hasEnoughRotationSpeed()}), wiec impact nigdy nie eksploduje
+     * przy malych obrotach.
      *
      * <p>{@code lastStressApplied} jest polem protected w KineticBlockEntity
      * i MUSI byc ustawione - Create czyta je przy liczeniu obciazenia sieci.
@@ -275,9 +330,9 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
     public boolean isPowered() {
         // Create zwraca 0 takze przy overstress i zatrzymanej sieci, wiec to
         // jest kompletny test "maszyna jest napedzana". Dodatkowo maszyna
-        // musi byc ZBUDOWANA: kruszarka bez dwoch kol mlynskich kreci sie,
-        // ale nic nie robi (wlasnie tak dziala Create).
-        return getSpeed() != 0 && hasRequiredParts();
+        // musi miec WYMAGANA PREDKOSC (256 RPM) i byc ZBUDOWANA: kruszarka
+        // bez dwoch kol mlynskich kreci sie, ale nic nie robi.
+        return hasEnoughRotationSpeed() && hasRequiredParts();
     }
 
     @Override
