@@ -23,9 +23,17 @@ import java.util.UUID;
 
 public class VelocePipeNetwork {
     private final UUID id;
-    private final Set<BlockPos> pipes = new HashSet<>();
     private final Set<BlockPos> terminals = new HashSet<>();
     private final Map<BlockPos, ConnectedEndpointInfo> endpoints = new HashMap<>();
+
+    /** Bufor energii sieci rur. */
+    private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer =
+            new net.neoforged.neoforge.energy.EnergyStorage(100_000, 100_000, 100_000);
+
+    public net.neoforged.neoforge.energy.EnergyStorage getEnergyBuffer() {
+        return energyBuffer;
+    }
+    private final Set<BlockPos> pipes = new HashSet<>();
 
     /**
      * CACHE liczb "ile da sie dorobic" - JEDEN na siec, wspolny dla terminala
@@ -474,6 +482,8 @@ public class VelocePipeNetwork {
             }
         }
         tag.put("PreferFurnace", prefList);
+        
+        tag.putInt("EnergyStored", energyBuffer.getEnergyStored());
 
         return tag;
     }
@@ -513,6 +523,9 @@ public class VelocePipeNetwork {
             if (ep != null) {
                 net.endpoints.put(ep.getPos(), ep);
             }
+        }
+        if (tag.contains("EnergyStored", Tag.TAG_INT)) {
+            net.energyBuffer.receiveEnergy(tag.getInt("EnergyStored"), false);
         }
 
         net.updateTrackedChunks();

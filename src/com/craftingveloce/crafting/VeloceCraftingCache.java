@@ -570,6 +570,33 @@ public final class VeloceCraftingCache {
         for (VelocePipeNetwork network : manager.knownNetworks()) {
             live.add(network.getId());
             get(level, network).tickIdle(level);
+
+            // Krok energii: pobor z obcych zrodel (maxRate = 20_000, jak kiedys w rurze)
+            int energyRate = 20_000;
+            var buffer = network.getEnergyBuffer();
+            com.craftingveloce.network.pipe.VeloceEnergyPull.pull(level, network, buffer, energyRate);
+
+            // Rozdanie pradu do maszyn sieci (terminals = wszystkie wezly, w tym piec/moduly)
+            if (buffer.getEnergyStored() > 0) {
+                for (BlockPos pos : network.getTerminals()) {
+                    if (buffer.getEnergyStored() <= 0) {
+                        break;
+                    }
+                    if (!level.isLoaded(pos)) {
+                        continue;
+                    }
+                    var target = level.getCapability(
+                            net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                            pos, null);
+                    if (target != null && target.canReceive()) {
+                        int accepted = target.receiveEnergy(
+                                Math.min(buffer.getEnergyStored(), energyRate), false);
+                        if (accepted > 0) {
+                            buffer.extractEnergy(accepted, false);
+                        }
+                    }
+                }
+            }
         }
 
         // Cache po sieciach, ktore zniknely z menedzera - zwolnij chunki,

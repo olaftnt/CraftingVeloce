@@ -1665,38 +1665,31 @@ def validate_module_info_gui():
 
 def validate_pipe_energy():
     """
-    Energia w rurze: pobor z oznaczonych stron i rozdanie na pozostale (Pipez).
+    Energia w rurze: pobor z oznaczonych zrodel z sieci (VeloceCraftingCache.tickAll)
+    i rozdanie do wezlow sieci.
 
-    Gracz kazal przeniesc mechanizm energy pipe z Pipez. Sprawdzamy ogniwa,
-    ktore inaczej znikna po cichu:
-      1. rura ma pojemnik energii i limit FE/tick,
-      2. pobor idzie TYLKO na stronach oznaczonych jako extracting (jak
-         isExtracting w Pipezie), a rozdanie na pozostalych,
-      3. pobor/rozdanie wola sie z updateServer (hook TickableServer z Toma),
-      4. rura NIE wystawia pojemnika jako capability (nie jest przewodem dla
-         innych modow - zasada gracza),
-      5. maszyny nie oddaja energii (extractEnergy = 0), wiec nie moga byc
-         dla siebie zrodlem.
+    Gracz przeniosl bufor do sieci rur i tick energii do ticku poziomu. Sprawdzamy
+    ogniwa, ktore inaczej znikna po cichu:
+      1. VelocePipeNetwork ma pojemnik energii,
+      2. pobor/rozdanie dziala z VeloceCraftingCache.tickAll,
+      3. rura NIE wystawia pojemnika jako capability (nie jest przewodem dla innych modow),
+      4. maszyny nie oddaja energii (extractEnergy = 0), wiec nie moga byc dla siebie zrodlem.
     """
     problems = []
-    pipe = "src/com/craftingveloce/block/entity/VelocePipeBlockEntity.java"
-    text = open(pipe, encoding="utf-8").read()
-    # Sprawdzamy DEKLARACJE i WYWOLANIA, nie sama obecnosc slowa: podmiana
-    # "energyBuffer =" na "buforX =" albo zakomentowanie wolania przechodzila
-    # przez pierwsza wersje testu (kalibracja to pokazala).
-    for need, what in (("private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer",
-                        "deklaracji pojemnika energii"),
-                       ("private static final int ENERGY_RATE", "limitu FE/tick"),
-                       ("if (!extractingSides[i] || disconnectedSides[i])",
-                        "poboru tylko na stronie extracting"),
-                       ("if (extractingSides[i] || disconnectedSides[i])",
-                        "rozdania na pozostalych stronach")):
-        if need not in text:
-            problems.append("rura bez " + what)
-    tick = _method_body(text, "public void updateServer()")
-    if tick is None or "\n        tickEnergy();" not in tick:
-        problems.append("energia nie jest tykowana (brak tickEnergy w updateServer)")
-
+    
+    # 1. Pojemnik w sieci
+    net_path = "src/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
+    net_text = open(net_path, encoding="utf-8").read()
+    if "private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer" not in net_text:
+        problems.append("VelocePipeNetwork bez deklaracji pojemnika energii")
+    
+    # 2. Tick w cache
+    cache_path = "src/com/craftingveloce/crafting/VeloceCraftingCache.java"
+    cache_text = open(cache_path, encoding="utf-8").read()
+    tick = _method_body(cache_text, "public static void tickAll(ServerLevel level)")
+    if tick is None or "VeloceEnergyPull.pull" not in tick:
+        problems.append("energia nie jest tykowana (brak VeloceEnergyPull w VeloceCraftingCache.tickAll)")
+    
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     # Rejestracja energii na rurze = rura staje sie przewodem dla innych modow.
     # Sprawdzamy OKNO wokol kazdej rejestracji, bo typ bywa w nastepnej linii.
