@@ -50,7 +50,12 @@ public final class VeloceCraftingRegistry {
             BlockEntity be = com.craftingveloce.network.pipe.VeloceChunkLoader
                     .blockEntityIfLoaded(level, pos);
             if (be instanceof VeloceCraftingTableBlockEntity crafter) {
-                out.add(crafter);
+                // Klatka dzieli block entity ze stolem - pusta nie jest crafterem.
+                if (crafter.isActiveCrafter()) {
+                    out.add(crafter);
+                } else {
+                    continue;
+                }
             } else if (be == null) {
                 // Wezel, ktorego NIE DA SIE ODCZYTAC (chunk nie jest zaladowany).
                 //

@@ -46,7 +46,7 @@ public interface VeloceNetworkNode {
      * Kazdy inny wezel zwraca {@code false} - dlatego to metoda domyslna,
      * a nie obowiazek kazdego bloku.
      */
-    default boolean exposesCraftingBuffer() {
+    default boolean exposesCraftingBuffer(net.minecraft.world.level.block.state.BlockState state) {
         return false;
     }
 
@@ -60,7 +60,7 @@ public interface VeloceNetworkNode {
      * chunk wypadnie, a trzymanie ich kosztowaloby miejsce na liscie
      * force-loadow, wypychajac z niej to, co naprawde pracuje.
      */
-    default boolean keepChunkLoaded() {
+    default boolean keepChunkLoaded(net.minecraft.world.level.block.state.BlockState state) {
         return true;
     }
 

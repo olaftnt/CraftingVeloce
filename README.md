@@ -110,6 +110,20 @@ Mod dodający inteligentną sieć logistyczną do Minecraft, zbudowaną na bazie
   dekoracją, a force-loady mają trzymać to, co naprawdę pracuje
 - Blockstate jest **wielocześciowy** (`multipart`): model ramy + po jednej
   blasze na stronę (`veloce_integrale_panel_<strona>`), a nie 64 warianty
+- **Gabłota w środku**: right-click **z crafting table** (waniliowym albo
+  naszym) wkłada ją do klatki — w środku pojawia się renderowany model
+  crafting table, który **delikatnie się obraca i buja** (lewo-prawo, góra-dół),
+  a sama klatka staje się **prawdziwym Veloce Crafterem** (auto-crafter, GUI,
+  bufor). Right-click bez itemu otwiera to samo GUI co crafting table
+- **Wszystko po stronie klienta**: zamiast encji `BlockDisplay` (którą trzeba by
+  tworzyć, zapisywać i utrzymywać na serwerze) klient czyta *jeden stos* z block
+  entity i renderuje jego model — serwer nie robi nic ponad zapis NBT.
+  Renderer (`VeloceDisplayRenderer`) wisi na BE stolu craftingu i wychodzi od
+  razu, gdy gabłoty nie ma, więc zwykły crafting table nic nie kosztuje
+- Zbicie takiej klatki wypuszcza **oba** przedmioty (klatkę z loot table
+  i gabłotę z block entity) — schowek nie zjada przedmiotów
+- Pusta klatka **nie jest** crafterem (`isActiveCrafter`), nie wystawia bufora
+  sieci i nie trzyma chunku; wypełniona — jest, wystawia i trzyma
 - Modelu pilnuje `validate_integrale_model` w `build.py` (12 prętów, szyba
   wcięta i ze szkła, `render_type: translucent`, `ambientocclusion: false`,
   6 blach dokładnie w świetle okna i 6 warunków w blockstate)

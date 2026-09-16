@@ -392,7 +392,7 @@ public final class VeloceCraftingCache {
         }
         return !(state.getBlock()
                 instanceof com.craftingveloce.network.pipe.VeloceNetworkNode node)
-                || node.keepChunkLoaded();
+                || node.keepChunkLoaded(state);
     }
 
     /** Klucz chunku dla pozycji bloku. */

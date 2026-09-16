@@ -653,7 +653,7 @@ public class VelocePipeNetworkManager extends SavedData {
             // przez `d`, a wezel patrzy na rure przez `d.getOpposite()`.
             if (VeloceNodeBlocks.isNode(nb)
                     && VeloceNodeBlocks.connectsFrom(ns, nb, d.getOpposite())) {
-                registerNode(net, np, nb, d.getOpposite());
+                registerNode(net, np, nb, ns, d.getOpposite());
                 continue;
             }
 
@@ -759,10 +759,13 @@ public class VelocePipeNetworkManager extends SavedData {
      * <p>Crafter dodatkowo wystawia swoj bufor jako endpoint sieci - to on jest
      * miejscem, gdzie ląduje wynik craftu.
      */
-    private void registerNode(VelocePipeNetwork net, BlockPos pos, Block block, Direction towardPipe) {
+    private void registerNode(VelocePipeNetwork net, BlockPos pos, Block block,
+                              net.minecraft.world.level.block.state.BlockState state,
+                              Direction towardPipe) {
         net.getTerminals().add(pos);
         knownNodes.add(pos.immutable());
-        if (block instanceof VeloceNetworkNode node && node.exposesCraftingBuffer()) {
+        if (block instanceof VeloceNetworkNode node
+                && node.exposesCraftingBuffer(state)) {
             net.getEndpoints().put(pos, new CraftingBufferEndpoint(pos, towardPipe));
         }
     }
@@ -1516,7 +1519,7 @@ public class VelocePipeNetworkManager extends SavedData {
                         // dzieki temu nadwyzka produkcji (np. 3 deski z 1 logu,
                         // gdy gracz chcial 1) jest widoczna dla calej sieci i
                         // mozna ja wyciagnac terminalem, rura czy hopperem.
-                        if (node.exposesCraftingBuffer()) {
+                        if (node.exposesCraftingBuffer(neighborState)) {
                             discoveredEndpoints.put(neighborPos, new CraftingBufferEndpoint(
                                     neighborPos, dir.getOpposite()));
                         }

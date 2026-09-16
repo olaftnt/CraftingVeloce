@@ -1174,6 +1174,61 @@ def validate_block_models():
     print(f"    OK ({checked} odwolan do modeli i tekstur istnieje)")
 
 
+def validate_integrale_display():
+    """
+    Gabriota w klatce: klatka UZYWA block entity stolu craftingu, a klient
+    renderuje przedmiot z srodka.
+
+    Mechanika jest rozlozona na cztery miejsca, ktore MUSZA byc spojne:
+      1. klatka tworzy block entity STOLU (inaczej nie jest prawdziwym stolem),
+      2. typ block entity stolu dopuszcza blok klatki (inaczej BE sie nie utworzy),
+      3. block entity zapisuje i SYNCHRONIZUJE "DisplayItem" (inaczej klient nie
+         ma czego renderowac),
+      4. istnieje renderer zarejestrowany dla tego typu (inaczej nic nie widac).
+
+    Kazda z tych czterech rzeczy latwo zgubic przy refaktorze, a objaw jest
+    cichy: klatka wyglada dobrze, tylko w srodku nic sie nie pojawia.
+    """
+    problems = []
+
+    integrale = "src/com/craftingveloce/block/VeloceIntegraleBlock.java"
+    text = open(integrale, encoding="utf-8").read()
+    if "VeloceCraftingTableBlockEntity(pos, state)" not in text:
+        problems.append("klatka nie tworzy block entity stolu craftingu")
+
+    be_path = "src/com/craftingveloce/block/entity/VeloceCraftingTableBlockEntity.java"
+    be = open(be_path, encoding="utf-8").read()
+    for need, what in (('tag.put("DisplayItem"', "zapisu gabloty (NBT)"),
+                       ('tag.getCompound("DisplayItem")', "odczytu gabloty (NBT)"),
+                       ('getUpdateTag', "pakietu aktualizacji dla klienta")):
+        if need not in be:
+            problems.append("brak " + what + " w block entity stolu")
+
+    registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    if "integraleBlock()" not in registry:
+        problems.append("typ block entity stolu NIE dopuszcza bloku klatki")
+
+    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    if "VELOCE_CRAFTING_TABLE_BE.get()" not in mod or "VeloceDisplayRenderer" not in mod:
+        problems.append("brak rejestracji renderera gabloty (RegisterRenderers)")
+
+    renderer = "src/com/craftingveloce/client/render/VeloceDisplayRenderer.java"
+    if not os.path.exists(renderer):
+        problems.append("brak klasy renderera gabloty")
+    else:
+        body = open(renderer, encoding="utf-8").read()
+        for need, what in (("getDisplayItem()", "odczytu gabloty z block entity"),
+                           ("getBlockRenderer", "renderowania modelu bloku"),
+                           ("rotationDegrees", "animacji (obrot)"),
+                           ("Math.sin", "animacji (bujanie)")):
+            if need not in body:
+                problems.append("renderer bez " + what)
+
+    if problems:
+        fail("gablota w klatce:\n  " + "\n  ".join(problems))
+    print("    OK (gablota: BE stolu + sync + renderer z animacja)")
+
+
 def validate_integrale_model():
     """
     Klatka Veloce Integrale: rama z pretow + FIOLETOWE SZKLO w oknach.
@@ -1499,6 +1554,7 @@ def main():
     validate_module_recipe_access()
     validate_block_models()
     validate_integrale_model()
+    validate_integrale_display()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))

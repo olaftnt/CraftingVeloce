@@ -149,7 +149,7 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
      * w petli BFS - teraz mowi o tym sam wezel.
      */
     @Override
-    public boolean exposesCraftingBuffer() {
+    public boolean exposesCraftingBuffer(BlockState state) {
         return true;
     }
 

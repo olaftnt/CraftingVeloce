@@ -154,8 +154,11 @@ public class VeloceRegistry {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity>> VELOCE_CRAFTING_TABLE_BE =
             BLOCK_ENTITY_TYPES.register("veloce_crafting_table", () -> createBEType(
                     (pos, state) -> new com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity(pos, state),
-                    VELOCE_CRAFTING_TABLE.get()
-            ));
+                    VELOCE_CRAFTING_TABLE.get(),
+                    // Klatka UZYWA tego samego block entity: wypelniona jest
+                    // prawdziwym stolem craftingu (auto-crafter, GUI, bufor),
+                    // a klient renderuje w niej gablote.
+                    integraleBlock()));
 
     // 6. Veloce Controller (monitoring sieci + filtrowanie itemow)
     public static final DeferredBlock<com.craftingveloce.block.VeloceControllerBlock> VELOCE_CONTROLLER = BLOCKS.register(
@@ -219,7 +222,20 @@ public class VeloceRegistry {
         T create(net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state);
     }
 
-    private static <T extends BlockEntity> BlockEntityType<T> createBEType(BlockEntityFactory<T> factory, Block block) {
+    /**
+     * Blok klatki dla rejestracji block entity stolu.
+     *
+     * <p>Osobna metoda, bo {@code VELOCE_INTEGRALE} jest zadeklarowany NIZEJ
+     * w pliku - odwolanie w lambdzie rejestru bylo by "illegal forward
+     * reference". Metoda rozwiazuje pole dopiero przy wywolaniu (rejestracja),
+     * czyli wtedy, gdy wszystko jest juz zainicjalizowane.
+     */
+    private static Block integraleBlock() {
+        return VELOCE_INTEGRALE.get();
+    }
+
+    private static <T extends BlockEntity> BlockEntityType<T> createBEType(
+            BlockEntityFactory<T> factory, Block... blocks) {
         // Standardowe API NeoForge, zamiast refleksji.
         //
         // Wczesniej szukalismy tu konstruktora BlockEntityType przez refleksje
@@ -228,7 +244,7 @@ public class VeloceRegistry {
         // Do tego dochodzil dynamiczny Proxy. To dzialalo przypadkiem i moglo
         // peknac przy kazdej aktualizacji Minecrafta/NeoForge - a wtedy mod
         // nie wstaje wcale. Builder.of() jest publicznym API i robi to samo.
-        return BlockEntityType.Builder.of(factory::create, block).build(null);
+        return BlockEntityType.Builder.of(factory::create, blocks).build(null);
     }
 
     public static void register(IEventBus modEventBus) {
