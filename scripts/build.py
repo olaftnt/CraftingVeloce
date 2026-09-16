@@ -1361,7 +1361,29 @@ def validate_create_mechanics():
         problems.append("renderer obudowy rysuje model BLOKU - maszyny z innych "
                         "modow bylyby puste (maja wlasne renderery)")
 
+    # Uklad elementow ma sie krecic RAZEM, wokol srodka obudowy, zwykla
+    # animacja - a nie kazdy element wokol siebie ("beyblade"). Tylko kola
+    # mlynskie krecA sie pojedynczo i z predkoscia napedu.
+    if "casePartsSpinIndividually()" not in renderer:
+        problems.append("renderer nie rozroznia obrotu calego ukladu od obrotu kol")
+    parts_body = _method_body(renderer, "private void renderParts(")
+    if parts_body is None or "beginStandardAnimation(pose, time)" not in parts_body \
+            or "if (!individually)" not in parts_body:
+        problems.append("uklad elementow nie obraca sie RAZEM wokol srodka obudowy")
+    if parts_body is not None and ("speed != 0.0F" not in parts_body
+                                   or "time * speed" not in parts_body):
+        problems.append("kola mlynskie nie krecA sie z predkoscia napedu")
+    if "renderStandard(content, pose" not in renderer:
+        problems.append("zawartosc ze stala zawartoscia nie uzywa zwyklej animacji")
+    be_spin = _method_body(open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
+                                encoding="utf-8").read(),
+                           "public boolean casePartsSpinIndividually()")
+    if be_spin is None or "CRUSHING" not in be_spin:
+        problems.append("tylko kruszarka powinna krecic elementami pojedynczo")
+
     spin_iface = open("src/com/craftingveloce/block/VeloceCaseSpin.java", encoding="utf-8").read()
+    if "boolean casePartsSpinIndividually();" not in spin_iface:
+        problems.append("interfejs bez informacji, czy elementy krecA sie pojedynczo")
     if "boolean caseBuiltFromParts();" not in spin_iface:
         problems.append("brak rozroznienia maszyny budowanej od maszyny ze stala zawartoscia")
     if "caseBuiltFromParts()" not in renderer:

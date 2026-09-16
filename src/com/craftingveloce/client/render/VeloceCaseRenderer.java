@@ -98,38 +98,37 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 return;
             }
             // Maszyna ze stala zawartoscia (mlynek, pila, prasa, mixer,
-            // deployer): jeden klocek w srodku, obracajacy sie gdy jest naped.
-            if (spin.caseSpinDegreesPerTick() == 0.0F) {
-                pose.pushPose();
-                pose.translate(0.5D, 0.5D, 0.5D);
-                pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
-                pose.translate(-0.5D, -0.5D, -0.5D);
-                renderContent(content, pose, buffers, packedLight, packedOverlay);
-                pose.popPose();
-            } else {
-                // Napedzana maszyna obraca sie jak jej wlasne kolo robocze.
-                pose.pushPose();
-                pose.translate(0.5D, 0.5D, 0.5D);
-                pose.mulPose(Axis.YP.rotationDegrees(
-                        (time * spin.caseSpinDegreesPerTick()) % 360.0F));
-                pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
-                pose.translate(-0.5D, -0.5D, -0.5D);
-                renderContent(content, pose, buffers, packedLight, packedOverlay);
-                pose.popPose();
-            }
+            // deployer): zwykla animacja, taka sama jak dla waniliowych klockow.
+            renderStandard(content, pose, buffers, packedLight, packedOverlay, time);
             return;
         }
 
+        renderStandard(content, pose, buffers, packedLight, packedOverlay, time);
+    }
+
+    /**
+     * Zwykla animacja zawartosci: obrot wokol pionowej osi + bujanie.
+     *
+     * <p>Ta sama dla kazdego klocka - gracz: "maja sie krecic tak jak kazdy
+     * inny render, np. crafting czy furnace".
+     */
+    private void renderStandard(Block content, PoseStack pose, MultiBufferSource buffers,
+                                int packedLight, int packedOverlay, float time) {
         pose.pushPose();
+        beginStandardAnimation(pose, time);
+        pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
+        pose.translate(-0.5D, -0.5D, -0.5D);
+        renderContent(content, pose, buffers, packedLight, packedOverlay);
+        pose.popPose();
+    }
+
+    /** Przejscie do srodka obudowy + obrot + bujanie (wspolne dla calych ukladow). */
+    private static void beginStandardAnimation(PoseStack pose, float time) {
         pose.translate(0.5D, 0.5D, 0.5D);
         pose.mulPose(Axis.YP.rotationDegrees((time * SPIN_DEGREES_PER_TICK) % 360.0F));
         pose.translate(Math.sin(time * 0.05F) * 0.030D,
                 Math.sin(time * 0.08F) * 0.040D,
                 Math.cos(time * 0.045F) * 0.030D);
-        pose.scale(CONTENT_SCALE, CONTENT_SCALE, CONTENT_SCALE);
-        pose.translate(-0.5D, -0.5D, -0.5D);
-        renderContent(content, pose, buffers, packedLight, packedOverlay);
-        pose.popPose();
     }
 
     /**
@@ -144,25 +143,32 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                              MultiBufferSource buffers, int packedLight, int packedOverlay,
                              float time) {
         int parts = spin.caseParts();
-        // Uklad: tyle modeli, ile gracz wklikal - jeden element w srodku, dwa
-        // kola obok siebie, 25 oczek jako siatka 5x5, 81 jako 9x9.
-        // Uklad bierzemy z maszyny: kola obok siebie, oczka craftera w slupku
-        // (1x2, 1x3, ... 9x9) - ten sam uklad, ktory gracz widzi na pasku akcji.
         int cols = Math.max(1, spin.caseGridColumns());
         int rows = Math.max(1, spin.caseGridRows());
         float spacing = Math.min(0.72F / cols, 0.72F / rows);
         float scale = Math.min(CONTENT_SCALE, spacing * 0.9F);
+        boolean individually = spin.casePartsSpinIndividually();
         float speed = spin.caseSpinDegreesPerTick();
+
+        pose.pushPose();
+        if (!individually) {
+            // Caly uklad jako JEDEN obiekt: obraca sie wokol srodka obudowy,
+            // zwykla animacja - bez zwiazku z predkoscia napedu (oczka
+            // craftera maja wygladac jak kazda inna zawartosc obudowy).
+            beginStandardAnimation(pose, time);
+        } else {
+            pose.translate(0.5D, 0.5D, 0.5D);
+        }
         for (int i = 0; i < parts; i++) {
             int col = i / rows;
             int row = i % rows;
-            float direction = (i % 2 == 0) ? 1.0F : -1.0F;
             pose.pushPose();
-            pose.translate(0.5D + (col - (cols - 1) / 2.0F) * spacing,
-                    0.5D - (row - (rows - 1) / 2.0F) * spacing, 0.5D);
-            if (speed != 0.0F) {
-                // Kola mlynskie krecA sie w przeciwne strony (zazebienie);
-                // oczka craftera stoja, bo maszyna nie ma wtedy obrotow.
+            pose.translate((col - (cols - 1) / 2.0F) * spacing,
+                    -(row - (rows - 1) / 2.0F) * spacing, 0.0D);
+            if (individually && speed != 0.0F) {
+                // Kola mlynskie: kazde wokol siebie i w przeciwne strony, z
+                // predkoscia, ktora podaje maszyna (tak sie zazebiaja).
+                float direction = (i % 2 == 0) ? 1.0F : -1.0F;
                 pose.mulPose(Axis.ZP.rotationDegrees((time * speed * direction) % 360.0F));
             }
             pose.scale(scale, scale, scale);
@@ -170,6 +176,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
             renderContent(content, pose, buffers, packedLight, packedOverlay);
             pose.popPose();
         }
+        pose.popPose();
     }
 
 }

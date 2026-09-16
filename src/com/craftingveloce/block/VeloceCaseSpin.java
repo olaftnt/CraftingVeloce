@@ -43,4 +43,14 @@ public interface VeloceCaseSpin {
      * nie potrzebuje) ma pokazywac swoj klocek bazowy.
      */
     boolean caseBuiltFromParts();
+
+    /**
+     * Czy elementy krecA sie KAZDY wokol siebie (kola mlynskie), czy caly
+     * uklad razem, wokol srodka obudowy (oczka craftera, kazda inna maszyna).
+     *
+     * <p>Gracz: "craftery krecA sie jak beyblade - to nie o to chodzi, maja sie
+     * krecic wszystkie razem wokol srodka wlasnej osi, tak jak kazdy inny
+     * render, np. crafting czy furnace".
+     */
+    boolean casePartsSpinIndividually();
 }

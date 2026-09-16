@@ -170,6 +170,12 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         return Math.max(1, Math.min(parts, GRID_LIMIT));
     }
 
+    /** Tylko kola mlynskie krecA sie kazde wokol siebie (i zazebiaja sie). */
+    @Override
+    public boolean casePartsSpinIndividually() {
+        return module() == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING;
+    }
+
     /** Czy maszyna wymaga wklikanych elementow (kruszarka, crafter). */
     @Override
     public boolean caseBuiltFromParts() {
