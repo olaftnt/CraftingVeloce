@@ -297,6 +297,9 @@ public class CraftingVeloceMod {
             com.craftingveloce.test.VeloceTestDriver.register(event.getDispatcher());
             // /cv testmodule <id>: end-to-end test of one processing module.
             com.craftingveloce.commands.CVModuleTestCommand.register(event.getDispatcher());
+            // The terminal GUI in combination with a brewing stand - see CVGuiTestCommand
+            // for why the server cannot answer this on its own.
+            com.craftingveloce.commands.CVGuiTestCommand.register(event.getDispatcher());
         });
 
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock.class, event -> {

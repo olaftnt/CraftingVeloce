@@ -39,6 +39,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      */
     private final VeloceCraftableCounts craftable = new VeloceCraftableCounts();
 
+    /** Ticks to wait after opening before reporting what the GUI holds. */
+    private static final int PROBE_DELAY_TICKS = 40;
+    private int probeCountdown = -1;
+
     /**
      * Reasons for failed attempts (server -> item tooltip).
      *
@@ -156,6 +160,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         // Immediately after opening: request the numbers for whatever is visible.
         craftable.resetRequestState();
         requestVisibleCounts(true);
+        // And a couple of seconds later, say what the screen actually ended up holding.
+        // The server cannot see this: it knows a number was sent, not whether the screen
+        // found an item to draw it on.
+        probeCountdown = PROBE_DELAY_TICKS;
     }
 
     @Override
@@ -166,6 +174,68 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         // Live: when the screen contents change (tab, scroll), request the
         // numbers for the new page.
         requestVisibleCounts(false);
+        if (probeCountdown > 0 && --probeCountdown == 0) {
+            sendCountsProbe();
+        }
+    }
+
+    /**
+     * Reports to the server what this GUI is showing - once, shortly after opening.
+     *
+     * <p>See {@link com.craftingveloce.network.GuiCountsProbePKT}: the craftable number
+     * can fail in two places that look identical from the server, and only the client
+     * can tell them apart.
+     */
+    private void sendCountsProbe() {
+        if (this.menu == null) {
+            com.craftingveloce.CraftingVeloceMod.LOGGER.info("[Veloce] GUI probe: menu is null");
+            return;
+        }
+        java.util.Set<net.minecraft.world.item.Item> seen = new java.util.HashSet<>();
+        java.util.List<String> potions = new java.util.ArrayList<>();
+        int slotsWithItems = 0;
+        int distinct = 0;
+        int withCounts = 0;
+        boolean potionCounted = false;
+        for (Slot slot : this.menu.slots) {
+            if (slot == null || !slot.hasItem() || isPlayerSlot(slot)) {
+                continue;
+            }
+            slotsWithItems++;
+            net.minecraft.world.item.ItemStack stack = slot.getItem();
+            net.minecraft.world.item.Item raw = stack.getItem();
+            // The same key the request and the overlay use - so this reports what the
+            // screen really matches on, not what it meant to.
+            net.minecraft.world.item.Item key =
+                    com.craftingveloce.util.VelocePotionMapper.getProxy(stack);
+            if (!seen.add(key)) {
+                continue;
+            }
+            distinct++;
+            long count = this.craftable.get(key);
+            if (count > 0) {
+                withCounts++;
+            }
+            if (raw == net.minecraft.world.item.Items.POTION
+                    || raw == net.minecraft.world.item.Items.SPLASH_POTION
+                    || raw == net.minecraft.world.item.Items.LINGERING_POTION
+                    || com.craftingveloce.util.VelocePotionMapper.isProxy(raw)) {
+                potions.add(name(raw) + "=" + count + "(" + name(key) + ")");
+                if (count > 0) {
+                    potionCounted = true;
+                }
+            }
+        }
+        com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                "[Veloce] GUI probe sending: slots={} distinct={} withCounts={} potions=[{}]",
+                slotsWithItems, distinct, withCounts, String.join(" ", potions));
+        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                new com.craftingveloce.network.GuiCountsProbePKT(this.terminalPos,
+                        slotsWithItems, distinct, withCounts, potionCounted, String.join(" ", potions)));
+    }
+
+    private static String name(net.minecraft.world.item.Item item) {
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item).getPath();
     }
 
     /**

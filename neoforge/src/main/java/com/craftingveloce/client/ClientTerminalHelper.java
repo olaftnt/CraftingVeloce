@@ -17,8 +17,12 @@ public class ClientTerminalHelper {
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
                 "opening terminal screen at %s", pos);
         Minecraft mc = Minecraft.getInstance();
+        com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                "[Veloce] openTerminalScreen at {}: player={}", pos, mc.player != null);
         if (mc.player != null) {
             mc.setScreen(new VeloceTerminalScreen(mc.player, mc.player.connection.enabledFeatures(), true, pos));
+            com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                    "[Veloce] terminal screen set: {}", mc.screen);
         }
     }
 

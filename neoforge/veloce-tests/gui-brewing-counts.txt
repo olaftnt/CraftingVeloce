@@ -1,0 +1,39 @@
+# The TERMINAL GUI in combination with a brewing stand.
+#
+# What this answers: does the terminal screen show how many potions can be made?
+#
+# Why it needs its own rig and its own command: /cv testmodule proves the NETWORK can make
+# a potion - it asks the crafting path directly on the server. That says nothing about the
+# screen. Whether the potion is in the visible grid at all, and whether the number the
+# server computed finds the item it belongs to, are client questions, and both fail
+# silently: an item that is not listed and a number that is not matched look exactly like a
+# network with nothing to offer.
+#
+# The rig holds a REAL water bottle, nether wart and golden carrots - what a player has -
+# not the network's own proxies, so the chain is water -> awkward -> night vision.
+#
+# The screen is opened by packet, the way the block opens it on a right-click. Nothing
+# walks the player around: that never works in an automated run.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=gui-brewing-counts -PveloceKeepOpen
+
+/cv guitest setup
+expect: rig at
+
+# Let the network scan the new rig - a terminal that has not scanned is not connected.
+wait: 80
+
+/cv guitest open
+expect: terminal screen opened
+
+# 40 ticks for the screen to request the counts, plus the round trip, plus slack.
+wait: 140
+
+# The verdict. A failure prints the whole probe, which is the diagnosis:
+#   potionCounted=false with potions=[]            -> the potion is not in the visible grid
+#   potionCounted=false with potions=[potion=0(..)] -> it is listed, but the number did not
+#                                                     match the item it belongs to
+#   potionCounted=true                              -> the screen has the number
+/cv guitest result
+expect: potionCounted=true
+expect: potions=[

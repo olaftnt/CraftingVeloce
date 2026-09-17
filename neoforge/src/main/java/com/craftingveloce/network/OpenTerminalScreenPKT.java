@@ -23,6 +23,8 @@ public record OpenTerminalScreenPKT(BlockPos terminalPos) implements CustomPacke
     }
 
     public static void handle(OpenTerminalScreenPKT pkt, IPayloadContext context) {
+        com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                "[Veloce] OpenTerminalScreenPKT received: {}", pkt.terminalPos());
         context.enqueueWork(() -> {
             com.craftingveloce.client.ClientTerminalHelper.openTerminalScreen(pkt.terminalPos());
         });

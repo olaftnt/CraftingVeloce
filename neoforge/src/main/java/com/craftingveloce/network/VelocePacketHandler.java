@@ -30,6 +30,7 @@ public class VelocePacketHandler {
             registrar.playToServer(CraftingTableCycleRecipePKT.TYPE, CraftingTableCycleRecipePKT.STREAM_CODEC, CraftingTableCycleRecipePKT::handle);
             registrar.playToServer(BufferPullItemPKT.TYPE, BufferPullItemPKT.STREAM_CODEC, BufferPullItemPKT::handle);
             registrar.playToServer(RequestCraftableCountsPKT.TYPE, RequestCraftableCountsPKT.STREAM_CODEC, RequestCraftableCountsPKT::handle);
+            registrar.playToServer(GuiCountsProbePKT.TYPE, GuiCountsProbePKT.STREAM_CODEC, GuiCountsProbePKT::handle);
             registrar.playToClient(SyncCraftableCountsPKT.TYPE, SyncCraftableCountsPKT.STREAM_CODEC, SyncCraftableCountsPKT::handle);
             registrar.playToClient(TerminalCraftErrorPKT.TYPE, TerminalCraftErrorPKT.STREAM_CODEC, TerminalCraftErrorPKT::handle);
         });
