@@ -1,0 +1,20 @@
+# Module: crafting  (the Veloce Crafting Table - recipes with no infrastructure)
+#
+# Cases covered:
+#   1. a real recipe, ingredients in the barrel   -> the terminal must deliver it
+#
+# The crafter needs no fuel and no power, so unlike the furnace it has no
+# empty/half/full accumulator axis. Its own availability axis is "is a crafter
+# in the network at all", which the module reports through its refusal reason.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-crafting -PveloceKeepOpen
+
+/cv testmodule crafting
+expect: building and waiting
+expect: ingredients placed:
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL

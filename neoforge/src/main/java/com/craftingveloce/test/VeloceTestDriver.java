@@ -53,6 +53,16 @@ public final class VeloceTestDriver {
     /** System property naming a script to run automatically, then exit. */
     public static final String SCRIPT_PROPERTY = "veloce.test.script";
 
+    /**
+     * System property that keeps the game open after an automated run.
+     *
+     * <p>Set it with {@code -Dveloce.test.keepOpen=true} (Gradle:
+     * {@code -PveloceKeepOpen}) to watch a script play out on screen instead of
+     * having the window close the moment it finishes. The result is still written
+     * to the file, so the run can be judged either way.
+     */
+    public static final String KEEP_OPEN_PROPERTY = "veloce.test.keepOpen";
+
     /** Directory (relative to the game dir) holding the scripts. */
     public static final String SCRIPT_DIR = "veloce-tests";
 
@@ -186,6 +196,14 @@ public final class VeloceTestDriver {
      * separate class so that a server never loads it.
      */
     private static void finish(MinecraftServer server) {
+        if (Boolean.getBoolean(KEEP_OPEN_PROPERTY)) {
+            // Watching mode: leave the client running so the run can be seen. The
+            // server is left alone too, otherwise the player would be dropped to
+            // the "Connection lost" screen instead of the finished scene.
+            VeloceLog.Block.attempt(VeloceLog.Side.SERVER,
+                    "[test] keepOpen is set - leaving the game running");
+            return;
+        }
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             com.craftingveloce.test.client.VeloceTestClientShutdown.quit();
         } else {

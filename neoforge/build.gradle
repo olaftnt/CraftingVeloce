@@ -41,6 +41,10 @@ neoForge {
                     file("../neoforge/veloce-tests/${project.findProperty('veloceTest') ?: 'smoke'}.txt").absolutePath)
             programArguments.addAll("--quickPlaySingleplayer",
                     project.findProperty('veloceTestWorld') ?: 'New World')
+            // -PveloceKeepOpen leaves the game open after the script, to watch it.
+            if (project.hasProperty('veloceKeepOpen')) {
+                systemProperty("veloce.test.keepOpen", "true")
+            }
         }
     }
 }

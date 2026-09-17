@@ -63,12 +63,19 @@ public final class CVModuleTestCommand {
      */
     private static String lastVerdict = "none";
 
+    /** Where the last built machine stands, so a later step can set its power. */
+    private static BlockPos lastMachinePos;
+
     private CVModuleTestCommand() {
     }
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(CVCommandRoot.root()
                 .then(Commands.literal("testmodule")
+                        .then(Commands.literal("fe")
+                                .then(Commands.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
+                                        .executes(ctx -> setFe(ctx.getSource(),
+                                                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "amount")))))
                         .then(Commands.literal("result").executes(ctx -> {
                             ctx.getSource().sendSuccess(() -> Component.literal(lastVerdict), false);
                             return 1;
@@ -129,6 +136,7 @@ public final class CVModuleTestCommand {
         level.setBlock(terminalPos, VeloceRegistry.VELOCE_TOM_TERMINAL.get().defaultBlockState(), Block.UPDATE_ALL);
         level.setBlock(pipePos, VeloceRegistry.VELOCE_PIPE.get().defaultBlockState(), Block.UPDATE_ALL);
         level.setBlock(machinePos, machine.defaultBlockState(), Block.UPDATE_ALL);
+        lastMachinePos = machinePos;
         level.setBlock(barrelPos, Blocks.BARREL.defaultBlockState(), Block.UPDATE_ALL);
 
         // Give the machine power so an FE-driven module is not judged on "no energy"
@@ -186,6 +194,44 @@ public final class CVModuleTestCommand {
             return;
         }
         pass(moduleId, wanted, stock, pulled.stack().getCount());
+    }
+
+    /**
+     * Sets the accumulator of the machine built by the last run.
+     *
+     * <p>Power is a separate axis from "can this module craft at all", and the
+     * cases differ in what they answer: an empty accumulator must refuse with a
+     * power reason, a partly filled one must still refuse, and a full one must
+     * deliver. Testing only the full case would hide a machine that ignores its
+     * charge.
+     *
+     * <p>The amount is written through the standard energy capability, so it goes
+     * in exactly the way a cable would charge the machine.
+     */
+    private static int setFe(CommandSourceStack source, int amount) {
+        if (lastMachinePos == null) {
+            source.sendFailure(Component.literal("§cNo machine from a previous run - start with /cv testmodule <module>"));
+            return 0;
+        }
+        ServerLevel level = source.getLevel();
+        var storage = level.getCapability(
+                net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK, lastMachinePos, null);
+        if (storage == null) {
+            source.sendFailure(Component.literal("§cThe machine at " + lastMachinePos + " has no energy storage"));
+            return 0;
+        }
+        // Drain first: the cases are absolute values, not increments, so a leftover
+        // charge from the previous case must not leak into this one.
+        int drained = 0;
+        int guard = 0;
+        while (storage.getEnergyStored() > 0 && guard++ < 10_000) {
+            drained += storage.extractEnergy(storage.getEnergyStored(), false);
+        }
+        int accepted = storage.receiveEnergy(amount, false);
+        int now = storage.getEnergyStored();
+        source.sendSuccess(() -> Component.literal("§6[testmodule] §7FE set to §f" + now
+                + " §7(asked " + amount + ", accepted " + accepted + ")"), false);
+        return now;
     }
 
     private static void pass(String moduleId, Item wanted, long stockBefore, int delivered) {

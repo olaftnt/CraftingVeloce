@@ -1,0 +1,21 @@
+# Module: brewing  (vanilla brewing stand logic: bottles + ingredient + blaze powder)
+#
+# Cases covered:
+#   1. a real brewing recipe, ingredients in the barrel -> the terminal must deliver it
+#
+# Brewing has no accumulator; its availability axes are fuel (blaze powder) and a
+# valid bottle/ingredient pair, and it reports which one is missing through its
+# refusal reason. The barrel is filled from the recipe the module itself reports,
+# so the case fails loudly if the module cannot name one.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-brewing -PveloceKeepOpen
+
+/cv testmodule brewing
+expect: building and waiting
+expect: ingredients placed:
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL

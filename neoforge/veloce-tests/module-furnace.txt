@@ -1,20 +1,59 @@
-# End-to-end craft test for ONE processing module.
+# Module: furnace  (smelting, blasting, smoking)
 #
-# Builds a real network next to the player (terminal + pipe + machine + barrel),
-# fills the barrel with the ingredients of a recipe this module can actually do,
-# waits for the network scan, and then asks the terminal for the result through
-# extractWithReason - the exact call a player makes by clicking an item.
+# Cases covered:
+#   1. full accumulator                  -> the terminal must deliver the item
+#   2. accumulator drained to ZERO       -> must refuse, and say it is power
+#   3. accumulator partly filled         -> must still refuse (too little for a smelt)
+#   4. full accumulator again            -> must deliver again
 #
-# The point is the chain, not the pieces: a source guard can prove the module is
-# registered and the method exists, but only this can prove the machine plans,
-# consumes the ingredients and hands over the item.
+# The order matters. Case 1 proves the module works at all; cases 2 and 3 prove
+# the machine actually READS its charge instead of smelting for free - a bug that
+# a "does it craft" test alone would never show; case 4 proves refusing did not
+# leave the machine stuck.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-furnace -PveloceKeepOpen
 
+# --- case 1: powered ---
 /cv testmodule furnace
 expect: building and waiting
-expect: ingredients placed:
 
-wait: 100
+wait: 120
 
 /cv testmodule result
 expect: PASS
-expectnot: FAIL
+
+# --- case 2: no power at all ---
+/cv testmodule furnace
+expect: building and waiting
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: FAIL
+
+# --- case 3: some power, but not enough for a smelt ---
+/cv testmodule furnace
+expect: building and waiting
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: FAIL
+
+# --- case 4: powered again ---
+/cv testmodule furnace
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
