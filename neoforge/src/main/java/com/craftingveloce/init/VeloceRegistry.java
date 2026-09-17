@@ -334,6 +334,11 @@ public class VeloceRegistry {
             java.util.Map.entry("slow_falling", POTION_SLOW_FALLING),
             java.util.Map.entry("turtle_master", POTION_TURTLE_MASTER));
 
+    /** The hand-authored proxy items, in declaration order - for the creative tab. */
+    public static java.util.Collection<DeferredItem<Item>> handAuthoredProxyItems() {
+        return HAND_AUTHORED_PROXIES.values();
+    }
+
     /** Potion keys the generator must leave alone. */
     public static java.util.Set<String> handAuthoredProxyKeys() {
         return HAND_AUTHORED_PROXIES.keySet();
