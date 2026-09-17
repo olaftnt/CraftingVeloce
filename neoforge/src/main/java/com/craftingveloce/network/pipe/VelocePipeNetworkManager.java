@@ -713,7 +713,8 @@ return net;
                 continue;
             }
 
-            if (RefinedStorageHelper.hasRSNetwork(level, np, d.getOpposite())) {
+            if (com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded()
+                && RefinedStorageHelper.hasRSNetwork(level, np, d.getOpposite())) {
                 registerEndpoint(level, net, knownEndpoints, np, d.getOpposite(),
                         ConnectedEndpointInfo.Type.REFINED_STORAGE);
             } else if (VelocePipeBlock.canConnectToInventory(level, np, d.getOpposite())) {
@@ -1666,7 +1667,8 @@ return net;
                 }
 
                 // 3. Neighbor is Refined Storage
-                if (RefinedStorageHelper.hasRSNetwork(level, neighborPos, dir.getOpposite())) {
+                if (com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded()
+                && RefinedStorageHelper.hasRSNetwork(level, neighborPos, dir.getOpposite())) {
                     ConnectedEndpointInfo ep = new ConnectedEndpointInfo(neighborPos, dir.getOpposite(), ConnectedEndpointInfo.Type.REFINED_STORAGE);
                     ep.refreshIfLoaded(level);
                     discoveredEndpoints.put(neighborPos, ep);

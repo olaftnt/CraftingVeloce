@@ -1,18 +1,11 @@
 package com.craftingveloce.block.entity;
 
+import com.craftingveloce.storage.VeloceBlockEntity;
 import com.craftingveloce.util.VeloceLog;
 
 import com.craftingveloce.init.VeloceRegistry;
 import com.craftingveloce.network.SyncTerminalCountsPKT;
 import com.craftingveloce.rs.RefinedStorageHelper;
-import com.tom.storagemod.block.AbstractStorageTerminalBlock;
-import com.tom.storagemod.block.AbstractStorageTerminalBlock.TerminalPos;
-import com.tom.storagemod.block.entity.StorageTerminalBlockEntity;
-import com.tom.storagemod.inventory.IInventoryAccess;
-import com.tom.storagemod.inventory.IInventoryAccess.IInventoryChangeTracker;
-import com.tom.storagemod.inventory.InventoryCableNetwork;
-import com.tom.storagemod.inventory.NetworkInventory;
-import com.tom.storagemod.inventory.StoredItemStack;
 import com.craftingveloce.network.pipe.ConnectedEndpointInfo;
 import com.craftingveloce.network.pipe.VeloceChunkLoader;
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
@@ -28,6 +21,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.lang.ref.WeakReference;
@@ -41,25 +35,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
+public class VeloceTomTerminalBlockEntity extends VeloceBlockEntity
         implements com.craftingveloce.block.entity.VeloceCraftCountSource {
 
     private static final org.slf4j.Logger TERMINAL_LOG =
             org.slf4j.LoggerFactory.getLogger("craftingveloce-terminal");
 
-    private static Field itemCacheField;
     private final List<WeakReference<ServerPlayer>> activeWatchingPlayers = new ArrayList<>();
-
-    static {
-        try {
-            itemCacheField = StorageTerminalBlockEntity.class.getDeclaredField("itemCache");
-            itemCacheField.setAccessible(true);
-        } catch (Throwable t) {
-            VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
-                    "could not resolve StorageTerminalBlockEntity.itemCache - "
-                            + "Tom's Storage cache will not be used");
-        }
-    }
 
     public VeloceTomTerminalBlockEntity(BlockPos pos, BlockState state) {
         super(VeloceRegistry.VELOCE_TOM_TERMINAL_BE.get(), pos, state);
@@ -68,18 +50,28 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
     @Override
     public void onLoad() {
         super.onLoad();
-        if (level != null && !level.isClientSide) {
-            InventoryCableNetwork.getNetwork(level).markNodeInvalid(worldPosition);
-        }
     }
 
     public Direction getConnectionDirection() {
-        BlockState st = getBlockState();
-        Direction facing = st.getValue(AbstractStorageTerminalBlock.FACING);
-        TerminalPos p = st.getValue(AbstractStorageTerminalBlock.TERMINAL_POS);
-        if (p == TerminalPos.UP) return Direction.UP;
-        if (p == TerminalPos.DOWN) return Direction.DOWN;
-        return facing;
+        return com.craftingveloce.block.VeloceTomTerminalBlock.facingOf(getBlockState());
+    }
+
+    /**
+     * The inventory of the block the terminal faces.
+     *
+     * <p>Read through the standard NeoForge item handler. That is also the whole
+     * Tom's Simple Storage fallback: Tom exposes his Inventory Connector through
+     * this same capability, and that handler is a view over his entire network -
+     * so a terminal pointing at his connector reads his whole storage without
+     * referencing a single Tom class.
+     */
+    private net.neoforged.neoforge.items.IItemHandler adjacentHandler() {
+        if (level == null) {
+            return null;
+        }
+        Direction dir = getConnectionDirection();
+        return level.getCapability(net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
+                worldPosition.relative(dir), dir.getOpposite());
     }
 
     public void onPlayerOpenTerminal(ServerPlayer player) {
@@ -228,7 +220,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         // 2. Fallback: Direct RS counts (if terminal is placed directly touching an RS block without pipes)
         Direction connDir = getConnectionDirection();
         BlockPos targetPos = worldPosition.relative(connDir);
-        if (RefinedStorageHelper.hasRSNetwork(level, targetPos, connDir.getOpposite())) {
+        if (com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded()
+                && RefinedStorageHelper.hasRSNetwork(level, targetPos, connDir.getOpposite())) {
             Map<Item, Long> rsCounts = RefinedStorageHelper.getRSItemCounts(level, targetPos, connDir.getOpposite());
             for (Map.Entry<Item, Long> entry : rsCounts.entrySet()) {
                 if (entry.getValue() > 0) {
@@ -238,47 +231,37 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
             return counts;
         }
 
-        // 3. Fallback: Tom's Storage counts (only if terminal is directly connected to a Tom's Storage cable)
-        //
-        // Without getStacks(): below we ask the tracker about changes ourselves
-        // and pull the stacks ourselves (streamWrappedStacks). getStacks() would
-        // only add a rebuild of Tom's item map, which we do not read - and that
-        // path runs every second in syncCountsToAllWatchers.
-        IInventoryAccess access = getTomAccess();
-        if (access != null) {
-            IInventoryChangeTracker tracker = access.tracker();
-            if (tracker != null) {
-                tracker.getChangeTracker(level);
-                try {
-                    tracker.streamWrappedStacks(false).forEach(storedStack -> {
-                        if (storedStack != null && !storedStack.getStack().isEmpty() && storedStack.getQuantity() > 0) {
-                            counts.merge(storedStack.getStack().getItem(), storedStack.getQuantity(), Long::sum);
-                        }
-                    });
-                } catch (Throwable t) {
-                    VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
-                            "streaming wrapped stacks from Tom's Storage failed at %s",
-                            worldPosition);
-                }
-            }
-        }
+        // 3. Fallback: whatever inventory the terminal faces, read through the
+        // standard NeoForge item handler. This is ALSO the Tom's Simple Storage
+        // path - Tom exposes his Inventory Connector through that same capability,
+        // and the handler is a view over his entire network. So pointing the
+        // terminal at his connector reads his whole storage, with no Tom type
+        // referenced anywhere and no reflection into his private fields.
+        collectAdjacentCounts(counts);
 
         return counts;
     }
 
-    private IInventoryAccess getTomAccess() {
-        if (itemCacheField != null) {
-            try {
-                NetworkInventory cache = (NetworkInventory) itemCacheField.get(this);
-                if (cache != null) {
-                    return cache.getAccess(level, worldPosition);
-                }
-            } catch (Throwable ignored) {}
+    /** Adds the counts of the inventory the terminal faces, when there is one. */
+    private void collectAdjacentCounts(Map<Item, Long> counts) {
+        IItemHandler handler = adjacentHandler();
+        if (handler == null) {
+            return;
         }
-        return null;
+        try {
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                ItemStack stack = handler.getStackInSlot(slot);
+                if (!stack.isEmpty()) {
+                    counts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
+                }
+            }
+        } catch (Throwable t) {
+            VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
+                    "reading the adjacent inventory at %s failed", worldPosition);
+        }
     }
 
-    @Override
+    /** Called by the ticker registered in {@link com.craftingveloce.block.VeloceTomTerminalBlock}. */
     public void updateServer() {
         // We do NOT call getStacks() here.
         //
@@ -293,7 +276,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         // performed solely for us and solely in vain.
         //
         // For the same reason we do not rely on slotCount/freeCount/beaconLevel.
-        super.updateServer();
+        // (Tom's updateServer used to run here: it rebuilt his item map and
+        // scanned for beacons 8 blocks out. We read neither, so it was pure work.)
 
         // NOTE: keeping the network's force-loads is NO LONGER called from here.
         //
@@ -367,14 +351,13 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
             }
         }
 
-        // 3. Check Tom's Storage
-        player.sendSystemMessage(Component.literal("§b--- Tom's Storage / Inventory Access ---"));
-        getStacks();
-        IInventoryAccess access = getTomAccess();
-        if (access == null) {
-            player.sendSystemMessage(Component.literal("§cNo direct inventory access found via Tom's Storage!"));
+        // 3. The inventory on the facing side, through the standard item handler.
+        player.sendSystemMessage(Component.literal("§b--- Adjacent inventory access ---"));
+        IItemHandler handler = adjacentHandler();
+        if (handler == null) {
+            player.sendSystemMessage(Component.literal("§cNo inventory found on the facing side!"));
         } else {
-            player.sendSystemMessage(Component.literal("§7Slots: " + access.getSlotCount() + ", Free: " + access.getFreeSlotCount()));
+            player.sendSystemMessage(Component.literal("§7Slots: " + handler.getSlots()));
         }
         player.sendSystemMessage(Component.literal("§6=============================="));
     }
@@ -492,7 +475,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         BlockPos targetPos = worldPosition.relative(connDir);
 
         // 2. Try Refined Storage first
-        if (RefinedStorageHelper.hasRSNetwork(level, targetPos, connDir.getOpposite())) {
+        if (com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded()
+                && RefinedStorageHelper.hasRSNetwork(level, targetPos, connDir.getOpposite())) {
             ItemStack rsExtracted = RefinedStorageHelper.extractItem(level, targetPos, connDir.getOpposite(), requested, count);
             if (!rsExtracted.isEmpty()) {
                 syncCountsToAllWatchers();
@@ -504,10 +488,10 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                 "terminal without a pipe network - trying chest/RS at %s", targetPos);
         // 3. Try Tom's Storage / connected chests
         try {
-            StoredItemStack pulled = pullStack(new StoredItemStack(requested), count);
-            if (pulled != null && !pulled.getActualStack().isEmpty()) {
+            ItemStack pulled = extractFromAdjacent(requested, count);
+            if (!pulled.isEmpty()) {
                 syncCountsToAllWatchers();
-                return PullResult.ok(pulled.getActualStack());
+                return PullResult.ok(pulled);
             }
         } catch (Throwable t) {
             VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
@@ -515,6 +499,44 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         }
 
         return PullResult.empty();
+    }
+
+    /**
+     * Takes up to {@code count} of {@code requested} from the inventory the
+     * terminal faces.
+     *
+     * <p>Take-exactly-what-was-given: the result contains only what the handler
+     * actually released, so a partial extraction cannot turn into a duplication.
+     */
+    private ItemStack extractFromAdjacent(ItemStack requested, int count) {
+        IItemHandler handler = adjacentHandler();
+        if (handler == null || requested.isEmpty() || count <= 0) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack result = ItemStack.EMPTY;
+        int remaining = count;
+        try {
+            for (int slot = 0; slot < handler.getSlots() && remaining > 0; slot++) {
+                ItemStack inSlot = handler.getStackInSlot(slot);
+                if (inSlot.isEmpty() || !ItemStack.isSameItemSameComponents(inSlot, requested)) {
+                    continue;
+                }
+                ItemStack taken = handler.extractItem(slot, remaining, false);
+                if (taken.isEmpty()) {
+                    continue;
+                }
+                if (result.isEmpty()) {
+                    result = taken.copy();
+                } else {
+                    result.grow(taken.getCount());
+                }
+                remaining -= taken.getCount();
+            }
+        } catch (Throwable t) {
+            VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
+                    "extracting %s from the adjacent inventory at %s failed", requested, worldPosition);
+        }
+        return result;
     }
 
     /**

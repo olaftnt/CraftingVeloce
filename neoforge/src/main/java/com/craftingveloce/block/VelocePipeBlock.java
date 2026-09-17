@@ -233,7 +233,8 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         }
 
         // 4. Refined Storage (Interface, Controller, Cables, etc.)
-        if (RefinedStorageHelper.hasRSNetwork(level, neighborPos, dir.getOpposite())) {
+        if (com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded()
+                && RefinedStorageHelper.hasRSNetwork(level, neighborPos, dir.getOpposite())) {
             return true;
         }
 
@@ -347,7 +348,8 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             boolean isExtractor = neighborState.getBlock() instanceof VeloceExtractorBlock
                     || neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock;
             boolean isInventory = !isExtractor && (canConnectToInventory(world, neighborPos, side.getOpposite())
-                    || RefinedStorageHelper.hasRSNetwork(world, neighborPos, side.getOpposite()));
+                    || (com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded()
+                            && RefinedStorageHelper.hasRSNetwork(world, neighborPos, side.getOpposite())));
 
             if (isInventory) {
                 boolean extracting = pipeBE.isExtracting(side);

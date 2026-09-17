@@ -56,8 +56,11 @@ repositories {
 }
 
 dependencies {
-    // --- required ---
-    implementation "maven.modrinth:toms-storage:WQAMoIMC"
+    // --- Tom's Simple Storage is OPTIONAL now ---
+    // Nothing in the mod references a Tom class any more (see mods.toml), so it is
+    // not a compile dependency. It stays on the runtime classpath so a dev run has
+    // it available to test the capability-based integration.
+    runtimeOnly "maven.modrinth:toms-storage:WQAMoIMC"
 
     // --- optional integrations (compileOnly) ---
     compileOnly "maven.modrinth:create:UjX6dr61"

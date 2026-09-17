@@ -9,6 +9,10 @@ build/
 neoforge/run/
 run/
 
+# IDE
+.idea/
+*.iml
+
 # Local compileOnly dependency jars (third-party mods, never shipped)
 *.jar
 !gradle/wrapper/gradle-wrapper.jar

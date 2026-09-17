@@ -27,24 +27,28 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="NONE"
     side="BOTH"
 
-# TOM'S SIMPLE STORAGE - REQUIRED, and that is not accidental.
+# TOM'S SIMPLE STORAGE - OPTIONAL.
 #
-# Thirty-five references across seven files, all of them structural:
-#   - VelocePipeBlock / VelocePipeBlockEntity  implement IInventoryCable
-#     and extend PlatformBlockEntity; our pipes ARE Tom's cables
-#   - VeloceTomTerminalBlock extends AbstractStorageTerminalBlock
-#   - VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
-#     and uses NetworkInventory / StoredItemStack / IInventoryAccess
-#   - Controller, CraftingTable, Extractor implement IInventoryCable
+# It used to be required, because the mod inherited from Tom's classes:
+#   VelocePipeBlockEntity        extended  PlatformBlockEntity
+#   VeloceTomTerminalBlock       extended  AbstractStorageTerminalBlock
+#   VeloceTomTerminalBlockEntity extended  StorageTerminalBlockEntity
+# A class cannot be loaded without its superclass, so a missing Tom meant
+# NoClassDefFoundError during block registration - an unreadable crash instead of
+# a readable "missing dependency".
 #
-# Do NOT change this to "optional" without rewriting those classes. Flipping
-# the flag alone will not make the mod run without Tom - the classes will not
-# load without his types (NoClassDefFoundError during block registration).
-# Instead of a readable "missing dependency" the player would get an
-# incomprehensible crash.
+# That is gone: com.craftingveloce.storage now carries our own base block entity
+# and our own inventory lookup, and the terminal has its own block. The mod
+# compiles and runs with no Tom class referenced anywhere.
+#
+# Running WITH Tom is still useful, and needs no integration code: Tom registers
+# his Inventory Connector through the standard NeoForge item handler capability
+# (StorageMod: Capabilities.ItemHandler.BLOCK, Content.connectorBE), and that
+# handler is a view over his whole network. Point a pipe or the terminal at his
+# connector and it reads his storage like any chest.
 [[dependencies.craftingveloce]]
     modId="toms_storage"
-    type="required"
+    type="optional"
     versionRange="[2.4.0,)"
     ordering="AFTER"
     side="BOTH"

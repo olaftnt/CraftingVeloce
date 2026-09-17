@@ -152,8 +152,16 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             ItemStack leftover = ItemHandlerHelper.insertItemStacked(
                     new PlayerMainInvWrapper(serverPlayer.getInventory()), extracted, false);
             if (!leftover.isEmpty()) {
-                // Return leftover back to terminal if inventory was partially full
-                terminalBE.pushStack(leftover);
+                // Return the leftover to the terminal's OWN network when the
+                // player's inventory was partially full. This used to call Tom's
+                // pushStack; our network has its own insertion.
+                if (serverPlayer.level() instanceof net.minecraft.server.level.ServerLevel sl) {
+                    var netForReturn = com.craftingveloce.network.pipe.VelocePipeNetworkManager
+                            .get(sl).getNetworkForTerminal(sl, pkt.terminalPos());
+                    if (netForReturn != null) {
+                        netForReturn.insertIntoStorage(sl, leftover);
+                    }
+                }
                 serverPlayer.displayClientMessage(Component.translatable("craftingveloce.message.inventoryFull")
                         .withStyle(net.minecraft.ChatFormatting.GOLD), true);
             }

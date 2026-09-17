@@ -52,7 +52,27 @@ public enum VeloceMods {
      * does not call it. The entry is here for the presence log and for a build
      * check.
      */
-    JADE("jade");
+    JADE("jade"),
+
+    /**
+     * Refined Storage - an alternative storage network the terminal and the pipes
+     * can read.
+     *
+     * <p><b>Why this entry had to exist.</b> RS was the one integration without a
+     * gate: {@code RefinedStorageHelper} was called straight from
+     * {@code VelocePipeBlock.canConnectDirection}, {@code ConnectedEndpointInfo}
+     * and {@code VelocePipeNetworkManager}. Its own signatures carry no RS type,
+     * which is why it looked safe - but linking the class still needs the RS types
+     * its code refers to, and that happens the first time a method of it is
+     * executed. With RS absent the result was
+     * {@code NoClassDefFoundError: .../resource/ResourceKey} thrown in the caller,
+     * before any {@code try/catch} inside the helper could run.
+     *
+     * <p>Observed for real: placing a pipe with Refined Storage not installed
+     * crashed the server tick loop. The gates below never evaluate the helper when
+     * RS is missing, so the class is never resolved.
+     */
+    REFINED_STORAGE("refinedstorage");
 
     private final String id;
 

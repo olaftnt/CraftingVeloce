@@ -2978,7 +2978,9 @@ def validate_mods_toml():
 
     dependencies = data.get("dependencies", {}).get("craftingveloce", [])
     mod_ids = {dep.get("modId") for dep in dependencies}
-    missing = sorted({"neoforge", "minecraft", "toms_storage"} - mod_ids)
+    # toms_storage is deliberately absent from this set: it is optional since the
+    # mod stopped inheriting from Tom's classes.
+    missing = sorted({"neoforge", "minecraft"} - mod_ids)
     if missing:
         fail("neoforge.mods.toml without the required dependencies: " + ", ".join(missing))
     print(f"    OK (mods.toml parses: {len(mod_ids)} dependencies)")
