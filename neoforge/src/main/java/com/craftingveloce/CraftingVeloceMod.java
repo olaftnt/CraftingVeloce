@@ -220,6 +220,10 @@ public class CraftingVeloceMod {
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
         }
 
+        // Automatic test run: with -Dveloce.test.script=<path> the script runs on
+        // the first player join and the game exits with its result.
+        com.craftingveloce.test.VeloceTestDriver.installAutoRun();
+
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             CVDebugCommand.register(event.getDispatcher());
             // /cv showcase: places all our blocks for render testing.
@@ -230,6 +234,8 @@ public class CraftingVeloceMod {
             // identifiers, so the player does not have to know them by heart.
             com.craftingveloce.commands.CVGetItemsCommand.register(
                     event.getDispatcher(), event.getBuildContext());
+            // /cv test list | run <script>: drives the in-game test scripts.
+            com.craftingveloce.test.VeloceTestDriver.register(event.getDispatcher());
         });
 
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock.class, event -> {

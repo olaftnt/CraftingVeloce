@@ -1,0 +1,14 @@
+# Builds a real pipe network of 64 pipes next to the player and checks that the
+# scan actually assembled it.
+#
+# The point is the STORAGE count: if the barrel is not detected, the network was
+# built but never connected, which is the failure players report as "it does not
+# work" while every source-level guard is green.
+#
+# Run it with:  /cv test run network
+
+/cv testnet build 64
+expect: Test network built
+expect: Pipes:
+expect: Networks:
+expectnot: NONE

@@ -27,6 +27,21 @@ neoForge {
         server {
             server()
         }
+
+        // Automated test run: loads straight into a world, runs the script named
+        // by the system property, prints the result and exits.
+        //
+        //   ./gradlew :neoforge:runTestClient -PveloceTest=smoke
+        //
+        // The world has to be one that already exists in run/saves - the flat
+        // creative world the scripts expect is made once and reused.
+        testClient {
+            client()
+            systemProperty("veloce.test.script",
+                    file("../neoforge/veloce-tests/${project.findProperty('veloceTest') ?: 'smoke'}.txt").absolutePath)
+            programArguments.addAll("--quickPlaySingleplayer",
+                    project.findProperty('veloceTestWorld') ?: 'New World')
+        }
     }
 }
 
@@ -91,5 +106,37 @@ processResources {
     }
     from(rootProject.file("src_meta")) {
         include "META-INF/**"
+    }
+}
+
+// The mod reads scripts from <game dir>/veloce-tests. They are versioned here and
+// copied next to the game so that /cv test run <name> works without extra setup.
+tasks.register("stageTestScripts", Copy) {
+    description = "Copies veloce-tests/ into the dev-run directory."
+    from(layout.projectDirectory.dir("veloce-tests"))
+    into(layout.projectDirectory.dir("run/veloce-tests"))
+}
+
+tasks.named("runClient") { dependsOn("stageTestScripts") }
+// The test result is read from a FILE, not from the process exit code: a green
+// automated run still ends with Minecraft's own non-zero shutdown status, so a
+// CI job trusting the exit code would fail on every passing run.
+tasks.named("runTestClient") {
+    dependsOn("stageTestScripts")
+    ignoreExitValue = true
+    doFirst {
+        delete(layout.projectDirectory.file("run/veloce-test-result.txt"))
+    }
+    doLast {
+        def resultFile = layout.projectDirectory.file("run/veloce-test-result.txt").asFile
+        if (!resultFile.exists()) {
+            throw new GradleException(
+                    "no veloce-test-result.txt - the run never reached the end of the script")
+        }
+        def lines = resultFile.readLines()
+        if (lines.isEmpty() || lines[0] != "PASS") {
+            throw new GradleException("veloce test FAILED:\n  " + lines.join("\n  "))
+        }
+        logger.lifecycle("veloce test PASSED -> " + lines.join(" | "))
     }
 }

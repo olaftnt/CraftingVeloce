@@ -1,0 +1,16 @@
+# Cheapest end-to-end smoke test.
+#
+# Places EVERY block of the mod in a grid in front of the player, with casing
+# parts filled in, then clears it again. This is the test that would have caught
+# the class of bug the source guards cannot see: a block whose placement logic
+# throws, a machine that renders empty, a casing property that does not exist.
+#
+# Run it with:  /cv test run smoke
+
+/cv showcase pipes
+expect: Veloce showcase:
+expectnot: is for a player only
+
+/cv showcase clear
+expect: Veloce showcase: removed
+expectnot: is for a player only
