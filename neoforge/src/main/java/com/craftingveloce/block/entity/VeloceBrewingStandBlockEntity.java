@@ -53,19 +53,13 @@ public class VeloceBrewingStandBlockEntity extends BlockEntity
     public int energy = 0;
     public static final int ENERGY_CAPACITY = 25_000_000;
     public static final int FE_PER_BREW = 200_000;
-    public static final int MAX_PULL_PER_TICK = 1_000_000;
 
-    private com.craftingveloce.network.pipe.VelocePipeNetwork networkFor(net.minecraft.server.level.ServerLevel sl) {
-        var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
-        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
-            net.minecraft.core.BlockPos side = worldPosition.relative(dir);
-            if (sl.isLoaded(side) && sl.getBlockState(side).getBlock() instanceof com.craftingveloce.block.VelocePipeBlock) {
-                var net = manager.getNetworkForPipe(sl, side);
-                if (net != null) return net;
-            }
-        }
-        return manager.getNetworkForTerminal(sl, worldPosition);
-    }
+    // REMOVED: MAX_PULL_PER_TICK and networkFor().
+    //
+    // The stand used to draw power from foreign sources through the pipe network.
+    // Our cables are a carrier for the Veloce network (item logistics) and must
+    // never conduct energy. The stand is powered only by the energy ITEM in its own
+    // fuel/battery slot, or by a foreign energy cable attached directly to it.
 
 
 protected final net.minecraft.world.inventory.ContainerData dataAccess = new net.minecraft.world.inventory.ContainerData() {
@@ -186,8 +180,9 @@ protected final net.minecraft.world.inventory.ContainerData dataAccess = new net
 
 public static void serverTick(net.minecraft.world.level.Level level, BlockPos pos, BlockState state, VeloceBrewingStandBlockEntity be) {
         if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) return;
+        // Power comes ONLY from the energy item in slot 4 or a foreign cable attached
+        // directly to the stand - never through the Veloce network (zero FE on our cables).
         be.chargeFromItem();
-        com.craftingveloce.network.pipe.VeloceEnergyPull.pull(sl, be.networkFor(sl), be, MAX_PULL_PER_TICK);
 
         // META-RECIPE: instantly fill glass bottles with water
         for (int i = 0; i < 3; i++) {

@@ -271,6 +271,37 @@ public final class VeloceAutoCrafter {
     }
 
     /**
+     * Falls back to the amount the network ALREADY holds when the request cannot be
+     * satisfied in full.
+     *
+     * <p><b>The bug this fixes</b> (player: "shift-click does not work on the items
+     * from the furnace recipe; it works when I take one, but not a stack"). A plain
+     * click asks for ONE unit and is satisfied straight from stock. A shift-click asks
+     * for a whole stack, which the network usually does not have, so the planner is
+     * asked to craft the remainder. When that could not be done, the whole request was
+     * reported as failed and the terminal handed over NOTHING - the player lost even
+     * the units that were already sitting in the network. That is why the symptom
+     * looked count-dependent: one works, a stack does not.
+     *
+     * <p>Now a failed craft falls back to what is available, so a shift-click yields as
+     * much as the network can actually provide. The original reason is still logged, so
+     * the diagnostics do not regress into "it silently gave less".
+     *
+     * @param available units already present (inventory + network) at request time
+     */
+    private static CraftResult partialOrFail(long available, int count, CraftResult failure) {
+        if (available <= 0) {
+            return failure;
+        }
+        int give = (int) Math.min(count, available);
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "cannot satisfy the full request (%d) - handing over the %d already available "
+                        + "instead of nothing (reason kept: %s)",
+                count, give, failure.reason());
+        return CraftResult.ok(give);
+    }
+
+    /**
      * Ensures that the network will contain at least {@code count} units of
      * {@code item}. Crafts the missing amount if the item has auto-crafting
      * enabled.
@@ -328,7 +359,11 @@ public final class VeloceAutoCrafter {
                     item, reason.reasonKey(), reason.detail());
             VeloceCraftTrace.log("item is not craftable: %s %s",
                     reason.reasonKey(), reason.detail());
-            return CraftResult.fail(reason.reasonKey(), reason.detail());
+            // Even when the item cannot be CRAFTED, anything already in the network must
+            // still reach the player - refusing to hand over existing stock because we
+            // cannot make MORE of it is exactly the "shift-click gives nothing" bug.
+            return partialOrFail(available, count,
+                    CraftResult.fail(reason.reasonKey(), reason.detail()));
         }
 
         // TRACE (only for player actions - see VeloceCraftTrace.begin):
@@ -360,7 +395,8 @@ public final class VeloceAutoCrafter {
                 VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                         "planning for %s x%d exceeded the %d ms budget - recipe tree too complex",
                         item, missing, planBudgetNanos / 1_000_000L);
-                return CraftResult.fail("craftingveloce.craft.error.tooComplex");
+                return partialOrFail(available, count,
+                        CraftResult.fail("craftingveloce.craft.error.tooComplex"));
             }
 
             // THERE IS NOT ENOUGH FOR THE FULL AMOUNT - try to make LESS.
@@ -379,13 +415,15 @@ public final class VeloceAutoCrafter {
                     VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                             "planning for %s x%d ran out of the %d ms budget",
                             item, missing, planBudgetNanos / 1_000_000L);
-                    return CraftResult.fail("craftingveloce.craft.error.tooComplex");
+                    return partialOrFail(available, count,
+                            CraftResult.fail("craftingveloce.craft.error.tooComplex"));
                 }
                 logPlanFailure(level, ctx, item, missing, stock);
                 // WE SAY WHAT IS MISSING - otherwise the player only gets "no such
                 // item in the network" and does not know whether the material, the
                 // machine or the recipe is missing.
-                return diagnosePlanFailure(level, ctx, item, stock);
+                return partialOrFail(available, count,
+                        diagnosePlanFailure(level, ctx, item, stock));
             }
         }
 
@@ -399,8 +437,9 @@ public final class VeloceAutoCrafter {
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                     "execution failed for %s - ingredients vanished mid-craft", item);
             String ingredient = ctx.lastMissingIngredient;
-            return CraftResult.fail("craftingveloce.craft.error.extract",
-                    ingredient == null ? "" : ingredient);
+            return partialOrFail(available, count,
+                    CraftResult.fail("craftingveloce.craft.error.extract",
+                            ingredient == null ? "" : ingredient));
         }
         // We return the amount that ACTUALLY came into being - it may be smaller
         // than requested, when there was not enough material (see
@@ -1006,7 +1045,15 @@ public final class VeloceAutoCrafter {
                     if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NO HEAT (times=" + times + ", remaining=" + plan.heatRemaining + ")");
                     return false;
                 }
-                plan.heatRemaining -= times;
+                // NOTE: the heat is NOT decremented here any more. It used to be, and
+                // that was the leak: a recipe whose ingredients could not be planned
+                // returned false WITHOUT ever reaching plan.add(), so rollbackTo could
+                // never give that heat back. With ~10 furnace recipes for one item, every
+                // failed unit attempt melted ~10 heat operations, and the planner
+                // concluded "no heat" long before the furnace was actually empty.
+                //
+                // The decrement now happens together with plan.add() below, so a run and
+                // its heat cost are atomic - rollbackTo restores both.
             }
 
 
@@ -1076,6 +1123,13 @@ public final class VeloceAutoCrafter {
 
         }
 
+        // A furnace recipe pays with ONE smelting operation per unit. The heat is
+        // charged HERE, atomically with the run, so a failed ingredient plan above
+        // (which returns before this line) does not leak heat; rollbackTo restores it
+        // together with the run.
+        if (recipe.isFurnace()) {
+            plan.heatRemaining -= times;
+        }
         plan.add(recipe, times);
 
         // CRUCIAL: credit the produced items to the simulated stock.

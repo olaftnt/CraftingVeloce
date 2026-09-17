@@ -245,32 +245,14 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
         return st != null && st.canExtract() && st.getMaxEnergyStored() > 0;
     }
 
-    /** Every tick (server): draw power from the item in the battery slot and from the network. */
+    /** Every tick (server): draw power from the energy item in the battery slot. */
 
-    /**
-     * The network this machine REALLY belongs to.
-     *
-     * <p>The BUG from the log: the furnace asked for a network via
-     * {@code getNetworkForTerminal} and got SOMEBODY ELSE'S network - in the log
-     * its only pipe was adjacent to grass and air, so neither an Energy Cube nor
-     * a furnace was there and the draw had nothing to work from. Now we first
-     * look for a pipe NEXT TO the machine and ask about that pipe's network; only
-     * when there is none do we fall back to the old path.
-     */
-    private com.craftingveloce.network.pipe.VelocePipeNetwork networkFor(net.minecraft.server.level.ServerLevel sl) {
-        var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
-        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
-            net.minecraft.core.BlockPos side = worldPosition.relative(dir);
-            if (sl.isLoaded(side)
-                    && sl.getBlockState(side).getBlock() instanceof com.craftingveloce.block.VelocePipeBlock) {
-                var net = manager.getNetworkForPipe(sl, side);
-                if (net != null) {
-                    return net;
-                }
-            }
-        }
-        return manager.getNetworkForTerminal(sl, worldPosition);
-    }
+    // REMOVED: networkFor().
+    //
+    // It resolved "this machine's" network so the module could pull power through the
+    // pipes. Our cables carry ZERO Forge Energy now, so there is nothing to resolve:
+    // a module is charged by its own battery item or by a foreign cable attached
+    // directly to it.
 
     private int clientSyncCooldown = 10;
     private int lastSyncedEnergy = -1;
@@ -279,9 +261,11 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
         if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) {
             return;
         }
+        // Only the energy ITEM in this module's own battery slot (or a foreign
+        // energy cable attached directly to it) may charge the accumulator.
+        // Nothing is drawn through the Veloce network: our cables carry zero FE.
         chargeFromItem();
-        pullFromNetwork();
-        
+
         if (--clientSyncCooldown > 0) {
             return;
         }
@@ -292,25 +276,11 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
         }
     }
 
-    /**
-     * Draws power from FOREIGN sources hooked up to the pipe network (Energy
-     * Cube, generator). Only our machine draws - the pipe does not conduct power
-     * for other mods, and the machines are not a source for each other (the
-     * network scan skips our blocks). A full accumulator = zero attempts (see
-     * VeloceEnergyPull).
-     */
-    private void pullFromNetwork() {
-        if (level == null || level.isClientSide) {
-            return;
-        }
-        var serverLevel = (net.minecraft.server.level.ServerLevel) level;
-        var network = networkFor(serverLevel);
-        com.craftingveloce.network.pipe.VeloceEnergyPull.pull(
-                serverLevel, network, this, MAX_PULL_PER_TICK);
-    }
-
-    /** How much FE per tick we accept from the network at most (next to the source's limit). */
-    public static final int MAX_PULL_PER_TICK = Integer.MAX_VALUE;
+    // REMOVED: pullFromNetwork() and MAX_PULL_PER_TICK.
+    //
+    // They drew power from foreign sources hooked up to the pipe network. Our cables
+    // are a carrier for the Veloce network (item logistics) and must never conduct
+    // energy - not for other mods, and not for our own machines.
 
     /**
      * Takes power from the item and pours it into the accumulator.

@@ -19,7 +19,11 @@ public class VelocePotionMapper {
     public static void registerProxy(String potionId, Item proxyItem) {
         POTION_TO_PROXY.put(potionId, proxyItem);
         PROXY_TO_POTION.put(proxyItem, potionId);
-        LOG.debug("[VELOCE-DEBUG] proxy registered: potion '{}' <-> item {}", potionId, proxyItem);
+        // Logged on the mod's own gated DETAIL channel, not raw slf4j DEBUG: the log
+        // config filters DEBUG regardless of this mod's debugEnabled, so a DEBUG-only
+        // line can never be surfaced by the setting the player is told to flip.
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "[VELOCE-DEBUG] proxy registered: potion '%s' <-> item %s", potionId, proxyItem);
     }
 
     public static Item getProxy(ItemStack stack) {
@@ -54,7 +58,9 @@ public class VelocePotionMapper {
         var holder = net.minecraft.core.registries.BuiltInRegistries.POTION.wrapAsHolder(potionOpt.get());
         ItemStack stack = PotionContents.createItemStack(Items.POTION, holder);
         stack.setCount(count);
-        LOG.debug("[VELOCE-DEBUG] proxy conversion: {} x{} -> real potion minecraft:{}", proxyItem, count, id);
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "[VELOCE-DEBUG] proxy conversion: %s x%s -> real potion minecraft:%s",
+                proxyItem, count, id);
         return stack;
     }
     

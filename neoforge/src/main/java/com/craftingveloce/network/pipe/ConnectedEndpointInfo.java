@@ -38,12 +38,19 @@ public class ConnectedEndpointInfo {
         CRAFTING_BUFFER,
 
         /**
-         * A foreign block with Forge Energy (Energy Cube, generator, energy bank).
+         * LEGACY - no longer produced. A foreign block with Forge Energy.
          *
-         * <p>Our machines PULL power from it THEMSELVES (see VeloceEnergyPull):
-         * that is the only direction in which energy flows through our pipes.
-         * Our pipes are not a conductor for other mods - nothing can draw from
-         * them, and our machines are exclusively receivers.
+         * <p>Our cables used to record foreign energy blocks here so that machines
+         * could pull power through the network. That whole feature was REMOVED: a
+         * Veloce cable carries ZERO Forge Energy and exists only as a carrier for
+         * the Veloce network (item logistics). Machines are powered by the energy
+         * item in their own battery slot, or by a foreign energy cable attached
+         * directly to the machine.
+         *
+         * <p>The constant is kept only so that worlds saved before the change still
+         * parse their endpoint list ({@code Type} is stored by NAME). Such an entry
+         * is simply inert: nothing produces it any more, and it is dropped as soon
+         * as the block behind it is gone.
          */
         ENERGY
     }

@@ -1747,55 +1747,77 @@ def validate_module_info_gui():
 
 def validate_pipe_energy():
     """
-    Energy in the pipe: drawing from flagged sources in the network
-    (VeloceCraftingCache.tickAll) and distribution to the network nodes.
+    ZERO Forge Energy on our cables - a cable is only a carrier for the Veloce network.
 
-    The player moved the buffer into the pipe network and the energy tick into
-    the level tick. We check the links that would otherwise disappear silently:
-      1. VelocePipeNetwork has an energy container,
-      2. drawing/distribution works from VeloceCraftingCache.tickAll,
-      3. the pipe does NOT expose the container as a capability (it is not a
-         conduit for other mods),
-      4. machines do not give energy back (extractEnergy = 0), so they cannot be
-         a source for each other.
+    The player's decision: "remove the possibility of transferring power from our
+    cables entirely; our cables stay only a carrier for the Veloce network, as it
+    used to be - zero FE on our cables".
+
+    This guard used to assert the OPPOSITE: an energy buffer kept on the network, a
+    draw plus distribution step in the level tick, and a machine-side pull helper. All
+    of that is now forbidden, so the guard is inverted:
+
+      1. the network has NO energy buffer and NO energy bookkeeping,
+      2. the level tick has NO energy step,
+      3. the shared pull helper does not exist at all,
+      4. the pipe still does not expose EnergyStorage (it never was a conduit).
+
+    It is not enough to delete the feature: without this guard the next person who
+    wants "power over the pipes" can reintroduce it and every existing check stays
+    green, because they all only asserted that the pieces were PRESENT.
     """
     problems = []
-    
-    # 1. The container in the network
+
+    # 1. The pull helper must be gone.
+    if os.path.exists("neoforge/src/main/java/com/craftingveloce/network/pipe/VeloceEnergyPull.java"):
+        problems.append("VeloceEnergyPull exists again - cables must not transfer Forge Energy")
+
+    # 2. The network must not keep or expose any energy state.
     net_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
     net_text = open(net_path, encoding="utf-8").read()
-    if "private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer" not in net_text:
-        problems.append("VelocePipeNetwork without an energy container declaration")
-    
-    # 2. The tick in the cache
+    # Comments are stripped: the removal notes legitimately NAME the things they say
+    # were removed, and a word-level check would trip on its own documentation.
+    net_code = _strip_comments(net_text)
+    for need, what in (("EnergyStorage", "an energy buffer"),
+                       ("energyBuffer", "an energy buffer field"),
+                       ("getEnergyBuffer(", "an energy buffer accessor"),
+                       ("addEnergyEndpoint(", "energy endpoint bookkeeping"),
+                       ("getEnergyEndpoints(", "energy endpoint bookkeeping"),
+                       ("EnergyStored", "persisted network energy")):
+        if need in net_code:
+            problems.append("VelocePipeNetwork still has " + what)
+
+    # 3. The level tick must not move energy.
     cache_path = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceCraftingCache.java"
-    cache_text = open(cache_path, encoding="utf-8").read()
-    tick = _method_body(cache_text, "public static void tickAll(ServerLevel level)")
-    if tick is None or "VeloceEnergyPull.pull" not in tick:
-        problems.append("energy is not ticked (no VeloceEnergyPull in VeloceCraftingCache.tickAll)")
-    
+    tick = _method_body(open(cache_path, encoding="utf-8").read(),
+                        "public static void tickAll(ServerLevel level)")
+    if tick is None:
+        problems.append("no VeloceCraftingCache.tickAll (cannot verify the network tick)")
+    else:
+        tick_code = _strip_comments(tick)
+        if "EnergyStorage" in tick_code or "EnergyPull" in tick_code:
+            problems.append("the network tick still moves Forge Energy "
+                            "(our cables must not conduct power)")
+
+    # 4. The network scan must not record foreign energy blocks.
+    mgr_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java"
+    mgr_code = _strip_comments(open(mgr_path, encoding="utf-8").read())
+    for need, what in (("discoveredEnergy", "a discovered-energy set"),
+                       ("addEnergyEndpoint(", "energy endpoint registration")):
+        if need in mgr_code:
+            problems.append("VelocePipeNetworkManager still does " + what)
+
+    # 5. The pipe must not expose energy.
     mod = open("neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
-    # Registering energy on the pipe = the pipe becomes a conduit for other mods.
-    # We check a WINDOW around each registration, because the type is sometimes
-    # on the next line.
     for idx in [i for i in range(len(mod)) if mod.startswith("EnergyStorage.BLOCK", i)]:
         window = mod[idx:idx + 200]
         if "VELOCE_PIPE_BE" in window or "VELOCE_PIPE" in window:
             problems.append("the pipe exposes EnergyStorage (it could be a conduit)")
             break
 
-    # Machines: sinks only - extractEnergy must return 0.
-    for path, what in (("neoforge/src/main/java/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java",
-                        "the electric furnace"),
-                       ("neoforge/src/main/java/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java",
-                        "the FE module")):
-        body = _method_body(open(path, encoding="utf-8").read(), "public int extractEnergy(")
-        if body is None or "return 0;" not in body:
-            problems.append(f"{what}: gives energy back (machines must be sinks only)")
-
     if problems:
-        fail("energy in the pipe:\n  " + "\n  ".join(problems))
-    print("    OK (energy: buffer in the pipe, extracting draw, distribution, machines only receive)")
+        fail("energy on the cables:\n  " + "\n  ".join(problems))
+    print("    OK (cables: zero Forge Energy on the network - item carrier only)")
 
 
 def validate_brewing_stand():
@@ -2178,133 +2200,192 @@ def validate_potion_proxy_assets():
 
 def validate_energy_pull():
     """
-    Our machines draw power from foreign sources in the network THEMSELVES
-    (Forge Energy).
+    A machine is powered WITHOUT the cables: its own battery item, or a foreign
+    energy cable attached directly to it.
 
-    The player: "our module can pull power from an energy cube, but only in
-    that direction; the other modules cannot use our cables; if it is full, it
-    does not try to pull; and we want limits".
+    The player's decision: "remove the possibility of transferring power from our
+    cables entirely ... zero FE on our cables". So nothing draws power through the
+    network any more, and this guard verifies BOTH halves of that change:
 
-    We check the whole chain:
-      1. a foreign energy source is an endpoint type and reaches the network
-         from the scan, which SKIPS our blocks (machines must not be a source
-         for each other),
-      2. the draw respects: a full accumulator = zero attempts, the machine's
-         receive limit, the source's limit (we ask extractEnergy), returning the
-         surplus and not pulling unloaded chunks,
-      3. the FURNACE and the FE modules pull in their own server tick,
-      4. our pipe does NOT expose EnergyStorage (one direction only).
+      1. no machine reaches for power through the network (the shared pull helper
+         does not exist and no block entity mentions it),
+      2. the machines still have a working LOCAL power path - an energy-item slot
+         they discharge into their accumulator, and the Forge Energy capability so
+         a foreign cable attached to the machine can charge it,
+      3. they are still sinks only (extractEnergy = 0) - never a power source for
+         each other or for other mods,
+      4. the electric furnace still PAYS for every smelted unit out of its
+         accumulator, so "smelting is free" cannot come back.
+
+    Points 2-4 are the ones that would silently rot: removing the network draw
+    deletes the obvious caller, and nothing else would notice if the local charging
+    path broke along with it.
     """
     problems = []
-    enum_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/ConnectedEndpointInfo.java"
-    scan_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java"
-    pull_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/VeloceEnergyPull.java"
-    net_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
 
-    if "ENERGY" not in open(enum_path, encoding="utf-8").read():
-        problems.append("no ENERGY endpoint type")
-    net_text = open(net_path, encoding="utf-8").read()
-    for need, what in (("addEnergyEndpoint(", "recording energy sources"),
-                       ("getEnergyEndpoints()", "reading energy sources"),
-                       ("clearEnergyEndpoints()", "clearing the source list")):
-        if need not in net_text:
-            problems.append("VelocePipeNetwork without " + what)
+    # 1. Nothing may pull power through the network.
+    if os.path.exists("neoforge/src/main/java/com/craftingveloce/network/pipe/VeloceEnergyPull.java"):
+        problems.append("the network pull helper is back (cables must not carry FE)")
+    for path in sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/**/*.java", recursive=True)):
+        code = _strip_comments(open(path, encoding="utf-8").read())
+        if "VeloceEnergyPull" in code:
+            problems.append(f"{path.replace(os.sep, '/')}: still pulls power through the network")
 
-    scan = open(scan_path, encoding="utf-8").read()
-    if "discoveredEnergy.add(" not in scan:
-        problems.append("the scan does not remember foreign energy sources")
-    if "instanceof VeloceNetworkNode" not in scan or "addEnergyEndpoint(" not in scan:
-        problems.append("the scan does not skip our blocks / does not record sources into the network")
+    machines = (
+        ("neoforge/src/main/java/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java",
+         "the electric furnace"),
+        ("neoforge/src/main/java/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java",
+         "the FE module"),
+        ("neoforge/src/main/java/com/craftingveloce/block/entity/VeloceBrewingStandBlockEntity.java",
+         "the brewing stand"),
+    )
 
-    if not os.path.exists(pull_path):
-        problems.append("no shared energy draw (VeloceEnergyPull)")
-    else:
-        pull = open(pull_path, encoding="utf-8").read()
-        for need, what in (("free <= 0", "no draw when the accumulator is full"),
-                           ("extractEnergy(", "asking the source about the transfer (source limit)"),
-                           ("isLoaded(pos)", "skipping unloaded sources"),
-                           ("Math.min(free, maxRate)", "the machine's receive limit")):
-            if need not in pull:
-                problems.append("the energy draw without " + what)
+    # 2. and 3. A local charging path, and sinks only.
+    for path, what in machines:
+        text = open(path, encoding="utf-8").read()
+        if "public int receiveEnergy(" not in text:
+            problems.append(f"{what}: cannot be charged by a cable attached to it")
+        body = _method_body(text, "public int extractEnergy(")
+        if body is None or "return 0;" not in body:
+            problems.append(f"{what}: gives energy back (machines must be sinks only)")
 
-        # THE TRANSFER MUST BE DEMAND-DRIVEN AND BOUNDED.
-        #
-        # This guard used to REQUIRE the line
-        #     receiveEnergy(taken - accepted, false)
-        # i.e. it froze in place exactly the bug it should have caught: the source
-        # was drained FIRST and the surplus was pushed back into the source
-        # afterwards. Energy sources are usually extract-only (a Mekanism Energy
-        # Cube reports canReceive() == false), so that refund silently did nothing
-        # and the surplus FE was DESTROYED. It also made the amount taken
-        # independent of what the receiver could accept, so the drain was not
-        # demand-driven at all.
-        #
-        # The correct shape is: simulate the source's offer, simulate the
-        # receiver's acceptance, and only then move the agreed amount for real.
-        transfer_body = _method_body(pull, "private static int transfer(")
-        if transfer_body is None:
-            problems.append("no bounded, demand-driven transfer helper (transfer(...))")
-        else:
-            sim_extract = transfer_body.find("extractEnergy(want, true)")
-            sim_receive = transfer_body.find("receiveEnergy(offered, true)")
-            real_extract = transfer_body.find("extractEnergy(acceptable, false)")
-            if sim_extract < 0:
-                problems.append("the transfer does not SIMULATE what the source offers")
-            if sim_receive < 0:
-                problems.append("the transfer does not SIMULATE what the receiver accepts")
-            if real_extract < 0:
-                problems.append("the transfer never moves the agreed amount for real")
-            if sim_extract >= 0 and real_extract >= 0 and sim_extract > real_extract:
-                problems.append("the transfer extracts BEFORE the receiver has agreed "
-                                "(the surplus then cannot be refunded - energy is lost)")
-            if sim_receive >= 0 and real_extract >= 0 and sim_receive > real_extract:
-                problems.append("the transfer extracts before simulating the receiver")
+    # The battery ITEM slot is now the only power source, so it must exist - with no
+    # network draw, a machine without it could never be charged at all.
+    for path, what in (machines[0], machines[1], machines[2]):
+        text = open(path, encoding="utf-8").read()
+        if "chargeFromItem" not in text:
+            problems.append(f"{what}: has no battery-item charging path "
+                            f"(there is no network draw any more, so it could never charge)")
 
-        # The per-source rate must be a real bound, not "as much as the source will give".
-        if "MAX_PER_SOURCE_PER_TICK = 1_000_000" not in pull:
-            problems.append("the per-source rate is not bounded to 1 000 000 FE/t "
-                            "(an unbounded request empties a whole Energy Cube in one tick)")
-        if "MAX_PER_SOURCE_PER_TICK = Integer.MAX_VALUE" in pull:
-            problems.append("the per-source rate is Integer.MAX_VALUE (the infinite-drain bug)")
+    # 4. The electric furnace still pays per smelted unit.
+    furn = open(machines[0][0], encoding="utf-8").read()
+    consume = _method_body(furn, "public void consumeOperations(")
+    if consume is None or "FE_PER_SMELT" not in consume:
+        problems.append("the electric furnace does not deduct FE per smelting operation")
+    available = _method_body(furn, "public long availableOperations()")
+    if available is None or "FE_PER_SMELT" not in available:
+        problems.append("the electric furnace does not derive its operations from the accumulator")
 
-        # Stale world-position cache: the remembered source side must be purgeable.
-        if "public static void forget(" not in pull:
-            problems.append("the remembered-side cache cannot be purged per position "
-                            "(stale world-position entries survive a block swap)")
-
-    # The furnace's intake must be bounded too - it used to be Integer.MAX_VALUE.
-    furn_path = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java"
-    furn_text_rates = open(furn_path, encoding="utf-8").read()
-    if "MAX_PULL_PER_TICK = Integer.MAX_VALUE" in furn_text_rates:
-        problems.append("the electric furnace intake is Integer.MAX_VALUE "
-                        "(it can drain an Energy Cube in a single tick)")
-    if "MAX_PULL_PER_TICK = 1_000_000" not in furn_text_rates:
-        problems.append("the electric furnace intake is not bounded to 1 000 000 FE/t")
-
-    # The FE module calls the draw through its own helper (pullFromNetwork),
-    # while the furnace does it directly - that is why we check the TICK + the
-    # call in the file, and not the literal inside the tick body (the first
-    # version of the test raised a false alarm).
-    fe_mod = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
-    fe_text = open(fe_mod, encoding="utf-8").read()
-    fe_tick = _method_body(fe_text, "public void serverTick()")
-    if fe_tick is None or "pullFromNetwork()" not in fe_tick \
-            or "VeloceEnergyPull.pull(" not in fe_text:
-        problems.append("the FE module: does not pull power from the network in the tick")
-    furn = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java"
-    furn_text = open(furn, encoding="utf-8").read()
-    furn_tick = _method_body(furn_text, "public void serverTick()")
-    if furn_tick is None or "VeloceEnergyPull.pull(" not in furn_tick:
-        problems.append("the electric furnace: does not pull power from the network in the tick")
-
-    # One direction only: the pipe must not expose EnergyStorage.
-    pipe_be = "neoforge/src/main/java/com/craftingveloce/block/entity/VelocePipeBlockEntity.java"
-    if os.path.exists(pipe_be) and "IEnergyStorage" in open(pipe_be, encoding="utf-8").read():
-        problems.append("the pipe exposes EnergyStorage (a foreign mod could draw from it)")
+    # The accumulator SIZE is part of the agreed specification: 25 000 000 FE is 125
+    # smelts at 200 000 FE. The constant had drifted to 200 000 000 (1000 smelts), which
+    # is effectively bottomless and contradicted the class documentation - so it is
+    # pinned here rather than left to drift again.
+    cap = re.search(r"ENERGY_CAPACITY\s*=\s*([0-9_]+)", furn)
+    if cap is None:
+        problems.append("the electric furnace has no ENERGY_CAPACITY")
+    elif cap.group(1) != "25_000_000":
+        problems.append(f"the electric furnace accumulator is {cap.group(1)} FE, "
+                        f"should be 25_000_000 (125 smelts at 200 000 FE)")
 
     if problems:
-        fail("power draw from the network:\n  " + "\n  ".join(problems))
-    print("    OK (power draw: machines pull on their own, limits and a full accumulator respected)")
+        fail("machine power (no cables):\n  " + "\n  ".join(problems))
+    print("    OK (power: no draw through the network; local battery item + direct cable only)")
+
+
+def validate_heat_accounting():
+    """
+    A furnace recipe's heat must be charged ATOMICALLY with its plan run.
+
+    The bug this guards (player: "shift-click does not work on furnace-recipe items"
+    and, earlier, "I can take one but not a stack"): `planRecipe` decremented
+    `plan.heatRemaining` BEFORE planning the ingredients, but only added the run to the
+    plan AFTER the ingredients succeeded. A recipe whose ingredient could not be
+    planned returned false without ever being added, so `rollbackTo` (which restores
+    heat only for runs that are IN the plan) could never give that heat back. With
+    roughly ten furnace recipes per item, every failed unit attempt melted ~10 heat
+    operations, so the planner concluded "no heat" long before the furnace was empty.
+
+    The symptom was masked for a long time: a 200 000 000 FE accumulator means 1000
+    operations, so a 10x leak still left plenty. It only became visible after the
+    accumulator was pinned to 25 000 000 FE (125 operations).
+
+    The guard asserts the heat charge sits NEXT TO the run-add (after the ingredient
+    loop), never before it.
+    """
+    path = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceAutoCrafter.java"
+    if not os.path.exists(path):
+        fail("heat accounting:\n  no VeloceAutoCrafter")
+    body = _method_body(open(path, encoding="utf-8").read(),
+                        "private static boolean planRecipe(")
+    if body is None:
+        fail("heat accounting:\n  no planRecipe method")
+    problems = []
+    dec = body.find("plan.heatRemaining -= times")
+    add = body.find("plan.add(recipe, times)")
+    loop = body.find("for (int ingIndex")
+    if dec < 0:
+        problems.append("planRecipe does not charge heat for a furnace recipe")
+    if add < 0:
+        problems.append("planRecipe does not add the run")
+    if dec >= 0 and add >= 0 and dec > add:
+        problems.append("the heat is charged AFTER the run is added (rollbackTo would double-charge)")
+    if dec >= 0 and loop >= 0 and dec < loop:
+        problems.append("the heat is charged before planning the ingredients - a failed "
+                        "ingredient plan then leaks heat (rollbackTo cannot return it, "
+                        "because the run was never added)")
+    if problems:
+        fail("heat accounting:\n  " + "\n  ".join(problems))
+    print("    OK (heat accounting: a furnace run and its heat are charged atomically)")
+
+
+def validate_partial_delivery():
+    """
+    A request that cannot be satisfied IN FULL must still deliver what the network has.
+
+    The player: "shift-click does not work on the items from the furnace recipe - it
+    appeared again; taking one works, but I cannot shift-click to take a stack".
+
+    That is count-dependent by construction, and this guard exists because the cause was
+    invisible: a plain click asks for ONE unit and is served straight from stock, while
+    a shift-click asks for a whole stack, which the network normally does not have, so
+    the planner is asked to craft the remainder. When it could not, the entire request
+    was reported as failed and the terminal handed over NOTHING - the player lost even
+    the units already sitting in the network.
+
+    So: `ensureAvailable` must route every failure through `partialOrFail`, which returns
+    the available amount when there is one.
+    """
+    path = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceAutoCrafter.java"
+    if not os.path.exists(path):
+        fail("partial delivery:\n  no VeloceAutoCrafter")
+    text = open(path, encoding="utf-8").read()
+    problems = []
+
+    helper = _method_body(text, "private static CraftResult partialOrFail(")
+    if helper is None:
+        problems.append("no partialOrFail helper (a failed craft would deliver nothing)")
+    elif "CraftResult.ok(" not in helper:
+        problems.append("partialOrFail does not return the available amount")
+
+    # Every failure inside the two ensureAvailable overloads must go through the helper:
+    # the full-request planner, the budget abort and the execution failure.
+    body = _method_body(text, "Item item, int count, Context ctx,\n"
+                              "                                              long planBudgetNanos)")
+    if body is None:
+        problems.append("could not find the planning ensureAvailable overload")
+    else:
+        # There are FIVE failure paths in the planning overload: the "not enabled" gate,
+        # the two budget aborts, the "cannot plan anything" diagnosis and the execution
+        # failure. The threshold must be exact - a lower one silently tolerated one path
+        # reverting to "deliver nothing" (calibration caught exactly that).
+        routed = body.count("partialOrFail(available, count,")
+        if routed < 5:
+            problems.append(f"only {routed} of the 5 failure paths in ensureAvailable hand over "
+                            f"the available amount instead of nothing")
+        # A bare `return CraftResult.fail(` left in the planning body is the regression we
+        # care about: it is exactly the "delivers nothing" behaviour. The "amount" failure
+        # is excluded - it rejects an invalid request (count <= 0), where there is
+        # nothing to deliver in the first place.
+        leftover = [ln.strip() for ln in body.splitlines()
+                    if "return CraftResult.fail(" in ln
+                    and "partialOrFail" not in ln
+                    and "craft.error.amount" not in ln]
+        if leftover:
+            problems.append("a failure path still returns nothing: " + leftover[0])
+
+    if problems:
+        fail("partial delivery:\n  " + "\n  ".join(problems))
+    print("    OK (partial delivery: a failed craft hands over what the network has)")
 
 
 def validate_craftable_cache():
@@ -3558,6 +3639,8 @@ def main():
     validate_block_probe()
     validate_craftable_cache()
     validate_energy_pull()
+    validate_partial_delivery()
+    validate_heat_accounting()
     validate_brewing_stand()
     validate_brewing_proxy()
     validate_module_content_textures()

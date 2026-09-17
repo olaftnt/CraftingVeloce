@@ -444,7 +444,6 @@ public class VelocePipeNetworkManager extends SavedData {
         component.pipes.addAll(net.getPipes());
         component.nodes.addAll(net.getTerminals());
                 component.storages.addAll(net.getEndpoints().keySet());
-        component.energy.addAll(net.getEnergyEndpoints());
         component.builtAtTick = level.getGameTime();
         world.storeComponent(seed, component);
 
@@ -565,10 +564,6 @@ return net;
         // in practice.
         refreshInsertModes(level, net, pipes);
         net.updateTrackedChunks();
-        net.clearEnergyEndpoints();
-        for (BlockPos ep : component.energy) {
-            net.addEnergyEndpoint(ep);
-        }
         return net;
     }
 
@@ -1538,10 +1533,9 @@ return net;
         Set<BlockPos> visitedPipes = new HashSet<>();
         Set<BlockPos> discoveredTerminals = new HashSet<>();
         Map<BlockPos, ConnectedEndpointInfo> discoveredEndpoints = new HashMap<>();
-        // Foreign energy sources (Energy Cube, generator) - a separate list,
-        // because these are NOT item storages: we do not take anything out of
-        // them with a pipe, our machines PULL power from them THEMSELVES.
-        java.util.Set<BlockPos> discoveredEnergy = new java.util.HashSet<>();
+        // NOTE: there is no "discovered energy sources" set any more. Our cables
+        // never conduct Forge Energy, so the network does not track foreign energy
+        // blocks at all - see the removal note in VelocePipeNetwork.
         Set<UUID> intersectedOldNets = new HashSet<>();
         // Pipes that entered the network from unloaded chunks. Their block
         // entity is unavailable, so we do not know their closed sides.
@@ -1652,19 +1646,11 @@ return net;
                     continue;
                 }
 
-                // 2b. A foreign block with Forge Energy (Energy Cube, generator).
-                //
-                // We SKIP our own blocks: machines are only receivers, so they
-                // cannot be a source for each other (otherwise they would pull
-                // power from one another). Our pipe does not expose
-                // EnergyStorage, so nothing foreign can draw power from it -
-                // the direction is one-way.
-                if (!(neighborState.getBlock() instanceof VeloceNetworkNode)
-                        && level.getCapability(
-                                net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
-                                neighborPos, dir.getOpposite()) != null) {
-                    discoveredEnergy.add(neighborPos.immutable());
-                }
+                // NOTE: the network no longer looks for foreign Forge Energy blocks
+                // next to its pipes. Our cables carry ZERO FE, so recording energy
+                // sources here would only create machines that could never be paid
+                // through the network. Energy comes from a machine's own battery slot
+                // or from a foreign cable attached directly to the machine.
 
                 // 3. Neighbor is Refined Storage
                 if (com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded()
@@ -1781,14 +1767,10 @@ return net;
         VelocePipeNetwork newNet = persistentNetwork(finalId, true);
         newNet.getPipes().addAll(visitedPipes);
         newNet.getTerminals().addAll(discoveredTerminals);
-        newNet.clearEnergyEndpoints();
-        for (BlockPos energyPos : discoveredEnergy) {
-            newNet.addEnergyEndpoint(energyPos);
-        }
         newNet.getEndpoints().putAll(discoveredEndpoints);
         newNet.updateTrackedChunks();
 
-        // KLUCZOWE: synchronizuj knownEndpoints z nowo odkrytymi.
+        // KEY: synchronise knownEndpoints with the newly discovered ones.
         //
         // The BUG that was here: scanAndBuildNetwork built new endpoints (with
         // refreshIfLoaded when the chunk is loaded), but did NOT update

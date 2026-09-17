@@ -37,44 +37,47 @@ DEFAULT_JAR = "neoforge/build/libs/craftingveloce-1.0.0.jar"
 # exactly how a missing class can look like a pass.
 GRADLE_CLASSES = "neoforge/build/classes/java/main"
 
-# Guards that only read the tree / the jar contents.
-NO_ARG_GUARDS = [
-    "validate_packet_docs",
-    "validate_lang_keys",
-    "validate_filter_labels",
-    "validate_gui_layout",
-    "validate_helper_docs",
-    "validate_sensor_row",
-    "validate_node_blocks",
-    "validate_recipe_model",
-    "validate_module_block_ids",
-    "validate_core_isolation",
-    "validate_create_kinetics",
-    "validate_number_format",
-    "validate_module_recipe_access",
-    "validate_block_models",
-    "validate_integrale_model",
-    "validate_integrale_display",
-    "validate_mods_toml",
-    "validate_create_mechanics",
-    "validate_case_disassembly",
-    "validate_case_occlusion",
-    "validate_loot_item_ids",
-    "validate_showcase_command",
-    "validate_block_probe",
-    "validate_craftable_cache",
-    "validate_energy_pull",
-    "validate_brewing_stand",
-    "validate_brewing_proxy",
-    "validate_module_content_textures",
-    "validate_potion_proxy_assets",
-    "validate_pipe_energy",
-    "validate_module_info_gui",
-    "validate_jade_info",
-    "validate_terminal_craft_error",
-    "validate_jei_catalysts",
-    "validate_auto_crafter_ingredient_rule",
-]
+# Guards that need arguments (`validate_block_data(names)`, the two jar ones and
+# validate_isolation_runtime) are driven explicitly in main(). Everything else is
+# DISCOVERED from build.py rather than listed here.
+#
+# Why discovery: this list used to be written out by hand, and it silently fell
+# behind - two guards added on main (validate_heat_accounting,
+# validate_partial_delivery) simply never ran, while the run still reported a
+# clean pass. A hand-maintained list of checks is the exact failure mode the
+# project's own guards exist to prevent, so it is not repeated here.
+SKIP = {
+    # needs (cp, toms, rs): the resolved dependency classpath, which Gradle owns
+    "validate_isolation_runtime",
+    # arguments are supplied by the caller in main()
+    "validate_block_data",
+    "validate_compat_gates",
+    "validate_jar_isolation",
+}
+
+
+def discover_guards():
+    """Every validate_* in build.py that takes no required argument."""
+    import inspect
+
+    found = []
+    for name in sorted(dir(build)):
+        if not name.startswith("validate_"):
+            continue
+        if name in SKIP:
+            continue
+        fn = getattr(build, name)
+        if not callable(fn):
+            continue
+        params = [
+            p for p in inspect.signature(fn).parameters.values()
+            if p.default is inspect.Parameter.empty
+            and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)
+        ]
+        if params:
+            continue
+        found.append(name)
+    return found
 
 
 def run_one(name, fn, arg=None):
@@ -120,13 +123,9 @@ def main():
                 continue
             results.append((gname, *run_one(gname, fn, z)))
 
-        # Guards that only read the sources / assets.
-        for gname in NO_ARG_GUARDS:
-            fn = getattr(build, gname, None)
-            if fn is None:
-                results.append((gname, None, "not present in build.py"))
-                continue
-            results.append((gname, *run_one(gname, fn)))
+        # Guards that only read the sources / assets - discovered, not listed.
+        for gname in discover_guards():
+            results.append((gname, *run_one(gname, getattr(build, gname))))
 
     passed = [r for r in results if r[1] is True]
     failed = [r for r in results if r[1] is False]

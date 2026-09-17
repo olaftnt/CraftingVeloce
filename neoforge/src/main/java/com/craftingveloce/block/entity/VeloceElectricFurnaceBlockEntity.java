@@ -37,8 +37,15 @@ import net.neoforged.neoforge.energy.IEnergyStorage;
 public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         implements MenuProvider, VeloceHeatSource, IEnergyStorage {
 
-    /** Capacity of the internal accumulator. */
-    public static final int ENERGY_CAPACITY = 200_000_000; // 1000 operations buffer
+    /**
+     * Capacity of the internal accumulator.
+     *
+     * <p>25 000 000 FE = 125 smelts at {@link #FE_PER_SMELT}, i.e. a bit less than two
+     * stacks of 64. This is the figure agreed with the player and the one the class
+     * documentation and the brewing stand already use - the constant had drifted to
+     * 200 000 000 (1000 smelts), which made the accumulator effectively bottomless.
+     */
+    public static final int ENERGY_CAPACITY = 25_000_000;
 
     /** Cost of one instant smelt. */
     public static final int FE_PER_SMELT = 200_000;
@@ -74,9 +81,6 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
      */
     private long lastEnergyChangeTick;
 
-    private static final org.slf4j.Logger LOG =
-            org.slf4j.LoggerFactory.getLogger("craftingveloce-furnace");
-
     public VeloceElectricFurnaceBlockEntity(BlockPos pos, BlockState state) {
         super(com.craftingveloce.init.VeloceRegistry.ELECTRIC_FURNACE_BE.get(), pos, state);
         // Every change in the battery slot must make it into the save.
@@ -87,8 +91,10 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         // GUI still shows a charge, then the value does not come from this object at
         // all (it would come from the client-side copy or from saved NBT), which
         // rules this class out instead of guessing.
-        LOG.debug("[VELOCE-DEBUG] electric furnace instantiated at {} (dim={}), fresh energy={} FE, capacity={} FE",
-                pos.toShortString(), state, energy, ENERGY_CAPACITY);
+        com.craftingveloce.util.VeloceLog.Block.detail(
+                com.craftingveloce.util.VeloceLog.Side.SERVER,
+                "[VELOCE-DEBUG] electric furnace instantiated at %s, fresh energy=%s FE, capacity=%s FE",
+                pos.toShortString(), energy, ENERGY_CAPACITY);
     }
 
     /** The battery slot - for the menu (and for the screen that shows the hint). */
@@ -124,19 +130,24 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
     private void chargeFromItem() {
         ItemStack stack = batterySlot.getItem(0);
         if (stack.isEmpty()) {
+            noteCharge("no item in the battery slot");
             return;
         }
         int space = ENERGY_CAPACITY - energy;
         if (space <= 0) {
+            noteCharge("accumulator full (" + energy + "/" + ENERGY_CAPACITY + " FE) - item left alone");
             return;   // accumulator full - we leave the item alone
         }
         net.neoforged.neoforge.energy.IEnergyStorage itemEnergy = stack.getCapability(
                 net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.ITEM);
         if (itemEnergy == null || !itemEnergy.canExtract()) {
+            noteCharge("item " + stack.getItem() + " exposes no extractable Forge Energy "
+                    + "(capability=" + (itemEnergy == null ? "null" : "present but cannot extract") + ")");
             return;
         }
         int available = itemEnergy.extractEnergy(Math.min(space, MAX_ITEM_DRAIN_PER_TICK), true);
         if (available <= 0) {
+            noteCharge("item " + stack.getItem() + " is empty (simulated extract = 0)");
             return;   // the item is empty
         }
         // We take what the item REALLY gave - not what we asked for.
@@ -145,6 +156,8 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         // would create energy out of nothing.
         int taken = itemEnergy.extractEnergy(available, false);
         if (taken <= 0) {
+            noteCharge("item " + stack.getItem() + " advertised " + available
+                    + " FE in the simulation but gave 0 on the real extract");
             return;
         }
         int accepted = receiveEnergy(taken, false);
@@ -155,8 +168,31 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         }
         if (accepted > 0) {
             batterySlot.setChanged();
+            noteCharge("charged " + accepted + " FE from " + stack.getItem()
+                    + " -> accumulator now " + energy + " FE");
         }
     }
+
+    /**
+     * Logs the charging state, but only when it CHANGES.
+     *
+     * <p>Called once per tick, so logging unconditionally would flood the log with
+     * 20 identical lines a second. A state-change log answers the real question -
+     * "why is the accumulator not filling" - with one line per distinct cause.
+     */
+    private void noteCharge(String note) {
+        if (note.equals(lastChargeNote)) {
+            return;
+        }
+        lastChargeNote = note;
+        com.craftingveloce.util.VeloceLog.Block.detail(
+                com.craftingveloce.util.VeloceLog.Side.SERVER,
+                "[VELOCE-DEBUG] furnace %s battery slot: %s",
+                worldPosition.toShortString(), note);
+    }
+
+    /** The last charging note we logged - see {@link #noteCharge(String)}. */
+    private String lastChargeNote = "";
 
     // ------------------------------------------------------------------
     // VeloceHeatSource
@@ -179,8 +215,12 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
             lastEnergyChangeTick = level.getGameTime();
         }
         // Per-operation deduction: this is the line that proves a stack of 64 really
-        // pays 64 x FE_PER_SMELT rather than a flat charge.
-        LOG.debug("[VELOCE-DEBUG] smelt deduction at {}: ops={} x {} FE = {} FE, battery {} -> {} FE",
+        // pays 64 x FE_PER_SMELT rather than a flat charge. It goes to the mod's
+        // gated DETAIL channel (NOT raw slf4j DEBUG, which the log config filters
+        // regardless of debugEnabled, so it could never be seen in game).
+        com.craftingveloce.util.VeloceLog.Block.detail(
+                com.craftingveloce.util.VeloceLog.Side.SERVER,
+                "[VELOCE-DEBUG] smelt deduction at %s: ops=%s x %s FE = %s FE, battery %s -> %s FE",
                 worldPosition.toShortString(), operations, FE_PER_SMELT, cost, before, energy);
         setChanged();
     }
@@ -260,78 +300,29 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
      * (and at most once every half a second): a cable from another mod can charge
      * every tick, and a packet every tick would be a waste.
      */
-    /**
-     * How much FE per tick we accept from the network at most (besides the source's own limit).
-     *
-     * <p><b>Why this is bounded.</b> This used to be {@code Integer.MAX_VALUE}, i.e. the
-     * furnace asked for as much as its free space allowed and the only remaining
-     * brake was the source's internal rate. A Mekanism Energy Cube can push a very
-     * large amount per tick, so a single tick could empty a whole cube into the
-     * accumulator - the reported "it drains infinite power from the cube". Pinning
-     * the intake makes the drain a predictable FE/tick figure that is easy to
-     * reason about in game, and it matches the brewing stand's limit.
-     */
-    public static final int MAX_PULL_PER_TICK = 1_000_000;
-
-
-    /**
-     * The network this machine REALLY belongs to.
-     *
-     * <p>BUG from the log: the furnace asked for the network via {@code getNetworkForTerminal}
-     * and got SOMEONE ELSE'S network - in the log its only pipe was adjacent to
-     * grass and air, so neither the Energy Cube nor the furnace was there and the
-     * draw had nothing to work from. Now we first look for a pipe NEXT TO the
-     * machine and ask for that pipe's network; only when there is none do we fall
-     * back to the old path.
-     */
-    private com.craftingveloce.network.pipe.VelocePipeNetwork networkFor(net.minecraft.server.level.ServerLevel sl) {
-        var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
-        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
-            net.minecraft.core.BlockPos side = worldPosition.relative(dir);
-            if (sl.isLoaded(side)
-                    && sl.getBlockState(side).getBlock() instanceof com.craftingveloce.block.VelocePipeBlock) {
-                var net = manager.getNetworkForPipe(sl, side);
-                if (net != null) {
-                    return net;
-                }
-            }
-        }
-        return manager.getNetworkForTerminal(sl, worldPosition);
-    }
 
     public void serverTick() {
         if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) {
             return;
         }
-        // NOTE: this must happen BEFORE the early return for syncing.
-        // Otherwise charging from the item would only work once every 10 ticks
-        // (i.e. 10x slower), because the cooldown exits this method.
+        // The ONLY way this furnace takes power is the energy ITEM in its own battery
+        // slot, or a foreign energy cable attached DIRECTLY to the furnace (which the
+        // capability below still accepts).
+        //
+        // It deliberately does NOT draw power through the Veloce network any more.
+        // Our cables are a carrier for the network (item logistics), never an energy
+        // conduit: zero FE travels on them. This also removes the whole class of
+        // "the network empties my Energy Cube" problems, because no code path exists
+        // that can pull from a remote source any more.
         chargeFromItem();
-        // The same PULLING from the network as in the modules: the furnace draws
-        // power on its own from foreign sources (Energy Cube, generator) hooked up
-        // to the pipes. Full accumulator = zero attempts, the source limit and our
-        // limit are respected.
-        int before = energy;
-        var net = networkFor(sl);
-        int pulled = com.craftingveloce.network.pipe.VeloceEnergyPull.pull(sl,
-                net, this, MAX_PULL_PER_TICK);
-        // One line per real transfer is enough to answer "does the cube drain, and
-        // by how much per tick" from a game log without flooding it.
-        if (pulled > 0) {
-            LOG.debug("[VELOCE-DEBUG] furnace {} pull tick: got {} FE from network {}, "
-                            + "battery {} -> {} FE (rate cap {} FE/t)",
-                    worldPosition.toShortString(), pulled, net == null ? "none" : net.getId(),
-                    before, energy, MAX_PULL_PER_TICK);
-        } else if (net == null && isPowered()) {
-            LOG.debug("[VELOCE-DEBUG] furnace {} has no network (no adjacent pipe, no terminal match)",
-                    worldPosition.toShortString());
-        }
         if (--clientSyncCooldown > 0) {
             return;
         }
         clientSyncCooldown = CLIENT_SYNC_INTERVAL_TICKS;
         if (energy != lastSyncedEnergy) {
-            LOG.debug("[VELOCE-DEBUG] furnace {} BE sync: {} -> {} FE (every {} ticks)",
+            com.craftingveloce.util.VeloceLog.Block.detail(
+                    com.craftingveloce.util.VeloceLog.Side.SERVER,
+                    "[VELOCE-DEBUG] furnace %s BE sync: %s -> %s FE (every %s ticks)",
                     worldPosition.toShortString(), lastSyncedEnergy, energy,
                     CLIENT_SYNC_INTERVAL_TICKS);
             lastSyncedEnergy = energy;
