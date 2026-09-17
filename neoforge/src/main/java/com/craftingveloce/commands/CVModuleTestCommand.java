@@ -68,6 +68,9 @@ public final class CVModuleTestCommand {
     /** Where the last built machine stands, so a later step can set its power. */
     private static BlockPos lastMachinePos;
 
+    /** Diagnostic of the last run, appended to the verdict so a test can read it. */
+    private static String diag = "none";
+
     private CVModuleTestCommand() {
     }
 
@@ -234,6 +237,32 @@ public final class CVModuleTestCommand {
 
         long stock = net.getAllItemCounts(level).getOrDefault(wanted, 0L);
 
+        // MEASURE, do not guess. Two faults look identical from the outside:
+        //   (a) the machine never made it into the network, or
+        //   (b) the network the terminal resolved to is not the one holding the
+        //       machine.
+        // Printing the node list and the machine's own view of the network tells
+        // them apart immediately.
+        com.craftingveloce.util.VeloceLog.Block.attempt(
+                com.craftingveloce.util.VeloceLog.Side.SERVER,
+                "[testmodule] DIAG net=%s terminals=%d machineAt=%s machineIsTerminal=%s",
+                net.getId(),
+                net.getTerminals().size(),
+                lastMachinePos,
+                lastMachinePos != null && net.getTerminals().contains(lastMachinePos));
+        // Goes into the verdict text, not the log: the VERBOSE channel is filtered
+        // out of the game log, so a diagnostic written there is invisible - which is
+        // why the first attempt at this produced no output at all.
+        StringBuilder nodes = new StringBuilder();
+        for (BlockPos node : net.getTerminals()) {
+            nodes.append(node).append('=').append(level.getBlockState(node).getBlock()).append(' ');
+        }
+        diag = "net=" + net.getId()
+                + " terminals=" + net.getTerminals().size()
+                + " machineAt=" + lastMachinePos
+                + " machineIsTerminal=" + (lastMachinePos != null && net.getTerminals().contains(lastMachinePos))
+                + " nodes=[" + nodes.toString().trim() + "]";
+
         VeloceTomTerminalBlockEntity.PullResult pulled;
         try {
             // count=1, allowCrafting=true: the player path.
@@ -290,7 +319,7 @@ public final class CVModuleTestCommand {
     }
 
     private static void pass(String moduleId, Item wanted, long stockBefore, int delivered) {
-        lastVerdict = "PASS " + moduleId;
+        lastVerdict = "PASS " + moduleId + " | " + diag;
         com.craftingveloce.util.VeloceLog.Block.attempt(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
                 "[testmodule] PASS %s: delivered %dx %s (stock before: %d)",
@@ -298,7 +327,7 @@ public final class CVModuleTestCommand {
     }
 
     private static void fail(String moduleId, String why) {
-        lastVerdict = "FAIL " + moduleId + ": " + why;
+        lastVerdict = "FAIL " + moduleId + ": " + why + " | " + diag;
         com.craftingveloce.util.VeloceLog.Block.error(
                 com.craftingveloce.util.VeloceLog.Side.SERVER, null,
                 "[testmodule] FAIL %s: %s", moduleId, why);

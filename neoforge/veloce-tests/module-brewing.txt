@@ -1,21 +1,52 @@
-# Module: brewing  (vanilla brewing stand logic: bottles + ingredient + blaze powder)
+# Module: brewing  (vanilla brewing stand logic)  -  machine: brewing_stand
 #
-# Cases covered:
-#   1. a real brewing recipe, ingredients in the barrel -> the terminal must deliver it
+# The brewing stand is an ENERGY machine: VeloceBrewingStandBlockEntity implements
+# IEnergyStorage and VeloceProcessingSource, and the payment path charges it
+# through VeloceProcessingSources.consumeFrom before a recipe runs. So a stand with
+# no charge advertises the recipe (its available() only asks whether a stand is in
+# the network) and then refuses to pay for it - which reads as
+# "needs a powered machine" while the machine is plainly there and listed as a
+# network node.
 #
-# Brewing has no accumulator; its availability axes are fuel (blaze powder) and a
-# valid bottle/ingredient pair, and it reports which one is missing through its
-# refusal reason. The barrel is filled from the recipe the module itself reports,
-# so the case fails loudly if the module cannot name one.
+# That is why this module needs the same three power cases as the furnace:
+#   1. accumulator at ZERO       -> must refuse
+#   2. accumulator partly filled  -> must still refuse
+#   3. accumulator full           -> must deliver
 #
 # Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-brewing -PveloceKeepOpen
 
-/cv testmodule brewing
+# --- case 1: no power ---
+/cv testmodule brewing brewing_stand
 expect: building and waiting
-expect: ingredients placed:
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: FAIL
+
+# --- case 2: some power, but not enough ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: FAIL
+
+# --- case 3: powered ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
 
 wait: 120
 
 /cv testmodule result
 expect: PASS
-expectnot: FAIL
