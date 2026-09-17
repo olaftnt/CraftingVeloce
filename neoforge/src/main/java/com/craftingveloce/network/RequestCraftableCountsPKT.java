@@ -139,18 +139,24 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             // computed, a number is shared by the whole network, so a second
             // terminal (or the same GUI opened a second time) does not count
             // the same thing from scratch - it gets the entry from the cache.
-            java.util.Map<Item, Long> known = network == null
-                    ? java.util.Map.of() : network.getCraftableMemo();
             java.util.Map<Item, Long> result = new java.util.HashMap<>();
-            java.util.List<Item> unknown = new java.util.ArrayList<>();
-            for (Item item : pkt.items()) {
-                Long cached = known.get(item);
-                if (cached != null) {
-                    result.put(item, cached);
-                } else {
-                    unknown.add(item);
-                }
-            }
+            java.util.List<Item> unknown = new java.util.ArrayList<>(pkt.items());
+            // EVERY requested item is recomputed, including the ones the cache already
+            // knows.
+            //
+            // This used to serve a cached value whenever there was one and compute only
+            // the rest, on the theory that the cache is the answer. It is not: the cache
+            // is what the network computed at some earlier moment, and everything that
+            // decides a number moves without the screen moving - a machine gets charged,
+            // a background pass finishes, the crafter feeds itself. A visible item whose
+            // cached value was reused could therefore keep a number frozen for the whole
+            // session, and the only way to shake it loose was to change the view.
+            //
+            // The instant answer is not lost: the cached snapshot was already sent just
+            // above, so the player sees numbers immediately and these recomputed ones
+            // replace them a moment later. That is the point of carrying the VISIBLE list
+            // in the packet - the screen's own items are the priority, and the cache
+            // exists for everything else.
             boolean complete = true;
             if (!unknown.isEmpty()) {
                 var computed = source.computeCraftableCounts(unknown);

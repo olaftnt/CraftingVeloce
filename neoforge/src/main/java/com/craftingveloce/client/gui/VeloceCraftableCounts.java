@@ -67,6 +67,30 @@ public final class VeloceCraftableCounts {
     private int retryCooldown;
 
     /**
+     * How often the VISIBLE page is refreshed while a screen is open, even when
+     * nothing about it has changed.
+     *
+     * <p><b>Why this is needed at all.</b> Without it a request went out only when the
+     * signature changed - a different tab, a search phrase, scrolling - plus one retry
+     * when an answer came back incomplete. Everything else in the network moves without
+     * touching the screen: a machine gets charged, a background pass finishes, the
+     * crafter feeds itself from the stock. The player then stares at a number that is
+     * correct for a moment that has passed, and the only way to refresh it was to type
+     * something in the search box and clear it again.
+     *
+     * <p><b>Why once a second, and not every tick.</b> One request costs the server up
+     * to the planning budget (DEFAULT_ESTIMATE_BUDGET_NS, 25 ms). Every tick would spend
+     * a fifth of the server's time on numbers for one open GUI; once a second matches the
+     * rate at which the stock itself is broadcast (syncCountsToAllWatchers), so the page
+     * is never more than one sync behind what it is annotating.
+     *
+     * <p>This is the PRIORITY path: it carries exactly the items on screen and the server
+     * computes those before anything else it has to do.
+     */
+    private static final int VISIBLE_REFRESH_TICKS = 20;
+    private int refreshCountdown;
+
+    /**
      * Whether to request the numbers ONE MORE TIME in the first tick after the screen
      * is opened.
      *
@@ -177,10 +201,15 @@ public final class VeloceCraftableCounts {
         boolean retry = this.partial && --this.retryCooldown <= 0;
         boolean firstRepeat = this.repeatFirstRequest;
         this.repeatFirstRequest = false;
-        if (!force && !retry && !firstRepeat && initialRequestSent && signature == lastSignature) {
+        // The visible page is refreshed on a clock of its own, so it keeps up with a
+        // network that changes without the screen changing. See VISIBLE_REFRESH_TICKS.
+        boolean periodic = --this.refreshCountdown <= 0;
+        if (!force && !retry && !firstRepeat && !periodic
+                && initialRequestSent && signature == lastSignature) {
             return;
         }
         this.retryCooldown = RETRY_INTERVAL_TICKS;
+        this.refreshCountdown = VISIBLE_REFRESH_TICKS;
         lastSignature = signature;
         initialRequestSent = true;
 
@@ -211,6 +240,9 @@ public final class VeloceCraftableCounts {
 
     /** After the screen is opened the signature starts from scratch. */
     public void resetRequestState() {
+        // ...and the clock too: a screen opened now must get its page at once, not
+        // inherit whatever was left of the countdown from the previous one.
+        refreshCountdown = 0;
         initialRequestSent = false;
         partial = false;
         retryCooldown = 0;

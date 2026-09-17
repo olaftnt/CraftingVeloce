@@ -37,6 +37,14 @@ neoForge {
         // creative world the scripts expect is made once and reused.
         testClient {
             client()
+            // A game directory of its OWN, and this is not tidiness.
+            //
+            // It used to share run/ with the normal client, so starting an automated
+            // run while a dev client was open meant two processes fighting over the same
+            // world, the same logs and the same result file - the test then hung until
+            // it timed out, with nothing saying why. The two can now run at the same
+            // time, which is what the person testing by hand needs.
+            gameDirectory = file("run-tests")
             systemProperty("veloce.test.script",
                     file("../neoforge/veloce-tests/${project.findProperty('veloceTest') ?: 'smoke'}.txt").absolutePath)
             programArguments.addAll("--quickPlaySingleplayer",
@@ -147,14 +155,37 @@ tasks.named("runClient") { dependsOn("stageTestScripts") }
 // The test result is read from a FILE, not from the process exit code: a green
 // automated run still ends with Minecraft's own non-zero shutdown status, so a
 // CI job trusting the exit code would fail on every passing run.
-tasks.named("runTestClient") {
+// The automated run gets its own directory seeded from run/: the scripts, the config,
+// and the flat creative world the scripts expect (made once, in run/, and copied here).
+tasks.register("prepareTestRunDir") {
+    description = "Seeds run-tests/ from run/ so automated runs do not touch the dev client."
     dependsOn("stageTestScripts")
+    doLast {
+        def testDir = layout.projectDirectory.dir("run-tests").asFile
+        def runDir = layout.projectDirectory.dir("run").asFile
+        project.copy {
+            from(layout.projectDirectory.dir("veloce-tests"))
+            into(new File(testDir, "veloce-tests"))
+        }
+        def config = new File(runDir, "config")
+        if (config.exists() && !new File(testDir, "config").exists()) {
+            project.copy { from(config); into(new File(testDir, "config")) }
+        }
+        def saves = new File(runDir, "saves")
+        if (saves.exists() && !new File(testDir, "saves").exists()) {
+            project.copy { from(saves); into(new File(testDir, "saves")) }
+        }
+    }
+}
+
+tasks.named("runTestClient") {
+    dependsOn("prepareTestRunDir")
     ignoreExitValue = true
     doFirst {
-        delete(layout.projectDirectory.file("run/veloce-test-result.txt"))
+        delete(layout.projectDirectory.file("run-tests/veloce-test-result.txt"))
     }
     doLast {
-        def resultFile = layout.projectDirectory.file("run/veloce-test-result.txt").asFile
+        def resultFile = layout.projectDirectory.file("run-tests/veloce-test-result.txt").asFile
         if (!resultFile.exists()) {
             throw new GradleException(
                     "no veloce-test-result.txt - the run never reached the end of the script")
