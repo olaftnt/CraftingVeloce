@@ -551,7 +551,13 @@ public final class CVModuleTestCommand {
                     + " for recipe " + recipeId + ", which makes " + describePotion(wanted));
             return;
         }
-        pass(moduleId, wanted, recipeId, stock, pulled.stack().getCount());
+        // What the TERMINAL would show for this item - the same call its "+N" overlay
+        // comes from. Delivery working and the number working are two different things:
+        // the first is the crafter, the second is the count path, and this is the only
+        // place that says out loud which of them a network has.
+        long shown = terminal.computeCraftableCounts(java.util.List.of(wanted.getItem()))
+                .counts().getOrDefault(wanted.getItem(), 0L);
+        pass(moduleId, wanted, recipeId, stock, pulled.stack().getCount(), shown);
     }
 
     /**
@@ -622,12 +628,17 @@ public final class CVModuleTestCommand {
         return now;
     }
 
-    private static void pass(String moduleId, ItemStack wanted, String recipeId, long stockBefore, int delivered) {
+    private static void pass(String moduleId, ItemStack wanted, String recipeId, long stockBefore,
+                             int delivered, long terminalShows) {
         // The recipe id goes into the verdict so a randomly drawn run that fails can
         // be replayed exactly: the test is meant to be run over and over, and a
         // failure is only useful if it can be reproduced.
-        String drawn = "recipe=" + recipeId + " item=" + describePotion(wanted);
+        String drawn = "recipe=" + recipeId + " item=" + describePotion(wanted)
+                + " terminalShows=" + terminalShows;
         lastVerdict = "PASS " + moduleId + " " + drawn + " | " + diag;
+        // On the log as well: the chat line reaches the script, but a human reading the
+        // log afterwards needs to see the same number without re-running the case.
+        LOG.info("[testmodule] {}", lastVerdict);
         com.craftingveloce.util.VeloceLog.Block.attempt(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
                 "[testmodule] PASS %s: delivered %dx %s (stock before: %d)",
