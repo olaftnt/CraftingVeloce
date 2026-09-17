@@ -28,22 +28,22 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import javax.annotation.Nullable;
 
 /**
- * Maszyna kinetyczna Veloce - jeden blok dla wszystkich rodzin Create.
+ * Veloce kinetic machine - one block for every Create family.
  *
- * <p><b>Naped.</b> Maszyna jest kinetyczna: os obrotu trzyma w STANIE bloku
- * (`axis`) i dopasowuje ja automatycznie do sasiada z napedem, a wal
- * przyjmujemy z obu koncow tej osi oraz z kazdej strony, gdzie stoi maszyna
- * kinetyczna o zgodnej osi. Bok, z ktorego dochodzi naped (albo rura Veloce),
- * zamyka sie blacha w obudowie.
+ * <p><b>Drive.</b> The machine is kinetic: it keeps the rotation axis in the
+ * block STATE (`axis`) and matches it automatically to a neighbour with a
+ * drive, and we accept a shaft from both ends of that axis and from every side
+ * where a kinetic machine with a matching axis stands. The side the drive
+ * (or a Veloce pipe) arrives from is closed off with sheet metal in the casing.
  *
- * <p><b>Izolacja.</b> Klasa dziedziczy po {@code KineticBlock} z Create, wiec
- * moze istniec tylko w {@code compat/create} i jest tworzona wylacznie przez
- * bramke {@code CreateCompat} - rdzen nie wie o jej istnieniu.
+ * <p><b>Isolation.</b> The class extends Create's {@code KineticBlock}, so it
+ * may only exist in {@code compat/create} and is created exclusively by the
+ * {@code CreateCompat} gate - the core knows nothing about its existence.
  */
 public class VeloceKineticModuleBlock extends KineticBlock
         implements EntityBlock, VeloceNetworkNode, IBE<VeloceKineticModuleBlockEntity> {
 
-    /** Fabryka block entity - dostarczana przez modul (rdzen nie zna rejestrow). */
+    /** Block entity factory - supplied by the module (the core does not know the registries). */
     @FunctionalInterface
     public interface BlockEntityFactory {
         VeloceKineticModuleBlockEntity create(BlockPos pos, BlockState state);
@@ -72,20 +72,21 @@ public class VeloceKineticModuleBlock extends KineticBlock
     }
 
     /**
-     * Os obrotu bierze sie ze sciany, w ktora celuje gracz.
+     * The rotation axis comes from the face the player is aiming at.
      *
-     * <p>Gracz: "powinno przyjmowac power krecenia z KAZDEJ strony". Krecenie
-     * przenosi sie tylko miedzy maszynami o ZGODNEJ osi, wiec maszyna musi
-     * przyjmowac os z miejsca postawienia (jak wal Create) - wtedy naped
-     * z kazdej strony wystarczy podlaczyc walem w tej samej osi.
+     * <p>Player: "it should accept rotational power from EVERY side". Rotation
+     * is only transferred between machines with a MATCHING axis, so the machine
+     * has to take its axis from the placement position (like a Create shaft) -
+     * then a drive from any side only needs a shaft connected along the same
+     * axis.
      */
     @Override
     public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
         Direction.Axis preferredAxis = context.getClickedFace().getAxis();
         
-        // Zanim postawimy, sprawdzamy czy wokolo jest juz jakis naped -
-        // jesli tak, od razu celujemy w jego os (dzieki temu siec aktualizuje sie
-        // automatycznie przy postawieniu klocka).
+        // Before we place it, we check whether a drive is already nearby -
+        // if so, we aim straight at its axis (thanks to this the network updates
+        // automatically when the block is placed).
         for (Direction direction : Direction.values()) {
             BlockPos neighborPos = context.getClickedPos().relative(direction);
             BlockState neighbor = context.getLevel().getBlockState(neighborPos);
@@ -106,11 +107,12 @@ public class VeloceKineticModuleBlock extends KineticBlock
     }
 
     /**
-     * Sasiedni blok zakrywa bok obudowy blacha.
+     * A neighbouring block covers the casing side with sheet metal.
      *
-     * <p>Zakryte sa DWIE rzeczy tej samej wagi: rura Veloce i NAPED Create.
-     * Gracz: "ten bok ma sie zachowywac tak, jakby byl kabel podlaczony
-     * z tej strony" - czyli od razu widac, skad maszyna dostaje krecenie.
+     * <p>TWO things of the same weight are covered: a Veloce pipe and a Create
+     * DRIVE. Player: "this side should behave as if a cable were connected on
+     * this side" - that is, you can see at a glance where the machine gets its
+     * rotation from.
      */
     private static boolean covered(net.minecraft.world.level.BlockGetter world,
                                    BlockPos neighborPos, BlockState neighbor) {
@@ -128,7 +130,7 @@ public class VeloceKineticModuleBlock extends KineticBlock
                 covered(world, facingPos, facingState));
     }
 
-    /** Obrot konstrukcji obraca os napedu (X &lt;-&gt; Z), jak w walku Create. */
+    /** Rotating the structure rotates the drive axis (X &lt;-&gt; Z), like a Create shaft. */
     @Override
     protected BlockState rotate(BlockState state, Rotation rotation) {
         if (rotation == Rotation.NONE) {
@@ -148,13 +150,13 @@ public class VeloceKineticModuleBlock extends KineticBlock
     }
 
     /**
-     * Typ block entity tej maszyny.
+     * The block entity type of this machine.
      *
-     * <p><b>Krytyczne dla dzialania.</b> Create tickuje swoje maszyny przez
-     * domyslny {@code getTicker} z {@link IBE} - bez implementacji tego
-     * interfejsu block entity NIGDY nie bylby tickowany, {@code getSpeed()}
-     * zostaloby zerem i maszyna na zawsze bylaby "bez napedu" (cichy blad:
-     * blok stoi, nic nie robi, a w logach nie ma ani sladu).
+     * <p><b>Critical for operation.</b> Create ticks its machines through the
+     * default {@code getTicker} of {@link IBE} - without implementing this
+     * interface the block entity would NEVER be ticked, {@code getSpeed()}
+     * would be zero and the machine would forever be "without a drive" (a silent
+     * bug: the block stands there, does nothing, and the logs show not a trace).
      */
     @Override
     public Class<VeloceKineticModuleBlockEntity> getBlockEntityClass() {
@@ -168,14 +170,15 @@ public class VeloceKineticModuleBlock extends KineticBlock
                 (BlockEntityType<?>) blockEntityType.get();
     }
 
-    /** Opis maszyny (typ receptury, etykieta, SU). */
+    /** Machine description (recipe type, label, SU). */
     public KineticModule module() {
         return module;
     }
 
     /**
-     * Prawy klik itemem bazowym dokłada element maszyny (kolo mlynskie, oczko
-     * craftera). Jeden klik = jeden element - tak gracz to opisal.
+     * Right-clicking with the base item adds an element of the machine (a
+     * crushing wheel, a crafter grid slot). One click = one element - that is
+     * how the player described it.
      */
     @Override
     protected net.minecraft.world.ItemInteractionResult useItemOn(
@@ -196,8 +199,9 @@ public class VeloceKineticModuleBlock extends KineticBlock
             world.playSound(null, pos, net.minecraft.sounds.SoundEvents.ITEM_FRAME_ADD_ITEM,
                     net.minecraft.sounds.SoundSource.BLOCKS, 0.8F, 1.2F);
             if (player != null) {
-                // Powiadomienie na pasku akcji: SAM uklad siatki ("1x2", "9x9"),
-                // bez zadnego tekstu - gracz chce widziec, ile pol ma maszyna.
+                // Action bar notification: the grid layout ITSELF ("1x2", "9x9"),
+                // with no other text - the player wants to see how many slots the
+                // machine has.
                 player.displayClientMessage(
                         net.minecraft.network.chat.Component.literal(be.gridLabel()), true);
             }
@@ -206,7 +210,7 @@ public class VeloceKineticModuleBlock extends KineticBlock
         return net.minecraft.world.ItemInteractionResult.sidedSuccess(world.isClientSide);
     }
 
-    /** Item bazowy z Create, ktory dokladamy do tej maszyny (albo null). */
+    /** The Create base item that we add to this machine (or null). */
     private net.minecraft.world.item.Item partItem() {
         String id = module.id();
         if ("create:crushing".equals(id)) {
@@ -224,14 +228,15 @@ public class VeloceKineticModuleBlock extends KineticBlock
     }
 
     /**
-     * Zbicie maszyny oddaje ja z ZAPISANA liczba elementow.
+     * Breaking the machine returns it with the SAVED number of elements.
      *
-     * <p>Gracz: "niech dany blok ma w tagu NBT zapamietane, ile dokladnie
-     * crafterow zawiera w srodku - po zniszczeniu konstrukcji dokladnie ta sama
-     * liczba zostaje w NBT dropnietego itemu, a po postawieniu ma zachowac te
-     * sama wartosc". Zapisujemy wiec licznik w danych block entity itemu
-     * (BlockItem.setBlockEntityData), a przy postawieniu odtwarza go zwykla
-     * sciezka Minecrafta (updateCustomBlockEntityTag -> read).
+     * <p>Player: "let a given block have remembered in its NBT tag exactly how
+     * many crafters it contains inside - after the structure is destroyed
+     * exactly the same number stays in the NBT of the dropped item, and after
+     * placing it should keep that same value". So we save the counter in the
+     * block entity data of the item (BlockItem.setBlockEntityData), and on
+     * placement the ordinary Minecraft path restores it
+     * (updateCustomBlockEntityTag -> read).
      */
     @Override
     protected java.util.List<ItemStack> getDrops(BlockState state,
@@ -249,11 +254,12 @@ public class VeloceKineticModuleBlock extends KineticBlock
     }
 
     /**
-     * Ile elementow ma miec przedmiot tej maszyny "z pudełka".
+     * How many elements the item of this machine should have "out of the box".
      *
-     * <p>Gracz: "jak wezmę ten itemek middle clickiem albo z ekwipunku
-     * kreatywnego, to dostaję pusty, a nie chcę pustego - crushing wheel ma
-     * mieć dwa koła, a crafter grid 3x3". Maszyny bez elementow zwracaja 0.
+     * <p>Player: "when I take this item with middle click or from the creative
+     * inventory, I get an empty one, and I don't want an empty one - the
+     * crushing wheel should have two wheels, and the crafter grid 3x3".
+     * Machines without elements return 0.
      */
     public int defaultParts() {
         if (module == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING) {
@@ -266,11 +272,12 @@ public class VeloceKineticModuleBlock extends KineticBlock
     }
 
     /**
-     * Przedmiot tej maszyny z ZAPISANYMI elementami (kreatywnosc, middle click).
+     * The item of this machine with the elements SAVED (creative, middle click).
      *
-     * <p>Dzieki temu postawiony egzemplarz od razu ma komplet i wyglada jak
-     * maszyna, a nie pusta obudowa. Licznik jedzie w tych samych danych block
-     * entity, ktore zapisuje zbicie maszyny, wiec mechanizm jest jeden.
+     * <p>Thanks to this a placed copy has the full set right away and looks like
+     * a machine instead of an empty casing. The counter travels in the same
+     * block entity data that breaking the machine writes, so there is only one
+     * mechanism.
      */
     public ItemStack filledStack() {
         ItemStack stack = new ItemStack(this);
@@ -285,10 +292,10 @@ public class VeloceKineticModuleBlock extends KineticBlock
     }
 
     /**
-     * Middle click (pick block) daje przedmiot WYPELNIONY, nie pusty.
+     * Middle click (pick block) gives an assembled item, not an empty one.
      *
-     * <p>Gracz chce od razu dostac maszyne z elementami - inaczej kazdy
-     * egzemplarz z kreatywnosci trzeba by klikac od zera.
+     * <p>The player wants to get a machine with elements right away - otherwise
+     * every creative copy would have to be clicked up from scratch.
      */
     @Override
     public ItemStack getCloneItemStack(BlockState state, net.minecraft.world.phys.HitResult target,
@@ -297,24 +304,24 @@ public class VeloceKineticModuleBlock extends KineticBlock
         return filledStack();
     }
 
-    /** Czy ta maszyna ma ignorowac moc w MODELU (crafter: zero reakcji na naped). */
+    /** Whether this machine should ignore power in the MODEL (crafter: no reaction to a drive). */
     public boolean ignoresPowerInModel() {
         return module == com.craftingveloce.compat.create.CreateKineticModules.MECHANICAL_CRAFTING;
     }
 
     /**
-     * Prawy klik bez itemu otwiera okno modulu (predkosc, SU, sieć).
+     * Right-clicking without an item opens the module window (speed, SU, network).
      *
-     * <p>Gracz: "jak klikne na nie prawym guzikiem myszy, to otwiera sie GUI,
-     * ktore pokazuje aktualna predkosc / maksymalna, minimalna wymagana,
-     * aktualnie ile dostaje SU / ile jest potrzebne, no i informacje o sieci".
+     * <p>Player: "when I right-click it, a GUI opens that shows the current
+     * speed / maximum, minimum required, currently how much SU it gets / how
+     * much is needed, and information about the network".
      */
     @Override
     protected net.minecraft.world.InteractionResult useWithoutItem(
             BlockState state, Level world, BlockPos pos,
             net.minecraft.world.entity.player.Player player,
             net.minecraft.world.phys.BlockHitResult hit) {
-        // Zwykle okno kontenera - jak w piecu (menu + ta sama tekstura).
+        // An ordinary container window - like in a furnace (menu + the same texture).
         if (!world.isClientSide && player instanceof net.minecraft.server.level.ServerPlayer) {
             player.openMenu(new net.minecraft.world.SimpleMenuProvider(
                             (id, inv, p) -> new com.craftingveloce.inventory.VeloceKineticMenu(
@@ -336,12 +343,12 @@ public class VeloceKineticModuleBlock extends KineticBlock
     }
 
     /**
-     * Wal napedowy przyjmujemy z KAZDEJ strony.
+     * We accept a drive shaft from EVERY side.
      *
-     * <p>Krecenie przenosi sie tylko miedzy zgodnymi osiami, wiec poza dwoma
-     * koncami wlasnej osi przyjmujemy wal takze tam, gdzie stoi maszyna
-     * kinetyczna o tej samej osi - a os maszyny dopasowuje sie do sasiada
-     * automatycznie (patrz {@link #neighborChanged}).
+     * <p>Rotation is only transferred between matching axes, so besides the two
+     * ends of its own axis we also accept a shaft where a kinetic machine with
+     * the same axis stands - and the machine's axis matches the neighbour
+     * automatically (see {@link #neighborChanged}).
      */
     @Override
     public boolean hasShaftTowards(LevelReader world, BlockPos pos, BlockState state,
@@ -354,11 +361,11 @@ public class VeloceKineticModuleBlock extends KineticBlock
     }
 
     /**
-     * Os maszyny dopasowuje sie do sasiada z napedem.
+     * The machine's axis matches a neighbour with a drive.
      *
-     * <p>Bez tego maszyna postawiona obok poziomego walu zostawala z pionowa
-     * osia i "nie przyjmowala mocy z tej strony" - a gracz oczekuje, ze
-     * wystarczy dostawic ja do napedu.
+     * <p>Without this, a machine placed next to a horizontal shaft was left with
+     * a vertical axis and "did not accept power from that side" - while the
+     * player expects it to be enough to put it next to a drive.
      */
     @Override
     protected void neighborChanged(BlockState state, Level world, BlockPos pos, Block fromBlock,
@@ -367,21 +374,22 @@ public class VeloceKineticModuleBlock extends KineticBlock
         if (world.isClientSide) {
             return;
         }
-        // Os dopasowuje sie do napedu z KAZDEJ strony - TAKZE w crafterze.
+        // The axis matches the drive from EVERY side - INCLUDING in the crafter.
         //
-        // BUG, ktory to naprawia: wczesniej crafter (ignoresPowerInModel) wracal
-        // tu od razu, wiec zostawal z osia z chwili postawienia (np. pionowa)
-        // i nie przyjmowal obrotow z boku. Gracz: "chce, zeby z kazdej strony
-        // nasze klocki Create przyjmowaly power z kazdej". Model craftera nadal
-        // NIE reaguje na moc - on sie nie kreci, a to jest osobny warunek
-        // (caseSpinDegreesPerTick sprawdza ignoresPowerInModel).
+        // The BUG this fixes: previously the crafter (ignoresPowerInModel)
+        // returned here right away, so it was left with the axis from the moment
+        // of placement (e.g. vertical) and did not accept rotation from the
+        // side. Player: "I want our Create blocks to accept power from every
+        // side". The crafter's model still does NOT react to power - it does not
+        // spin, and that is a separate condition (caseSpinDegreesPerTick checks
+        // ignoresPowerInModel).
         Direction.Axis axis = neighbourAxis(world, fromPos, world.getBlockState(fromPos));
         if (axis != null && axis != state.getValue(BlockStateProperties.AXIS)) {
             world.setBlock(pos, state.setValue(BlockStateProperties.AXIS, axis), Block.UPDATE_ALL);
         }
     }
 
-    /** Os obrotu sasiada, gdy jest nim maszyna kinetyczna Create. */
+    /** The rotation axis of a neighbour, when that neighbour is a Create kinetic machine. */
     private static Direction.Axis neighbourAxis(net.minecraft.world.level.BlockGetter world,
                                                 BlockPos pos, BlockState neighbour) {
         if (neighbour.getBlock() instanceof KineticBlock kinetic) {
@@ -390,16 +398,17 @@ public class VeloceKineticModuleBlock extends KineticBlock
         return null;
     }
 
-    /** Os obrotu maszyny - taka, jaka wybral gracz przy postawieniu. */
+    /** The machine's rotation axis - the one the player chose when placing it. */
     @Override
     public Direction.Axis getRotationAxis(BlockState state) {
         return state.getValue(BlockStateProperties.AXIS);
     }
 
     /**
-     * Rury Veloce lacza sie z KAZDEJ strony - naped mechaniczny (od dolu) nie
-     * ma z tym nic wspolnego. Gdyby ograniczyc to do osi obrotu, nie daloby
-     * sie podlaczyc maszyny do sieci logistycznej z boku.
+     * Veloce pipes connect on EVERY side - the mechanical drive (from below) has
+     * nothing to do with it. If we restricted this to the rotation axis, it
+     * would be impossible to connect the machine to the logistics network from
+     * the side.
      */
     @Override
     public boolean canConnectFrom(BlockState state, Direction towardPipe) {
@@ -423,7 +432,7 @@ public class VeloceKineticModuleBlock extends KineticBlock
         VeloceNodeBlocks.onNodeRemoved(world, pos);
     }
 
-    /** Blok nie ma wlasnego ksztaltu kolizji - pelny sześcian. */
+    /** The block has no shape of its own for collision - a full cube. */
     @Override
     public net.minecraft.world.phys.shapes.VoxelShape getShape(
             BlockState state, BlockGetter world, BlockPos pos,

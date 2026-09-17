@@ -23,40 +23,44 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 
 /**
- * Veloce Integrale - ozdobna KLATKA, ktora staje sie nasza maszyna.
+ * Veloce Integrale - a decorative FRAME that becomes our machine.
  *
- * <p><b>Wyglad.</b> Model to dwanascie cienkich pretow biegnacych po krawedziach
- * szescianu plus fioletowa szyba w oknach, wiec blok wyglada jak narysowany
- * kwadrat - linie po rogach, szyba w srodku.
+ * <p><b>Appearance.</b> The model is twelve thin rods running along the edges
+ * of a cube plus purple glass in the windows, so the block looks like a drawn
+ * square - lines along the corners, glass in the middle.
  *
- * <p><b>Kolizja.</b> ZWYKLY PELNY BLOK - gracz tak wlasnie chcial: klatka
- * wyglada jak szkielet, ale zachowuje sie jak normalny klocek (można po niej
- * chodzic, nie da sie przez nia przejsc, nie wypada z niej nic). Nietypowy
- * ksztalt kolizji byl bledem: utrudnial stawianie blokow obok i wygladal jak
- * zepsuty model.
+ * <p><b>Collision.</b> AN ORDINARY FULL BLOCK - that is exactly what the player
+ * wanted: the frame looks like a skeleton but behaves like a normal block (you
+ * can walk on it, you cannot pass through it, nothing falls out of it). An
+ * unusual collision shape was a bug: it made placing blocks next to it harder
+ * and looked like a broken model.
  *
- * <p><b>Swiatlo i widocznosc.</b> Blok nie zaslania sasiednich scian
- * ({@code noOcclusion}) i przepuszcza swiatlo dzienne, wiec stojaca obok
- * maszyna renderuje sie normalnie, a nie "w ciemnej dziurze".
+ * <p><b>Light and visibility.</b> The block does not occlude neighboring faces
+ * ({@code noOcclusion}) and lets daylight through, so a machine standing next
+ * to it renders normally instead of "in a dark hole".
  *
- * <p><b>Co robi.</b> To <b>obudowa</b>: prawy klik odpowiednim waniliowym
- * klockiem (patrz {@link VeloceIntegraleConversions}) <b>podmienia cala klatke
- * na nasza maszyne</b> - z pulpitu czytania powstaje kontroler, z dozownika
- * ekstraktor, z obserwatora sensor progu, ze stolu craftingu stol craftingu
- * (ten jeden zachowuje wyglad klatki). Inny klocek nie robi nic.
+ * <p><b>What it does.</b> It is a <b>casing</b>: a right click with the right
+ * vanilla block (see {@link VeloceIntegraleConversions}) <b>replaces the whole
+ * frame with our machine</b> - a lectern becomes the controller, a dispenser
+ * the extractor, an observer the threshold sensor, and a crafting table the
+ * crafting table (that last one keeps the frame's appearance). Any other block
+ * does nothing.
  *
- * <p><b>Dlaczego podmiana bloku, a nie block entity.</b> Pierwsza wersja
- * trzymala w klatce block entity stolu i udawala craftera, a druga "wystawiala
- * eksponat" (dowolny blok w srodku). Obie znaczylo, ze klatka NIE JEST maszyna:
- * mod od receptur nie mial czego rozpoznac, a siec musiala znac wyjatki.
- * Podmiana bloku usuwa te wyjatki - w swiecie stoi po prostu nasz blok.
+ * <p><b>Why a block replacement and not a block entity.</b> The first version
+ * kept a crafting table block entity inside the frame and pretended to be a
+ * crafter, and the second one "put an exhibit on display" (an arbitrary block
+ * inside). Both meant that the frame WAS NOT a machine: the recipe mod had
+ * nothing to recognize, and the network had to know about exceptions.
+ * Replacing the block removes those exceptions - our block simply stands in
+ * the world.
  *
- * <p><b>Sieć.</b> Blok jest wezlem sieci rur Veloce ({@link VeloceNetworkNode}):
- * laczy sie z rura z kazdej strony. Chunk NIE jest utrzymywany
- * ({@link #keepChunkLoaded(BlockState)} = false), bo klatka nic nie robi -
- * trzymanie chunkow dla dekoracji to dokladnie ten rodzaj kosztu, ktory tego
- * projektu juz raz ugryzl (force-loady dla rur bez logiki). Maszyna, ktora
- * z klatki powstaje, chunk trzyma - bo ona pracuje.
+ * <p><b>Network.</b> The block is a node of the Veloce pipe network
+ * ({@link VeloceNetworkNode}): it connects to a pipe from every side. The
+ * chunk is NOT kept ({@link #keepChunkLoaded(BlockState)} = false), because the
+ * frame does nothing - keeping chunks for a decoration is exactly the kind of
+ * cost that has already bitten this project once (force-loads for pipes with
+ * no logic). The machine that is made from the frame does keep its chunk -
+ * because it works.
  */
 public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
 
@@ -70,7 +74,7 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
         VeloceIntegraleFrame.addProperties(builder);
     }
 
-    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    /** On placement we immediately close the sides a cable arrives from. */
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context) {
         return VeloceIntegraleFrame.withPlacementClosures(
@@ -78,11 +82,12 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
     }
 
     /**
-     * Zmiana sasiada przelicza TYLKO te strone.
+     * A neighbor change recomputes ONLY that one side.
      *
-     * <p>Dzieki temu postawienie albo zburzenie kabla obok natychmiast zamyka
-     * lub otwiera okno - bez block entity, bez tickera i bez odswiezania
-     * z serwera (stan bloku jedzie normalnym sync pakietem).
+     * <p>Thanks to that, placing or breaking a cable next to it immediately
+     * closes or opens the window - with no block entity, no ticker and no
+     * refresh from the server (the block state travels in a normal sync
+     * packet).
      */
     @Override
     protected BlockState updateShape(BlockState state, Direction facing, BlockState facingState,
@@ -96,11 +101,11 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
     }
 
     /**
-     * Prawy klik odpowiednim klockiem zamienia klatke na nasza maszyne.
+     * A right click with the right block turns the frame into our machine.
      *
-     * <p>Klocek spoza tabeli ({@link VeloceIntegraleConversions}) nie robi nic -
-     * zadnego "wystawiania w srodku". To bylo zle: gracz wkladal piec i dostawal
-     * "eksponat" zamiast maszyny.
+     * <p>A block outside the table ({@link VeloceIntegraleConversions}) does
+     * nothing - no "displaying something inside". That was wrong: the player
+     * inserted a furnace and got an "exhibit" instead of a machine.
      */
     @Override
     protected ItemInteractionResult useItemOn(
@@ -121,22 +126,23 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
     }
 
     /**
-     * Podmienia cala klatke na blok z tabeli (np. pulpit -&gt; kontroler).
+     * Replaces the whole frame with a block from the table (e.g. lectern -&gt; controller).
      *
-     * <p>Zaslepki okien przepisujemy tylko wtedy, gdy blok docelowy ma rame
-     * (czyli nasz stol craftingu w stanie {@code facade}) - zwykla maszyna ich
-     * nie ma i nie potrzebuje. Po {@code setBlock} trzeba zglosic nowy blok do
-     * sieci: {@code setBlock} wola najpierw {@code onRemove} starego bloku,
-     * a ten (jako wezel) zglasza sie jako usuniety.
+     * <p>We copy the window caps over only when the target block has a frame
+     * (that is, our crafting table in the {@code facade} state) - an ordinary
+     * machine does not have them and does not need them. After {@code setBlock}
+     * the new block has to be reported to the network: {@code setBlock} first
+     * calls {@code onRemove} of the old block, and that one (as a node) reports
+     * itself as removed.
      */
     private static void convert(Level world, BlockPos pos, BlockState state,
                                 VeloceIntegraleConversions.Conversion conversion) {
         BlockState result = conversion.resultBlock().defaultBlockState();
         result = VeloceIntegraleFrame.copyClosures(state, result);
         world.setBlock(pos, result, Block.UPDATE_ALL);
-        // Wlozony klocek ZOSTAJE w srodku: obudowa buduje sie element po
-        // elemencie (kolo mlynskie, oczko craftera), a nie "jest maszyna, bo
-        // zostala postawiona".
+        // The inserted block STAYS inside: the casing builds itself element by
+        // element (the crushing wheel, the crafter's eye), rather than "it is a
+        // machine because it was placed".
         if (world.getBlockEntity(pos) instanceof VeloceCaseBuildable buildable) {
             buildable.addPart();
         }
@@ -146,8 +152,8 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
     }
 
     /**
-     * Klatka laczy sie z rura z KAZDEJ strony - jak pozostale maszyny w modzie
-     * (nie ma przodu ani tylu).
+     * The frame connects to a pipe from EVERY side - like the other machines in
+     * the mod (there is no front or back).
      */
     @Override
     public boolean canConnectFrom(BlockState state, Direction towardPipe) {
@@ -155,12 +161,12 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
     }
 
     /**
-     * KLATKA NIE UTRZYMUJE CHUNKU.
+     * THE FRAME DOES NOT KEEP ITS CHUNK LOADED.
      *
-     * <p>Jest ozdobna: nic nie tyka i nic nie traci, gdy jej chunk wypadnie
-     * z symulacji. Trzymanie chunkow dla dekoracji rozdmuchiwalo by liste
-     * force-loadow i wypychalo z niej to, co naprawde pracuje (piec, crafter,
-     * maszyny modulow).
+     * <p>It is decorative: nothing ticks and nothing is lost when its chunk
+     * drops out of simulation. Keeping chunks for a decoration would bloat the
+     * force-load list and push out of it the things that really work (the
+     * furnace, the crafter, the module machines).
      */
     @Override
     public boolean keepChunkLoaded(BlockState state) {
@@ -180,8 +186,8 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
     @Override
     protected void onRemove(BlockState state, Level world, BlockPos pos, BlockState newState,
                             boolean moved) {
-        // Uwaga: przy PODMIANIE na maszyne (convert) ten hook zglasza wezel jako
-        // usuniety - wolajacy musi go zaraz zglosic z powrotem.
+        // Note: when REPLACING with a machine (convert) this hook reports the
+        // node as removed - the caller must report it back right away.
         if (!state.is(newState.getBlock())) {
             VeloceNodeBlocks.onNodeRemoved(world, pos);
         }

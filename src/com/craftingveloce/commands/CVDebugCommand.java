@@ -38,15 +38,16 @@ public class CVDebugCommand {
                     .executes(BlockProbeCommand::describe))
                 .then(Commands.literal("perf")
                     .executes(CVDebugCommand::executePerf))
-                // JEDEN przelacznik do monitorowania chunkow.
+                // ONE switch for chunk monitoring.
                 //
-                // Wczesniej bylo tego trzy osobne komendy (chunkdebug, jego
-                // podkomendy i chunks). Przy testowaniu to przeszkadzalo: trzeba
-                // bylo pamietac, ktora co wlacza, a i tak nie bylo jasne, czy
-                // mechanizm w ogole dziala.
+                // Previously there were three separate commands for this (chunkdebug,
+                // its subcommands and chunks). While testing that got in the way: you
+                // had to remember which one enables what, and even then it was not
+                // clear whether the mechanism worked at all.
                 //
-                // Teraz: jedno polecenie, dziala jak przelacznik, wlacza CALY
-                // monitor. Bez argumentu przelacza, z "on"/"off" ustawia wprost.
+                // Now: a single command, it works as a switch and turns the WHOLE
+                // monitor on. Without an argument it toggles, with "on"/"off" it sets
+                // the state explicitly.
                 .then(Commands.literal("chunk")
                     .executes(ctx -> toggleChunkMonitor(ctx, null))
                     .then(Commands.literal("on")
@@ -55,21 +56,21 @@ public class CVDebugCommand {
                         .executes(ctx -> toggleChunkMonitor(ctx, false)))
                     .then(Commands.literal("status")
                         .executes(CVDebugCommand::executeChunkStatus))
-                    // Recznie: zwolnij sieroce force-loady. Minecraft zapisuje
-                    // setChunkForced TRWALE, wiec chunki wymuszone przez starsza
-                    // wersje kodu zostaly zaladowane na zawsze.
+                    // Manual: release orphaned force-loads. Minecraft persists
+                    // setChunkForced PERMANENTLY, so chunks forced by an older
+                    // version of the code stayed loaded forever.
                     .then(Commands.literal("cleanup")
                         .executes(CVDebugCommand::cleanupOrphans)))
         );
     }
 
     /**
-     * Jednym poleceniem wypisuje wszystko, co potrzebne do diagnozy lagow.
+     * Prints everything needed to diagnose lag with a single command.
      *
-     * <p>Po to, zeby jeden test w grze dawal komplet liczb zamiast zgadywania:
-     * ile cache'ow zyje (wyciek?), ile chunkow realnie trzymamy, ile przebudow
-     * czeka, jak dlugo trwal ostatni tick cache i czy kiedykolwiek go
-     * przekroczylismy.
+     * <p>The point is that one in-game test gives the complete numbers instead of
+     * guesswork: how many caches are alive (leak?), how many chunks we really
+     * hold, how many rebuilds are pending, how long the last cache tick took and
+     * whether we ever exceeded it.
      */
     private static int executePerf(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
@@ -90,8 +91,9 @@ public class CVDebugCommand {
                 false);
         source.sendSuccess(() -> Component.literal(
                 "§7Ticking server: §fyes §7| gameTime: §f" + sl.getGameTime()), false);
-        // Liczniki map pomocniczych loadera. Rosnace w czasie = wyciek pamieci;
-        // maja oscylowac wokol liczby chunkow, ktorych siec REALNIE dotyka.
+        // Loader helper map counters. Growing over time = memory leak; they are
+        // supposed to oscillate around the number of chunks the network REALLY
+        // touches.
         source.sendSuccess(() -> Component.literal(
                 "§7Chunk loader tracking maps: §f"
                         + com.craftingveloce.network.pipe.VeloceChunkLoader.trackingMapSizes(sl)),
@@ -107,55 +109,55 @@ public class CVDebugCommand {
     }
 
     /**
-     * JEDEN przelacznik calego monitora chunkow.
+     * ONE switch for the whole chunk monitor.
      *
-     * <p>Wlacza naraz wszystko, co potrzebne do testu:
+     * <p>It turns on everything the test needs at once:
      * <ul>
-     *   <li>komunikat przy KAZDYM rozladowaniu chunka (z koordynatami),</li>
-     *   <li>raport operacji na itemach w niezaladowanych chunkach,</li>
-     *   <li>listy blokow sieci w chunku, ktory sie rozladowuje.</li>
+     *   <li>a message on EVERY chunk unload (with coordinates),</li>
+     *   <li>a report of item operations in unloaded chunks,</li>
+     *   <li>lists of the network blocks in the chunk that is unloading.</li>
      * </ul>
      *
-     * <p>To NIE jest zwykly debug z configu - dziala niezaleznie, bo sluzy do
-     * konkretnego testu: sprawdzenia, czy dany chunk w ogole probuje sie
-     * rozladowac. Bez tego latwo testowac obszar, ktory w rzeczywistosci
-     * caly czas siedzi w pamieci i nie dowiedziec sie niczego.
+     * <p>This is NOT the ordinary debug from the config - it works independently,
+     * because it serves one specific test: checking whether a given chunk even
+     * tries to unload. Without it you can easily test an area that in reality
+     * stays in memory the whole time and learn nothing.
      *
-     * <p>Bez argumentu przelacza stan (on <-> off).
+     * <p>Without an argument it toggles the state (on <-> off).
      */
     private static int toggleChunkMonitor(CommandContext<CommandSourceStack> context, Boolean value) {
         boolean target = value == null
                 ? !com.craftingveloce.debug.ChunkDebugNotifier.isEnabled()
                 : value;
         com.craftingveloce.debug.ChunkDebugNotifier.setEnabled(target);
-        // Operacje na itemach ida razem z monitorem - to jeden mechanizm,
-        // nie dwa niezalezne przelaczniki do zapamietania.
+        // Item operations go together with the monitor - it is one mechanism,
+        // not two independent switches to remember.
         com.craftingveloce.debug.ChunkOpNotifier.setEnabled(target);
 
         String state = target ? "§aON" : "§cOFF";
         context.getSource().sendSuccess(() -> Component.literal(
-                "§8[§6Veloce§8] monitor chunkow: " + state), false);
+                "§8[§6Veloce§8] chunk monitor: " + state), false);
         if (target) {
             context.getSource().sendSuccess(() -> Component.literal(
-                    "§7Kazde rozladowanie chunka -> komunikat z koordynatami."), false);
+                    "§7Every chunk unload -> a message with coordinates."), false);
             context.getSource().sendSuccess(() -> Component.literal(
-                    "§7Operacje na itemach w niezaladowanych chunkach -> raport."), false);
+                    "§7Item operations in unloaded chunks -> a report."), false);
             context.getSource().sendSuccess(() -> Component.literal(
-                    "§7Uzyj §f/cv chunk status§7, aby zobaczyc trzymane chunki."), false);
+                    "§7Use §f/cv chunk status§7 to see the chunks being held."), false);
         } else {
             context.getSource().sendSuccess(() -> Component.literal(
-                    "§7Monitor wylaczony - czat zostaje czysty."), false);
+                    "§7Monitor disabled - the chat stays clean."), false);
         }
         return 1;
     }
 
     /**
-     * Recznie zwalnia sieroce force-loady.
+     * Manually releases orphaned force-loads.
      *
-     * <p>Minecraft zapisuje {@code setChunkForced} TRWALE w danych swiata,
-     * a nasza ksiegowosc zyje tylko w pamieci - wiec chunki wymuszone przez
-     * starsza wersje kodu zostaly zaladowane na zawsze, mimo ze nasz raport
-     * pokazywal zero. Ta komenda je sprzata.
+     * <p>Minecraft persists {@code setChunkForced} PERMANENTLY in the world data,
+     * while our bookkeeping lives only in memory - so chunks forced by an older
+     * version of the code stayed loaded forever, even though our report showed
+     * zero. This command cleans them up.
      */
     private static int cleanupOrphans(CommandContext<CommandSourceStack> context) {
         ServerLevel sl = context.getSource().getLevel();
@@ -163,39 +165,39 @@ public class CVDebugCommand {
         int orphans = VelocePipeNetworkManager.get(sl).releaseOrphanForceLoads(sl);
         int after = com.craftingveloce.network.pipe.VeloceChunkLoader.gameForcedCount(sl);
         context.getSource().sendSuccess(() -> Component.literal(
-                "§8[§6Veloce§8] sprzatanie: gra trzymala §f" + before
-                        + " §7wymuszonych, zwolniono sierot: §f" + orphans
-                        + "§7, zostalo: §f" + after), false);
+                "§8[§6Veloce§8] cleanup: the game held §f" + before
+                        + " §7forced, orphans released: §f" + orphans
+                        + "§7, remaining: §f" + after), false);
         return 1;
     }
 
-    /** Krotki status: czy monitor dziala i ile chunkow trzymamy. */
+    /** Short status: is the monitor on and how many chunks are we holding. */
     private static int executeChunkStatus(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         boolean on = com.craftingveloce.debug.ChunkDebugNotifier.isEnabled();
-        source.sendSuccess(() -> Component.literal("§6=== [CraftingVeloce] Monitor chunkow ==="), false);
+        source.sendSuccess(() -> Component.literal("§6=== [CraftingVeloce] Chunk monitor ==="), false);
         source.sendSuccess(() -> Component.literal(
-                "§7Stan: " + (on ? "§aON" : "§cOFF")
-                        + " §7| operacje: " + (com.craftingveloce.debug.ChunkOpNotifier.isEnabled()
+                "§7State: " + (on ? "§aON" : "§cOFF")
+                        + " §7| operations: " + (com.craftingveloce.debug.ChunkOpNotifier.isEnabled()
                         ? "§aON" : "§cOFF")), false);
-        // Budzet wczytywania chunkow na tick - teraz to JEDYNE ograniczenie
-        // tempa operacji na odleglych magazynach (kolejka zadan zniknela,
-        // bo zwracala itemy "na kredyt" i przy nieudanym zadaniu duplikowala).
+        // The per-tick chunk loading budget - this is now the ONLY limit on the
+        // rate of operations on distant storage (the task queue is gone, because
+        // it handed out items "on credit" and duplicated them when a task failed).
         source.sendSuccess(() -> Component.literal(
                 "§7Blocking chunk loads: §fmax "
                         + com.craftingveloce.network.pipe.VeloceChunkLoader.MAX_OP_LOADS_PER_TICK
                         + " §7/tick"), false);
-        // Pelna lista trzymanych chunkow - od razu, bez drugiej komendy.
+        // The full list of held chunks - right away, without a second command.
         executeListChunks(context);
         return 1;
     }
 
     /**
-     * Wypisuje liste chunkow trzymanych w pamieci.
+     * Prints the list of chunks held in memory.
      *
-     * <p>Dla kazdego chunku: wspolrzedne, siec, blok ktory go trzyma i powod.
-     * Wspolrzedne sa KLIKALNE (teleport), bo inaczej taka lista jest bezuzyteczna
-     * - nie da sie sprawdzic, co siedzi w srodku.
+     * <p>For each chunk: coordinates, network, the block that holds it and the
+     * reason. The coordinates are CLICKABLE (teleport), because otherwise such a
+     * list is useless - you cannot check what is inside.
      */
     private static int executeListChunks(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
@@ -204,46 +206,47 @@ public class CVDebugCommand {
         var world = manager.getWorld();
 
         source.sendSuccess(() -> Component.literal(
-                "§6=== [CraftingVeloce] Struktura rur — wymiar §f"
+                "§6=== [CraftingVeloce] Pipe structure - dimension §f"
                         + sl.dimension().location() + " §6==="), false);
         source.sendSuccess(() -> Component.literal(
-                "§7Rur: §f" + world.pipeCount()
-                        + " §7| komponentow: §f" + world.componentCount()
-                        + " §7| zcache'owanych opisow: §f" + world.cachedComponentCount()
-                        + " §7| wymuszonych chunkow: §f"
+                "§7Pipes: §f" + world.pipeCount()
+                        + " §7| components: §f" + world.componentCount()
+                        + " §7| cached descriptions: §f" + world.cachedComponentCount()
+                        + " §7| forced chunks: §f"
                         + com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(sl)), false);
-        // ROZJAZD: gra moze trzymac wiecej, niz my wiemy - Minecraft zapisuje
-        // setChunkForced TRWALE, a nasza ksiegowosc tylko w pamieci.
+        // DISCREPANCY: the game may hold more than we know about - Minecraft
+        // persists setChunkForced PERMANENTLY, while our bookkeeping is in memory
+        // only.
         int gameForced = com.craftingveloce.network.pipe.VeloceChunkLoader.gameForcedCount(sl);
         int oursForced = com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(sl);
         if (gameForced != oursForced) {
             source.sendSuccess(() -> Component.literal(
-                    "§c§lUWAGA: §cgra trzyma §f" + gameForced
-                            + " §cwymuszonych chunkow, a my tylko §f" + oursForced
-                            + "§c. Napraw: §f/cv chunk cleanup"), false);
+                    "§c§lWARNING: §cthe game holds §f" + gameForced
+                            + " §cforced chunks while we hold only §f" + oursForced
+                            + "§c. Fix: §f/cv chunk cleanup"), false);
         }
 
         if (world.pipeCount() == 0) {
             source.sendSuccess(() -> Component.literal(
-                    "§7Struktura jest pusta - nie ma zadnych rur."), false);
+                    "§7The structure is empty - there are no pipes."), false);
             return 1;
         }
 
-        // --- WSZYSTKIE ELEMENTY: wezly i magazyny, ze stanem chunku ---
+        // --- ALL ELEMENTS: nodes and storage, with chunk state ---
         //
-        // To jest wlasnie narzedzie do testu: kazdy element ma jasna informacje
-        // LOADED/UNLOADED, wiec widac, ktore magazyny sa poza symulacja i czy
-        // ich zawartosc pochodzi z cache.
+        // This is exactly the testing tool: every element clearly says
+        // LOADED/UNLOADED, so you can see which storage is outside the simulation
+        // and whether its contents come from the cache.
         int loadedCount = 0;
         int unloadedCount = 0;
 
-        source.sendSuccess(() -> Component.literal("§b--- WEZLY (trzymaja chunk na stale) ---"), false);
+        source.sendSuccess(() -> Component.literal("§b--- NODES (hold a chunk permanently) ---"), false);
         java.util.List<BlockPos> allNodes = new java.util.ArrayList<>();
         for (var net : manager.getAllNetworks(sl)) {
             allNodes.addAll(net.getTerminals());
         }
         if (allNodes.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("  §7(brak wezlow)"), false);
+            source.sendSuccess(() -> Component.literal("  §7(no nodes)"), false);
         }
         for (BlockPos p : sorted(allNodes)) {
             boolean loaded = sl.isLoaded(p);
@@ -258,13 +261,13 @@ public class CVDebugCommand {
             source.sendSuccess(() -> blockLine(p), false);
         }
 
-        source.sendSuccess(() -> Component.literal("§b--- MAGAZYNY (maja sie rozladowywac) ---"), false);
+        source.sendSuccess(() -> Component.literal("§b--- STORAGE (is supposed to unload) ---"), false);
         java.util.Map<BlockPos, ConnectedEndpointInfo> allStorages = new java.util.LinkedHashMap<>();
         for (var net : manager.getAllNetworks(sl)) {
             allStorages.putAll(net.getEndpoints());
         }
         if (allStorages.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("  §7(brak magazynow)"), false);
+            source.sendSuccess(() -> Component.literal("  §7(no storage)"), false);
         }
         for (var e : sortedEntries(allStorages)) {
             BlockPos p = e.getKey();
@@ -278,9 +281,9 @@ public class CVDebugCommand {
             source.sendSuccess(() -> Component.literal(
                     "  §e" + info.getType() + " §7" + shortPos(p)
                             + " §8" + chunkTag(p) + " " + loadedTag(sl, p)
-                            + (loaded ? " §7(dane ze swiata)" : " §6(dane z CACHE)")
-                            + " §7| typow: §f" + info.getCachedCounts().size()), false);
-            // Zawartosc - to wlasnie testujemy przy niezaladowanych.
+                            + (loaded ? " §7(data from the world)" : " §6(data from CACHE)")
+                            + " §7| types: §f" + info.getCachedCounts().size()), false);
+            // Contents - this is exactly what we test on unloaded ones.
             for (var ic : info.getCachedCounts().entrySet()) {
                 if (ic.getValue() > 0) {
                     source.sendSuccess(() -> Component.literal(
@@ -294,67 +297,68 @@ public class CVDebugCommand {
         int lc = loadedCount;
         int uc = unloadedCount;
         source.sendSuccess(() -> Component.literal(
-                "§6Podsumowanie: §a" + lc + " LOADED §7| §c" + uc + " UNLOADED"), false);
+                "§6Summary: §a" + lc + " LOADED §7| §c" + uc + " UNLOADED"), false);
 
-        // --- CHUNKI WYMUSZONE, z powodem ---
+        // --- FORCED CHUNKS, with the reason ---
         var held = com.craftingveloce.network.pipe.VeloceChunkLoader.listHeld(sl);
         source.sendSuccess(() -> Component.literal(
-                "§b--- Wymuszone chunki: §f" + held.size() + " ---"), false);
+                "§b--- Forced chunks: §f" + held.size() + " ---"), false);
         for (var hc : held) {
             boolean loaded = sl.isLoaded(new ChunkPos(hc.x(), hc.z()).getWorldPosition());
             source.sendSuccess(() -> Component.literal(
                     "  §f[" + hc.x() + ", " + hc.z() + "] "
-                            + (loaded ? "§a[SYMULOWANY]" : "§c[POZA SYMULACJA]")
-                            + " §7uzyc: §f" + hc.hits()), false);
+                            + (loaded ? "§a[SIMULATED]" : "§c[OUTSIDE SIMULATION]")
+                            + " §7uses: §f" + hc.hits()), false);
             for (var t : hc.tickets()) {
                 source.sendSuccess(() -> Component.literal(
-                        "      §8powod: §f" + t.reason()
-                                + " §8| wlasciciel: §7" + t.owner()), false);
+                        "      §8reason: §f" + t.reason()
+                                + " §8| owner: §7" + t.owner()), false);
                 if (t.ownerPos() != null) {
                     source.sendSuccess(() -> blockLine(t.ownerPos()), false);
                 }
             }
         }
 
-        // --- KOLEJKA ZADAN ---
+        // --- TASK QUEUE ---
 
         source.sendSuccess(() -> Component.literal(
-                "§7Kliknij wspolrzedne bloku, aby sie teleportowac."), false);
+                "§7Click the block coordinates to teleport there."), false);
         return 1;
     }
 
 
 
 
-    /** Linia z klikalnymi wspolrzednymi bloku. */
+    /** A line with clickable block coordinates. */
     private static Component blockLine(BlockPos pos) {
         String plain = pos.getX() + " " + pos.getY() + " " + pos.getZ();
-        return Component.literal("§8      blok: §f" + plain)
+        return Component.literal("§8      block: §f" + plain)
                 .withStyle(style -> style
                         .withClickEvent(new net.minecraft.network.chat.ClickEvent(
                                 net.minecraft.network.chat.ClickEvent.Action.RUN_COMMAND,
                                 "/tp @s " + plain))
                         .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
                                 net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
-                                Component.literal("Kliknij, aby sie teleportowac"))));
+                                Component.literal("Click to teleport there"))));
     }
 
     /**
-     * Pelny raport sieci: WSZYSTKIE podpięte bloki, z typem i stanem.
+     * Full network report: ALL attached blocks, with type and state.
      *
-     * <p><b>Po co tak szczegolowo.</b> Bez tego nie da sie odpowiedziec na
-     * podstawowe pytanie: co jest czescia tej sieci i co przez to trzyma jej
-     * chunki w pamieci. Wczesniej raport pokazywal tylko liczby ("Pipes: 218,
-     * Terminals: 2"), z ktorych nie wynikało, gdzie te bloki sa ani czym sa.
+     * <p><b>Why so detailed.</b> Without it you cannot answer the basic question:
+     * what is part of this network and what therefore keeps its chunks in memory.
+     * Previously the report showed only numbers ("Pipes: 218, Terminals: 2") from
+     * which it did not follow where those blocks are or what they are.
      *
-     * <p>Rozrozniamy cztery rodzaje wpisow, bo kazdy znaczy cos innego:
+     * <p>We distinguish four kinds of entries, because each means something
+     * different:
      * <ul>
-     *   <li><b>WEZEL</b> - terminal, crafter, extractor. Ma block entity,
-     *       ktore PRACUJE, wiec jego chunk MUSI byc trzymany.</li>
-     *   <li><b>MAGAZYN</b> - skrzynia, beczka, RS. To tylko pojemnik; jego
-     *       chunk NIE jest trzymany na stale, tylko doladowywany na czas
-     *       operacji i puszczany.</li>
-     *   <li><b>RURA</b> - lacznik bez logiki. Nie trzyma niczego.</li>
+     *   <li><b>NODE</b> - terminal, crafter, extractor. It has a block entity that
+     *       WORKS, so its chunk MUST be held.</li>
+     *   <li><b>STORAGE</b> - chest, barrel, RS. Just a container; its chunk is NOT
+     *       held permanently, it is only loaded for the duration of an operation
+     *       and then released.</li>
+     *   <li><b>PIPE</b> - a connector with no logic. It holds nothing.</li>
      * </ul>
      */
     private static void reportNetwork(ServerPlayer player, ServerLevel sl,
@@ -362,71 +366,72 @@ public class CVDebugCommand {
         var manager = VelocePipeNetworkManager.get(sl);
         var world = manager.getWorld();
 
-        player.sendSystemMessage(Component.literal("§6=== [CraftingVeloce] Trace polaczen ==="));
+        player.sendSystemMessage(Component.literal("§6=== [CraftingVeloce] Connection trace ==="));
         player.sendSystemMessage(Component.literal(
-                "§7Rura startowa: §f" + shortPos(pipePos) + " §8" + chunkTag(pipePos)
+                "§7Start pipe: §f" + shortPos(pipePos) + " §8" + chunkTag(pipePos)
                         + " " + loadedTag(sl, pipePos)));
 
-        // --- 1. SAME POLACZENIA TEJ RURY (bezposredni sasiedzi) ---
+        // --- 1. THE PIPE'S OWN CONNECTIONS (direct neighbours) ---
         var neighbours = world.neighbours(pipePos);
         player.sendSystemMessage(Component.literal(
-                "§b--- Bezposrednie polaczenia: " + neighbours.size() + " z 6 mozliwych ---"));
+                "§b--- Direct connections: " + neighbours.size() + " of 6 possible ---"));
         if (neighbours.isEmpty()) {
             player.sendSystemMessage(Component.literal(
-                    "  §c(brak - ta rura nie laczy sie z niczym)"));
+                    "  §c(none - this pipe does not connect to anything)"));
         }
-        // Pokazujemy WSZYSTKIE 6 kierunkow, takze te bez polaczenia - to
-        // najszybszy sposob, zeby zobaczyc, gdzie siec sie urwala.
+        // We show ALL 6 directions, including the unconnected ones - it is the
+        // fastest way to see where the network broke off.
         for (Direction d : Direction.values()) {
             BlockPos np = pipePos.relative(d);
-            // UWAGA: neighbours() zawiera TYLKO rury. Dla wezlow i magazynow
-            // trzeba pytac ich wlasnym canConnectFrom - inaczej raport
-            // pokazywalby "[-]" przy poprawnie podlaczonym terminalu (i mylil
-            // przy diagnozie, bo wygladalo to jak rozcieta siec).
+            // NOTE: neighbours() contains ONLY pipes. For nodes and storage you
+            // have to ask their own canConnectFrom - otherwise the report would
+            // show "[-]" next to a correctly connected terminal (and mislead
+            // during diagnosis, because it looked like a severed network).
             boolean linked = neighbours.contains(np);
             boolean isNode = false;
             if (!linked && sl.isLoaded(np)) {
                 var st = sl.getBlockState(np);
                 var b = st.getBlock();
-                // Czy to wezel - pytamy WSPOLNE zrodlo prawdy, a nie liste
-                // typow przepisana recznie.
+                // Is it a node - we ask the SHARED source of truth, not a
+                // hand-copied list of types.
                 //
-                // BUG, ktory tu byl: ta lista miala terminal, ekstraktor,
-                // crafter i kontroler, a NIE miala dwoch piecow ani czujnika
-                // progu. Diagnostyka meldowala wiec, ze piec stojacy obok rury
-                // NIE jest wezlem ("link=nie"), czyli klamala dokladnie o tym,
-                // co gracz debugowal. Kazdy nowy blok wymagal pamietania o tym
-                // miejscu - a to jest ten sam wzorzec, ktory juz trzy razy
-                // rozjechal sie w tym projekcie.
+                // The BUG that was here: that list had the terminal, extractor,
+                // crafter and controller, but did NOT have the two furnaces or the
+                // threshold sensor. So the diagnostics reported that a furnace
+                // standing next to a pipe was NOT a node ("link=no"), i.e. it lied
+                // about exactly the thing the player was debugging. Every new block
+                // required remembering about this place - and this is the same
+                // pattern that has already drifted apart three times in this
+                // project.
                 if (com.craftingveloce.network.pipe.VeloceNodeBlocks.isNode(b)) {
                     isNode = true;
                     linked = VelocePipeNetworkManager.nodeConnectsToPipe(
                             sl, np, d.getOpposite());
                 } else if (VelocePipeBlock.canConnectToInventory(sl, np, d.getOpposite())) {
-                    linked = true;   // magazyn laczy sie zawsze
+                    linked = true;   // storage always connects
                 }
             }
             String what = describeAt(sl, world, np);
             String note = linked
-                    ? (isNode ? " §8(wezel podlaczony)" : "")
-                    : " §8(nie podlaczone)";
+                    ? (isNode ? " §8(node connected)" : "")
+                    : " §8(not connected)";
             player.sendSystemMessage(Component.literal(
                     "  " + (linked ? "§a[+] " : "§8[-] ") + "§7" + d.name().toLowerCase()
                             + " -> " + what + note));
         }
 
-        // --- 2. CALY KOMPONENT (przejscie po polaczeniach) ---
+        // --- 2. THE WHOLE COMPONENT (walking the connections) ---
         var members = world.componentMembers(pipePos);
         player.sendSystemMessage(Component.literal(
-                "§b--- Cala polaczona grupa: §f" + members.size() + " §brur ---"));
+                "§b--- The whole connected group: §f" + members.size() + " §bpipes ---"));
         player.sendSystemMessage(Component.literal(
-                "  §7Reprezentant: §f" + shortPos(world.componentOf(pipePos))));
+                "  §7Representative: §f" + shortPos(world.componentOf(pipePos))));
 
-        // --- 3. WEZLY: maszyny i terminale ---
+        // --- 3. NODES: machines and terminals ---
         var nodes = net.getTerminals();
-        player.sendSystemMessage(Component.literal("§b--- Wezly (maszyny): " + nodes.size() + " ---"));
+        player.sendSystemMessage(Component.literal("§b--- Nodes (machines): " + nodes.size() + " ---"));
         if (nodes.isEmpty()) {
-            player.sendSystemMessage(Component.literal("  §7(brak)"));
+            player.sendSystemMessage(Component.literal("  §7(none)"));
         }
         for (BlockPos p : sorted(nodes)) {
             player.sendSystemMessage(Component.literal(
@@ -435,11 +440,11 @@ public class CVDebugCommand {
             player.sendSystemMessage(coordsLine(p));
         }
 
-        // --- 4. MAGAZYNY: skrzynie, beczki, RS ---
+        // --- 4. STORAGE: chests, barrels, RS ---
         var endpooints = net.getEndpoints();
-        player.sendSystemMessage(Component.literal("§b--- Magazyny: " + endpooints.size() + " ---"));
+        player.sendSystemMessage(Component.literal("§b--- Storage: " + endpooints.size() + " ---"));
         if (endpooints.isEmpty()) {
-            player.sendSystemMessage(Component.literal("  §7(brak)"));
+            player.sendSystemMessage(Component.literal("  §7(none)"));
         }
         for (var e : sortedEntries(endpooints)) {
             BlockPos ep = e.getKey();
@@ -448,10 +453,10 @@ public class CVDebugCommand {
             player.sendSystemMessage(Component.literal(
                     "  §e" + info.getType() + " §7" + shortPos(ep)
                             + " §8" + chunkTag(ep) + " " + loadedTag(sl, ep)
-                            + " §7| typy itemow: §f" + info.getCachedCounts().size()
-                            + (loaded ? "" : " §8<- z cache, nie ze swiata")));
-            // Zawartosc - dla niezaladowanych to jest wlasnie ten cache,
-            // ktory mamy przetestowac.
+                            + " §7| item types: §f" + info.getCachedCounts().size()
+                            + (loaded ? "" : " §8<- from cache, not from the world")));
+            // Contents - for unloaded ones this is exactly the cache we want to
+            // test.
             for (var ic : info.getCachedCounts().entrySet()) {
                 if (ic.getValue() > 0) {
                     player.sendSystemMessage(Component.literal(
@@ -462,11 +467,11 @@ public class CVDebugCommand {
             player.sendSystemMessage(coordsLine(ep));
         }
 
-        // --- 5. CHUNKI TRZYMANE PRZEZ TA SIEĆ ---
+        // --- 5. CHUNKS HELD BY THIS NETWORK ---
         var held = com.craftingveloce.network.pipe.VeloceChunkLoader.listHeld(sl);
         String prefix = "net:" + net.getId().toString().substring(0, 8);
         int mine = 0;
-        player.sendSystemMessage(Component.literal("§b--- Chunki trzymane przez te siec ---"));
+        player.sendSystemMessage(Component.literal("§b--- Chunks held by this network ---"));
         for (var hc : held) {
             boolean ours = hc.tickets().stream().anyMatch(t -> t.owner().equals(prefix));
             if (!ours) {
@@ -474,24 +479,24 @@ public class CVDebugCommand {
             }
             mine++;
             player.sendSystemMessage(Component.literal(
-                    "  §f[" + hc.x() + ", " + hc.z() + "] §7powod: NETWORK"));
+                    "  §f[" + hc.x() + ", " + hc.z() + "] §7reason: NETWORK"));
         }
-        player.sendSystemMessage(Component.literal("  §7razem: §f" + mine + " §7chunk(ow)"));
+        player.sendSystemMessage(Component.literal("  §7total: §f" + mine + " §7chunk(s)"));
 
         player.sendSystemMessage(Component.literal("§6==================================="));
     }
 
-    /** Opis bloku na danej pozycji - do listy polaczen. */
+    /** Description of the block at the given position - for the connection list. */
     private static String describeAt(ServerLevel sl, VelocePipeWorld world, BlockPos p) {
         if (!sl.isLoaded(p)) {
             return world.hasPipe(p)
-                    ? "§7rura §8" + chunkTag(p) + " §c[UNLOADED]"
-                    : "§8(niezladowany chunk)";
+                    ? "§7pipe §8" + chunkTag(p) + " §c[UNLOADED]"
+                    : "§8(unloaded chunk)";
         }
         var st = sl.getBlockState(p);
         var b = st.getBlock();
         if (b instanceof com.craftingveloce.block.VelocePipeBlock) {
-            return "§7rura " + loadedTag(sl, p);
+            return "§7pipe " + loadedTag(sl, p);
         }
         if (b instanceof com.craftingveloce.block.VeloceTomTerminalBlock) {
             return "§aTERMINAL " + loadedTag(sl, p);
@@ -503,37 +508,37 @@ public class CVDebugCommand {
             return "§aCRAFTER " + loadedTag(sl, p);
         }
         if (b instanceof com.craftingveloce.block.VeloceControllerBlock) {
-            return "§aKONTROLER " + loadedTag(sl, p);
+            return "§aCONTROLLER " + loadedTag(sl, p);
         }
         if (b instanceof com.craftingveloce.block.VeloceVelocityFurnaceBlock) {
-            return "§aPIEC PALIWOWY " + loadedTag(sl, p);
+            return "§aFUEL FURNACE " + loadedTag(sl, p);
         }
         if (b instanceof com.craftingveloce.block.VeloceElectricFurnaceBlock) {
-            return "§aPIEC ELEKTRYCZNY " + loadedTag(sl, p);
+            return "§aELECTRIC FURNACE " + loadedTag(sl, p);
         }
         if (b instanceof com.craftingveloce.block.VeloceThresholdSensorBlock) {
-            return "§aCZUJNIK PROGU " + loadedTag(sl, p);
+            return "§aTHRESHOLD SENSOR " + loadedTag(sl, p);
         }
-        // Magazyn: sprawdzamy WSZYSTKIE strony, nie tylko gore.
+        // Storage: we check ALL sides, not just the top.
         //
-        // Bylo tu `canConnectToInventory(sl, p, Direction.UP)` - wiec pojemnik,
-        // ktory przyjmuje tylko z boku (np. maszyna z przodu), opisywal sie jako
-        // zwykly blok. W diagnostyce "czemu siec tego nie widzi" to jest wlasnie
-        // ta informacja, ktorej sie szuka.
+        // There used to be `canConnectToInventory(sl, p, Direction.UP)` here - so a
+        // container that only accepts from the side (e.g. a machine with a front)
+        // described itself as a plain block. In diagnosing "why does the network
+        // not see this", that is exactly the information you are looking for.
         for (Direction d : Direction.values()) {
             if (VelocePipeBlock.canConnectToInventory(sl, p, d)) {
-                return "§eMAGAZYN (" + b.getName().getString() + ") " + loadedTag(sl, p);
+                return "§eSTORAGE (" + b.getName().getString() + ") " + loadedTag(sl, p);
             }
         }
         return "§8" + b.getName().getString();
     }
 
 
-    /** Typ bloku-wezla po nazwie klasy (terminal / crafter / extractor). */
+    /** Type of a node block by class name (terminal / crafter / extractor). */
     private static String describeNode(ServerLevel sl, BlockPos p) {
         var be = sl.getBlockEntity(p);
         if (be == null) {
-            return "PUSTE(?)";
+            return "EMPTY(?)";
         }
         String n = be.getClass().getSimpleName();
         if (n.contains("Terminal")) {
@@ -560,7 +565,7 @@ public class CVDebugCommand {
         return sl.isLoaded(p) ? "§a[LOADED]" : "§c[UNLOADED]";
     }
 
-    /** Klikalne wspolrzedne bloku - klik teleportuje. */
+    /** Clickable block coordinates - clicking teleports. */
     private static Component coordsLine(BlockPos pos) {
         String plain = pos.getX() + " " + pos.getY() + " " + pos.getZ();
         return Component.literal("§8      /tp " + plain)
@@ -570,10 +575,10 @@ public class CVDebugCommand {
                                 "/tp @s " + plain))
                         .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
                                 net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
-                                Component.literal("Kliknij, aby sie teleportowac"))));
+                                Component.literal("Click to teleport there"))));
     }
 
-    /** Posortowane pozycje - zeby raport byl powtarzalny. */
+    /** Sorted positions - so that the report is reproducible. */
     private static java.util.List<BlockPos> sorted(java.util.Collection<BlockPos> in) {
         java.util.List<BlockPos> out = new java.util.ArrayList<>(in);
         out.sort(java.util.Comparator.comparingInt((BlockPos p) -> p.getX())

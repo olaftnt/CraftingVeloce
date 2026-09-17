@@ -10,42 +10,44 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 
 /**
- * Stany ramy Veloce Integrale - wspolne dla DWÓCH blokow.
+ * Veloce Integrale frame states - shared by TWO blocks.
  *
- * <p><b>Dlaczego osobna klasa.</b> Te same szesc zaslepek (okno od strony, z
- * ktorej dochodzi rura, zamyka sie blacha) opisuja dzis dwa bloki:
+ * <p><b>Why a separate class.</b> The same six caps (the window on the side a
+ * pipe arrives from is closed with a plate) now describe two blocks:
  * <ul>
- *   <li>{@link VeloceIntegraleBlock} - ozdobna klatka (obudowa maszyny),</li>
- *   <li>{@link VeloceCraftingTableBlock} w stanie {@code facade} - prawdziwy
- *       stol craftingu stojacy w klatce (patrz {@code VeloceIntegraleBlock}
- *       "podmiana bloku").</li>
+ *   <li>{@link VeloceIntegraleBlock} - the decorative frame (the machine
+ *       casing),</li>
+ *   <li>{@link VeloceCraftingTableBlock} in the {@code facade} state - the real
+ *       crafting table standing in the frame (see {@code VeloceIntegraleBlock}
+ *       "block replacement").</li>
  * </ul>
- * Gdyby kazdy z nich liczyl zaslepki po swojemu, powstalyby dwa miejsca z ta
- * sama regula - a to w tym projekcie jest udokumentowanym zrodlem bledow
- * (kontroler nie byl wezlem sieci, bo lista wezlow byla zdublowana).
+ * If each of them counted the caps its own way, there would be two places with
+ * the same rule - and in this project that is a documented source of bugs (the
+ * controller was not a network node, because the node list was duplicated).
  *
- * <p>Uzywamy stanow waniliowego {@link PipeBlock} (te same nazwy: {@code north},
- * {@code east}, ...), bo sa dokladnie tym, czego potrzeba - jedna wartosc na
- * strone - i dzieki temu mapa kierunek -&gt; wlasciwosc istnieje juz w wanilii
- * ({@link PipeBlock#PROPERTY_BY_DIRECTION}). Wlasciwosc stanu mozna dzielic
- * miedzy blokami: to tylko deskryptor, nie rejestr.
+ * <p>We use vanilla {@link PipeBlock} states (the same names: {@code north},
+ * {@code east}, ...), because they are exactly what is needed - one value per
+ * side - and thanks to that the direction -&gt; property map already exists in
+ * vanilla ({@link PipeBlock#PROPERTY_BY_DIRECTION}). A block state property can
+ * be shared between blocks: it is only a descriptor, not a registry.
  */
 public final class VeloceIntegraleFrame {
 
     /**
-     * Szesc okien klatki: czy okno z danej strony jest ZABUDOWANE.
+     * The frame's six windows: whether the window on a given side is PLATED
+     * OVER.
      *
-     * <p><b>WLASNE wlasciwosci, nie pozyczone z {@code PipeBlock}.</b>
-     * Zgloszenie gracza: "niektore bloki jako defaultowy state maja to, ze sa
-     * jakby zamkniete, mimo ze nic nie jest podlaczone". Pozyczone
-     * {@code PipeBlock.*} mialy domyslna wartosc TRUE, wiec KAZDA postawiona
-     * maszyna startowala z wszystkimi scianami zamknietymi (potwierdzone
-     * w grze: pusty piecyk pokazywal `down=true, east=true, ... west=true`).
-     * Wlasne wlasciwosci maja domyslne FALSE: maszyna startuje otwarta,
-     * a zaslepki zamyka dopiero sasiad-rura (patrz withClosure).
+     * <p><b>OUR OWN properties, not borrowed from {@code PipeBlock}.</b>
+     * A player report: "some blocks have as their default state the fact that
+     * they are as if closed, even though nothing is connected". The borrowed
+     * {@code PipeBlock.*} had a default value of TRUE, so EVERY placed machine
+     * started with all walls closed (confirmed in game: an empty furnace showed
+     * `down=true, east=true, ... west=true`). Our own properties have a default
+     * of FALSE: a machine starts open, and the caps are only closed by a
+     * neighboring pipe (see withClosure).
      *
-     * <p>Nazwy zostaja te same (north/east/south/west/up/down), bo na nich
-     * opieraja sie blockstate'y (multipart) i zapisane stany w swiecie.
+     * <p>The names stay the same (north/east/south/west/up/down), because the
+     * blockstates (multipart) and the states saved in the world rely on them.
      */
     public static final BooleanProperty DOWN = BooleanProperty.create("down");
     public static final BooleanProperty UP = BooleanProperty.create("up");
@@ -54,7 +56,7 @@ public final class VeloceIntegraleFrame {
     public static final BooleanProperty WEST = BooleanProperty.create("west");
     public static final BooleanProperty EAST = BooleanProperty.create("east");
 
-    /** Szesc okien klatki w kolejnosci: dol, gora, polnoc, poludnie, zachod, wschod. */
+    /** The frame's six windows in order: down, up, north, south, west, east. */
     public static final BooleanProperty[] CLOSED_BY_DIRECTION = {
             DOWN, UP, NORTH, SOUTH, WEST, EAST,
     };
@@ -62,16 +64,17 @@ public final class VeloceIntegraleFrame {
     private VeloceIntegraleFrame() {
     }
 
-    /** Dodaje szesc zaslepek do definicji stanu bloku. */
+    /** Adds the six caps to the block state definition. */
     public static void addProperties(StateDefinition.Builder<Block, BlockState> builder) {
         builder.add(CLOSED_BY_DIRECTION);
     }
 
     /**
-     * Stan startowy: zaslepki zamkniete tam, gdzie juz stoi rura Veloce.
+     * Initial state: caps closed wherever a Veloce pipe already stands.
      *
-     * <p>Dzieki temu postawienie bloku obok kabla od razu wyglada dobrze -
-     * bez block entity, bez tickera i bez czekania na aktualizacje z serwera.
+     * <p>Thanks to that, placing the block next to a cable immediately looks
+     * right - with no block entity, no ticker and no waiting for an update from
+     * the server.
      */
     public static BlockState withPlacementClosures(BlockGetter level, BlockPos pos, BlockState state) {
         for (Direction direction : Direction.values()) {
@@ -81,10 +84,10 @@ public final class VeloceIntegraleFrame {
     }
 
     /**
-     * Przelicza TYLKO jedna strone (zmienil sie sasiad z tej strony).
+     * Recomputes ONLY one side (the neighbor on that side changed).
      *
-     * <p>Zwraca TEN SAM stan, gdy nic sie nie zmienilo - inaczej kazdy
-     * neighbor update wysylalby pakiet aktualizacji bloku bez powodu.
+     * <p>Returns THE SAME state when nothing changed - otherwise every
+     * neighbor update would send a block update packet for no reason.
      */
     public static BlockState withClosure(BlockState state, Direction facing, BlockState neighbor) {
         BooleanProperty property = property(facing);
@@ -96,12 +99,12 @@ public final class VeloceIntegraleFrame {
     }
 
     /**
-     * Ustawia zaslepke jednej strony, gdy WOLAJACY wie, czy jest zakryta.
+     * Sets the cap of one side when the CALLER knows whether it is covered.
      *
-     * <p>Klatka pyta o rury Veloce, ale maszyna kinetyczna Create zakrywa bok
-     * takze wtedy, gdy dochodzi z niego NAPED (gracz: "ten bok ma sie
-     * zachowywac tak, jakby byl kabel podlaczony z tej strony"). Rdzen nie
-     * moze znac Create, wiec decyzje podejmuje wolajacy.
+     * <p>The frame asks about Veloce pipes, but a Create kinetic machine also
+     * covers a side when POWER arrives from it (player: "this side should
+     * behave as if a cable were connected on that side"). The core cannot know
+     * about Create, so the caller makes the decision.
      */
     public static BlockState withClosure(BlockState state, Direction facing, boolean covered) {
         BooleanProperty property = property(facing);
@@ -111,18 +114,19 @@ public final class VeloceIntegraleFrame {
         return state.getValue(property) == covered ? state : state.setValue(property, covered);
     }
 
-    /** Czy okno z tej strony jest zakryte blacha. */
+    /** Whether the window on this side is covered with a plate. */
     public static boolean isClosed(BlockState state, Direction direction) {
         BooleanProperty property = property(direction);
         return property != null && state.getValue(property);
     }
 
     /**
-     * Przepisuje zaslepki z jednego stanu na drugi - uzywane przy PODMIANIE
-     * bloku (klatka -&gt; maszyna): blok, ktory ma rame, wyglada tak samo.
+     * Copies the caps from one state to another - used when REPLACING a block
+     * (frame -&gt; machine): a block that has a frame looks the same.
      *
-     * <p>Blok docelowy bez ramy (zwykla maszyna Veloce) po prostu pomija te
-     * wlasciwosci - dlatego metoda nie wymaga, by mial je wszystkie.
+     * <p>A target block without a frame (an ordinary Veloce machine) simply
+     * skips these properties - which is why the method does not require it to
+     * have them all.
      */
     public static BlockState copyClosures(BlockState from, BlockState to) {
         BlockState result = to;

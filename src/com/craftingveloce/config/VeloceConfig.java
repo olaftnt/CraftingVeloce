@@ -3,14 +3,14 @@ package com.craftingveloce.config;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
- * Konfiguracja moda Veloce.
+ * Veloce mod configuration.
  *
- * <p>Plik: {@code config/craftingveloce-common.toml}. Zmiany dzialaja po
- * restarcie gry (NeoForge przelicza spec przy wczytaniu).
+ * <p>File: {@code config/craftingveloce-common.toml}. Changes take effect after
+ * a game restart (NeoForge re-evaluates the spec on load).
  *
- * <p>Sekcja DEBUG sluzy do diagnozowania problemow: wlacz {@code debugEnabled}
- * i ustaw {@code debugLevel} na DETAIL, zeby zobaczyc pelny przeplyw operacji -
- * co gracz probowal zrobic, co system zrobil, co dostal i dlaczego.
+ * <p>The DEBUG section is used to diagnose problems: enable {@code debugEnabled}
+ * and set {@code debugLevel} to DETAIL to see the full flow of operations -
+ * what the player tried to do, what the system did, what it received and why.
  */
 public final class VeloceConfig {
 
@@ -26,15 +26,15 @@ public final class VeloceConfig {
     public static final ModConfigSpec.BooleanValue LOG_BLOCKS;
     public static final ModConfigSpec.BooleanValue LOG_GUI;
 
-    /** Poziomy szczegolowosci - im wyzej, tym wiecej linii. */
+    /** Detail levels - the higher, the more lines. */
     public enum LogLevel {
-        /** Tylko bledy i operacje ktore sie nie udaly. */
+        /** Only errors and operations that did not succeed. */
         ERRORS,
-        /** Bledy + skutki operacji (co sie stalo). */
+        /** Errors + operation outcomes (what happened). */
         NORMAL,
-        /** + co gracz probowal zrobic i co dostal. */
+        /** + what the player tried to do and what they received. */
         VERBOSE,
-        /** + kroki posrednie (planowanie, skanowanie sieci, pakiety). */
+        /** + intermediate steps (planning, network scans, packets). */
         DETAIL
     }
 
@@ -83,17 +83,17 @@ public final class VeloceConfig {
     }
 
     /**
-     * Czy logowac zdarzenia o danym poziomie (lub wazniejsze).
+     * Whether to log events at the given level (or more important ones).
      *
-     * <p>Odczyt configu jest zabezpieczony: przed jego wczytaniem NeoForge
-     * rzuca {@code IllegalStateException}. Logowanie nie moze z tego powodu
-     * wywalic moda, wiec w razie problemu zwracamy bezpieczna domyslna wartosc
-     * (logujemy tylko bledy).
+     * <p>Reading the config is guarded: before it is loaded NeoForge
+     * throws {@code IllegalStateException}. Logging must not bring the mod down
+     * for that reason, so on any problem we return a safe default value
+     * (we log errors only).
      */
     public static boolean allows(LogLevel level) {
         try {
             if (!DEBUG_ENABLED.get()) {
-                // Bez debugowania pokazujemy tylko bledy.
+                // Without debugging we show errors only.
                 return level == LogLevel.ERRORS;
             }
             return level.ordinal() <= DEBUG_LEVEL.get().ordinal();

@@ -10,17 +10,18 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 
 /**
- * Okno maszyny Veloce - wyglada DOKLADNIE jak okno pieca.
+ * The Veloce machine window - looks EXACTLY like the furnace window.
  *
- * <p>Ta sama tekstura i ten sam uklad co {@code VeloceElectricFurnaceScreen}:
- * panel, tytul z nazwa bloku, podpis "Inventory" i ekwipunek gracza.
+ * <p>The same texture and the same layout as {@code VeloceElectricFurnaceScreen}:
+ * panel, title with the block name, the "Inventory" label and the player's
+ * inventory.
  *
  * <ul>
- *   <li><b>maszyna na energie</b>: pasek baterii (jak w piecu) i liczba
- *       operacji, na ktore jeszcze stac akumulator,</li>
- *   <li><b>maszyna kinetyczna (Create)</b>: BEZ baterii - w jej miejscu trzy
- *       linie tekstu: jaka predkosc dostajemy, czy to wystarcza i ile SU zuzywa
- *       blok. Nic wiecej.</li>
+ *   <li><b>energy machine</b>: battery bar (as in the furnace) and the number of
+ *       operations the accumulator can still afford,</li>
+ *   <li><b>kinetic machine (Create)</b>: WITHOUT a battery - in its place three
+ *       lines of text: what speed we are getting, whether that is enough and how
+ *       much SU the block uses. Nothing more.</li>
  * </ul>
  */
 public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu> {
@@ -28,7 +29,7 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
     private static final ResourceLocation GUI_TEXTURE = ResourceLocation.fromNamespaceAndPath(
             CraftingVeloceMod.MODID, "textures/gui/electric_furnace.png");
 
-    /** Bateria - te same wspolrzedne co w piecu. */
+    /** Battery - the same coordinates as in the furnace. */
     private static final int BATTERY_X = 66;
     private static final int BATTERY_Y = 32;
     private static final int BATTERY_W = 56;
@@ -43,7 +44,7 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
 
     public VeloceModuleScreen(VeloceModuleMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        // Wymiary i etykiety DOKLADNIE jak w piecu i ekstraktorze.
+        // Dimensions and labels EXACTLY as in the furnace and the extractor.
         this.imageWidth = 212;
         this.imageHeight = 166;
         this.inventoryLabelY = this.imageHeight - 94;
@@ -60,7 +61,7 @@ public class VeloceModuleScreen extends AbstractContainerScreen<VeloceModuleMenu
         }
     }
 
-    /** Maszyna na energie: bateria i liczba operacji - jak w piecu. */
+    /** Energy machine: battery and operation count - as in the furnace. */
     private void drawBattery(GuiGraphics graphics) {
         int x = this.leftPos + BATTERY_X;
         int y = this.topPos + BATTERY_Y;

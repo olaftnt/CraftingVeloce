@@ -30,49 +30,50 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * GUI auto-craftera (Veloce Crafting Table).
+ * Auto-crafter GUI (Veloce Crafting Table).
  *
- * <p>Zasady:
+ * <p>Rules:
  * <ul>
- *   <li><b>Pokazuje tylko itemy craftowalne.</b> Itemy bez receptury sa
- *       <b>usuwane z listy</b>, wiec nie zostawiaja pustych dziur - reszta
- *       zsuwa sie na ich miejsce.</li>
- *   <li><b>Lewy klik</b> wlacza/wylacza auto-crafting (czerwony = off,
- *       zielony = on).</li>
- *   <li><b>Prawy klik</b> przelacza recepture, jesli item ma ich wiecej;
- *       jesli ma tylko jedna, nic sie nie dzieje.</li>
- *   <li><b>Tooltip</b> pokazuje skladniki kazdej receptury po nazwie.</li>
+ *   <li><b>Shows only craftable items.</b> Items without a recipe are
+ *       <b>removed from the list</b>, so they leave no empty gaps - the rest
+ *       slide into their place.</li>
+ *   <li><b>Left click</b> toggles auto-crafting on/off (red = off,
+ *       green = on).</li>
+ *   <li><b>Right click</b> cycles the recipe if the item has more than one;
+ *       if it has only one, nothing happens.</li>
+ *   <li><b>Tooltip</b> shows the ingredients of every recipe by name.</li>
  * </ul>
  */
 public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
 
     private final BlockPos tablePos;
-    /** Itemy WYLACZONE (model opt-out - domyslnie wszystko wlaczone). */
+    /** Items DISABLED (opt-out model - everything is enabled by default). */
     private Set<Item> disabledItems;
     private Map<Item, ResourceLocation> preferredRecipes;
 
     /**
-     * Indeks receptur po stronie klienta.
+     * Client-side recipe index.
      *
-     * <p><b>Statyczny, bo budowanie jest drogie.</b> Wczesniej byl to zwykly
-     * field ekranu, a ekran powstaje na nowo przy KAZDYM otwarciu GUI - czyli
-     * indeks (tysiace receptur, kazda z rozwiazanymi skladnikami) budowal sie
-     * od zera za kazdym razem, na watku klienta. Przy duzym modpacku to jest
-     * dokladnie to "okno sie zacielo" przy otwieraniu craftera.
+     * <p><b>Static, because building it is expensive.</b> It used to be an
+     * ordinary screen field, and the screen is created anew on EVERY GUI open -
+     * so the index (thousands of recipes, each with resolved ingredients) was
+     * built from scratch every time, on the client thread. On a large modpack
+     * that is exactly the "the window froze" moment when opening the crafter.
      *
-     * <p>Kluczujemy po RecipeManagerze, wiec zmiana swiata uniewaznia cache
-     * sama z siebie.
+     * <p>We key it by the RecipeManager, so changing the world invalidates the
+     * cache on its own.
      */
     private static Map<Item, List<ClientRecipe>> craftableItems = null;
     private static Object craftableItemsKey = null;
 
     /**
-     * Zawartosc bufora craftera - pokazywana w zakladce "Survival Inventory"
-     * zamiast zwyklego ekwipunku. Mozna z niej wyciagac, ale nie wkladac.
+     * Contents of the crafter buffer - shown in the "Survival Inventory" tab
+     * instead of the regular inventory. Items can be taken out of it, but not
+     * put in.
      */
     private List<ItemStack> bufferContents;
 
-    /** Receptura widziana po stronie klienta (do tooltipow i cyklowania). */
+    /** Recipe as seen on the client side (for tooltips and cycling). */
     private record ClientRecipe(ResourceLocation id, ItemStack result, List<List<ItemStack>> options) {
         int resultCount() {
             return Math.max(1, result.getCount());
@@ -91,7 +92,7 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         this.bufferContents = new ArrayList<>(bufferContents);
     }
 
-    /** Aktualizuje zawartosc bufora (po wyciagnieciu itemu). */
+    /** Updates the buffer contents (after an item has been taken out). */
     public void updateBuffer(List<ItemStack> contents) {
         this.bufferContents = new ArrayList<>(contents);
     }
@@ -101,11 +102,11 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Podmienia zbior itemow z wylaczonym auto-craftingiem (model opt-out).
+     * Replaces the set of items with auto-crafting disabled (opt-out model).
      *
-     * <p>Nazwa mowi co przekazujesz. Wczesniej metoda nazywala sie
-     * {@code updateEnabledItems}, a przypisywala do {@code disabledItems} -
-     * proszenie sie o odwrotna semantyke przy nastepnej zmianie.
+     * <p>The name says what you are passing. The method used to be called
+     * {@code updateEnabledItems} while assigning to {@code disabledItems} -
+     * asking for reversed semantics on the next change.
      */
     public void updateDisabledItems(Set<Item> items, Map<Item, ResourceLocation> prefs) {
         this.disabledItems = new HashSet<>(items);
@@ -113,12 +114,12 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     // ------------------------------------------------------------------
-    // Filtrowanie zawartosci
+    // Contents filtering
     // ------------------------------------------------------------------
 
     /**
-     * Przepuszczamy tylko itemy z receptura wykonywalna bez energii/paliwa.
-     * Reszta jest usuwana z listy, wiec nie zostawia dziur.
+     * We let through only items with a recipe that can be executed without
+     * energy/fuel. The rest is removed from the list, so it leaves no gaps.
      */
     @Override
     protected boolean acceptItem(ItemStack stack) {
@@ -130,8 +131,9 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Buduje indeks itemow craftowalnych z receptur dostepnych po stronie klienta.
-     * Uzywamy tylko typow "bez infrastruktury" - tak samo jak serwerowy rejestr.
+     * Builds the index of craftable items from the recipes available on the
+     * client side. We use only "infrastructure-free" types - exactly like the
+     * server-side registry.
      */
     private Map<Item, List<ClientRecipe>> getCraftableItems() {
         Minecraft mc = Minecraft.getInstance();
@@ -145,12 +147,12 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         Map<Item, List<ClientRecipe>> out = new LinkedHashMap<>();
         var registries = mc.level.registryAccess();
 
-        // TYPY RECEPTUR Z JEDNEGO MIEJSCA. Wczesniej ta metoda miala wlasna,
-        // trzecia kopie listy (CRAFTING/STONECUTTING/SMITHING) obok
-        // VeloceRecipeRegistry i VeloceRecipeGraph - czyli dokladnie ten
-        // rodzaj duplikatu, ktory w tym projekcie juz kilka razy sie rozjechal.
-        // Teraz bierzemy rodziny z VeloceRecipeFamilies, wiec modul
-        // zarejestrowany przez compat/* pojawi sie tu bez zmiany kodu klienta.
+        // RECIPE TYPES FROM A SINGLE PLACE. This method used to have its own,
+        // third copy of the list (CRAFTING/STONECUTTING/SMITHING) alongside
+        // VeloceRecipeRegistry and VeloceRecipeGraph - exactly the kind of
+        // duplicate that has drifted apart several times in this project.
+        // Now we take the families from VeloceRecipeFamilies, so a module
+        // registered by compat/* shows up here without any client code change.
         for (RecipeType<?> type : com.craftingveloce.crafting.VeloceRecipeFamilies.withoutHeat()) {
             collectType(mc, type, registries, out);
         }
@@ -172,10 +174,10 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         }
         for (var holder : holders) {
             var recipe = holder.value();
-            // Filtr "special" TYLKO waniliowy - receptury modow czesto uzywaja
-            // tej flagi dla zwyklych receptur (Mekanism: wszystkie swoje),
-            // wiec odrzucanie po samym isSpecial() wycinalo cale mody z GUI.
-            // Ta sama reguła co w indeksie serwera (jedno zrodlo prawdy).
+            // Filter "special" for VANILLA ONLY - mod recipes often use
+            // this flag for ordinary recipes (Mekanism: all of its own),
+            // so rejecting on isSpecial() alone cut whole mods out of the GUI.
+            // The same rule as in the server index (single source of truth).
             if (com.craftingveloce.crafting.VeloceRecipeRegistry.isVanillaSpecial(recipe)) {
                 continue;
             }
@@ -197,10 +199,11 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
                     continue;
                 }
                 any = true;
-                // Bez s.copy(): te stosy tylko czytamy (tooltip, dopasowanie),
-                // a getItems() zwraca tablice zarzadzana przez sam Ingredient.
-                // Kopiowanie kazdego stosu razem z komponentami, dla kazdej
-                // opcji kazdego skladnika, bylo tu najdrozasza czescia budowy.
+                // No s.copy(): these stacks are only read (tooltip, matching),
+                // and getItems() returns an array managed by the Ingredient
+                // itself. Copying every stack together with its components, for
+                // every option of every ingredient, was the most expensive part
+                // of the build here.
                 options.add(java.util.Arrays.asList(items));
             }
             if (!any) {
@@ -232,13 +235,14 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
 
         int overlayColor;
         if (!craftable) {
-            // Czarne tlo = item, ktorego crafter nie zrobi.
-            // (acceptItem i tak je usuwa, ale gdyby sie pojawilo - jest czytelne.)
+            // Black background = item the crafter will not make.
+            // (acceptItem removes those anyway, but if one showed up - it reads
+            // clearly.)
             overlayColor = 0xAA000000;
         } else if (!disabledItems.contains(item)) {
-            overlayColor = 0x7700AA00;   // zielony: auto-crafting ON
+            overlayColor = 0x7700AA00;   // green: auto-crafting ON
         } else {
-            overlayColor = 0x77AA0000;   // czerwony: receptura jest, ale OFF
+            overlayColor = 0x77AA0000;   // red: recipe exists, but OFF
         }
 
         RenderSystem.disableDepthTest();
@@ -259,15 +263,14 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
 
     // ------------------------------------------------------------------
     /**
-     * Ukrywa zakladke "Survival Inventory" w crafterze.
+     * Hides the "Survival Inventory" tab in the crafter.
      *
-     * <p>Ta zakladka w vanilla otwiera ekwipunek gracza z pancerzem, offhandem
-     * i craftingiem 2x2 - czyli dokladnie to, co nasze GUI juz pokazuje
-     * (siatka craftera + lista itemow). Efekt byl mylacy: pokazywal sie
-     * niepasujacy ekran i nie dalo sie z niego sensownie korzystac.
+     * <p>In vanilla this tab opens the player inventory with armour, offhand
+     * and 2x2 crafting - exactly what our GUI already shows (the crafter grid
+     * plus the item list). The effect was confusing: a mismatched screen
+     * appeared and there was no sensible way to use it.
      *
-     * <p>Zamiast tego zakladka jest po prostu nieobecna - tak jak zakladki
-     * administracyjne.
+     * <p>Instead the tab is simply absent - just like the administrative tabs.
      */
     @Override
     protected boolean acceptTab(CreativeModeTab tab) {
@@ -278,30 +281,30 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     // ------------------------------------------------------------------
-    // Zakladka ekwipunku - UKRYTA
+    // Inventory tab - HIDDEN
     // ------------------------------------------------------------------
 
-    // Historia prob (zeby nie powtarzac bledow):
-    //   1. Podmiana slotow w ekranie vanilla -> itemy na slocie glowy,
-    //      zepsuty uklad, bo walczylismy z ukladem vanilla.
-    //   2. Wlasny ekran kontenera ze scrollbarem -> otwieral sie sam przy
-    //      wejsciu w crafter i nie dalo sie z niego wyjsc (bialy blok).
-    //   3. Teraz: zakladka jest po prostu UKRYTA przez acceptTab ponizej.
+    // History of attempts (so the mistakes are not repeated):
+    //   1. Swapping slots in the vanilla screen -> items on the head slot,
+    //      broken layout, because we were fighting the vanilla layout.
+    //   2. A custom container screen with a scrollbar -> it opened by itself
+    //      when entering the crafter and could not be closed (white block).
+    //   3. Now: the tab is simply HIDDEN by acceptTab below.
     //
-    // TODO (do zrobienia pozniej, wlasciwym sposobem):
-    //   Skopiowac ekran creative inventory do moda jako wlasna klase
-    //   i modyfikowac go bezposrednio. Wtedy zakladka ekwipunku moze pokazac
-    //   bufor craftera bez walki z vanilla - mamy pelna kontrole nad ukladem.
-    //   Nie robic tego przez podmiane slotow ani przez drugi ekran.
+    // TODO (to be done later, the proper way):
+    //   Copy the creative inventory screen into the mod as our own class
+    //   and modify it directly. Then the inventory tab can show the crafter
+    //   buffer without fighting vanilla - we have full control over the layout.
+    //   Do not do this by swapping slots or by adding a second screen.
 
     // ------------------------------------------------------------------
     // Tooltip
     // ------------------------------------------------------------------
 
     /**
-     * Nadpisujemy tooltip vanilla, zeby pozbyc sie linii, ktore creative
-     * inventory dodaje w zakladkach CATEGORY i SEARCH: nazwy kategorii,
-     * surowych tagow itemu i listy zakladek zawierajacych item.
+     * We override the vanilla tooltip to get rid of the lines that the creative
+     * inventory adds in the CATEGORY and SEARCH tabs: category names,
+     * raw item tags and the list of tabs containing the item.
      */
     @Override
     public List<Component> getTooltipFromContainerItem(ItemStack stack) {
@@ -317,7 +320,7 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         );
     }
 
-    /** Tooltip: kazda receptura + jej skladniki po nazwie. */
+    /** Tooltip: every recipe + its ingredients by name. */
     private void renderRecipeTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         Slot slot = getSlotUnderMouse();
         if (slot == null || isPlayerInventorySlot(slot) || !slot.hasItem()) {
@@ -362,16 +365,16 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Skladniki receptury jako "4x Stone" - powtorzenia tego samego itemu sa
-     * sumowane.
+     * Recipe ingredients as "4x Stone" - repetitions of the same item are
+     * summed up.
      *
-     * <p>Receptura z siatki zwraca osobny Ingredient na kazdy slot, wiec
-     * kamienne cegly (4x stone w ksztalcie kwadratu) dawaly wczesniej
-     * "1x Stone, 1x Stone, 1x Stone, 1x Stone". Liczymy wystapienia i pokazujemy
-     * jedna pozycje z suma.
+     * <p>A grid recipe returns a separate Ingredient for each slot, so
+     * stone bricks (4x stone in a square shape) used to produce
+     * "1x Stone, 1x Stone, 1x Stone, 1x Stone". We count the occurrences and
+     * show a single entry with the total.
      */
     private static String describeIngredients(ClientRecipe r) {
-        // Nazwa itemu -> ile sztuk. LinkedHashMap, zeby kolejnosc byla stabilna.
+        // Item name -> how many pieces. LinkedHashMap, so the order is stable.
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (List<ItemStack> options : r.options()) {
             if (options.isEmpty()) {
@@ -391,10 +394,10 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     // ------------------------------------------------------------------
-    // Przelaczanie calej kategorii (prawy klik na ikonke zakladki)
+    // Toggling a whole category (right click on the tab icon)
     // ------------------------------------------------------------------
 
-    /** W crafterze mozna przelaczac tylko itemy z receptura. */
+    /** In the crafter only items with a recipe can be toggled. */
     @Override
     protected boolean isToggleable(ItemStack stack) {
         if (stack.isEmpty()) {
@@ -405,10 +408,10 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Crafter pamieta swoja zakladke PER BLOK.
+     * The crafter remembers its tab PER BLOCK.
      *
-     * <p>Kazdy crafter ma wlasne zapamietane miejsce, niezaleznie od
-     * terminali, kontrolerow i zwyklego creative inventory.
+     * <p>Every crafter has its own remembered position, independent of
+     * terminals, controllers and the regular creative inventory.
      */
     @Override
     protected Object viewStateKey() {
@@ -431,7 +434,7 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     // ------------------------------------------------------------------
-    // Interakcja
+    // Interaction
     // ------------------------------------------------------------------
 
     @Override
@@ -447,13 +450,13 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         List<ClientRecipe> recipes = getCraftableItems().get(clickedItem);
         if (recipes == null || recipes.isEmpty()) return;
 
-        // Prawy klik = zmiana receptury (gdy jest wiecej niz jedna).
+        // Right click = change the recipe (when there is more than one).
         if (mouseButton == 1) {
             cycleRecipe(clickedItem, recipes);
             return;
         }
 
-        // Lewy klik = wlacz/wylacz auto-crafting.
+        // Left click = toggle auto-crafting on/off.
         boolean turningOff = !disabledItems.contains(clickedItem);
         if (disabledItems.contains(clickedItem)) {
             disabledItems.remove(clickedItem);
@@ -468,8 +471,8 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Przelacza aktywna recepture na nastepna. Gdy item ma tylko jedna
-     * recepture, nie robi nic (nie ma na co przelaczac).
+     * Cycles the active recipe to the next one. When the item has only one
+     * recipe, it does nothing (there is nothing to switch to).
      */
     private void cycleRecipe(Item item, List<ClientRecipe> recipes) {
         if (recipes == null || recipes.size() <= 1) {
@@ -481,8 +484,9 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
         }
         ResourceLocation current = preferredRecipes.get(item);
         int idx = current == null ? -1 : ids.indexOf(current);
-        // Podwojny modulo, zeby wynik byl nieujemny takze dla idx = -1
-        // (item bez wybranej receptury). Wyrazenie jest juz typu int.
+        // Double modulo, so the result is non-negative also for idx = -1
+        // (an item with no selected recipe). The expression is already of type
+        // int.
         int next = ((idx + 1) % ids.size() + ids.size()) % ids.size();
         ResourceLocation chosen = ids.get(next);
         preferredRecipes.put(item, chosen);
@@ -491,9 +495,9 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Shift+scroll - dodatkowy sposob zmiany receptury.
-     * W creative inventory scroll bywa przechwytywany przez liste, wiec
-     * podstawowa metoda jest prawy klik.
+     * Shift+scroll - an additional way to change the recipe.
+     * In the creative inventory scroll is often captured by the list, so the
+     * primary method is right click.
      */
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {

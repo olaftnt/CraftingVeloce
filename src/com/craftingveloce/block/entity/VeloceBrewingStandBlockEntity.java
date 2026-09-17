@@ -12,22 +12,22 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Nasz brewing stand - WLASNY block entity.
+ * Our brewing stand - a block entity OF OUR OWN.
  *
- * <p><b>Dlaczego nie dziedziczymy po waniliowym.</b> Probowałem tak zrobic, ale
- * waniliowy konstruktor ustawia TYP {@code minecraft:brewing_stand}, a nasz blok
- * jest zarejestrowany pod wlasnym typem - przy stawianiu gra wywalala sie
- * (log: {@code Invalid block entity minecraft:brewing_stand // ... got Block
- * craftingveloce:brewing_stand}). Dziedziczenie jest tu wiec niemozliwe i logike
- * warzenia trzeba miec u siebie (nastepny krok: {@code PotionBrewing}).
+ * <p><b>Why we do not extend the vanilla one.</b> I tried to do it that way, but the
+ * vanilla constructor sets the TYPE to {@code minecraft:brewing_stand}, and our block
+ * is registered under its own type - when placing it the game crashed (log:
+ * {@code Invalid block entity minecraft:brewing_stand // ... got Block
+ * craftingveloce:brewing_stand}). Extending it is therefore impossible here and the
+ * brewing logic has to live in our own code (next step: {@code PotionBrewing}).
  *
- * <p>Na razie: 5 slotow jak w wanilii (0-2 butelki, 3 skladnik, 4 blaze powder),
- * zapis w NBT, menu dziala. Bez logiki mieszania - to dalszy etap.
+ * <p>For now: 5 slots like in vanilla (0-2 bottles, 3 ingredient, 4 blaze powder),
+ * saving to NBT, the menu works. No mixing logic yet - that is a later stage.
  */
 public class VeloceBrewingStandBlockEntity extends BlockEntity
         implements net.minecraft.world.Container, net.minecraft.world.MenuProvider, net.neoforged.neoforge.energy.IEnergyStorage {
 
-    /** 0-2 butelki, 3 skladnik, 4 blaze powder - dokladnie jak w wanilii. */
+    /** 0-2 bottles, 3 ingredient, 4 blaze powder - exactly like in vanilla. */
     private final SimpleContainer items = new SimpleContainer(5);
 
     public VeloceBrewingStandBlockEntity(BlockPos pos, BlockState state) {
@@ -236,7 +236,7 @@ public static void serverTick(net.minecraft.world.level.Level level, BlockPos po
     @Override
     public boolean canReceive() { return true; }
 
-    // --- Container (5 slotow) -------------------------------------------------
+    // --- Container (5 slots) -------------------------------------------------
     @Override
     public int getContainerSize() {
         return items.getContainerSize();

@@ -13,41 +13,44 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * Co klatka Veloce Integrale zamienia w co: tabela "waniliowy klocek -&gt; nasz blok".
+ * What the Veloce Integrale frame turns into what: the "vanilla block -&gt; our
+ * block" table.
  *
- * <p><b>Jak to dziala.</b> Gracz stawia klatke i prawym klikiem wklada do niej
- * odpowiedni waniliowy klocek. Klatka <b>podmienia sie</b> na nasza maszyne
- * (patrz {@link VeloceIntegraleBlock#convert}) - w swiecie stoi wtedy prawdziwy
- * blok Veloce, a nie atrapa ani "eksponat".
+ * <p><b>How it works.</b> The player places the frame and, with a right click,
+ * inserts the appropriate vanilla block into it. The frame <b>replaces itself</b>
+ * with our machine (see {@link VeloceIntegraleBlock#convert}) - a real Veloce
+ * block then stands in the world, not a dummy or an "exhibit".
  *
- * <p><b>Klucz to ID, nie referencja do bloku.</b> Bloki z innych modow moga
- * jeszcze nie istniec w chwili, gdy bramka rejestruje swoje wpisy (kolejnosc
- * rejestracji modow nie jest nasza), a wtedy referencja bylaby pustym blokiem
- * i klik w obudowe nie robilby NIC. Po ID szukamy dopiero w chwili uzycia.
+ * <p><b>The key is an ID, not a block reference.</b> Blocks from other mods may
+ * not exist yet at the moment the gate registers its entries (mod registration
+ * order is not ours), and in that case a reference would be an empty block and
+ * a click on the casing would do NOTHING. We look the ID up only at the moment
+ * of use.
  *
- * <p><b>JEDNO miejsce z ta regula.</b> Mapowanie pochodzi ze starego projektu
- * (InventoryExchange), gdzie kontroler powstawal z pulpitu do czytania,
- * ekstraktor z dozownika, a sensor z obserwatora - i tam bylo rozsiane po
- * przepisach. Tutaj jest jedna tabela, wiec:
+ * <p><b>ONE place with this rule.</b> The mapping comes from the old project
+ * (InventoryExchange), where the controller was made from a lectern, the
+ * extractor from a dispenser, and the sensor from an observer - and there it
+ * was scattered across recipes. Here there is one table, so:
  * <ul>
- *   <li>dodanie maszyny to jeden wiersz (albo {@link #register} z modulu
- *       compat, gdy klocek-wejscie pochodzi z innego moda),</li>
- *   <li>podpowiedz itemu klatki jest generowana z tej samej tabeli
- *       ({@code VeloceIntegraleItem}), wiec nie moze sie z nia rozjechac.</li>
+ *   <li>adding a machine is one row (or {@link #register} from a compat
+ *       module, when the input block comes from another mod),</li>
+ *   <li>the frame item's tooltip is generated from the same table
+ *       ({@code VeloceIntegraleItem}), so it cannot drift apart from it.</li>
  * </ul>
  */
 public final class VeloceIntegraleConversions {
 
     /**
-     * Jedno przepisanie: co gracz wklada -&gt; jaki blok Veloce z tego powstaje.
+     * A single conversion: what the player inserts -&gt; which Veloce block is
+     * made from it.
      *
-     * <p>{@code Supplier} (a nie sam blok) z dwoch powodow: rejestr blokow
-     * rozstrzyga sie leniwie, a moduly z {@code compat/} dokladaja swoje
-     * wiersze, zanim ich bloki istnieja.
+     * <p>A {@code Supplier} (and not the block itself) for two reasons: the
+     * block registry resolves lazily, and modules from {@code compat/} add their
+     * rows before their blocks exist.
      */
     public record Conversion(ResourceLocation inputId, Supplier<Block> result) {
 
-        /** Blok, ktory powstaje z tego wejscia. */
+        /** The block that is made from this input. */
         public Block resultBlock() {
             return result.get();
         }
@@ -56,7 +59,7 @@ public final class VeloceIntegraleConversions {
     private static final List<Conversion> CONVERSIONS = new ArrayList<>();
 
     static {
-        // Kolejnosc = kolejnosc w podpowiedzi itemu klatki.
+        // The order = the order in the frame item's tooltip.
         add(Blocks.CRAFTING_TABLE, () -> VeloceRegistry.VELOCE_CRAFTING_TABLE.get());
         add(Blocks.LECTERN, () -> VeloceRegistry.VELOCE_CONTROLLER.get());
         add(Blocks.DISPENSER, () -> VeloceRegistry.VELOCE_EXTRACTOR.get());
@@ -68,21 +71,21 @@ public final class VeloceIntegraleConversions {
     }
 
     /**
-     * Dokłada przepisanie do tabeli.
+     * Adds a conversion to the table.
      *
-     * <p>Dla modulow z {@code compat/}: klocek-wejscie moze pochodzic z obcego
-     * moda, a wynik jest naszym blokiem - dzieki temu integracja nie zmienia
-     * rdzenia (patrz {@code VeloceMods}).
+     * <p>For modules from {@code compat/}: the input block may come from a
+     * foreign mod, while the result is our block - thanks to that an integration
+     * does not touch the core (see {@code VeloceMods}).
      */
     public static void register(ResourceLocation inputId, Supplier<Block> result) {
         CONVERSIONS.add(new Conversion(inputId, result));
     }
 
     /**
-     * Wpis dla posiadanego bloku (wanilia, nasze klocki): bierzemy jego ID.
+     * An entry for an owned block (vanilla, our blocks): we take its ID.
      *
-     * <p>Wanilia i nasze bloki sa zarejestrowane, zanim ktokolwiek siegnie do
-     * tej tabeli, wiec ID jest pewne.
+     * <p>Vanilla and our blocks are registered before anyone reaches for this
+     * table, so the ID is certain.
      */
     private static void add(Block input, Supplier<Block> result) {
         ResourceLocation id = BuiltInRegistries.BLOCK.getKey(input);
@@ -92,12 +95,13 @@ public final class VeloceIntegraleConversions {
     }
 
     /**
-     * Przepisanie dla przedmiotu w rece, albo {@code null} (brak = nic sie nie dzieje).
+     * The conversion for the item in hand, or {@code null} (absent = nothing happens).
      *
-     * <p>Sprawdzamy tez, czy blok docelowy naprawde istnieje: wiersze dokladane
-     * z modulow {@code compat/} moga wskazywac na blok, ktorego w tej sesji nie
-     * ma (brak moda) - wtedy lepiej nie zrobic NIC, niz podmienic klatke na nic
-     * i zjesc graczowi wlozony klocek.
+     * <p>We also check that the target block really exists: rows added from
+     * {@code compat/} modules may point at a block that is not present in this
+     * session (the mod is missing) - in that case it is better to do NOTHING
+     * than to replace the frame with nothing and eat the block the player
+     * inserted.
      */
     public static Conversion forItem(ItemStack stack) {
         Conversion conversion = stack.getItem() instanceof BlockItem blockItem
@@ -106,7 +110,7 @@ public final class VeloceIntegraleConversions {
         return conversion != null && conversion.resultBlock() != null ? conversion : null;
     }
 
-    /** Przepisanie dla bloku, albo {@code null}. */
+    /** The conversion for a block, or {@code null}. */
     public static Conversion forBlock(Block block) {
         ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);
         if (id == null) {
@@ -120,7 +124,7 @@ public final class VeloceIntegraleConversions {
         return null;
     }
 
-    /** Wszystkie przepisania (podpowiedz itemu, dokumentacja, testy). */
+    /** All conversions (item tooltip, documentation, tests). */
     public static List<Conversion> all() {
         return CONVERSIONS.stream().filter(entry -> entry.resultBlock() != null).toList();
     }

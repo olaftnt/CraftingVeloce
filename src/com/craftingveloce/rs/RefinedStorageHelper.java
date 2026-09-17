@@ -167,18 +167,18 @@ public class RefinedStorageHelper {
         return ItemStack.EMPTY;
     }
 
-    /** Zgodnosc: true gdy wszystko przyjete. */
+    /** Compatibility: true when everything was accepted. */
     public static boolean insertItem(Level level, BlockPos targetPos, Direction side, ItemStack stack) {
         return insertItemLeftover(level, targetPos, side, stack).isEmpty();
     }
 
     /**
-     * Wklada ile sie da i zwraca RESZTE.
+     * Inserts as much as possible and returns the LEFTOVER.
      *
-     * <p>Ten sam blad co w {@code ConnectedEndpointInfo}: stara wersja zwracala
-     * sam boolean, wiec czesciowe przyjecie bylo raportowane jako porazka -
-     * a itemy juz byly w magazynie. Wolajacy nie zabieral ich wtedy graczowi,
-     * co konczylo sie duplikacja.
+     * <p>The same bug as in {@code ConnectedEndpointInfo}: the old version
+     * returned just a boolean, so a partial acceptance was reported as a
+     * failure - while the items were already in the storage. The caller then
+     * did not take them away from the player, which ended in duplication.
      */
     public static ItemStack insertItemLeftover(Level level, BlockPos targetPos, Direction side, ItemStack stack) {
         if (stack.isEmpty()) {
@@ -215,7 +215,7 @@ public class RefinedStorageHelper {
                 if (inserted >= stack.getCount()) {
                     return ItemStack.EMPTY;
                 }
-                // Czesciowo przyjeto - zmniejsz i probuj dalej w kolejnych kontenerach.
+                // Partially accepted - shrink and keep trying in the next containers.
                 stack = stack.copyWithCount(stack.getCount() - (int) inserted);
                 if (stack.isEmpty()) {
                     return ItemStack.EMPTY;

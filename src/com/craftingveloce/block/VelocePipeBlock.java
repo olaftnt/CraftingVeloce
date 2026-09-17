@@ -84,13 +84,13 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
     public static final MapCodec<VelocePipeBlock> CODEC = ChestBlock.simpleCodec(properties -> new VelocePipeBlock());
 
-    // Precise VoxelShapes matching the pipe models (przywrocone do 6x6).
-    // Wymiary MUSZA byc zgodne z modelami w assets/.../models/block/
+    // Precise VoxelShapes matching the pipe models (restored to 6x6).
+    // The dimensions MUST match the models in assets/.../models/block/
     // (pipe_core.json, pipe_part.json, pipe_extract.json).
-    // Rura jest 6x6 px (5..11), a nozzle 8x8 px (4..12).
+    // The pipe is 6x6 px (5..11), and the nozzle is 8x8 px (4..12).
     //
-    // MIN/MAX to znormalizowane granice przekroju rury (5/16 i 11/16).
-    // Uzywa ich getClickedSide() do rozpoznania, w ktore ramie trafil klucz.
+    // MIN/MAX are the normalized bounds of the pipe cross-section (5/16 and 11/16).
+    // getClickedSide() uses them to work out which arm the wrench hit.
     public static final double MIN = 5.0D / 16.0D;
     public static final double MAX = 11.0D / 16.0D;
 
@@ -174,18 +174,20 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     }
 
     /**
-     * Czy w tym kierunku jest COKOLWIEK, z czym ta rura moze sie laczyc.
+     * Whether there is ANYTHING in this direction that this pipe can connect to.
      *
-     * <p><b>Po co flaga {@code ignoreDisconnectFlags}.</b> Normalnie odlaczona
-     * strona nie laczy sie z niczym - i to jest poprawne dla BUDOWY sieci.
-     * Ale wrench musi umiec odczytac, co lezy za odlaczona strona, zeby
-     * pokazac ja z powrotem: bez tego po odlaczeniu ramie znikalo ze stanu
-     * bloku, a wraz z nim mozliwosc klikniecia w to miejsce. Polaczenia nie
-     * dalo sie juz przywrocic.
+     * <p><b>Why the {@code ignoreDisconnectFlags} flag exists.</b> Normally a
+     * disconnected side does not connect to anything - and that is correct for
+     * BUILDING the network. But the wrench has to be able to read what lies
+     * behind a disconnected side so that it can show it again: without that,
+     * after disconnecting, the arm disappeared from the block state, and with
+     * it the ability to click that spot. The connection could no longer be
+     * restored.
      *
-     * <p>Zamiast pisac drugi, rownolegly warunek "co tu stoi" (ktory predzej
-     * czy pozniej rozjechalby sie z tym), ta sama metoda przyjmuje wiec
-     * informacje, czy ma pominać flagi odlaczenia.
+     * <p>Rather than writing a second, parallel "what is standing here"
+     * condition (which would sooner or later drift apart from this one), the
+     * same method therefore accepts information about whether it should skip
+     * the disconnect flags.
      */
     public boolean canConnectDirection(Level level, BlockPos pos, Direction dir, @Nullable VelocePipeBlockEntity pipeBE, @Nullable BlockState neighborStateOverride, boolean ignoreDisconnectFlags) {
         if (!ignoreDisconnectFlags && pipeBE != null && pipeBE.isDisconnected(dir)) {
@@ -210,17 +212,17 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             return terminal.canConnectFrom(neighborState, dir.getOpposite());
         }
 
-        // 2. NASZE WEZLY (terminal, kontroler, crafter, ekstraktor, OBA PIECE).
+        // 2. OUR NODES (terminal, controller, crafter, extractor, BOTH FURNACES).
         //
-        // BUG, ktory to naprawia: ten warunek wymienial typy blokow RECZNIE
-        // i piece w nim nie bylo. Rura nie ustawiala wiec sobie ramienia w
-        // strone pieca - wygladala jak niepodlaczona, a siec kabli Toma jej
-        // nie widziala. To dokladnie ten sam blad, ktory juz raz wyciagnal
-        // kontroler z jego wlasnej sieci.
+        // The BUG this fixes: this condition listed block types BY HAND and the
+        // furnace was not among them. The pipe therefore did not set an arm
+        // toward the furnace - it looked unconnected, and Tom's cable network
+        // did not see it. This is exactly the same bug that had already once
+        // pulled the controller out of its own network.
         //
-        // Teraz pytamy VeloceNodeBlocks - JEDNO zrodlo prawdy o wezlach,
-        // ktorego uzywa tez budowa sieci. Nowy wezel zadziala wiec w obu
-        // miejscach naraz, bez pamietania o drugim.
+        // Now we ask VeloceNodeBlocks - the ONE source of truth about nodes,
+        // which network building also uses. A new node will therefore work in
+        // both places at once, with no need to remember about the other.
         if (com.craftingveloce.network.pipe.VeloceNodeBlocks.isNode(neighborState.getBlock())
                 && com.craftingveloce.network.pipe.VeloceNodeBlocks.connectsFrom(
                         neighborState, neighborState.getBlock(), dir.getOpposite())) {
@@ -299,14 +301,15 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
         Direction side = getClickedSide(state, pos, hit.getLocation());
 
-        // NA KLIENCIE NIE ZMIENIAMY SWIATA.
+        // ON THE CLIENT WE DO NOT CHANGE THE WORLD.
         //
-        // Wczesniej cala ta metoda leciala po obu stronach, wiec takze klient
-        // wykonywal world.setBlockAndUpdate() na rurze i na jej sasiedzie oraz
-        // markNodeInvalid() w sieci kabli Toma. To modyfikacja swiata po stronie
-        // klienta: powoduje miganie, zbedne przebudowy block entity i rozjazd
-        // stanu, ktory serwer musi potem cofac. Serwer robi dokladnie to samo
-        // i przysyla update - klient ma tylko zamachnac reka.
+        // Previously this whole method ran on both sides, so the client also
+        // executed world.setBlockAndUpdate() on the pipe and on its neighbor,
+        // plus markNodeInvalid() in Tom's cable network. That is a world
+        // modification on the client side: it causes flicker, needless block
+        // entity rebuilds, and state drift that the server then has to roll
+        // back. The server does exactly the same thing and sends an update -
+        // the client only has to swing its hand.
         if (world.isClientSide) {
             if (player != null) {
                 player.swing(hand, true);
@@ -315,14 +318,14 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         }
 
         if (side == null) {
-            // Klik w RDZEN. Kierunkiem jest sciana, w ktora trafilismy - ale
-            // TYLKO wowczas, gdy w tym kierunku naprawde cos stoi.
+            // Click on the CORE. The direction is the wall we hit - but ONLY
+            // when something is really standing in that direction.
             //
-            // BUG, ktory to naprawia: bez tego warunku klik w rdzen od gory
-            // (albo w dowolna sciane bez sasiada) przelaczal "gore" i
-            // meldowal "Disconnected", nie zmieniajac NICZEGO. Gracz widzial
-            // komunikat o rozlaczeniu, ktore nie nastapilo - i nie mial jak
-            // zgadnac, ze trafil w kierunek bez polaczenia.
+            // The BUG this fixes: without this condition, a click on the core
+            // from above (or on any wall with no neighbor) toggled "up" and
+            // reported "Disconnected" without changing ANYTHING. The player saw
+            // a message about a disconnection that never happened - and had no
+            // way to guess that they had hit a direction with no connection.
             Direction face = hit.getDirection();
             if (!canConnectDirection(world, pos, face, pipeBE, null,
                     /* ignoreDisconnectFlags */ true)) {
@@ -376,10 +379,10 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             } else if (neighborState.getBlock() instanceof VelocePipeBlock) {
                 togglePipeLink(world, pos, pipeBE, side, neighborPos, player);
             } else {
-                // Wezel (terminal, crafter, ekstraktor, piec) albo cokolwiek
-                // innego, co sie laczy, ale nie ma trybow. Mowimy o tym wprost:
-                // wczesniej byl tu CICHY no-op, wiec gracz klikal i nie dzialo
-                // sie nic, bez zadnej informacji dlaczego.
+                // A node (terminal, crafter, extractor, furnace) or anything
+                // else that connects but has no modes. We say so outright:
+                // there used to be a SILENT no-op here, so the player clicked
+                // and nothing happened, with no information as to why.
                 if (player instanceof ServerPlayer sp) {
                     sp.displayClientMessage(
                             Component.literal("This side is a machine - nothing to toggle"), true);
@@ -392,28 +395,31 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
 
         if (world instanceof ServerLevel sl) {
-            // TA SAMA DROGA CO PRZY ZMIANIE SASIADA - i to jest istotne.
+            // THE SAME PATH AS ON A NEIGHBOR CHANGE - and that matters.
             //
-            // BUG, ktory tu byl: wolalismy tylko rebuildAt(), ktore robi pelny
-            // BFS w trakcie klikania i NIE synchronizuje plaskiej struktury.
-            // O tym, czy odlaczenie w ogole podzieli siec, decydowal wiec
-            // EFEKT UBOCZNY aktualizacji bloku (neighborChanged sasiada) -
-            // czyli raz zadzialalo, a raz nie, zaleznie od tego, czy gra
-            // akurat wyslala powiadomienie. To jest wlasnie to "przez chwile
-            // dzialalo, a potem sie naprawilo".
+            // The BUG here was: we only called rebuildAt(), which does a full
+            // BFS in the middle of a click and does NOT synchronize the flat
+            // structure. Whether a disconnection split the network at all was
+            // therefore decided by a SIDE EFFECT of the block update (the
+            // neighbor's neighborChanged) - so it worked sometimes and not
+            // others, depending on whether the game happened to send the
+            // notification. That is exactly the "it worked for a moment and
+            // then fixed itself" report.
             //
-            // onNeighborChanged robi trzy rzeczy, ktorych potrzebujemy:
-            //   1. syncAround - plaska struktura natychmiast wie o zmianie,
-            //   2. queueRebuild - przebudowa ODLOZONA do ticku, wiec klik
-            //      gracza nie placi za skan calej sieci,
-            //   3. uniewaznienie cache endpointow - bez tego terminal dalej
-            //      pokazywalby zawartosc odlaczonej skrzyni.
+            // onNeighborChanged does three things we need:
+            //   1. syncAround - the flat structure learns about the change
+            //      immediately,
+            //   2. queueRebuild - the rebuild is DEFERRED to a tick, so a
+            //      player click does not pay for scanning the whole network,
+            //   3. invalidation of the endpoint cache - without it the terminal
+            //      would keep showing the contents of the disconnected chest.
             com.craftingveloce.network.pipe.VelocePipeNetworkManager mgr =
                     com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
             mgr.onNeighborChanged(sl, pos, side != null ? pos.relative(side) : pos);
             if (side != null) {
-                // Druga strona tez - po podziale nalezy do INNEJ sieci, wiec
-                // jej cache trzeba uniewaznic osobno.
+                // The other side too - after the split it belongs to a
+                // DIFFERENT network, so its cache has to be invalidated
+                // separately.
                 mgr.onNeighborChanged(sl, pos.relative(side), pos);
             }
         }
@@ -427,34 +433,36 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     }
 
     /**
-     * Przelacza polaczenie miedzy DWOMA rurami.
+     * Toggles the connection between TWO pipes.
      *
-     * <p><b>Flaga nalezy do JEDNEJ z nich</b> - do tej o mniejszej pozycji.
+     * <p><b>The flag belongs to ONE of them</b> - the one with the lower position.
      *
-     * <p><b>Dlaczego nie do obu (jak bylo).</b> Poprzednia wersja ustawiala ta
-     * sama wartosc na obu rurach. A ze polaczenie jest zerwane, gdy odlaczona
-     * jest KTORAKOLWIEK strona, wystarczala chwila, w ktorej flagi sie
-     * rozjechaly (np. jedna strona ustawiona z innej sciezki kodu), i dalej
-     * dzialo sie to:
+     * <p><b>Why not to both (as it used to be).</b> The previous version set
+     * the same value on both pipes. And since the connection is broken when
+     * EITHER side is disconnected, a single moment in which the flags drifted
+     * apart (e.g. one side set from another code path) was enough, and then
+     * this kept happening:
      * <ul>
-     *   <li>klik w strone, ktora BYLA juz odlaczona, meldowal "Disconnected"
-     *       i rzeczywiscie nic nie zmienial - bo polaczenie bylo juz zerwane,
-     *       a gracz nie mial tego jak zobaczyc,</li>
-     *   <li>przy odlaczeniu ramie znika ze stanu bloku po OBU stronach, wiec
-     *       przestawalo byc klikalne - i polaczenia nie dalo sie przywrocic.</li>
+     *   <li>a click on a side that was ALREADY disconnected reported
+     *       "Disconnected" and really changed nothing - because the connection
+     *       was already broken, and the player had no way to see that,</li>
+     *   <li>on disconnection the arm disappears from the block state on BOTH
+     *       sides, so it stopped being clickable - and the connection could not
+     *       be restored.</li>
      * </ul>
      *
-     * <p>Jeden wlasciciel (deterministycznie: mniejsza pozycja) sprawia, ze
-     * obie strony czytaja i zapisuja TE SAMA flage. Wynik nie zalezy od tego,
-     * od ktorej strony zacząłeś, i kazda strona jest klikalna naprzemiennie.
+     * <p>A single owner (deterministically: the lower position) makes both
+     * sides read and write THE SAME flag. The result does not depend on which
+     * side you started from, and each side is clickable in turn.
      *
-     * <p>Stan przeliczamy na OBU rurach, bo ramie znika po obu stronach.
+     * <p>We recompute the state on BOTH pipes, because the arm disappears on
+     * both sides.
      */
     private void togglePipeLink(Level world, BlockPos pos, VelocePipeBlockEntity pipeBE,
                                 Direction side, BlockPos neighborPos, Player player) {
         BlockEntity nbe = world.getBlockEntity(neighborPos);
         if (!(nbe instanceof VelocePipeBlockEntity other)) {
-            return;   // sasiad zniknal w trakcie
+            return;   // the neighbor vanished in the meantime
         }
         Direction back = side.getOpposite();
 
@@ -464,23 +472,24 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         VelocePipeBlockEntity follower = selfOwns ? other : pipeBE;
         Direction followerSide = selfOwns ? back : side;
 
-        // DECYZJA WYNIKA ZE STANU LACZA, A NIE Z JEDNEJ FLAGI.
+        // THE DECISION FOLLOWS FROM THE STATE OF THE LINK, NOT FROM ONE FLAG.
         //
-        // BUG, ktory to naprawia: patrzac tylko na flage wlasciciela, przy
-        // zastanym stanie asymetrycznym (flaga zostala na drugiej rurze)
-        // wlasciciel uwazal lacze za OTWARTE, wiec "przelaczal" je na
-        // zamkniete - a ono bylo juz zamkniete. Gracz dostawal komunikat
-        // "Disconnected" i nie zmienialo sie NIC. To jest dokladnie ten sam
-        // objaw, ktory zglosil, tylko z innego powodu.
+        // The BUG this fixes: looking only at the owner's flag, with a
+        // pre-existing asymmetric state (the flag had been left on the other
+        // pipe) the owner considered the link OPEN, so it "toggled" it to
+        // closed - while it was already closed. The player got the
+        // "Disconnected" message and NOTHING changed. This is exactly the same
+        // symptom the player reported, only for a different reason.
         //
-        // Lacze jest zamkniete, gdy odlaczona jest KTORYKOLWIEK koniec.
+        // The link is closed when EITHER end is disconnected.
         boolean linkCut = owner.isDisconnected(ownerSide)
                 || follower.isDisconnected(followerSide);
 
         owner.setExtracting(ownerSide, false);
         owner.setDisconnected(ownerSide, !linkCut);
-        // Druga rura NIE trzyma flagi. Jej stara wartosc bylaby wlasnie tym
-        // zrodlem asymetrii, ktore opisywal bug - wiec ja zawsze sprzatamy.
+        // The second pipe does NOT hold the flag. Its old value would be
+        // precisely that source of asymmetry the bug described - so we always
+        // clean it up.
         follower.setDisconnected(followerSide, false);
 
         world.setBlockAndUpdate(pos, updateConnections(world, pos, world.getBlockState(pos)));
@@ -498,8 +507,8 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     @Nullable
     public Direction getClickedSide(BlockState state, BlockPos pos, Vec3 hitLocation) {
         Vec3 rel = hitLocation.subtract(pos.getX(), pos.getY(), pos.getZ());
-        // Granice musza odpowiadac geometrii rury (4..12 px => 0.25 .. 0.75).
-        // Wczesniej bylo 5..11 px (0.3125 .. 0.6875) przy rurze 6x6.
+        // The bounds must match the pipe geometry (4..12 px => 0.25 .. 0.75).
+        // It used to be 5..11 px (0.3125 .. 0.6875) with a 6x6 pipe.
         if (rel.z < MIN && state.getValue(NORTH)) return Direction.NORTH;
         if (rel.z > MAX && state.getValue(SOUTH)) return Direction.SOUTH;
         if (rel.x < MIN && state.getValue(WEST)) return Direction.WEST;

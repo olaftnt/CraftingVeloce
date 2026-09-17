@@ -20,15 +20,15 @@ import javax.annotation.Nullable;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
- * Velocity Electric Furnace - zrodlo ciepla zasilane Forge Energy.
+ * Velocity Electric Furnace - a heat source powered by Forge Energy.
  *
- * <p>Blok jest WEZLEM sieci (jak crafter czy extractor), wiec moze stac
- * wszedzie tam, gdzie rura - a crafter go znajdzie i uzyje z PRIORYTETEM
- * przed piecem paliwowym.
+ * <p>The block is a network NODE (like the crafter or the extractor), so it can
+ * stand anywhere a pipe can - and the crafter will find it and use it with
+ * PRIORITY over a fuel furnace.
  *
- * <p>Nie ma tickera: energia przychodzi z sieci kablowej przez capability
- * {@code EnergyStorage}, a zuzywa sie wylacznie przy przepalaniu w crafterze.
- * Dzieki temu piec nic nie robi, gdy nikt nie craftuje.
+ * <p>It has no ticker: energy comes from the cable network through the
+ * {@code EnergyStorage} capability, and it is consumed only while smelting in
+ * the crafter. Thanks to that the furnace does nothing when nobody is crafting.
  */
 public class VeloceBrewingStandBlock extends BaseEntityBlock
         implements EntityBlock, VeloceNetworkNode {
@@ -38,8 +38,8 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
     }
 
     /**
-     * Piec elektryczny nie ma przodu ani tylu, wiec laczy sie z rura z kazdej
-     * strony - tak samo jak pozostale maszyny w modzie.
+     * The electric furnace has no front or back, so it connects to a pipe from
+     * every side - just like the other machines in the mod.
      */
     @Override
     public boolean canConnectFrom(BlockState state, Direction towardPipe) {
@@ -57,11 +57,12 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
     }
 
     /**
-     * Piec elektryczny tyka TYLKO po to, zeby odswiezac pasek energii w GUI.
+     * The electric furnace ticks ONLY to refresh the energy bar in the GUI.
      *
-     * <p>Nie ma wlasnej logiki per tick: przetapianie jest natychmiastowe i
-     * rozliczane przez craftera, ktory zabiera cieplo z tego akumulatora.
-     * Bez tickera pasek w GUI zamarzlby na wartosci z chwili otwarcia okna.
+     * <p>It has no per-tick logic of its own: smelting is instant and is settled
+     * by the crafter, which takes the heat from this accumulator. Without a
+     * ticker the bar in the GUI would freeze at the value from the moment the
+     * window was opened.
      */
     @Nullable
     @Override
@@ -75,8 +76,8 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
                                                Player player, BlockHitResult hit) {
-        // Menu z paskiem energii. Piec nie ma slotow na przedmioty - to bufor
-        // pradu dla craftera, wiec ekran pokazuje tylko akumulator.
+        // A menu with the energy bar. The furnace has no item slots - it is a
+        // power buffer for the crafter, so the screen only shows the accumulator.
         if (!world.isClientSide && player instanceof net.minecraft.server.level.ServerPlayer sp) {
             sp.openMenu(new net.minecraft.world.SimpleMenuProvider(
                             (id, inv, p) -> new com.craftingveloce.inventory.VeloceBrewingStandMenu(
@@ -88,17 +89,18 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
     }
 
     /**
-     * Zglasza piec do sieci rur przy postawieniu.
+     * Reports the furnace to the pipe network when placed.
      *
-     * <p><b>BUG, ktory to naprawia.</b> Piec byl zarejestrowany jako wezel
-     * (VeloceNodeBlocks) i potrafil dzialac jako zrodlo ciepla, ale NIE
-     * zglaszal sie przy postawieniu - w przeciwienstwie do terminala,
-     * kontrolera, craftera i ekstraktora. Skutek: postawienie pieca obok
-     * istniejacej rury nie odswiezalo sieci, wiec piec nie byl w niej widziany
-     * (a bez tego crafter go nie znajdowal i nie mial czym przepalac).
+     * <p><b>The BUG this fixes.</b> The furnace was registered as a node
+     * (VeloceNodeBlocks) and could work as a heat source, but it did NOT report
+     * itself when placed - unlike the terminal, the controller, the crafter and
+     * the extractor. The effect: placing the furnace next to an existing pipe
+     * did not refresh the network, so the furnace was not seen in it (and
+     * without that the crafter could not find it and had nothing to smelt with).
      *
-     * <p>Dzialalo tylko w jedna strone: gdy rura byla stawiana PO piecu,
-     * skan rury sam go odkrywal. Odwrotna kolejnosc - i nic.
+     * <p>It only worked in one direction: when the pipe was placed AFTER the
+     * furnace, the pipe's scan discovered it by itself. The reverse order - and
+     * nothing.
      */
     @Override
     public void setPlacedBy(Level world, BlockPos pos, BlockState state,
@@ -122,7 +124,7 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
         return simpleCodec(VeloceBrewingStandBlock::new);
     }
 
-    /** Wlasciwosci zaslepek obudowy (te same, co puste Integrale). */
+    /** Casing cap properties (the same as for empty Integrale frames). */
     @Override
     protected void createBlockStateDefinition(
             net.minecraft.world.level.block.state.StateDefinition.Builder<
@@ -131,14 +133,14 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
         com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
     }
 
-    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    /** When placed, we immediately close the sides the cable comes in from. */
     @Override
     public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
         return com.craftingveloce.block.VeloceIntegraleFrame.withPlacementClosures(
                 context.getLevel(), context.getClickedPos(), defaultBlockState());
     }
 
-    /** Domkniecie blachy na scianie, przy ktorej stoi rura Veloce. */
+    /** Closing the plate on the face where a Veloce pipe stands. */
     @Override
     protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
                                      BlockState facingState, net.minecraft.world.level.LevelAccessor world,

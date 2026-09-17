@@ -20,31 +20,34 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Block entity Veloce Threshold Sensor.
+ * Block entity of the Veloce Threshold Sensor.
  *
- * <p><b>Co to robi.</b> Patrzy, ile sztuk FILTROWANEGO itemu jest fizycznie
- * w sieci, i porownuje to z progiem ustawionym przez gracza. Wynik wystawia
- * jako redstone. Czyli: "gdy w sieci jest mniej niz 64 zelaza - wlacz prad".
+ * <p><b>What it does.</b> It watches how many pieces of the FILTERED item are
+ * physically in the network and compares that with a threshold set by the player.
+ * It exposes the result as redstone. In other words: "when there is less than 64
+ * iron in the network - turn on the power".
  *
- * <p><b>Dwa tryby.</b> {@link Mode#LOW} daje prad, gdy stan spadnie PONIZEJ
- * progu (typowo: uruchom fabryke, bo sie konczy). {@link Mode#HIGH} robi
- * odwrotnie - daje prad, gdy stan jest na progu albo wyzej (typowo: zatrzymaj
- * napelnianie, bo juz dosc). Jedno ustawienie pokrywa oba kierunki, wiec
- * gracz nie musi myslec o "negacji" - wybiera po prostu, co ma byc warunkiem.
+ * <p><b>Two modes.</b> {@link Mode#LOW} gives power when the state drops BELOW the
+ * threshold (typically: start the factory, because it is running out).
+ * {@link Mode#HIGH} does the opposite - it gives power when the state is at the
+ * threshold or above (typically: stop refilling, because there is already enough).
+ * One setting covers both directions, so the player does not have to think about
+ * "negation" - they simply choose what the condition should be.
  *
- * <p><b>Wyjscie.</b> Block trzyma wynik w stanie bloku ({@code POWERED}),
- * a nie tylko w sobie. To celowe: Minecraft rozglasza zmiane stanu bloku
- * sasiadom, wiec to wlasnie ta zmiana uruchamia maszyny obok. Trzymanie
- * wyniku wylacznie w block entity nie daloby zadnego powiadomienia.
+ * <p><b>Output.</b> The block keeps the result in its block state ({@code POWERED}),
+ * not only inside itself. That is deliberate: Minecraft broadcasts a block state
+ * change to the neighbours, so it is precisely that change that starts the machines
+ * next to it. Keeping the result solely in the block entity would give no
+ * notification at all.
  */
 public class VeloceThresholdSensorBlockEntity extends BlockEntity
         implements MenuProvider, VeloceFilterHost {
 
-    /** Co ma byc warunkiem wyjscia. */
+    /** What the output condition should be. */
     public enum Mode {
-        /** Prad, gdy w sieci jest PONIZEJ progu ("za malo"). */
+        /** Power when the network is BELOW the threshold ("not enough"). */
         LOW("gui.craftingveloce.sensor.mode.low"),
-        /** Prad, gdy w sieci jest NA PROGU albo powyzej ("wystarczy"). */
+        /** Power when the network is AT the threshold or above ("that is enough"). */
         HIGH("gui.craftingveloce.sensor.mode.high");
 
         public final String key;
@@ -58,32 +61,32 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         }
     }
 
-    /** Ile itemow ma byc w sieci (prog). Nowy sensor startuje z 64. */
+    /** How many items there should be in the network (the threshold). A new sensor starts at 64. */
     public static final long DEFAULT_THRESHOLD = 64L;
 
     /**
-     * Dolna granica progu.
+     * The lower bound of the threshold.
      *
-     * <p>Nie zero: "mniej niz 0 sztuk" nie zdarza sie NIGDY, wiec tryb
-     * "ponizej" z progiem 0 nie wlaczylby pradu ani razu - a wygladalby na
-     * ustawiony. Jedynka jest najmniejsza wartoscia, ktora cos znaczy.
+     * <p>Not zero: "fewer than 0 pieces" NEVER happens, so the "below" mode with a
+     * threshold of 0 would not turn on the power even once - and it would look like
+     * it was set. One is the smallest value that means anything.
      */
     public static final long MIN_THRESHOLD = 1L;
 
-    /** Gorna granica progu - chroni przed absurdalnymi wartosciami z pola tekstowego. */
+    /** The upper bound of the threshold - protects against absurd values from the text field. */
     public static final long MAX_THRESHOLD = 1_000_000_000L;
 
     /**
-     * Co ile tickow sprawdzamy siec. 20 tickow = raz na sekunde.
+     * How often (in ticks) we check the network. 20 ticks = once a second.
      *
-     * <p>Raz na sekunde, a nie czesciej, z dwoch powodow:
+     * <p>Once a second and not more often, for two reasons:
      * <ul>
-     *   <li>skan magazynow sieci jest drogi (przejscie po wszystkich
-     *       endpointach), a agregat jest cache'owany wlasnie na 10 tickow -
-     *       pytanie czesciej nie daloby swiezszych danych, tylko wiecej pracy,</li>
-     *   <li>sensor sluzy do uruchamiania fabryki ("skonczylo sie zelazo"),
-     *       a nie do taktowania - sekunda zwloki jest bez znaczenia, natomiast
-     *       dziesiec sensorow pytajacych co pol sekundy to juz realne obciazenie.</li>
+     *   <li>scanning the network's storages is expensive (a walk over all
+     *       endpoints), and the aggregate is cached for exactly 10 ticks -
+     *       asking more often would not give fresher data, only more work,</li>
+     *   <li>the sensor is meant for starting a factory ("the iron ran out"),
+     *       not for clocking - a second of delay is irrelevant, whereas ten
+     *       sensors asking every half a second is already a real load.</li>
      * </ul>
      */
     private static final int CHECK_INTERVAL_TICKS = 20;
@@ -92,14 +95,14 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
     private long threshold = DEFAULT_THRESHOLD;
     private Mode mode = Mode.LOW;
 
-    /** Ostatnio zmierzona liczba sztuk w sieci (-1 = jeszcze nie mierzono). */
+    /** The last measured number of pieces in the network (-1 = not measured yet). */
     private long lastCount = -1L;
 
     /**
-     * Ile sztuk bylo w sieci przy ostatnim doslaniu stanu klientowi.
+     * How many pieces were in the network when the state was last sent to the client.
      *
-     * <p>Potrzebne, zeby nie wysylac blokowego pakietu co sekunde, gdy nic sie
-     * nie zmienia - przy kilku sensorach to juz ruch bez powodu.
+     * <p>Needed so as not to send a block packet every second when nothing changes -
+     * with several sensors that is traffic for no reason.
      */
     private long lastSyncedCount = Long.MIN_VALUE;
 
@@ -110,7 +113,7 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // Filtr (przez wspolny interfejs - ten sam wybor itemu co w ekstraktorze)
+    // Filter (through the shared interface - the same item selection as in the extractor)
     // ------------------------------------------------------------------
 
     @Override
@@ -138,14 +141,14 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // Prog i tryb
+    // Threshold and mode
     // ------------------------------------------------------------------
 
     public long getThreshold() {
         return threshold;
     }
 
-    /** Ustawia prog, przycinajac do sensownego zakresu. */
+    /** Sets the threshold, clamping it to a sensible range. */
     public void setThreshold(long value) {
         long clamped = Math.max(MIN_THRESHOLD, Math.min(MAX_THRESHOLD, value));
         if (clamped == threshold) {
@@ -174,12 +177,13 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
     }
 
     /**
-     * Czy sensor wystawia teraz prad.
+     * Whether the sensor is emitting power right now.
      *
-     * <p>Czytamy to ze STANU BLOKU, a nie z wlasnego pola. Stan bloku jest
-     * jedynym zrodlem prawdy dla wyjscia (bo tylko jego zmiana jest rozglaszana
-     * sasiadom), wiec trzymanie drugiej kopii w block entity znaczyloby dwa
-     * miejsca, ktore moga sie rozjesc - np. po wczytaniu swiata z NBT.
+     * <p>We read this from the BLOCK STATE, not from our own field. The block state
+     * is the single source of truth for the output (because only its change is
+     * broadcast to the neighbours), so keeping a second copy in the block entity
+     * would mean two places that can drift apart - e.g. after loading the world
+     * from NBT.
      */
     public boolean isPowered() {
         BlockState state = getBlockState();
@@ -188,10 +192,10 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
     }
 
     /**
-     * Czy warunek jest spelniony dla danej liczby sztuk.
+     * Whether the condition is met for a given number of pieces.
      *
-     * <p>Wydzielone, zeby GUI moglo pokazac DOKLADNIE to samo, co robi tick -
-     * a nie wlasna, "podobna" ocene warunku.
+     * <p>Extracted so that the GUI can show EXACTLY the same thing the tick does -
+     * and not its own, "similar" evaluation of the condition.
      */
     public boolean conditionMet(long count) {
         return mode == Mode.LOW ? count < threshold : count >= threshold;
@@ -205,10 +209,10 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         if (!(level instanceof ServerLevel sl)) {
             return;
         }
-        // Timer odliczamy ZAWSZE, a mierzenie sieci dopiero po jego wyzerowaniu.
-        // Skan sieci jest drogi (przejscie po magazynach), a sensor nie musi
-        // reagowac co tick - 2 razy na sekunde to i tak szybciej, niz zareaguje
-        // jakakolwiek maszyna po drugiej stronie redstone'a.
+        // We ALWAYS count the timer down, and only measure the network once it
+        // reaches zero. A network scan is expensive (a walk over the storages), and
+        // the sensor does not have to react every tick - twice a second is still
+        // faster than any machine on the other side of the redstone will react.
         if (--checkCooldown > 0) {
             return;
         }
@@ -221,17 +225,17 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         if (shouldPower != isPowered()) {
             applyPowerState(sl, shouldPower);
         }
-        // Licznik jest pokazywany w GUI, wiec dosylamy go - ale TYLKO gdy
-        // naprawde sie zmienil. Wysylanie co sekunde "na wszelki wypadek"
-        // to ruch bez powodu przy stabilnym zapasie.
+        // The counter is shown in the GUI, so we send it - but ONLY when it really
+        // changed. Sending every second "just in case" is traffic for no reason
+        // when the stock is stable.
         //
-        // UWAGA NA JEDNOSTKI: ten kod jest osiagany TYLKO raz na
-        // CHECK_INTERVAL_TICKS (wyzej jest return), wiec kazdy licznik
-        // dekrementowany w tym miejscu liczy "sprawdzenia", a nie ticki.
-        // Poprzednia wersja trzymala tu osobny cooldown 20 - co dawalo
-        // 20 * 20 = 400 tickow (20 SEKUND) zamiast sekundy, wiec licznik
-        // w GUI odswiezal sie raz na 20 sekund. Samo porownanie z ostatnio
-        // doslana wartoscia wystarcza: jestesmy tu najwyzej raz na sekunde.
+        // WATCH OUT FOR THE UNITS: this code is reached ONLY once every
+        // CHECK_INTERVAL_TICKS (there is a return above), so every counter
+        // decremented here counts "checks", not ticks.
+        // The previous version kept a separate cooldown of 20 here - which gave
+        // 20 * 20 = 400 ticks (20 SECONDS) instead of a second, so the counter
+        // in the GUI refreshed once every 20 seconds. The comparison with the last
+        // sent value is enough on its own: we are here at most once a second.
         if (count != lastSyncedCount) {
             lastSyncedCount = count;
             syncToClients();
@@ -239,13 +243,13 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
     }
 
     /**
-     * Liczba sztuk filtrowanego itemu w sieci.
+     * The number of pieces of the filtered item in the network.
      *
-     * <p>Liczymy FIZYCZNY stan magazynow, a nie "ile da sie dorobic" - sensor
-     * ma pilnowac zapasu, a nie produkcji. Craftowalnosc zmienia sie od samego
-     * posiadania receptur, wiec nie ma tu nic do rzeczy.
+     * <p>We count the PHYSICAL state of the storages, not "how much can be made" -
+     * the sensor is meant to guard the stock, not the production. Craftability
+     * changes just from having the recipes, so it is irrelevant here.
      *
-     * @return liczba sztuk; 0 gdy nie ma filtra albo sieci
+     * @return the number of pieces; 0 when there is no filter or no network
      */
     private long measure(ServerLevel sl) {
         if (filter.isEmpty()) {
@@ -260,7 +264,7 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         return net.getAllItemCounts(sl).getOrDefault(wanted, 0L);
     }
 
-    /** Ustawia stan bloku - to on rozglasza zmiane sasiadom. */
+    /** Sets the block state - it is what broadcasts the change to the neighbours. */
     private void applyPowerState(ServerLevel sl, boolean on) {
         BlockState state = getBlockState();
         if (!state.hasProperty(com.craftingveloce.block.VeloceThresholdSensorBlock.POWERED)) {
@@ -281,7 +285,7 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // Zapis / odczyt
+    // Save / load
     // ------------------------------------------------------------------
 
     @Override
@@ -292,9 +296,9 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
         }
         tag.putLong("Threshold", threshold);
         tag.putString("Mode", mode.name());
-        // UWAGA: wyjscia (POWERED) NIE zapisujemy tutaj. Zyje w stanie bloku,
-        // ktory i tak jest zapisywany razem z chunkiem - druga kopia w NBT
-        // mogla sie z nim rozjesc po wczytaniu swiata.
+        // NOTE: we do NOT save the output (POWERED) here. It lives in the block
+        // state, which is saved together with the chunk anyway - a second copy
+        // in NBT could drift apart from it after loading the world.
     }
 
     @Override
@@ -307,21 +311,22 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
                 ? Math.max(MIN_THRESHOLD, Math.min(MAX_THRESHOLD, tag.getLong("Threshold")))
                 : DEFAULT_THRESHOLD;
         mode = tag.contains("Mode") && "HIGH".equals(tag.getString("Mode")) ? Mode.HIGH : Mode.LOW;
-        // Pole tylko-synchronizacyjne: jest w pakiecie bloku, nie ma go
-        // w zapisie swiata. Brak = jeszcze nie mierzono.
+        // A sync-only field: it is in the block packet, it is not in the world
+        // save. Missing = not measured yet.
         lastCount = tag.contains("LastCount") ? tag.getLong("LastCount") : -1L;
     }
 
     /**
-     * Dane wysylane klientowi.
+     * The data sent to the client.
      *
-     * <p><b>Dlaczego osobno od {@link #saveAdditional}.</b> {@code lastCount}
-     * jest wartoscia pochodna (wynik pomiaru sieci), wiec CELOWO nie trafia do
-     * zapisu swiata - po wczytaniu i tak jest liczona od nowa. Ale GUI czyta
-     * ja wlasnie z block entity po stronie klienta, a ta dostaje TYLKO to, co
-     * zwroci ta metoda. Bez dopisania jej tutaj licznik nie docieral do
-     * klienta NIGDY: GUI pokazywalo na stale "nieznane", a podpis stanu
-     * wyjscia byl liczony z -1, czyli mogl pokazywac odwrotnosc prawdy.
+     * <p><b>Why separately from {@link #saveAdditional}.</b> {@code lastCount}
+     * is a derived value (the result of measuring the network), so it DELIBERATELY
+     * does not go into the world save - after loading it is recalculated anyway.
+     * But the GUI reads it precisely from the client-side block entity, and that
+     * one receives ONLY what this method returns. Without adding it here the
+     * counter NEVER reached the client: the GUI showed "unknown" permanently, and
+     * the output state label was computed from -1, so it could show the opposite
+     * of the truth.
      */
     @Override
     public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
@@ -348,7 +353,7 @@ public class VeloceThresholdSensorBlockEntity extends BlockEntity
                 id, inv, getBlockPos(), this);
     }
 
-    /** Pusty kontener na potrzeby menu (sensor nie trzyma przedmiotow). */
+    /** Empty container for the menu's needs (the sensor does not hold items). */
     public Container placeholderContainer() {
         return new SimpleContainer(1);
     }

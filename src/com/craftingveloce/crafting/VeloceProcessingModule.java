@@ -9,64 +9,67 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * JEDEN sposob przetwarzania rzeczy w sieci.
+ * ONE way of processing things in the network.
  *
- * <p><b>Po co ten interfejs.</b> Do tej pory rdzen mial wpisane na sztywno dwa
- * sposoby: crafter (receptury craftingowe) i piec (przepalanie). Wystarczylo
- * wyjac crafter z sieci, zeby siec z samym piecem przestala umiec zrobic szklo
- * z piasku - mimo ze szklo powstaje WYLACZNIE w piecu i crafter nie jest do
- * tego potrzebny. Ta sama sztywnosc blokowalaby kazdy kolejny modul (Create,
- * Alchemistry, Mekanism, enchanting, smithing...).
+ * <p><b>Why this interface exists.</b> Until now the core had two ways
+ * hard-coded: the crafter (crafting recipes) and the furnace (smelting). It was
+ * enough to remove the crafter from the network for a network with only a
+ * furnace to stop being able to make glass from sand - even though glass is made
+ * EXCLUSIVELY in a furnace and a crafter is not needed for it. The same rigidity
+ * would have blocked every further module (Create, Alchemistry, Mekanism,
+ * enchanting, smithing...).
  *
- * <p>Teraz rdzen zna wylacznie ten interfejs i pyta KAZDY zarejestrowany
- * modul o to samo:
+ * <p>Now the core knows only this interface and asks EVERY registered module the
+ * same thing:
  * <ul>
- *   <li>{@link #available} - czy w sieci stoi maszyna tego modulu,</li>
- *   <li>{@link #powered} - czy ta maszyna jest teraz zdolna do pracy,</li>
- *   <li>{@link #producible} - co ten modul potrafi zrobic.</li>
+ *   <li>{@link #available} - whether this module's machine stands in the network,</li>
+ *   <li>{@link #powered} - whether that machine is currently able to work,</li>
+ *   <li>{@link #producible} - what this module can make.</li>
  * </ul>
  *
- * <p>Dodanie nowego modulu = jedna rejestracja w
- * {@link VeloceProcessingRegistry} (albo w {@code compat/*}) - bez dotykania
- * planera, liczenia liczb i kontrolera.
+ * <p>Adding a new module = one registration in
+ * {@link VeloceProcessingRegistry} (or in {@code compat/*}) - without touching
+ * the planner, the number crunching or the controller.
  */
 public interface VeloceProcessingModule {
 
-    /** Krotki identyfikator do logow i diagnostyki, np. {@code "crafting"}, {@code "furnace"}. */
+    /** Short identifier for logs and diagnostics, e.g. {@code "crafting"}, {@code "furnace"}. */
     String id();
 
-    /** Typy receptur obslugiwane przez ten modul (rodzina z {@link VeloceRecipeFamilies}). */
+    /** Recipe types handled by this module (a family from {@link VeloceRecipeFamilies}). */
     Set<RecipeType<?>> recipeTypes();
 
     /**
-     * Itemy, ktore ten modul POTRAFI zrobic - bez patrzenia na zasilanie.
+     * The items this module CAN make - without looking at power.
      *
-     * <p>Wynik moze zalezec od sieci (np. modul craftingowy odejmuje itemy
-     * wylaczone w crafterze), dlatego dostaje level i siec.
+     * <p>The result may depend on the network (e.g. the crafting module subtracts
+     * items disabled in the crafter), which is why it receives the level and the
+     * network.
      */
     Set<Item> producible(ServerLevel level, VelocePipeNetwork network);
 
-    /** Czy w sieci stoi maszyna tego modulu - nawet bez paliwa/pradu. */
+    /** Whether this module's machine stands in the network - even without fuel/power. */
     boolean available(ServerLevel level, VelocePipeNetwork network);
 
-    /** Czy maszyna tego modulu jest teraz zdolna wykonac operacje. */
+    /** Whether this module's machine is currently able to perform an operation. */
     boolean powered(ServerLevel level, VelocePipeNetwork network);
 
     /**
-     * Receptury tego modulu, ktore wytwarzaja dany item.
+     * This module's recipes that produce the given item.
      *
-     * <p><b>Po co.</b> Sama lista "co umiem zrobic" ({@link #producible}) nie
-     * wystarcza planerowi - on potrzebuje konkretnych receptur ze skladnikami
-     * i liczbami sztuk, zeby policzyc, ile da sie zrobic z tego, co jest
-     * w sieci. Moduly z innych modow maja wlasne modele receptur, wiec to one
-     * tlumacza je na wspolny {@link ProcessingEntry}.
+     * <p><b>Why.</b> The list of "what I can make" alone ({@link #producible}) is
+     * not enough for the planner - it needs concrete recipes with ingredients and
+     * item counts to compute how much can be made from what is in the network.
+     * Modules from other mods have their own recipe models, so they are the ones
+     * that translate them into the common {@link ProcessingEntry}.
      *
-     * <p>Domyslnie pusto: modul, ktory tylko doklada gotowe receptury do
-     * wspolnego indeksu (jak piec), nie musi nic implementowac.
+     * <p>Empty by default: a module that only adds ready-made recipes to the
+     * common index (like the furnace) does not have to implement anything.
      *
-     * <p>Modul dostaje siec, bo o tym, ktore receptury sa wykonalne, decyduja
-     * MASZYNY stojace w sieci (i to, czy maja prad) - a modul moze obslugiwac
-     * kilka rodzin naraz (np. kruszarka i pila), kazda z wlasna maszyna.
+     * <p>The module receives the network because what determines which recipes are
+     * feasible are the MACHINES standing in the network (and whether they have
+     * power) - and a module may handle several families at once (e.g. the crusher
+     * and the saw), each with its own machine.
      */
     default List<ProcessingEntry> recipesFor(ServerLevel level, VelocePipeNetwork network,
                                              Item item) {
@@ -74,26 +77,27 @@ public interface VeloceProcessingModule {
     }
 
     /**
-     * Receptury tego modulu na dany item BEZ patrzenia na maszyny i zasilanie.
+     * This module's recipes for the given item WITHOUT looking at machines and power.
      *
-     * <p><b>Po co osobna metoda.</b> {@link #recipesFor} odpowiada na pytanie
-     * planera: "co moge zrobic TERAZ" - wiec wymaga maszyny w sieci i pradu.
-     * Narzedzia (np. komenda {@code /cv getitems}) pytaja o cos innego: "JAK
-     * sie to w ogole robi" - i musza dostac recepture takze wtedy, gdy gracz
-     * nie ma jeszcze maszyny. Bez tego rozroznienia komenda twierdzila, ze
-     * item nie ma receptury, choc receptura istnieje (np. mechanical crafting
-     * Create) - a to najgorszy rodzaj bledu: brak informacji udajacy informacje.
+     * <p><b>Why a separate method.</b> {@link #recipesFor} answers the planner's
+     * question: "what can I make NOW" - so it requires a machine in the network
+     * and power. Tools (e.g. the {@code /cv getitems} command) ask something else:
+     * "HOW is this even made" - and they must get the recipe also when the player
+     * does not have the machine yet. Without that distinction the command claimed
+     * that an item has no recipe, even though the recipe exists (e.g. Create's
+     * mechanical crafting) - and that is the worst kind of bug: missing
+     * information pretending to be information.
      */
     default List<ProcessingEntry> recipesAnywhere(ServerLevel level, Item item) {
         return List.of();
     }
 
     /**
-     * Czysci pamiec modulu (indeksy receptur).
+     * Clears the module's memory (recipe indexes).
      *
-     * <p>Wolane przy zmianie swiata / przeladowaniu danych. Domyslnie nic -
-     * modul bez pamieci nie ma czego czyscic. Rdzen nie musi znac zadnego
-     * modulu, zeby to wywolac.
+     * <p>Called on world change / data reload. Nothing by default - a module
+     * without memory has nothing to clear. The core does not need to know any
+     * module in order to call this.
      */
     default void invalidate() {
     }

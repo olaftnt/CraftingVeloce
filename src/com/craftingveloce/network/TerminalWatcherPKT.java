@@ -12,16 +12,17 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * C→S: gracz otworzyl albo zamknal terminal.
+ * C->S: the player opened or closed the terminal.
  *
- * <p><b>Po co to jest.</b> Terminal trzymal liste "kto patrzy" i wysylal jej
- * pelna mape stocku (plus mape craftowalnosci) co sekunde. Wpisy znikaly tylko
- * gdy gracz sie rozlaczyl albo odszedl dalej niz 64 klocki - czyli po zamknieciu
- * GUI gracz stojacy obok terminala dostawal te pakiety BEZ KOŃCA, mimo ze nic
- * nie ogladal. Przy duzej sieci to kilka kilobajtow na sekunde na terminal,
- * plus kopiowanie obu map i pakowanie ich po stronie serwera.
+ * <p><b>Why this exists.</b> The terminal kept a "who is watching" list and
+ * sent it the full stock map (plus the craftability map) every second. Entries
+ * disappeared only when the player disconnected or walked further than 64
+ * blocks - so after closing the GUI, a player standing next to the terminal
+ * kept receiving those packets ENDLESSLY, even though they were not looking at
+ * anything. With a large network that is several kilobytes per second per
+ * terminal, plus copying both maps and serializing them on the server side.
  *
- * <p>Teraz klient mowi wprost, kiedy przestal patrzec (patrz
+ * <p>Now the client says explicitly when it stopped watching (see
  * {@code VeloceTerminalScreen.removed()}).
  */
 public record TerminalWatcherPKT(BlockPos pos, boolean watching) implements CustomPacketPayload {
@@ -52,7 +53,7 @@ public record TerminalWatcherPKT(BlockPos pos, boolean watching) implements Cust
             if (!(context.player() instanceof ServerPlayer player)) {
                 return;
             }
-            // Bezpiecznik: nie ufamy klientowi na slowo co do odleglosci.
+            // Safety check: we do not take the client's word on distance.
             if (player.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
                     pkt.pos().getZ() + 0.5) > 256.0) {
                 return;

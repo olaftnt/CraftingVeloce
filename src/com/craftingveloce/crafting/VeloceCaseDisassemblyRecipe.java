@@ -17,24 +17,25 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 
 /**
- * Rozkladanie obudowy z powrotem na czesci - receptura w stole craftingu.
+ * Disassembling the casing back into parts - a recipe in the crafting table.
  *
- * <p><b>Co robi.</b> Gracz wklada przedmiot maszyny z obudowy (np. Mechanical
- * Crafter Module z zapisana liczba crafterow w NBT) i dostaje:
+ * <p><b>What it does.</b> The player puts in a machine item from the casing
+ * (e.g. a Mechanical Crafter Module with the number of crafters saved in NBT)
+ * and gets:
  * <ul>
- *   <li><b>pusta obudowe</b> ({@code veloce_integrale}) jako wynik,</li>
- *   <li><b>tyle klockow bazowych, ile bylo w srodku</b> - jako przedmioty
- *       zwrocone do siatki ({@link #getRemainingItems}).</li>
+ *   <li><b>an empty casing</b> ({@code veloce_integrale}) as the output,</li>
+ *   <li><b>as many base blocks as there were inside</b> - as items returned to
+ *       the grid ({@link #getRemainingItems}).</li>
  * </ul>
  *
- * <p>Gracz: "gdy wloze ten przedmiot do Crafting Table, receptura powinna mi
- * zwrocic sam mechanical crafter w liczbie odpowiadajacej temu, ile ich tam
- * bylo wsadzonych, plus sam ten bazowy klocek".
+ * <p>Player: "when I put this item into the Crafting Table, the recipe should
+ * give me back just the mechanical crafter in a number matching how many were
+ * put in there, plus that base block itself".
  *
- * <p><b>Dlaczego przez {@code getRemainingItems}.</b> Waniliowa receptura ma
- * JEDEN wynik, a my chcemy dwa rozne przedmioty (obudowa + klocki bazowe).
- * Zwracanie czesci do siatki to mechanika wanilii (tak dziala np. wiadro po
- * mleku), wiec nie potrzebujemy wlasnego typu receptury ani ekranu.
+ * <p><b>Why via {@code getRemainingItems}.</b> A vanilla recipe has ONE output,
+ * and we want two different items (the casing + the base blocks). Returning
+ * parts to the grid is vanilla mechanics (that is how, for example, a bucket
+ * after milk works), so we need no recipe type or screen of our own.
  */
 public class VeloceCaseDisassemblyRecipe extends CustomRecipe {
 
@@ -42,13 +43,13 @@ public class VeloceCaseDisassemblyRecipe extends CustomRecipe {
         super(CraftingBookCategory.MISC);
     }
 
-    /** Wystarczy JEDEN przedmiot maszyny z obudowy i nic wiecej. */
+    /** ONE machine item from the casing and nothing else is enough. */
     @Override
     public boolean matches(CraftingInput input, Level level) {
         return singleMachine(input) != null;
     }
 
-    /** Wynik: pusta obudowa. Czesci wracaja przez {@link #getRemainingItems}. */
+    /** Output: the empty casing. The parts come back through {@link #getRemainingItems}. */
     @Override
     public ItemStack assemble(CraftingInput input, HolderLookup.Provider registries) {
         return singleMachine(input) == null
@@ -57,11 +58,12 @@ public class VeloceCaseDisassemblyRecipe extends CustomRecipe {
     }
 
     /**
-     * Zwraca klocki bazowe do siatki - po jednym na kazdy wklikany element.
+     * Returns the base blocks to the grid - one for every element inserted.
      *
-     * <p>Liczbe bierzemy z NBT przedmiotu (zapisywanego przy zbiciu maszyny).
-     * Brak zapisu (np. maszyna ze stala zawartoscia) znaczy jeden klocek
-     * bazowy. Duze liczby dzielimy na stosy, bo pole siatki nie pomiesci 81.
+     * <p>We take the number from the item's NBT (written when the machine is
+     * broken). No entry (e.g. a machine with fixed contents) means one base
+     * block. Large numbers we split into stacks, because a grid slot will not
+     * hold 81.
      */
     @Override
     public NonNullList<ItemStack> getRemainingItems(CraftingInput input) {
@@ -90,7 +92,7 @@ public class VeloceCaseDisassemblyRecipe extends CustomRecipe {
         return remaining;
     }
 
-    /** Receptura dziala w kazdym rozmiarze siatki (uzywa jednej pozycji). */
+    /** The recipe works in every grid size (it uses a single position). */
     @Override
     public boolean canCraftInDimensions(int width, int height) {
         return true;
@@ -101,13 +103,13 @@ public class VeloceCaseDisassemblyRecipe extends CustomRecipe {
         return VeloceRecipes.CASE_DISASSEMBLY.get();
     }
 
-    /** Waniliowy stol craftingu (nie potrzebujemy wlasnego typu receptury). */
+    /** The vanilla crafting table (we need no recipe type of our own). */
     @Override
     public RecipeType<?> getType() {
         return RecipeType.CRAFTING;
     }
 
-    /** Jedyna niepusta pozycja siatki, o ile jest nasza maszyna z obudowa. */
+    /** The single non-empty grid position, provided it is our machine with a casing. */
     private static ItemStack singleMachine(CraftingInput input) {
         ItemStack found = null;
         for (int i = 0; i < input.size(); i++) {
@@ -116,14 +118,14 @@ public class VeloceCaseDisassemblyRecipe extends CustomRecipe {
                 continue;
             }
             if (found != null) {
-                return null;   // wiecej niz jeden przedmiot - to nie nasza receptura
+                return null;   // more than one item - this is not our recipe
             }
             found = stack;
         }
         return found != null && baseBlock(found) != null ? found : null;
     }
 
-    /** Blok bazowy tej maszyny (to, co wracalo do siatki), albo null. */
+    /** The base block of this machine (the thing that was returned to the grid), or null. */
     private static Block baseBlock(ItemStack stack) {
         if (!(stack.getItem() instanceof BlockItem blockItem)) {
             return null;
@@ -131,7 +133,7 @@ public class VeloceCaseDisassemblyRecipe extends CustomRecipe {
         return VeloceCaseContents.contentFor(blockItem.getBlock());
     }
 
-    /** Ile elementow zapisano w NBT przedmiotu (0 = brak zapisu). */
+    /** How many elements are saved in the item's NBT (0 = no entry). */
     public static int partsOf(ItemStack stack) {
         CustomData data = stack.get(DataComponents.BLOCK_ENTITY_DATA);
         return data == null ? 0 : data.copyTag().getInt("VeloceParts");

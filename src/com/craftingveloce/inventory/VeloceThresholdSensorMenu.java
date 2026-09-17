@@ -12,43 +12,44 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
- * Menu Veloce Threshold Sensor.
+ * Veloce Threshold Sensor menu.
  *
- * <p><b>Uklad.</b> JEDEN wysrodkowany wiersz: slot itemu, pole liczby, "+",
- * "-" i guzik trybu. Ponizej ekwipunek gracza (siatka jak w ekstraktorze:
- * ekwipunek od y=84, hotbar na y=142).
+ * <p><b>Layout.</b> ONE centred row: item slot, number field, "+",
+ * "-" and the mode button. Below it the player inventory (grid as in the
+ * extractor: inventory from y=84, hotbar at y=142).
  *
- * <p>Wszystkie wspolrzedne GUI zyja TUTAJ - ekran czyta je z tej klasy, a
- * generator tekstury maluje ramke slotu pod ta sama liczba. Dzieki temu nie ma
- * trzech kopii, ktore moga sie rozjechac (build.py pilnuje pary
- * menu &lt;-&gt; generator).
+ * <p>All GUI coordinates live HERE - the screen reads them from this class, and
+ * the texture generator paints the slot frame under the same numbers. That way
+ * there are not three copies that can drift apart (build.py enforces the
+ * menu &lt;-&gt; generator pairing).
  *
- * <p>Menu nie trzyma progu ani trybu - one zyja w block entity. Dzieki temu
- * dokladnie ta sama wartosc jest widziana przez serwer (ktory na jej podstawie
- * wystawia redstone) i przez ekran, bez drugiego zrodla prawdy.
+ * <p>The menu holds neither the threshold nor the mode - they live in the block
+ * entity. That way exactly the same value is seen by the server (which drives
+ * Redstone from it) and by the screen, with no second source of truth.
  */
 public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
 
-    /** Panel - ta sama szerokosc co tekstura i ekran (imageWidth). */
+    /** Panel - the same width as the texture and the screen (imageWidth). */
     public static final int PANEL_WIDTH = 212;
     public static final int PANEL_HEIGHT = 166;
 
-    // ---------------- wiersz glowny (wysrodkowany) ----------------
+    // ---------------- main row (centred) ----------------
     //
-    //  slot 16 | 4 | pole 38 | 4 | "+" 20 | 4 | "-" 20 | 4 | tryb 20
+    //  slot 16 | 4 | field 38 | 4 | "+" 20 | 4 | "-" 20 | 4 | mode 20
     //
-    // POZIOMO: szerokosc wiersza = 16+4+38+4+20+4+20+4+20 = 130, a
-    // (212 - 130) / 2 = 41 - dokladnie tyle marginesu z KAZDEJ strony.
+    // HORIZONTALLY: row width = 16+4+38+4+20+4+20+4+20 = 130, and
+    // (212 - 130) / 2 = 41 - exactly that much margin on EACH side.
     //
-    // PIONOWO: wiersz ma stac na SRODKU pola roboczego, czyli miedzy dolna
-    // krawedzia tytulu (y=15) a gorna krawedzia ekwipunku gracza (y=84).
-    // 15 + (84 - 15 - 20) / 2 = 39, wiec nad wierszem zostaje 24 px, a pod nim
-    // 25 px - po pol piksela na strone, bo roznica wysokosci jest nieparzysta.
-    // Wczesniej bylo 26, czyli wiersz byl o 13 px za wysoko (srodek samego
-    // panela, bez ekwipunku) - gracz to zglosil.
-    /** Dolna krawedz napisu tytulu (titleLabelY = 6 + wysokosc czcionki 9). */
+    // VERTICALLY: the row must sit in the MIDDLE of the working area, i.e.
+    // between the bottom edge of the title (y=15) and the top edge of the
+    // player inventory (y=84). 15 + (84 - 15 - 20) / 2 = 39, so 24 px are left
+    // above the row and 25 px below it - half a pixel per side, because the
+    // height difference is odd. It used to be 26, i.e. the row was 13 px too
+    // high (the centre of the panel itself, without the inventory) - a player
+    // reported it.
+    /** Bottom edge of the title label (titleLabelY = 6 + font height 9). */
     public static final int TITLE_BOTTOM = 15;
-    /** Gorny brzeg wiersza; slot 16 px jest w nim wysrodkowany (2 px zapasu). */
+    /** Top edge of the row; the 16 px slot is centred in it (2 px of slack). */
     public static final int ROW_Y = 39;
     public static final int ROW_H = 20;
     public static final int GAP = 4;
@@ -59,10 +60,10 @@ public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
     public static final int BTN_W = 20;
     public static final int STEP_PLUS_X = 103;
     public static final int STEP_MINUS_X = 127;
-    /** Guzik trybu (pochodnia) - trzeci guzik w wierszu. */
+    /** Mode button (torch) - the third button in the row. */
     public static final int MODE_X = 151;
 
-    /** Slot itemu: pierwszy element wiersza. Generator maluje tu ramke. */
+    /** Item slot: the first element of the row. The generator paints a frame here. */
     public static final int FILTER_SLOT_X = 41;
     public static final int FILTER_SLOT_Y = 41;
 
@@ -86,9 +87,9 @@ public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
         this.sensor = sensor;
         this.pos = pos;
 
-        // Slot filtra: widmo. Blokujemy wkladanie i wyciaganie, ale slot
-        // zostaje AKTYWNY - inaczej getSlotUnderMouse() by go pomijal
-        // i klikniecie w filtr nie robiloby nic.
+        // Filter slot: a ghost. We block insertion and extraction, but the slot
+        // stays ACTIVE - otherwise getSlotUnderMouse() would skip it
+        // and clicking the filter would do nothing.
         Container placeholder = new SimpleContainer(1);
         this.addSlot(new Slot(placeholder, 0, FILTER_SLOT_X, FILTER_SLOT_Y) {
             @Override
@@ -121,7 +122,7 @@ public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
         return sensor != null ? sensor.getBlockPos() : pos;
     }
 
-    /** Aktualny filtr (z block entity po stronie klienta). */
+    /** Current filter (from the block entity on the client side). */
     public ItemStack getFilter() {
         return sensor == null ? ItemStack.EMPTY : sensor.getFilter();
     }
@@ -139,25 +140,26 @@ public class VeloceThresholdSensorMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Czy sensor wystawia teraz prad.
+     * Whether the sensor is currently emitting power.
      *
-     * <p>Bierzemy to ze STANU BLOKU, a nie z przeliczonego warunku. Stan bloku
-     * jest rozglaszany przez serwer i to on jest prawda; licznik po stronie
-     * klienta jest tylko wartoscia do wyswietlenia. Przeliczanie warunku
-     * z licznika pokazywalo odwrotny stan, gdy licznik byl jeszcze nieznany.
+     * <p>We take this from the BLOCK STATE, not from a recomputed condition. The
+     * block state is broadcast by the server and it is the truth; the
+     * client-side counter is only a value for display. Recomputing the
+     * condition from the counter showed the opposite state while the counter was
+     * still unknown.
      */
     public boolean isPowered() {
         return sensor != null && sensor.isPowered();
     }
 
     /**
-     * Shift-klik nic nie przenosi.
+     * Shift-click moves nothing.
      *
-     * <p>Czujnik nie ma wlasnych slotow na przedmioty - jedyny slot to widmo
-     * filtra, ktorego i tak nie da sie wypelnic. Poprzednia wersja przenosila
-     * stos "w obrebie ekwipunku gracza", co w GUI maszyny jest zaskakujace:
-     * gracz oczekuje przeniesienia do bloku, a nie przestawiania rzeczy
-     * w plecaku. Zachowanie zgodne z piecem elektrycznym.
+     * <p>The sensor has no item slots of its own - the only slot is the filter
+     * ghost, which cannot be filled anyway. The previous version moved the stack
+     * "within the player inventory", which in a machine GUI is surprising:
+     * the player expects a transfer to the block, not a reshuffle inside the
+     * backpack. Behaviour consistent with the electric furnace.
      */
     @Override
     public ItemStack quickMoveStack(Player player, int index) {

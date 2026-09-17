@@ -14,14 +14,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * S→C: liczby itemow w sieci.
+ * S->C: the item counts in the network.
  *
- * <p>Niesie DWIE mapy:
+ * <p>It carries TWO maps:
  * <ul>
- *   <li>{@code itemCounts} - ile sztuk fizycznie jest w sieci (zielona liczba)</li>
- *   <li>{@code craftableCounts} - ile sztuk da sie jeszcze dorobic
- *       auto-craftingiem z tego, co jest (zolta liczba "+N").
- *       Zero/brak wpisu = nie da sie nic dorobic.</li>
+ *   <li>{@code itemCounts} - how many units are physically in the network (the green number)</li>
+ *   <li>{@code craftableCounts} - how many more units can be made by
+ *       auto-crafting from what is there (the yellow "+N" number).
+ *       Zero/missing entry = nothing more can be made.</li>
  * </ul>
  */
 public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts,
@@ -68,7 +68,7 @@ public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts,
         }
     };
 
-    /** Wsteczna zgodnosc: sam stock, bez craftable. */
+    /** Backward compatibility: the stock alone, without craftable. */
     public SyncTerminalCountsPKT(Map<Item, Long> itemCounts) {
         this(itemCounts, Map.of());
     }

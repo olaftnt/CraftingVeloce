@@ -4,14 +4,14 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 
 /**
- * Maszyna, ktora umie opisac sie do GUI (predkosc, SU, sieć).
+ * A machine that can describe itself to the GUI (speed, SU, network).
  *
- * <p>Rdzen nie zna typow Create, wiec okno modulu pyta o dane przez ten
- * interfejs - a wypelnia go ten, kto te liczby naprawde ma (block entity
- * maszyny kinetycznej w {@code compat/create}).
+ * <p>The core does not know the Create types, so the module window asks for the
+ * data through this interface - and it is filled in by whoever actually has
+ * those numbers (the kinetic machine block entity in {@code compat/create}).
  */
 public interface VeloceModuleInfoSource {
 
-    /** Pola okna modulu (predkosc, zapotrzebowanie, sieć) - liczone na serwerze. */
+    /** Module window fields (speed, demand, network) - computed on the server. */
     CompoundTag moduleInfo(ServerLevel level);
 }

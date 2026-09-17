@@ -14,7 +14,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/** S→C: aktualizacja stanu auto-craftera (wlaczone itemy + preferowane receptury). */
+/** S->C: auto-crafter state update (enabled items + preferred recipes). */
 public record SyncCraftingTableStatePKT(BlockPos pos, Set<Item> enabledItems,
                                         Map<Item, ResourceLocation> preferredRecipes)
         implements CustomPacketPayload {

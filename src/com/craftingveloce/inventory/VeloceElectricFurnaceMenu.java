@@ -11,26 +11,27 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
- * Menu Velocity Electric Furnace.
+ * Menu of the Velocity Electric Furnace.
  *
- * <p><b>Uklad.</b> Akumulator (pozioma bateria w ekranie) i JEDEN slot na
- * itemek z energia, po jego prawej stronie - plus ekwipunek gracza.
+ * <p><b>Layout.</b> The accumulator (a horizontal battery in the screen) and ONE
+ * slot for the energy item, to its right - plus the player's inventory.
  *
- * <p>W tym slocie lezy bateria / Energy Cube / tablet z innego moda, a piec
- * pobiera z niej prad do swojego akumulatora. Item NIE jest zuzywany: lezy
- * tak dlugo, az gracz go wyjmie, i mozna go wyjac w kazdej chwili.
+ * <p>This slot holds a battery / Energy Cube / tablet from another mod, and the
+ * furnace draws power from it into its own accumulator. The item is NOT consumed:
+ * it stays there until the player takes it out, and it can be taken out at any
+ * moment.
  */
 public class VeloceElectricFurnaceMenu extends AbstractContainerMenu {
 
-    /** Ekwipunek gracza w x=26 - tak samo jak w ekstraktorze. */
+    /** Player inventory at x=26 - just like in the extractor. */
     private static final int PLAYER_X = 26;
     private static final int PLAYER_Y = 84;
 
     /**
-     * Slot na itemek z energia - po PRAWEJ stronie baterii.
+     * Slot for the energy item - on the RIGHT side of the battery.
      *
-     * <p>Musi sie zgadzac z wglebieniem w teksturze (gen_furnace_gui.py) i ze
-     * stala w ekranie; pilnuje tego build.py.
+     * <p>It must match the recess in the texture (gen_furnace_gui.py) and the
+     * constant in the screen; build.py enforces this.
      */
     public static final int BATTERY_SLOT_X = 130;
     public static final int BATTERY_SLOT_Y = 32;
@@ -52,10 +53,10 @@ public class VeloceElectricFurnaceMenu extends AbstractContainerMenu {
         this.furnace = furnace;
         this.pos = pos;
 
-        // 1. Slot baterii. Przyjmuje TYLKO itemy, z ktorych da sie oddac
-        //    energie (standardowa zdolnosc Forge Energy na itemie) - dzieki
-        //    temu nie da sie tu przypadkiem zostawic zwyklego smiecia, a gracz
-        //    od razu widzi, po co ten slot jest.
+        // 1. Battery slot. It accepts ONLY items that can give back energy
+        //    (the standard Forge Energy capability on an item) - thanks to that
+        //    one cannot accidentally leave ordinary junk here, and the player
+        //    immediately sees what the slot is for.
         this.addSlot(new Slot(
                 furnace != null ? furnace.getBatterySlot() : new SimpleContainer(1),
                 0, BATTERY_SLOT_X, BATTERY_SLOT_Y) {
@@ -66,11 +67,11 @@ public class VeloceElectricFurnaceMenu extends AbstractContainerMenu {
 
             @Override
             public int getMaxStackSize() {
-                return 1;   // baterie nosi sie po jednej
+                return 1;   // batteries are carried one at a time
             }
         });
 
-        // 2. Ekwipunek gracza.
+        // 2. Player inventory.
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
                 this.addSlot(new Slot(playerInv, col + row * 9 + 9,
@@ -86,12 +87,12 @@ public class VeloceElectricFurnaceMenu extends AbstractContainerMenu {
         return furnace;
     }
 
-    /** Pozycja pieca - potrzebna ekranowi do zapytan o stan. */
+    /** Furnace position - needed by the screen to query the state. */
     public BlockPos getPos() {
         return furnace != null ? furnace.getBlockPos() : pos;
     }
 
-    /** Ile pradu jest w akumulatorze (0 gdy block entity niedostepne). */
+    /** How much power is in the accumulator (0 when the block entity is unavailable). */
     public int getEnergy() {
         return furnace == null ? 0 : furnace.getEnergy();
     }
@@ -103,12 +104,12 @@ public class VeloceElectricFurnaceMenu extends AbstractContainerMenu {
     }
 
     /**
-     * Shift-klik: z ekwipunku do slotu baterii (tylko itemy z energia)
-     * i z powrotem.
+     * Shift-click: from the inventory to the battery slot (only energy items)
+     * and back.
      *
-     * <p>Bez tego gracz musialby przeciagac baterie recznie, a shift-klik
-     * w piecu robilby nic (tak bylo wczesniej, bo piec nie mial zadnego
-     * wlasnego slotu).
+     * <p>Without this the player would have to drag batteries by hand, and
+     * shift-clicking in the furnace would do nothing (that is how it was before,
+     * because the furnace had no slot of its own).
      */
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
@@ -121,12 +122,12 @@ public class VeloceElectricFurnaceMenu extends AbstractContainerMenu {
         boolean isBatterySlot = index == 0;
 
         if (isBatterySlot) {
-            // Z pieca do gracza.
+            // From the furnace to the player.
             if (!this.moveItemStackTo(inSlot, 1, this.slots.size(), true)) {
                 return ItemStack.EMPTY;
             }
         } else {
-            // Z gracza do slotu baterii - tylko gdy to item z energia.
+            // From the player to the battery slot - only when it is an energy item.
             if (!VeloceElectricFurnaceBlockEntity.isEnergyItem(inSlot)) {
                 return ItemStack.EMPTY;
             }

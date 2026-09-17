@@ -13,30 +13,28 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Zapamietany widok terminala: zakladka, fraza wyszukiwania i przewiniecie.
+ * Remembered terminal view: tab, search phrase and scroll position.
  *
- * <p><b>Dlaczego osobno per terminal.</b> Vanilla trzyma wybrana zakladke
- * w polu {@code private static CreativeModeTab selectedTab} - czyli JEDNYM,
- * wspolnym dla calego klienta. Skutek: terminal otwieral sie na zakladce
- * ostatnio uzywanej w zwyklym creative inventory, a przelaczenie zakladki
- * w terminalu zmienialo ja takze poza nim.
+ * <p><b>Why separately per terminal.</b> Vanilla keeps the selected tab in the field
+ * {@code private static CreativeModeTab selectedTab} - that is, ONE field shared by the
+ * whole client. The result: the terminal opened on the tab last used in the regular
+ * creative inventory, and switching a tab in the terminal also changed it outside it.
  *
- * <p>Tutaj stan jest kluczowany pozycja bloku terminala, wiec kazdy terminal
- * pamieta swoje wlasne miejsce - niezaleznie od creative inventory i od
- * pozostalych terminali.
+ * <p>Here the state is keyed by the terminal block position, so each terminal remembers
+ * its own place - independently of the creative inventory and of the other terminals.
  *
- * <p>Wpisy znikaja przy wyjsciu ze swiata (patrz {@link #clearAll()}).
+ * <p>Entries disappear when leaving the world (see {@link #clearAll()}).
  */
 public final class VeloceTerminalViewState {
 
     private VeloceTerminalViewState() {
     }
 
-    /** Id zakladki wybranej w danym terminalu. */
+    /** Id of the tab selected in the given terminal. */
     private static final Map<Object, ResourceLocation> TAB = new HashMap<>();
-    /** Fraza wpisana w wyszukiwarce. */
+    /** The phrase typed into the search box. */
     private static final Map<Object, String> SEARCH = new HashMap<>();
-    /** Pozycja przewiniecia listy (0..1). */
+    /** List scroll position (0..1). */
     private static final Map<Object, Float> SCROLL = new HashMap<>();
 
     static void save(Object key, CreativeModeTab tab, String search, float scroll) {
@@ -71,7 +69,7 @@ public final class VeloceTerminalViewState {
         SCROLL.clear();
     }
 
-    /** Zakladka o danym id, albo null gdy jej nie ma (np. mod usuniety). */
+    /** The tab with the given id, or null when it is missing (e.g. the mod was removed). */
     static CreativeModeTab findTab(ResourceLocation id) {
         if (id == null) {
             return null;
@@ -85,11 +83,11 @@ public final class VeloceTerminalViewState {
     }
 
     /**
-     * Ustawia zakladke w ekranie creative.
+     * Sets the tab in the creative screen.
      *
-     * <p>{@code selectTab} jest prywatne, wiec przez refleksje. Metoda robi
-     * wszystko co trzeba: przebudowuje liste itemow, ustawia pole statyczne
-     * i przewija na poczatek.
+     * <p>{@code selectTab} is private, so we go through reflection. The method does
+     * everything that is needed: it rebuilds the item list, sets the static field
+     * and scrolls back to the top.
      */
     static void applyTab(CreativeModeInventoryScreen screen, CreativeModeTab tab) {
         if (screen == null || tab == null) {
@@ -107,13 +105,13 @@ public final class VeloceTerminalViewState {
         }
     }
 
-    /** Wpisuje fraze do pola wyszukiwania i odswieza wyniki. */
+    /** Writes the phrase into the search box and refreshes the results. */
     /**
-     * Waniliowa wyszukiwarka tego ekranu (pole {@code searchBox}).
+     * The vanilla search box of this screen (the {@code searchBox} field).
      *
-     * <p>JEDNO miejsce z ta refleksja: korzysta z niej przywracanie frazy
-     * (applySearch) i pytanie "czy gracz wlasnie pisze" (isSearchBoxFocused).
-     * Wczesniej kazde miejsce robilo to samo osobno.
+     * <p>ONE place with this reflection: both the phrase restoration (applySearch) and
+     * the "is the player currently typing" question (isSearchBoxFocused) use it.
+     * Previously each place did the same thing separately.
      */
     @Nullable
     static EditBox searchBox(CreativeModeInventoryScreen screen) {
@@ -130,15 +128,15 @@ public final class VeloceTerminalViewState {
     }
 
     /**
-     * Czy wyszukiwarka ma fokus - DOKLADNIE tak, jak pyta wanilia.
+     * Whether the search box has focus - EXACTLY the way vanilla asks.
      *
-     * <p><b>Po co osobne pytanie.</b> Sprawdzanie fokusu EKRANU
-     * ({@code Screen.getFocused()}) nie wystarcza: waniliowa wyszukiwarka
-     * creative zyje wlasnym zyciem i kiedy ekran nie wskazywal na nia jako na
-     * skupiony widget, nasz test "czy gracz pisze" wychodzil FALSE - i klawisz
-     * E (ekwipunek) zamykal GUI w trakcie pisania. Vanilla pyta wprost
-     * o {@code searchBox.isFocused()} (CreativeModeInventoryScreen.keyPressed)
-     * i to jest jedyne wiarygodne zrodlo tej informacji.
+     * <p><b>Why a separate question.</b> Checking the SCREEN's focus
+     * ({@code Screen.getFocused()}) is not enough: the vanilla creative search box lives
+     * its own life, and when the screen did not point at it as the focused widget, our
+     * "is the player typing" test came out FALSE - and the E key (inventory) closed the
+     * GUI while the player was typing. Vanilla asks directly about
+     * {@code searchBox.isFocused()} (CreativeModeInventoryScreen.keyPressed) and that is
+     * the only reliable source of this information.
      */
     static boolean isSearchBoxFocused(CreativeModeInventoryScreen screen) {
         EditBox box = searchBox(screen);
@@ -146,8 +144,8 @@ public final class VeloceTerminalViewState {
     }
 
     /**
-     * Pole tekstowe, ktore powinno dostac klawisz: fokus ekranu albo
-     * wyszukiwarka wanilii (gdy to ona jest aktywna).
+     * The text box that should receive the key: the screen focus or the vanilla
+     * search box (when that one is active).
      */
     @Nullable
     static EditBox focusedTextBox(CreativeModeInventoryScreen screen,
@@ -179,7 +177,7 @@ public final class VeloceTerminalViewState {
         }
     }
 
-    /** Biezaca fraza z pola wyszukiwania ("" gdy brak). */
+    /** The current phrase from the search box ("" when there is none). */
     static String currentSearch(CreativeModeInventoryScreen screen) {
         if (screen == null) {
             return "";
@@ -196,20 +194,20 @@ public final class VeloceTerminalViewState {
         return "";
     }
 
-    /** Czy juz logowalismy awarie odczytu zakladki. */
+    /** Whether we have already logged a failure to read the tab. */
     private static boolean currentTabFailureLogged;
 
     /**
-     * Pole {@code selectedTab} - rozwiazywane RAZ.
+     * The {@code selectedTab} field - resolved ONCE.
      *
-     * <p>Ta metoda jest wolana co tick z {@code containerTick} (wykrywanie
-     * zmiany zakladki przez gracza), a {@code getDeclaredField} przy kazdym
-     * wywolaniu to zbedny koszt - wyszukiwanie pola nie jest darmowe.
+     * <p>This method is called every tick from {@code containerTick} (detecting the
+     * player changing the tab), and {@code getDeclaredField} on every call is an
+     * unnecessary cost - field lookup is not free.
      */
     private static java.lang.reflect.Field selectedTabField;
     private static boolean selectedTabResolveTried;
 
-    /** Biezaca zakladka (moze byc null, gdy refleksja zawiedzie). */
+    /** The current tab (may be null when reflection fails). */
     static CreativeModeTab currentTab() {
         if (!selectedTabResolveTried) {
             selectedTabResolveTried = true;
@@ -226,8 +224,8 @@ public final class VeloceTerminalViewState {
                 currentTabFailureLogged = true;
                 com.craftingveloce.util.VeloceLog.Gui.failure(
                         com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                        "nie moge znalezc pola selectedTab - pamiec zakladek "
-                                + "i widocznosc slotu odkladania nie beda dzialac");
+                        "cannot find the selectedTab field - tab memory "
+                                + "and deposit slot visibility will not work");
             }
             return null;
         }
@@ -235,20 +233,20 @@ public final class VeloceTerminalViewState {
             Object v = selectedTabField.get(null);
             return v instanceof CreativeModeTab tab ? tab : null;
         } catch (Throwable t) {
-            // Nie polykamy po cichu: od tego zalezy m.in. widocznosc slotu
-            // odkladania (rysujemy go tylko w Survival Inventory), wiec awaria
-            // tutaj objawialaby sie "zniknieta strzalka" bez sladu w logu.
+            // We do NOT swallow this silently: the deposit slot visibility depends on
+            // it (we only draw that slot in Survival Inventory), so a failure here
+            // would show up as a "missing arrow" with no trace in the log.
             if (!currentTabFailureLogged) {
                 currentTabFailureLogged = true;
                 com.craftingveloce.util.VeloceLog.Gui.failure(
                         com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                        "nie moge odczytac biezacej zakladki creative: %s", t);
+                        "cannot read the current creative tab: %s", t);
             }
             return null;
         }
     }
 
-    /** Pozycja przewiniecia z ekranu (0 gdy nie odczytano). */
+    /** Scroll position from the screen (0 when it could not be read). */
     static float currentScroll(CreativeModeInventoryScreen screen) {
         if (screen == null) {
             return 0f;
@@ -264,13 +262,13 @@ public final class VeloceTerminalViewState {
     }
 
     /**
-     * Ustawia przewiniecie listy.
+     * Sets the list scroll position.
      *
-     * <p><b>Wazne.</b> Samo wpisanie {@code scrollOffs} NIE wystarcza. Vanilla
-     * trzyma itemy w statycznym {@code CONTAINER}, a do slotow przepisuje je
-     * dopiero {@code ItemPickerMenu.scrollTo(float)}. Bez tego wywolania
-     * pasek przewijania rysowalby sie w zapamietanym miejscu, ale lista
-     * pokazywalaby itemy od gory - czyli zupelnie inne, niz wskazuje pasek.
+     * <p><b>Important.</b> Writing {@code scrollOffs} alone is NOT enough. Vanilla keeps
+     * the items in a static {@code CONTAINER}, and only {@code ItemPickerMenu.scrollTo(float)}
+     * copies them into the slots. Without that call the scrollbar would be drawn at the
+     * remembered position, but the list would show the items from the top - that is,
+     * completely different ones than the scrollbar indicates.
      */
     static void applyScroll(CreativeModeInventoryScreen screen, float scroll) {
         if (screen == null) {
@@ -295,13 +293,12 @@ public final class VeloceTerminalViewState {
     }
 
     /**
-     * Wymusza przebudowe zawartosci biezacej zakladki.
+     * Forces a rebuild of the current tab's contents.
      *
-     * <p><b>Po co.</b> Przy pierwszym otwarciu zakladka INVENTORY (Survival
-     * Inventory) bywa pusta - lista itemow jest wtedy jeszcze nie wypelniona,
-     * a pojawia sie dopiero po przelaczeniu zakladki w te i z powrotem.
-     * Wywolanie tej samej metody, ktora robi to przy zmianie zakladki,
-     * wypelnia liste od razu.
+     * <p><b>Why.</b> On the first opening, the INVENTORY tab (Survival Inventory) is
+     * sometimes empty - the item list is not filled in yet and only appears after
+     * switching the tab back and forth. Calling the same method that does this on a tab
+     * change fills the list right away.
      */
     static void refreshContents(CreativeModeInventoryScreen screen) {
         if (screen == null) {
@@ -319,7 +316,7 @@ public final class VeloceTerminalViewState {
         }
     }
 
-    /** Klient jest dostepny? (male zabezpieczenie dla wywolan z init). */
+    /** Is the client available? (a small safeguard for calls from init). */
     static boolean clientReady() {
         Minecraft mc = Minecraft.getInstance();
         return mc != null && mc.player != null;

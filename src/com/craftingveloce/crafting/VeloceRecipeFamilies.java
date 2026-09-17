@@ -7,25 +7,25 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * JEDNO zrodlo prawdy o rodzinach receptur Veloce.
+ * The ONE source of truth about Veloce recipe families.
  *
- * <p><b>Po co osobna klasa.</b> Lista typow receptur byla dotad trzymana
- * w dwoch miejscach ({@code VeloceRecipeRegistry.FREE_TYPES} i kopia
- * w {@code VeloceRecipeGraph.FREE_TYPES}). Dwie kopie tej samej reguly zawsze
- * predzej czy pozniej sie rozjezdzaja - w tym projekcie zdarzylo sie to juz
- * kilka razy (lista wezlow sieci, lista packetow, uklad GUI).
+ * <p><b>Why a separate class.</b> The list of recipe types used to be kept
+ * in two places ({@code VeloceRecipeRegistry.FREE_TYPES} and a copy
+ * in {@code VeloceRecipeGraph.FREE_TYPES}). Two copies of the same rule always
+ * drift apart sooner or later - in this project that has already happened
+ * several times (the network node list, the packet list, the GUI layout).
  *
- * <p><b>Rodziny modow sa REJESTROWANE dynamicznie.</b> Typy receptur z innych
- * modow (Create, Alchemistry, Mekanism) nie istnieja bez tych modow, wiec nie
- * moga byc stala w rdzeniu - rejestruje je modul {@code compat/*} po sprawdzeniu
- * obecnosci moda (patrz {@link #registerModFamily}).
+ * <p><b>Mod families are REGISTERED dynamically.</b> Recipe types from other
+ * mods (Create, Alchemistry, Mekanism) do not exist without those mods, so they
+ * cannot be a constant in the core - they are registered by the {@code compat/*}
+ * module after checking that the mod is present (see {@link #registerModFamily}).
  */
 public final class VeloceRecipeFamilies {
 
     private VeloceRecipeFamilies() {
     }
 
-    /** Bez infrastruktury: crafting table, stonecutter, smithing table. */
+    /** Without infrastructure: crafting table, stonecutter, smithing table. */
     public static final Set<RecipeType<?>> FREE = Set.of(
             RecipeType.CRAFTING,
             RecipeType.STONECUTTING,
@@ -33,11 +33,11 @@ public final class VeloceRecipeFamilies {
     );
 
     /**
-     * Wymaga ZASILONEGO pieca w sieci.
+     * Requires a POWERED furnace in the network.
      *
-     * <p><b>CELOWO OSOBNA RODZINA.</b> Te receptury wymagaja paliwa, wiec NIE
-     * moga byc w {@link #FREE}: auto-crafter uznalby wtedy, ze potrafi zrobic
-     * sztabke zelaza z rudy za darmo - bez pieca i bez paliwa.
+     * <p><b>DELIBERATELY A SEPARATE FAMILY.</b> These recipes require fuel, so they
+     * must NOT be in {@link #FREE}: the auto-crafter would then consider that it can make
+     * an iron ingot from ore for free - without a furnace and without fuel.
      */
     public static final Set<RecipeType<?>> FURNACE = Set.of(
             RecipeType.SMELTING,
@@ -45,26 +45,26 @@ public final class VeloceRecipeFamilies {
             RecipeType.SMOKING
     );
 
-    /** Rodziny z innych modow: id moda -> jego typy receptur. */
+    /** Families from other mods: mod id -> its recipe types. */
     private static final Map<String, Set<RecipeType<?>>> MOD_FAMILIES = new LinkedHashMap<>();
 
-    /** Rejestruje rodzine receptur z innego moda (wolane z modulu {@code compat/*}). */
+    /** Registers a recipe family from another mod (called from the {@code compat/*} module). */
     public static synchronized void registerModFamily(String id, Set<RecipeType<?>> types) {
         MOD_FAMILIES.put(id, Set.copyOf(types));
     }
 
-    /** Id modow, ktore zarejestrowaly swoje rodziny - do diagnostyki. */
+    /** Ids of mods that registered their families - for diagnostics. */
     public static synchronized Set<String> modFamilies() {
         return Set.copyOf(MOD_FAMILIES.keySet());
     }
 
     /**
-     * Typy receptur, ktore nie potrzebuja pieca: {@link #FREE} plus rodziny
-     * zarejestrowane przez moduly z innych modow.
+     * Recipe types that do not need a furnace: {@link #FREE} plus families
+     * registered by modules from other mods.
      *
-     * <p>Uzywa tego GUI craftera (lista receptur do pokazania), ktore nie zna
-     * ciepla. Dzieki temu modul zarejestrowany przez {@code compat/*} pojawia
-     * sie w GUI bez zmiany w kodzie klienta.
+     * <p>This is used by the crafter GUI (the list of recipes to show), which does not know
+     * heat. Thanks to that a module registered by {@code compat/*} appears
+     * in the GUI without a change in the client code.
      */
     public static synchronized Set<RecipeType<?>> withoutHeat() {
         Set<RecipeType<?>> out = new java.util.LinkedHashSet<>(FREE);
@@ -74,7 +74,7 @@ public final class VeloceRecipeFamilies {
         return Set.copyOf(out);
     }
 
-    /** Wszystkie znane typy receptur: bez pieca, piecowe i z modow. */
+    /** All known recipe types: without furnace, furnace and from mods. */
     public static synchronized Set<RecipeType<?>> all() {
         Set<RecipeType<?>> out = new java.util.LinkedHashSet<>(withoutHeat());
         out.addAll(FURNACE);
@@ -99,10 +99,10 @@ public final class VeloceRecipeFamilies {
     }
 
     /**
-     * Czy znamy ten typ receptury - czyli czy jakis modul Veloce go obsluguje.
+     * Whether we know this recipe type - that is, whether some Veloce module handles it.
      *
-     * <p>Uzywane do logu przy budowie indeksu: typ spoza znanych rodzin
-     * pomijamy, ale chcemy o tym wiedziec.
+     * <p>Used for the log when building the index: a type outside the known families
+     * is skipped, but we want to know about it.
      */
     public static boolean isKnown(RecipeType<?> type) {
         return isFree(type) || isFurnace(type) || isModFamily(type);

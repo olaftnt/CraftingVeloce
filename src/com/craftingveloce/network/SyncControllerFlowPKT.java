@@ -16,23 +16,26 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * S→C: tempo przeplywu i ZMIANA stocku w kontrolerze.
+ * S->C: flow rate and STOCK CHANGE in the controller.
  *
- * <p><b>Tempo.</b> Serwer odsyla wylacznie itemy, ktore maja jednokierunkowy
- * przyrost/ubytek ({@link VeloceFlowTracker#steadyRates()}) - brak wpisu
- * znaczy "stoi albo sie szarpie" i w tooltipie nie ma wtedy zadnej linii tempa.
+ * <p><b>Rate.</b> The server sends back only the items that have a one-way
+ * gain/loss ({@link VeloceFlowTracker#steadyRates()}) - a missing entry means
+ * "standing still or fluctuating" and then the tooltip shows no rate line at
+ * all.
  *
- * <p><b>Stock jako ROZNICA, nie calosc.</b> Wczesniej kazda odpowiedz (raz na
- * sekunde) niosla CALY obraz sieci. Przy sieci z tysiacami roznych itemow to
- * tysiace wpisow na sekunde, choc stock prawie nigdy sie nie zmienia - im
- * wieksza siec, tym wiekszy ruch, bez zadnego pozytku. Teraz leca tylko wpisy
- * zmienione ({@code changed}) oraz itemy, ktore zniknely ({@code removed}) -
- * patrz {@link com.craftingveloce.crafting.VeloceStockDeltas}.
+ * <p><b>Stock as a DIFFERENCE, not the whole.</b> Previously every response
+ * (once per second) carried the WHOLE picture of the network. On a network with
+ * thousands of different items that is thousands of entries per second, even
+ * though the stock almost never changes - the larger the network, the more
+ * traffic, with no benefit at all. Now only the changed entries
+ * ({@code changed}) and the items that disappeared ({@code removed}) are sent -
+ * see {@link com.craftingveloce.crafting.VeloceStockDeltas}.
  *
- * <p>{@code full} mowi klientowi, ze ma ZASTAPIC stock tym, co przyszlo (pelny
- * zrzut co minute), a nie scalac go z poprzednim. Wartosci w {@code changed}
- * sa BEZWZGLEDNE, wiec zastosowanie tej samej roznicy dwa razy nic nie psuje -
- * kilku graczy moze patrzec w ten sam kontroler i kazdy ma wlasna kopie.
+ * <p>{@code full} tells the client to REPLACE the stock with what arrived (a
+ * full dump once a minute) rather than merge it with the previous one. Values in
+ * {@code changed} are ABSOLUTE, so applying the same difference twice breaks
+ * nothing - several players can look at the same controller and each has its own
+ * copy.
  */
 public record SyncControllerFlowPKT(BlockPos pos,
                                     Map<Item, Long> changed,
@@ -47,9 +50,9 @@ public record SyncControllerFlowPKT(BlockPos pos,
     public static final StreamCodec<FriendlyByteBuf, SyncControllerFlowPKT> STREAM_CODEC =
             StreamCodec.of(SyncControllerFlowPKT::encode, SyncControllerFlowPKT::decode);
 
-    /** Tempo zapisujemy jako setne czesci sztuki - float w pakiecie to 4 bajty
-     *  szumu, a varint setnych jest mniejszy i dokladnie tak dokladny, jak
-     *  pokazuje tooltip. */
+    /** We store the rate as hundredths of a piece - a float in the packet is 4
+     *  bytes of noise, while a varint of hundredths is smaller and exactly as
+     *  precise as the tooltip shows. */
     private static final float RATE_SCALE = 100f;
 
     private static void encode(FriendlyByteBuf buf, SyncControllerFlowPKT pkt) {
@@ -69,7 +72,7 @@ public record SyncControllerFlowPKT(BlockPos pos,
         return new SyncControllerFlowPKT(pos, changed, removed, rates, full);
     }
 
-    /** Stock: ten sam format co w SyncTerminalCountsPKT (id itemu + varint dlugi). */
+    /** Stock: the same format as in SyncTerminalCountsPKT (item id + varint long). */
     private static void writeStock(FriendlyByteBuf buf, Map<Item, Long> stock) {
         buf.writeVarInt(stock.size());
         for (Map.Entry<Item, Long> e : stock.entrySet()) {
@@ -91,7 +94,7 @@ public record SyncControllerFlowPKT(BlockPos pos,
         return out;
     }
 
-    /** Znikniete itemy: same identyfikatory - ich liczb juz nie ma. */
+    /** Removed items: identifiers only - their counts are gone. */
     private static void writeRemoved(FriendlyByteBuf buf, Set<Item> removed) {
         buf.writeVarInt(removed.size());
         for (Item item : removed) {
@@ -111,7 +114,7 @@ public record SyncControllerFlowPKT(BlockPos pos,
         return out;
     }
 
-    /** Tempo: id itemu + setne czesci sztuki na sekunde. */
+    /** Rate: item id + hundredths of a piece per second. */
     private static void writeRates(FriendlyByteBuf buf, Map<Item, Float> rates) {
         buf.writeVarInt(rates.size());
         for (Map.Entry<Item, Float> e : rates.entrySet()) {

@@ -26,70 +26,70 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Rejestr receptur "craftowalnych bez infrastruktury".
+ * Registry of recipes "craftable without infrastructure".
  *
- * <p>Zbiera receptury, ktore mozna wykonac siedzac w sieci Veloce - czyli takie,
- * ktore NIE wymagaja energii, paliwa, many, XP ani zadnego zewnetrznego bloku
- * przetwarzajacego. Klasyfikacja opiera sie na typie receptury:
+ * <p>It collects recipes that can be executed while sitting in the Veloce
+ * network - that is, those that do NOT require energy, fuel, mana, XP or any
+ * external processing block. The classification is based on the recipe type:
  *
  * <ul>
  *   <li>{@code minecraft:crafting} - crafting table (shaped/shapeless/special).
- *       Zawsze craftowalne: nie wymaga paliwa.</li>
- *   <li>{@code minecraft:stonecutting} - przecinarka. Nie wymaga paliwa
- *       (w vanilla), ale wymaga bloku. Traktujemy jako craftowalne, bo to
- *       "block ala crafting".</li>
- *   <li>{@code minecraft:smithing} - kowadlo smithingowe. Bez paliwa.</li>
+ *       Always craftable: it requires no fuel.</li>
+ *   <li>{@code minecraft:stonecutting} - stonecutter. It requires no fuel
+ *       (in vanilla), but it requires a block. We treat it as craftable,
+ *       because it is a "crafting-like block".</li>
+ *   <li>{@code minecraft:smithing} - smithing anvil. No fuel.</li>
  * </ul>
  *
- * <p><b>Czego NIE zbieramy:</b> {@code smelting}, {@code blasting}, {@code smoking},
- * {@code campfire_cooking} (wymagaja paliwa), oraz wszystko co rejestruja mody
- * pod wlasnymi typami z energia/mana (Mekanism, Create itd.). Receptury modow
- * sa wylaczane takze wtedy, gdy ich serializer/typ pochodzi z namespace innego
- * niz {@code minecraft} ORAZ nie jest znany jako "bezinfrastrukturowy" -
- * to bezpieczna domyslna polityka, zeby nie probowac craftowac czegos,
- * czego nie umiemy odtworzyc.
+ * <p><b>What we do NOT collect:</b> {@code smelting}, {@code blasting}, {@code smoking},
+ * {@code campfire_cooking} (they require fuel), and everything that mods register
+ * under their own types with energy/mana (Mekanism, Create, etc.). Recipes from mods
+ * are also excluded when their serializer/type comes from a namespace other
+ * than {@code minecraft} AND is not known as "infrastructure-free" -
+ * that is a safe default policy, so that we do not try to craft something
+ * that we cannot reproduce.
  *
- * <p>Klasyfikacja jest cache'owana per-{@link RecipeManager}, bo skanowanie
- * wszystkich receptur jest kosztowne i nie zmienia sie w trakcie dzialania
- * (poza reloadem datapackow, co daje nowy RecipeManager).
+ * <p>The classification is cached per-{@link RecipeManager}, because scanning
+ * all recipes is expensive and does not change during runtime
+ * (apart from datapack reloads, which produce a new RecipeManager).
  */
 public final class VeloceRecipeRegistry {
 
     /**
-     * Typy receptur bez infrastruktury.
+     * Recipe types without infrastructure.
      *
-     * <p>Definicja zyje w {@link VeloceRecipeFamilies} - JEDNYM miejscu dla
-     * calego moda. Wczesniej ta lista byla tu, a jej kopia w
-     * {@code VeloceRecipeGraph} (i obie mogly sie rozjechac).
+     * <p>The definition lives in {@link VeloceRecipeFamilies} - the ONE place for
+     * the whole mod. Previously this list was here, and its copy was in
+     * {@code VeloceRecipeGraph} (and the two could drift apart).
      */
     private static final Set<RecipeType<?>> FREE_TYPES = VeloceRecipeFamilies.FREE;
 
     /**
-     * Typy receptur obslugiwane przez Velocity Furnace.
+     * Recipe types handled by the Velocity Furnace.
      *
-     * <p><b>CELOWO OSOBNA LISTA.</b> Te receptury wymagaja paliwa, wiec NIE
-     * moga trafic do {@link #FREE_TYPES}. Gdyby tam byly, auto-crafter uznalby,
-     * ze potrafi "wytworzyc" sztabke zelaza z rudy za darmo - bez pieca i bez
-     * paliwa - i zniszczylby wlasne zalozenie, ze craftujemy tylko z tego,
-     * co realnie mamy.
+     * <p><b>DELIBERATELY A SEPARATE LIST.</b> These recipes require fuel, so they
+     * must NOT end up in {@link #FREE_TYPES}. If they were there, the auto-crafter would
+     * consider that it can "produce" an iron ingot from ore for free - without a furnace and
+     * without fuel - and it would destroy its own assumption that we craft only from what
+     * we actually have.
      *
-     * <p>Piec ma wlasny indeks ({@link #FURNACE_CACHE}) i wlasne wejscie
-     * ({@link #getFurnaceRecipesFor}). Dzieki temu mozna je uzyc TYLKO tam,
-     * gdzie swiadomie sprawdzimy, ze w sieci stoi zasilony piec.
+     * <p>The furnace has its own index ({@link #FURNACE_CACHE}) and its own entry point
+     * ({@link #getFurnaceRecipesFor}). Thanks to that they can be used ONLY where
+     * we consciously verify that a powered furnace stands in the network.
      *
-     * <p>Kolejnosc w {@link #FURNACE_TYPES} nie ma znaczenia - o priorytecie
-     * decyduje czas przetwarzania (blasting i smoking 100 t, smelting 200 t),
-     * patrz {@link #getFurnaceRecipesFor}.
+     * <p>The order in {@link #FURNACE_TYPES} does not matter - priority is decided
+     * by processing time (blasting and smoking 100 t, smelting 200 t),
+     * see {@link #getFurnaceRecipesFor}.
      */
     private static final Set<RecipeType<?>> FURNACE_TYPES = VeloceRecipeFamilies.FURNACE;
 
     /**
-     * Czy receptura jest "special" w rozumieniu WANILIOWYM.
+     * Whether the recipe is "special" in the VANILLA sense.
      *
-     * <p>Vanilla oznacza tak receptury, ktorych nie da sie sensownie odtworzyc
-     * automatycznie (farbowanie zbroi, klonowanie mapy). Receptury modow czesto
-     * uzywaja tej samej flagi dla zwyklych receptur (Mekanism: wszystkie), wiec
-     * odrzucanie po samym {@code isSpecial()} wycinalo cale mody z indeksu.
+     * <p>Vanilla marks recipes that cannot sensibly be reproduced
+     * automatically (armor dyeing, map cloning). Recipes from mods often
+     * use the same flag for ordinary recipes (Mekanism: all of them), so
+     * rejecting on {@code isSpecial()} alone cut whole mods out of the index.
      */
     public static boolean isVanillaSpecial(net.minecraft.world.item.crafting.Recipe<?> recipe) {
         if (!recipe.isSpecial()) {
@@ -100,43 +100,43 @@ public final class VeloceRecipeRegistry {
     }
 
     /**
-     * Czy ten typ receptury wymaga ROZGRZANEGO pieca.
+     * Whether this recipe type requires a HEATED furnace.
      *
-     * <p>Jedyne miejsce, ktore odpowiada na to pytanie. Crafter musi to
-     * wiedziec, zeby policzyc cieplo przy planowaniu i zabrac je przy
-     * wykonaniu - a gdyby sprawdzal typy samodzielnie, lista typow pieca
-     * musialaby byc utrzymywana w dwoch miejscach (i predzej czy pozniej
-     * rozjechalaby sie tak, jak rozjechala sie lista wezlow sieci).
+     * <p>The only place that answers this question. The crafter must
+     * know it in order to charge heat when planning and take it when
+     * executing - and if it checked the types on its own, the list of furnace
+     * types would have to be maintained in two places (and sooner or later
+     * it would drift apart just like the network node list drifted apart).
      */
     public static boolean isFurnaceType(RecipeType<?> type) {
         return FURNACE_TYPES.contains(type);
     }
 
     /**
-     * Namespace'y modow, ktorych receptury chcemy dodatkowo brac pod uwage,
-     * mimo ze uzywaja wlasnego typu. Na razie puste - swiadomie konserwatywnie.
-     * Dodawac tylko po zweryfikowaniu, ze dany typ nie wymaga infrastruktury.
+     * Namespaces of mods whose recipes we want to additionally take into account,
+     * even though they use their own type. Empty for now - deliberately conservative.
+     * Add only after verifying that the given type requires no infrastructure.
      */
     private static final Set<String> TRUSTED_MOD_NAMESPACES = Set.of();
 
     /**
-     * Indeks receptur per RecipeManager.
+     * Recipe index per RecipeManager.
      *
-     * <p><b>Slabe klucze sa tu konieczne.</b> Wczesniej byla to zwykla
-     * IdentityHashMap, ktora trzymala RecipeManager na sztywno. Kazde wejscie
-     * do swiata (i kazde przeladowanie danych) tworzy NOWY RecipeManager, wiec
-     * mapa rosla o pelny indeks receptur za kazdym razem i nic tego nie
-     * sprzatalo - klasyczny wyciek pamieci, ktory konczy sie dlugimi
-     * pauzami GC i lagami.
+     * <p><b>Weak keys are necessary here.</b> Previously this was a plain
+     * IdentityHashMap that held the RecipeManager firmly. Every entry
+     * into a world (and every data reload) creates a NEW RecipeManager, so
+     * the map grew by a full recipe index every time and nothing ever
+     * cleaned it up - a classic memory leak that ends in long
+     * GC pauses and lag.
      *
-     * <p>WeakHashMap sam usuwa wpis, gdy managera nic juz nie trzyma.
-     * RecipeManager nie nadpisuje equals/hashCode, wiec zachowuje sie
-     * tozsamosciowo jak poprzednio.
+     * <p>A WeakHashMap removes the entry by itself when nothing holds the manager
+     * anymore. RecipeManager does not override equals/hashCode, so it behaves
+     * identity-wise just as before.
      */
     private static final Map<RecipeManager, Map<Item, List<ProcessingEntry>>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    /** Osobny indeks receptur pieca (smelting/blasting/smoking). */
+    /** Separate index of furnace recipes (smelting/blasting/smoking). */
     private static final Map<RecipeManager, Map<Item, List<ProcessingEntry>>> FURNACE_CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
@@ -144,8 +144,8 @@ public final class VeloceRecipeRegistry {
     }
 
     /**
-     * Zwraca wszystkie receptury wytwarzajace dany item, ktore sa wykonywalne
-     * bez energii/paliwa.
+     * Returns all recipes producing the given item that are executable
+     * without energy/fuel.
      */
     public static List<ProcessingEntry> getRecipesFor(Level level, Item item) {
         if (!(level instanceof ServerLevel serverLevel)) {
@@ -155,17 +155,17 @@ public final class VeloceRecipeRegistry {
     }
 
     /**
-     * Receptury dla itemu z uwzglednieniem PIECA.
+     * Recipes for an item, taking the FURNACE into account.
      *
-     * <p>To jedyne miejsce, w ktorym wolno polaczyc receptury darmowe z
-     * piecowymi - i robi to tylko wtedy, gdy wolajacy POTWIERDZIL, ze w sieci
-     * stoi zasilony piec ({@code heatAvailable}).
+     * <p>This is the only place where free recipes may be combined with
+     * furnace recipes - and it does so only when the caller CONFIRMED that
+     * a powered furnace stands in the network ({@code heatAvailable}).
      *
-     * <p><b>Kolejnosc ma znaczenie.</b> Receptury darmowe ida pierwsze, zeby
-     * przepalenie bylo ostatnia deska ratunku, a nie domyslem: jesli item da
-     * sie zrobic bez paliwa, nie ma po co palic.
+     * <p><b>Order matters.</b> Free recipes come first, so that
+     * smelting is a last resort rather than the default: if an item can
+     * be made without fuel, there is no point in burning any.
      *
-     * @param heatAvailable czy w sieci jest zasilone zrodlo ciepla
+     * @param heatAvailable whether a powered heat source is present in the network
      */
     public static List<ProcessingEntry> getRecipesFor(Level level, Item item, boolean heatAvailable) {
         List<ProcessingEntry> free = getRecipesFor(level, item);
@@ -182,12 +182,12 @@ public final class VeloceRecipeRegistry {
         return out;
     }
 
-    /** Czy item da sie w ogole wycraftowac w sieci. */
+    /** Whether the item can be crafted in the network at all. */
     public static boolean isCraftable(Level level, Item item) {
         return !getRecipesFor(level, item).isEmpty();
     }
 
-    /** Wszystkie itemy craftowalne w sieci - dla GUI filtrujacego. */
+    /** All items craftable in the network - for the filtering GUI. */
     public static Set<Item> getAllCraftableItems(Level level) {
         if (!(level instanceof ServerLevel serverLevel)) {
             return Set.of();
@@ -196,16 +196,16 @@ public final class VeloceRecipeRegistry {
     }
 
     /**
-     * Itemy, ktore da sie uzyskac w PIECU (smelting / blasting / smoking).
+     * Items obtainable in a FURNACE (smelting / blasting / smoking).
      *
-     * <p>To osobny zbior niz {@link #getAllCraftableItems} i celowo nie jest
-     * z nim mieszany: receptura pieca wymaga ZASILONEGO pieca w sieci, a
-     * receptura craftingu nie. Kontroler musi wiec umiec powiedziec "ten item
-     * ma recepture pieca, ale piec stoi" - a do tego potrzebuje tej listy
-     * niezaleznie od tego, czy piec jest w sieci.
+     * <p>This is a separate set from {@link #getAllCraftableItems} and is deliberately not
+     * mixed with it: a furnace recipe requires a POWERED furnace in the network, while a
+     * crafting recipe does not. The controller must therefore be able to say "this item
+     * has a furnace recipe, but the furnace is off" - and for that it needs this list
+     * regardless of whether a furnace is in the network.
      *
-     * <p><b>Uwaga:</b> ta metoda NIE sprawdza, czy jakikolwiek piec istnieje.
-     * To pytanie nalezy do {@link VeloceHeatSources}.
+     * <p><b>Note:</b> this method does NOT check whether any furnace exists.
+     * That question belongs to {@link VeloceHeatSources}.
      */
     public static Set<Item> getAllFurnaceCraftableItems(Level level) {
         if (!(level instanceof ServerLevel serverLevel)) {
@@ -214,7 +214,7 @@ public final class VeloceRecipeRegistry {
         return getFurnaceIndex(serverLevel).keySet();
     }
 
-    /** Receptury dla itemu, posortowane tak, by pierwsza byla "domyslna". */
+    /** Recipes for an item, ordered so that the first one is the "default". */
     public static List<ProcessingEntry> getOrdered(Level level, Item item, @Nullable ResourceLocation preferred) {        List<ProcessingEntry> all = getRecipesFor(level, item);
         if (all.size() <= 1 || preferred == null) {
             return all;
@@ -234,14 +234,14 @@ public final class VeloceRecipeRegistry {
     }
 
     /**
-     * Receptury PIECA dla danego itemu, w kolejnosci NAJSZYBSZEJ najpierw.
+     * FURNACE recipes for the given item, in FASTEST-first order.
      *
-     * <p>Kolejnosc: {@code blasting} i {@code smoking} (100 tickow) przed
-     * {@code smelting} (200 tickow). To realizuje wymog "jesli surowiec pasuje
-     * do kilku, bierz wydajniejsza/szybsza" bez zadnych przelacznikow.
+     * <p>Order: {@code blasting} and {@code smoking} (100 ticks) before
+     * {@code smelting} (200 ticks). This fulfils the requirement "if a raw material matches
+     * several, take the more efficient/faster one" without any switches.
      *
-     * <p>Wolajacy MUSI sam sprawdzic, ze w sieci jest zasilony piec - ta
-     * metoda tylko czyta receptury.
+     * <p>The caller MUST check on its own that a powered furnace is in the network - this
+     * method only reads recipes.
      */
     public static List<ProcessingEntry> getFurnaceRecipesFor(Level level, Item item) {
         if (!(level instanceof ServerLevel serverLevel)) {
@@ -257,10 +257,10 @@ public final class VeloceRecipeRegistry {
     }
 
     /**
-     * Czas przetwarzania receptury w tickach.
+     * Recipe processing time in ticks.
      *
-     * <p>Vanilla: blasting i smoking 100 t, smelting 200 t. Dla nieznanych
-     * typow przyjmujemy 200 t, zeby nie faworyzowac niczego przypadkiem.
+     * <p>Vanilla: blasting and smoking 100 t, smelting 200 t. For unknown
+     * types we assume 200 t, so as not to favour anything by accident.
      */
     private static long processingTicks(ProcessingEntry entry) {
         if (entry.type() == RecipeType.BLASTING || entry.type() == RecipeType.SMOKING) {
@@ -269,7 +269,7 @@ public final class VeloceRecipeRegistry {
         return 200L;
     }
 
-    /** Buduje (lub pobiera z cache) indeks Item -> receptury pieca. */
+    /** Builds (or retrieves from cache) the Item -> furnace recipes index. */
     private static Map<Item, List<ProcessingEntry>> getFurnaceIndex(ServerLevel level) {
         RecipeManager manager = level.getRecipeManager();
         Map<Item, List<ProcessingEntry>> cached = FURNACE_CACHE.get(manager);
@@ -280,13 +280,13 @@ public final class VeloceRecipeRegistry {
         Map<Item, List<ProcessingEntry>> built = buildIndex(manager, level, FURNACE_TYPES);
         FURNACE_CACHE.put(manager, built);
 
-        // SAMOKONTROLA (po to, zeby ten blad nie wrocil po cichu).
+        // SELF-CHECK (so that this bug does not come back silently).
         //
-        // Pusty indeks przy niepustej liczbie receptur pieca w menedzerze to
-        // NASZ blad filtrowania, a nie "modpack nie ma przepalania". Wlasnie
-        // tak bylo: brama w addHolder sprawdzala liste typow craftingowych,
-        // wiec odrzucala KAZDA recepture pieca i log mowil spokojnie
-        // "0 item(s)" - a gracz nie mial ani jednej receptury przepalania.
+        // An empty index with a non-empty number of furnace recipes in the manager is
+        // OUR filtering bug, not "the modpack has no smelting". That is exactly
+        // how it was: the gate in addHolder checked the crafting type list,
+        // so it rejected EVERY furnace recipe and the log calmly said
+        // "0 item(s)" - and the player did not have a single smelting recipe.
         int inManager = 0;
         for (RecipeHolder<?> h : manager.getRecipes()) {
             if (FURNACE_TYPES.contains(h.value().getType())) {
@@ -295,29 +295,29 @@ public final class VeloceRecipeRegistry {
         }
         if (built.isEmpty() && inManager > 0) {
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
-                    "furnace index jest PUSTY, choc menedzer receptur ma %d receptur pieca"
-                            + " - to blad naszego filtrowania, nie brak przepalania."
-                            + " Przepalanie (np. charcoal z logow) NIE bedzie craftowalne.",
+                    "furnace index is EMPTY, even though the recipe manager has %d furnace recipes"
+                            + " - this is our filtering bug, not a lack of smelting."
+                            + " Smelting (e.g. charcoal from logs) will NOT be craftable.",
                     inManager);
         } else {
             VeloceLog.Craft.success(VeloceLog.Side.SERVER,
-                    "furnace recipe index built: %d item(s) z %d recipe(s), %d ms",
+                    "furnace recipe index built: %d item(s) from %d recipe(s), %d ms",
                     built.size(), inManager, (System.nanoTime() - start) / 1_000_000L);
         }
         return built;
     }
 
-    /** Buduje (lub pobiera z cache) indeks Item -> receptury. */
+    /** Builds (or retrieves from cache) the Item -> recipes index. */
     private static Map<Item, List<ProcessingEntry>> getIndex(ServerLevel level) {
         RecipeManager manager = level.getRecipeManager();
         Map<Item, List<ProcessingEntry>> cached = CACHE.get(manager);
         if (cached != null) {
             return cached;
         }
-        // Budowa indeksu to przejscie po WSZYSTKICH recepturach modpacka wraz
-        // z rozwiazaniem skladnikow - jednorazowy, ale realny koszt na watku
-        // serwera. Mierzymy go, zeby dalo sie go wskazac w logu, gdyby ktos
-        // znow zglaszal "klikniecie w terminal zamula serwer".
+        // Building the index walks ALL recipes of the modpack together
+        // with ingredient resolution - a one-off but real cost on the server
+        // thread. We measure it so that it can be pointed at in the log if someone
+        // reports "clicking the terminal bogs the server down" again.
         long start = System.nanoTime();
         Map<Item, List<ProcessingEntry>> built = buildIndex(manager, level, FREE_TYPES);
         CACHE.put(manager, built);
@@ -333,18 +333,18 @@ public final class VeloceRecipeRegistry {
         Map<Item, List<ProcessingEntry>> index = new HashMap<>();
         HolderLookup.Provider registries = level.registryAccess();
 
-        // JEDNO przejscie po recepturach, nie jedno na typ.
-        // Poprzednia wersja wolala collectType() dla kazdego z 3 typow, a kazde
-        // collectType przechodzilo CALA liste receptur i odsiewalo reszte po
-        // getType(). Przy duzym modpacku to bylo 3x wiecej pracy niz trzeba -
-        // i to na watku serwera, przy pierwszym uzyciu indeksu.
+        // ONE pass over the recipes, not one per type.
+        // The previous version called collectType() for each of the 3 types, and each
+        // collectType walked the WHOLE recipe list and filtered out the rest by
+        // getType(). With a large modpack that was 3x more work than needed -
+        // and on the server thread, on first use of the index.
         for (RecipeHolder<?> holder : manager.getRecipes()) {
             if (types.contains(holder.value().getType())) {
                 addHolder(holder, registries, index, false, types);
             }
         }
 
-        // Mody: tylko jesli jawnie zaufane (na razie brak).
+        // Mods: only if explicitly trusted (none for now).
         if (!TRUSTED_MOD_NAMESPACES.isEmpty()) {
             for (RecipeHolder<?> holder : manager.getRecipes()) {
                 ResourceLocation id = holder.id();
@@ -355,7 +355,7 @@ public final class VeloceRecipeRegistry {
             }
         }
 
-        // Zamien na liste niezmienna i posortuj po id, zeby kolejnosc byla stabilna.
+        // Turn it into an immutable list and sort by id, so that the order is stable.
         Map<Item, List<ProcessingEntry>> result = new LinkedHashMap<>();
         for (Map.Entry<Item, List<ProcessingEntry>> e : index.entrySet()) {
             List<ProcessingEntry> list = e.getValue();
@@ -366,19 +366,19 @@ public final class VeloceRecipeRegistry {
     }
 
     /**
-     * Dodaje recepture do indeksu, jesli jej typ jest na podanej liscie.
+     * Adds a recipe to the index if its type is on the given list.
      *
-     * <p><b>BUG, ktory to naprawia (brak recept pieca).</b> Brama byla zaszyta
-     * na {@code FREE_TYPES} (typy craftingowe) zamiast uzywac listy, ktora
-     * przekazal wolajacy. Efekt: przy budowie indeksu PIECA kazda receptura
-     * smelting/blasting/smoking byla odrzucana przez te sama brame, ktora
-     * miala przepuscic tylko typy pieca - indeks wychodzil PUSTY
-     * ("furnace recipe index built: 0 item(s)"), wiec gracz nie widzial ani
-     * jednej receptury przepalania (np. charcoal z logow) i auto-crafter nie
-     * mial czego zaplanowac.
+     * <p><b>The BUG this fixes (missing furnace recipes).</b> The gate was hardcoded
+     * to {@code FREE_TYPES} (crafting types) instead of using the list that the
+     * caller passed in. Effect: when building the FURNACE index, every recipe of
+     * smelting/blasting/smoking was rejected by the very gate that was
+     * supposed to let through only furnace types - the index came out EMPTY
+     * ("furnace recipe index built: 0 item(s)"), so the player did not see a single
+     * smelting recipe (e.g. charcoal from logs) and the auto-crafter had nothing
+     * to plan.
      *
-     * <p>Teraz brama to dokladnie ten sam zbior, ktorym wolajacy filtrowal
-     * receptury - jedno zrodlo, wiec nie moze sie to rozjesc.
+     * <p>Now the gate is exactly the same set with which the caller filtered
+     * recipes - a single source, so it cannot drift apart.
      */
     private static void addHolder(RecipeHolder<?> holder, HolderLookup.Provider registries,
                                   Map<Item, List<ProcessingEntry>> index, boolean trusted,
@@ -388,13 +388,13 @@ public final class VeloceRecipeRegistry {
         if (!trusted && !allowedTypes.contains(recipe.getType())) {
             return;
         }
-        // Receptury "special" WANILIOWE (np. dye armor, map cloning) nie maja
-        // sensownego przepisu do odtworzenia automatycznie - pomijamy je.
+        // VANILLA "special" recipes (e.g. dye armor, map cloning) have no
+        // sensible recipe to reproduce automatically - we skip them.
         //
-        // UWAGA: NIE wolno odrzucac po samym `isSpecial()`. Receptury modow
-        // (Mekanism robi tak ze WSZYSTKIMI swoimi) tez zwracaja true i byly
-        // przez to po cichu wyrzucane z indeksu - zaden modul z innego moda
-        // nie mialby czego liczyc. Sprawdzamy wiec namespace typu receptury.
+        // NOTE: it is NOT allowed to reject on `isSpecial()` alone. Recipes from mods
+        // (Mekanism does so with ALL of its own) also return true and were
+        // therefore silently thrown out of the index - no module from another mod
+        // would have anything to compute. So we check the namespace of the recipe type.
         if (isVanillaSpecial(recipe)) {
             return;
         }
@@ -411,7 +411,7 @@ public final class VeloceRecipeRegistry {
         if (ingredients.isEmpty()) {
             return;
         }
-        // Musi byc choc jeden niepusty skladnik.
+        // There must be at least one non-empty ingredient.
         boolean any = false;
         for (Ingredient ing : ingredients) {
             if (ing.getItems().length > 0) {
@@ -424,10 +424,10 @@ public final class VeloceRecipeRegistry {
         }
 
         Item out = result.getItem();
-        // Receptura waniliowa: jeden wynik i po jednej sztuce kazdego
-        // skladnika. Rodziny z innych modow buduja ProcessingEntry same
-        // (liczby sztuk, wiele wynikow, prawdopodobienstwa) - patrz
-        // ProcessingEntry.single() po przeciwienstwo.
+        // Vanilla recipe: one output and one unit of each
+        // ingredient. Families from other mods build ProcessingEntry themselves
+        // (stack counts, multiple outputs, probabilities) - see
+        // ProcessingEntry.single() as opposed to this.
         ProcessingEntry entry = ProcessingEntry.single(
                 holder.id(),
                 result.copy(),
@@ -437,19 +437,19 @@ public final class VeloceRecipeRegistry {
         index.computeIfAbsent(out, k -> new ArrayList<>()).add(entry);
     }
 
-    /** Czysci cache - wywolywane przy zmianie swiata/serwera. */
+    /** Clears the caches - called when the world/server changes. */
     public static void invalidate() {
         CACHE.clear();
         FURNACE_CACHE.clear();
-        // Receptury modulow maja wlasne indeksy per modul oraz pamiec
-        // "ktore moduly sa zasilone" na czas ticku - wszystko musi zostac
-        // uniewaznione razem, inaczej po zmianie swiata planer widzialby
-        // maszyny z poprzedniego.
+        // Module recipes have their own per-module indexes and a memory of
+        // "which modules are powered" for the duration of a tick - everything must be
+        // invalidated together, otherwise after a world change the planner would see
+        // machines from the previous one.
         VeloceModuleRecipes.invalidate();
         VeloceProcessingRegistry.invalidateAll();
     }
 
-    /** Mapa item -> liczba receptur (diagnostyka). */
+    /** Map item -> recipe count (diagnostics). */
     public static Map<Item, Integer> describeIndex(Level level) {
         Map<Item, Integer> out = new ConcurrentHashMap<>();
         for (Map.Entry<Item, List<ProcessingEntry>> e : getIndex((ServerLevel) level).entrySet()) {

@@ -23,41 +23,41 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * GUI Veloce Controller - przeglad sieci z filtrowaniem.
+ * Veloce Controller GUI - network overview with filtering.
  *
- * <p>Trzy tryby widoku (przyciski na dole ekranu):
+ * <p>Three view modes (buttons at the bottom of the screen):
  * <ul>
- *   <li><b>SHOW ALL</b> - wszystko, co jest w sieci + wszystko craftowalne</li>
- *   <li><b>AVAILABLE</b> - tylko to, co jest realnie dostepne: jest na stocku,
- *       LUB crafter to zrobi, LUB przepali to zasilony piec</li>
- *   <li><b>NOT AVAILABLE</b> - tego crafter nie zrobi, piec nie przepali
- *       i nie ma na stocku; wlasnie te itemy warto zaplanowac jako maszyny
- *       (extractor + skrzynia)</li>
+ *   <li><b>SHOW ALL</b> - everything that is in the network + everything craftable</li>
+ *   <li><b>AVAILABLE</b> - only what is really available: it is in stock,
+ *       OR the crafter will make it, OR a powered furnace will smelt it</li>
+ *   <li><b>NOT AVAILABLE</b> - the crafter will not make it, the furnace will not smelt it
+ *       and it is not in stock; these are exactly the items worth planning as machines
+ *       (extractor + chest)</li>
  * </ul>
  *
- * <p>Kolory tla ikony:
+ * <p>Icon background colours:
  * <ul>
- *   <li>niebieski - item jest na stocku w sieci</li>
- *   <li>zolty - itemu nie ma, ale crafter potrafi go zrobic</li>
- *   <li>pomaranczowy - itemu nie ma, ale zasilony piec ma na to recepture</li>
- *   <li>czerwony - niedostepny (brak stocku, craftingu i przepalania)</li>
+ *   <li>blue - the item is in stock in the network</li>
+ *   <li>yellow - the item is missing, but the crafter can make it</li>
+ *   <li>orange - the item is missing, but a powered furnace has a recipe for it</li>
+ *   <li>red - unavailable (no stock, no crafting and no smelting)</li>
  * </ul>
  *
- * <p>Tooltip pokazuje TYLKO to, co jest potrzebne: nazwe, tempo (minuta
- * i godzina) oraz - dla itemow z receptura pieca - preferencje "crafting czy
- * piec". Stocku w nim NIE ma (liczba jest na ikonie), nie ma powodow braku
- * dostepnosci ani komunikatow o stanie, ktory dziala - gracz kazal je usunac.
+ * <p>The tooltip shows ONLY what is needed: the name, the rate (per minute and per
+ * hour) and - for items with a furnace recipe - the "crafting or furnace" preference.
+ * Stock is NOT in it (the number is on the icon), nor are reasons for unavailability
+ * or messages about a state that works - the player asked for those to be removed.
  *
- * <p>Tooltip budujemy w {@link #getTooltipFromContainerItem(ItemStack)}, czyli
- * podmieniamy liste linii wanilii, zamiast rysowac wlasny obok - inaczej
- * powstawaly DWA tooltipy naraz, a waniliowy dokleja na zakladce SEARCH nazwe
- * kategorii, ktora nachodzila na liczby.
+ * <p>We build the tooltip in {@link #getTooltipFromContainerItem(ItemStack)}, that is,
+ * we replace vanilla's line list instead of drawing our own next to it - otherwise
+ * TWO tooltips appeared at once, and the vanilla one appends the category name on the
+ * SEARCH tab, which overlapped the numbers.
  */
 public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     /**
-     * Tryb filtrowania widoku. Kazdy ma klucz tlumaczenia, zeby etykieta
-     * byla z jezyka gry, a nie zaszyta w kodzie.
+     * View filtering mode. Each one has a translation key so that the label
+     * comes from the game language rather than being hardcoded.
      */
     public enum Filter {
         ALL("gui.craftingveloce.controller.filter.all",
@@ -67,9 +67,9 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         NOT_AVAILABLE("gui.craftingveloce.controller.filter.notAvailable",
                 "gui.craftingveloce.controller.filter.notAvailable.tip");
 
-        /** Krotka etykieta na przycisku (musi sie zmiescic w 52 px). */
+        /** Short label on the button (it must fit within 52 px). */
         final String key;
-        /** Pelne znaczenie filtra - pokazywane w tooltipie przycisku. */
+        /** The full meaning of the filter - shown in the button tooltip. */
         final String tooltipKey;
 
         Filter(String key, String tooltipKey) {
@@ -80,70 +80,70 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     private final BlockPos controllerPos;
     /**
-     * Stock sieci - ODSWIEZANY co sekunde pakietem tempa.
+     * Network stock - REFRESHED every second by the rate packet.
      *
-     * <p>Nie jest finalny od czasu, gdy kontroler dostaje swiezy stock razem
-     * z tempem (patrz SyncControllerFlowPKT): przy otwartym GUI gracz moze
-     * wyjac item ze skrzynki i liczba ma sie zmienic od razu.
+     * <p>It has not been final since the controller started receiving fresh stock
+     * together with the rate (see SyncControllerFlowPKT): with the GUI open the player
+     * can take an item out of a chest and the number has to change immediately.
      */
     private Map<Item, Long> stock;
     /**
-     * Itemy, ktore crafter REALNIE zrobi (auto-crafting wlaczony) - zielone tlo.
+     * Items that the crafter REALLY makes (auto-crafting enabled) - green background.
      *
-     * <p>To nie to samo co "ma recepture": {@code craftable} (receptura jest,
-     * ale crafter moze miec ja wylaczona) nie jest juz potrzebne, bo gracz
-     * kazal usunac teksty o powodach braku dostepnosci.
+     * <p>This is not the same as "has a recipe": {@code craftable} (the recipe exists,
+     * but the crafter may have it disabled) is no longer needed, because the player
+     * asked for the texts about reasons for unavailability to be removed.
      */
     private final Set<Item> craftingEnabled;
-    /** Itemy z receptura PIECA (smelting / blasting / smoking). */
+    /** Items with a FURNACE recipe (smelting / blasting / smoking). */
     private final Set<Item> furnaceCraftable;
-    /** Czy ktorys piec jest zasilony - tylko wtedy receptury pieca sa realne. */
+    /** Whether any furnace is powered - only then are furnace recipes real. */
     private final boolean furnacePowered;
     /**
-     * Itemy, dla ktorych gracz woli PRZEPALANIE od craftingu.
+     * Items for which the player prefers SMELTING over crafting.
      *
-     * <p>Trzymane po stronie sieci (patrz ControllerPreferKindPKT), tutaj kopia
-     * do rysowania podpowiedzi. Zmiana idzie od razu lokalnie (zeby klik
-     * odpowiadal natychmiast), a serwer jest jedynym zrodlem prawdy przy
-     * kolejnym otwarciu GUI.
+     * <p>Kept on the network side (see ControllerPreferKindPKT), here a copy for
+     * drawing the hint. A change goes locally right away (so the click responds
+     * immediately), and the server is the single source of truth on the next
+     * opening of the GUI.
      */
     private final Set<Item> furnacePreferred = new HashSet<>();
 
     private Filter filter = Filter.ALL;
 
     /**
-     * Ile sztuk da sie jeszcze dorobic - ta sama wspolna logika i ten sam
-     * kod rysujacy co w terminalu. Kontroler mial wlasna, uproszczona wersje,
-     * ktora rysowala liczby bez skalowania czcionki - i dlatego ich nie bylo
-     * widac albo wychodzily poza ikonke.
+     * How many more can be made - the same shared logic and the same drawing code as
+     * in the terminal. The controller had its own, simplified version that drew the
+     * numbers without scaling the font - and that is why they were either invisible
+     * or spilled outside the icon.
      */
     private final VeloceCraftableCounts craftableCounts = new VeloceCraftableCounts();
 
     private final List<Button> filterButtons = new ArrayList<>();
 
-    // ---------- przeplyw (staly przyrost / ubytek) ----------
+    // ---------- flow (steady gain / loss) ----------
     /**
-     * Tempo w sztukach na SEKUNDE - TYLKO dla itemow o stalym trendzie.
+     * Rate in items per SECOND - ONLY for items with a steady trend.
      *
-     * <p>Serwer sam decyduje, co jest trendem (jednokierunkowy ruch, ktory
-     * powtorzyl sie co najmniej dwa razy) i przysyla wylacznie takie itemy.
-     * Brak wpisu = "stoi albo sie szarpie" = w tooltipie nie ma zadnej linii
-     * tempa. Jedna liczba, dwie skale (na minute i na godzine) liczy klient.
+     * <p>The server decides by itself what counts as a trend (one-directional movement
+     * that repeated at least twice) and sends only such items. A missing entry =
+     * "standing still or jumping around" = there is no rate line in the tooltip.
+     * One number, two scales (per minute and per hour) are computed by the client.
      */
     private Map<Item, Float> flowRate = new HashMap<>();
 
     /**
-     * Szerokosc guzika filtra.
+     * Width of the filter button.
      *
-     * <p>Stala, bo pilnuje jej build (validate_filter_labels): etykieta musi
-     * sie zmiescic. Poprzednie napisy ("Show all", "Not available") wychodzily
-     * za przycisk i nachodzily na sasiada.
+     * <p>Constant, because the build enforces it (validate_filter_labels): the label
+     * has to fit. The previous labels ("Show all", "Not available") ran outside the
+     * button and overlapped the neighbour.
      */
     private static final int FILTER_BUTTON_W = 52;
 
-    /** Co ile tickow dopytujemy serwer o swieze tempo. */
+    /** How often we ask the server for a fresh rate. */
     private static final int FLOW_REQUEST_INTERVAL_TICKS = 20;
-    /** Ponizej tego tempa (szt./s) nic nie pokazujemy - ten sam prog co w trackerze. */
+    /** Below this rate (items/s) we show nothing - the same threshold as in the tracker. */
     private static final float FLOW_MIN = 0.01f;
     private int flowRequestCooldown;
 
@@ -162,31 +162,32 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         this.furnacePreferred.addAll(furnacePreferred);
     }
 
-    // ---------- klasyfikacja itemu ----------
+    // ---------- item classification ----------
 
     private boolean hasStock(Item item) {
         return stock.getOrDefault(item, 0L) > 0;
     }
 
     /**
-     * Czy item da sie uzyskac w PIECU.
+     * Can the item be obtained in a FURNACE.
      *
-     * <p>Wymagamy DWOCH rzeczy: receptury pieca ORAZ zasilonego pieca w sieci.
-     * Samo istnienie receptury nie wystarcza - bez paliwa nic sie nie przepali.
+     * <p>We require TWO things: a furnace recipe AND a powered furnace in the network.
+     * The mere existence of a recipe is not enough - without fuel nothing will smelt.
      */
     private boolean furnaceCanSmelt(Item item) {
         return furnacePowered && furnaceCraftable.contains(item);
     }
 
     /**
-     * Czy item da sie uzyskac: jest na stocku, crafter go zrobi albo piec przepali.
+     * Can the item be obtained: it is in stock, the crafter will make it or the furnace
+     * will smelt it.
      *
-     * <p><b>JEDNO zrodlo prawdy o dostepnosci.</b> Filtr i kolor ikony pytaja
-     * o to samo, wiec nie moga sie rozjechac. Kolejnosc jest ta sama w obu
-     * miejscach: stock, potem crafter, potem piec.
+     * <p><b>The ONE source of truth about availability.</b> The filter and the icon
+     * colour ask about the same thing, so they cannot drift apart. The order is the
+     * same in both places: stock, then crafter, then furnace.
      *
-     * <p>Sprawdzamy {@code craftingEnabled}, a nie samo "ma recepture":
-     * item moze miec recepture, ktorej crafter nie wykonuje.
+     * <p>We check {@code craftingEnabled}, not just "has a recipe": an item may have a
+     * recipe that the crafter does not execute.
      */
     private boolean isAvailable(Item item) {
         return hasStock(item) || craftingEnabled.contains(item) || furnaceCanSmelt(item);
@@ -201,16 +202,15 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Filtr dziala na LISCIE itemow, a nie tylko na rysowaniu ikony.
+     * The filter works on the item LIST, not just on drawing the icon.
      *
-     * <p><b>Bylo tu realne pomylenie.</b> Filtr sprawdzal sie wylacznie w
-     * {@code renderSlot} i w tooltipie, wiec odfiltrowane itemy zostawaly
-     * w siatce jako puste miejsca (cala masa dziur), a ich sloty nadal byly
-     * KLIKALNE - dalo sie wyciagnac item, ktory wlasnie byl oznaczony jako
-     * niedostepny.
+     * <p><b>There used to be a real mix-up here.</b> The filter was checked only in
+     * {@code renderSlot} and in the tooltip, so filtered-out items remained in the grid
+     * as empty slots (a whole mass of holes), and their slots were still CLICKABLE -
+     * you could pull out an item that had just been marked as unavailable.
      *
-     * <p>Teraz {@code applyItemFilter} z klasy bazowej usuwa je z listy i
-     * kompaktuje siatke - tak samo, jak robi to ekran craftera.
+     * <p>Now {@code applyItemFilter} from the base class removes them from the list and
+     * compacts the grid - exactly as the crafter screen does.
      */
     @Override
     protected boolean acceptItem(ItemStack stack) {
@@ -218,47 +218,48 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Kolor tla ikony wg stanu dostepnosci.
+     * Icon background colour by availability state.
      *
-     * <p><b>Zielony = crafter to zrobi, zolty = piec to przepali.</b> Wczesniej
-     * crafter mial zolty, a piec pomaranczowy; gracz chcial zielony dla
-     * craftowania (tak jak w innych modach), a zolty zostawil dla "da sie
-     * inaczej", czyli wlasnie dla pieca. Niebieski (stock) i czerwony (nie ma
-     * i nie da sie zrobic) zostaja bez zmian.
+     * <p><b>Green = the crafter will make it, yellow = the furnace will smelt it.</b>
+     * Previously the crafter was yellow and the furnace orange; the player wanted green
+     * for crafting (as in other mods) and left yellow for "can be obtained another way",
+     * that is, for the furnace. Blue (stock) and red (missing and cannot be made) stay
+     * unchanged.
      *
-     * <p>Kolejnosc jest ta sama co w {@link #isAvailable}: stock, crafter, piec.
+     * <p>The order is the same as in {@link #isAvailable}: stock, crafter, furnace.
      */
     private int colorFor(Item item) {
         if (hasStock(item)) {
-            return 0x770000AA;  // niebieski: na stocku
+            return 0x770000AA;  // blue: in stock
         }
         if (craftingEnabled.contains(item)) {
-            return 0x7700AA00;  // zielony: crafter to zrobi
+            return 0x7700AA00;  // green: the crafter will make it
         }
         if (furnaceCanSmelt(item)) {
-            return 0x77AAAA00;  // zolty: piec to przepali (inna droga)
+            return 0x77AAAA00;  // yellow: the furnace will smelt it (another path)
         }
-        return 0x77AA0000;      // czerwony: nie ma i nie da sie zrobic
+        return 0x77AA0000;      // red: missing and cannot be made
     }
 
     /**
-     * Odswieza tempo przeplywu i ZMIANE stocku - BEZ przebudowy ekranu.
+     * Refreshes the flow rate and the stock CHANGE - WITHOUT rebuilding the screen.
      *
-     * <p>To jest powod, dla ktorego przeplyw ma osobny pakiet: gdyby serwer
-     * co sekunde przysylal pelny obraz sieci i kazal tworzyc ekran od nowa,
-     * gracz tracilby przy kazdym odswiezeniu wybrany filtr, pozycje przewijania
-     * i wpisane wyszukiwanie.
+     * <p>This is the reason the flow has its own packet: if the server sent a full
+     * network snapshot every second and told us to recreate the screen from scratch,
+     * the player would lose the selected filter, the scroll position and the typed
+     * search on every refresh.
      *
-     * <p><b>Stock przychodzi jako roznica, nie calosc</b> (patrz
-     * {@code VeloceStockDeltas}): w duzej sieci pelny obraz co sekunde to
-     * tysiace wpisow bez zmiany. Dlatego scalamy zmiany i usuwamy znikniete
-     * itemy, a pelny zrzut (raz na minute) po prostu zastepuje mape.
+     * <p><b>Stock arrives as a delta, not as a whole</b> (see
+     * {@code VeloceStockDeltas}): in a large network a full snapshot every second is
+     * thousands of entries without a change. That is why we merge the changes and remove
+     * the items that disappeared, while a full dump (once a minute) simply replaces
+     * the map.
      *
-     * @param pos     pozycja kontrolera, ktorego dotyczy pakiet - ignorujemy
-     *                pakiety dla innego kontrolera, zeby nie podmieszac danych
-     * @param changed wpisy nowe albo o zmienionej liczbie (wartosci bezwzgledne)
-     * @param removed itemy, ktorych w sieci juz nie ma
-     * @param full    czy to pelny zrzut (zastap stock, nie scalaj)
+     * @param pos     position of the controller the packet concerns - we ignore
+     *                packets for another controller so as not to mix up the data
+     * @param changed new entries or entries with a changed count (absolute values)
+     * @param removed items that are no longer in the network
+     * @param full    whether this is a full dump (replace stock, do not merge)
      */
     public void updateFlow(net.minecraft.core.BlockPos pos,
                            Map<Item, Long> changed,
@@ -280,10 +281,10 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Dopytuje serwer o swieze tempo, dopoki ekran jest otwarty.
+     * Asks the server for a fresh rate as long as the screen is open.
      *
-     * <p>Zapytanie, a nie subskrypcja: serwer nie musi pamietac, kto patrzy,
-     * wiec nie zostaje z nieaktualnym stanem, gdy klient wyjdzie z gry.
+     * <p>A request, not a subscription: the server does not have to remember who is
+     * watching, so it is not left with a stale state when the client leaves the game.
      */
     @Override
     public void containerTick() {
@@ -294,7 +295,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         flowRequestCooldown = FLOW_REQUEST_INTERVAL_TICKS;
         net.neoforged.neoforge.network.PacketDistributor.sendToServer(
                 new com.craftingveloce.network.ControllerFlowRequestPKT(controllerPos));
-        // Liczby "do dorobienia" zamawiamy tym samym rytmem - jak terminal.
+        // We request the "to be made" numbers at the same rhythm - like the terminal.
         requestVisibleCounts(false);
     }
 
@@ -302,37 +303,37 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     @Override
     protected void init() {
-        super.init();   // baza: tryb creative, ukrycie slotow gracza, filtr itemow
+        super.init();   // base: creative mode, hiding player slots, item filter
         buildFilterButtons();
         craftableCounts.resetRequestState();
         requestVisibleCounts(true);
     }
 
-    /** Zamawia liczby "do dorobienia" dla widocznej strony - jak terminal. */
+    /** Requests the "to be made" numbers for the visible page - like the terminal. */
     private void requestVisibleCounts(boolean force) {
         if (this.minecraft == null || this.minecraft.player == null || this.menu == null) {
             return;
         }
-        // Jak w terminalu: puste sloty = brak zamowienia = brak liczb.
+        // As in the terminal: empty slots = no request = no numbers.
         ensureGridItems();
         craftableCounts.request(controllerPos, this.menu.slots,
                 this::isPlayerInventorySlot, force);
     }
 
-    /** Serwer przysyla policzone liczby - jak w terminalu. */
+    /** The server sends the computed numbers - as in the terminal. */
     public void updateCraftableCounts(Map<Item, Long> counts, boolean complete) {
         craftableCounts.update(counts, complete);
     }
 
     /**
-     * Przyciski filtrow umieszczone w pasku hotbara (ktory i tak jest pusty).
+     * Filter buttons placed in the hotbar strip (which is empty anyway).
      *
-     * <p><b>Dlaczego etykiety sa KROTKIE.</b> Przycisk ma 52 px szerokosci, a
-     * poprzednie napisy ("Show all", "Not available") sie w nim nie miescily -
-     * "Not available" to ~78 px, wiec tekst wychodzil za przycisk i nachodzil
-     * na sasiedni. Dlatego etykieta jest jednym slowem, a PELNE znaczenie
-     * przeniosl sie do tooltipa - nic nie zginelo, tylko przestalo sie
-     * rozlewac. Same OPCJE (co filtruja) zostaja bez zmian.
+     * <p><b>Why the labels are SHORT.</b> The button is 52 px wide, and the previous
+     * labels ("Show all", "Not available") did not fit in it - "Not available" is
+     * ~78 px, so the text ran outside the button and overlapped the neighbouring one.
+     * That is why the label is a single word and the FULL meaning moved into the
+     * tooltip - nothing was lost, it just stopped spilling over. The OPTIONS themselves
+     * (what they filter) stay unchanged.
      */
     private void buildFilterButtons() {
         filterButtons.clear();
@@ -378,7 +379,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         ItemStack stack = slot.getItem();
         Item item = stack.getItem();
 
-        // Filtr: item poza filtrem traktujemy jak pusty slot (bez ikony).
+        // Filter: an item outside the filter is treated like an empty slot (no icon).
         if (!passesFilter(item)) {
             return;
         }
@@ -392,9 +393,9 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         graphics.pose().popPose();
         RenderSystem.enableDepthTest();
 
-        // Dwie liczby - DOKLADNIE tak jak w terminalu, tym samym kodem:
-        //   biala  = ile jest na stanie (prawy dolny rog),
-        //   zolta  = ile da sie jeszcze dorobic, np. "+12" (lewy gorny rog).
+        // Two numbers - EXACTLY as in the terminal, with the same code:
+        //   white = how much is in stock (bottom right corner),
+        //   yellow = how many more can be made, e.g. "+12" (top left corner).
         VeloceSlotOverlay.drawStock(graphics, this.font,
                 stock.getOrDefault(item, 0L), slot.x, slot.y);
         VeloceSlotOverlay.drawCraftable(graphics, this.font,
@@ -405,14 +406,14 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        // Tlo pod przyciskami filtrow (hotbar jest pusty).
+        // Background under the filter buttons (the hotbar is empty).
         int x1 = this.leftPos + 8;
         int y1 = this.topPos + 111;
         int x2 = this.leftPos + 170;
         int y2 = this.topPos + 130;
         graphics.fill(x1, y1, x2, y2, 0xFFC6C6C6);
 
-        // Przyciski rysujemy po tle, inaczej zostana zamalowane.
+        // We draw the buttons after the background, otherwise they get painted over.
         for (Button b : filterButtons) {
             b.render(graphics, mouseX, mouseY, partialTick);
         }
@@ -420,19 +421,19 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Tooltip ikony: nazwa, tempo (minuta i godzina) i preferencja "crafting
-     * czy piec" - dla itemow z receptura pieca.
+     * Icon tooltip: the name, the rate (per minute and per hour) and the "crafting or
+     * furnace" preference - for items with a furnace recipe.
      *
-     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> Kontroler rysowal
-     * WLASNY tooltip, a waniliowy rysowal sie obok - dwa naraz. Waniliowy na
-     * zakladce SEARCH dokleja jeszcze nazwe kategorii ("Building Blocks"),
-     * wiec napisy nachodzily na siebie, a kategoria przykrywala liczby.
-     * Terminal robil to dobrze od poczatku: nadpisuje te metode, wiec rysuje
-     * sie DOKLADNIE jedna lista linii - bez kategorii i bez tagow.
+     * <p><b>The BUG this fixes (player report).</b> The controller drew its OWN tooltip
+     * while the vanilla one was drawn next to it - two at once. The vanilla one on the
+     * SEARCH tab additionally appends the category name ("Building Blocks"), so the
+     * texts overlapped and the category covered the numbers. The terminal did this
+     * correctly from the start: it overrides this method, so EXACTLY one line list is
+     * drawn - without the category and without tags.
      *
-     * <p><b>Stock zniknal z tooltipa</b> na zyczenie gracza: liczba jest juz
-     * narysowana na ikonie (prawy dolny rog), wiec linia "Stock: N" byla
-     * powtorzeniem.
+     * <p><b>Stock disappeared from the tooltip</b> at the player's request: the number
+     * is already drawn on the icon (bottom right corner), so the "Stock: N" line was
+     * a repetition.
      */
     @Override
     public List<Component> getTooltipFromContainerItem(ItemStack stack) {
@@ -441,7 +442,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         }
         Slot hovered = getSlotUnderMouse();
         if (hovered != null && isPlayerInventorySlot(hovered)) {
-            return super.getTooltipFromContainerItem(stack);   // sloty gracza bez zmian
+            return super.getTooltipFromContainerItem(stack);   // player slots unchanged
         }
         List<Component> lines = new ArrayList<>();
         lines.add(stack.getHoverName());
@@ -451,21 +452,20 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Jedna linia tempa - tylko dla itemow o STAŁYM trendzie.
+     * One rate line - only for items with a STEADY trend.
      *
-     * <p><b>Czego gracz nie chcial.</b> Dwoch linii ("1 min:" i "1 hour:")
-     * oraz linii "no change" przy kazdym itemie. Zamiast tego: jedna linia
-     * z JEDNA liczba w dwoch skalach, i to tylko wtedy, gdy item naprawde ma
-     * staly przyrost albo staly ubytek (serwer przysyla tylko takie itemy -
-     * patrz VeloceFlowTracker.steadyRates). Gdy nic stalego sie nie dzieje,
-     * nie ma tu zadnej linii.
+     * <p><b>What the player did not want.</b> Two lines ("1 min:" and "1 hour:")
+     * plus a "no change" line for every item. Instead: one line with ONE number in two
+     * scales, and only when the item really has a steady gain or a steady loss (the
+     * server sends only such items - see VeloceFlowTracker.steadyRates). When nothing
+     * steady is happening, there is no line here at all.
      */
     private void addFlowLines(List<Component> lines, Item item) {
         Float rate = this.flowRate.get(item);
         if (rate == null || Math.abs(rate) < FLOW_MIN) {
             return;
         }
-        // Jedna liczba, dwie skale: na minute i na godzine.
+        // One number, two scales: per minute and per hour.
         lines.add(Component.translatable("gui.craftingveloce.controller.flow.rate",
                         Component.literal(signed(rate * 60f)),
                         Component.literal(signed(rate * 3600f)))
@@ -473,15 +473,15 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Liczba ze znakiem, bez jednostki: "+15", "-19.8", "+1.2K".
+     * A signed number, without a unit: "+15", "-19.8", "+1.2K".
      *
-     * <p>Znak jest CZESCIA NAPISU, nie tylko kolorem - inaczej gracz
-     * nierozrozniajacy barw nie wie, czy zapas rosnie, czy spada. Jednostke
-     * ("/min", "/h") dodaje klucz jezykowy.
+     * <p>The sign is PART OF THE TEXT, not just the colour - otherwise a player who
+     * cannot distinguish colours does not know whether the supply is growing or
+     * falling. The unit ("/min", "/h") is added by the language key.
      *
-     * <p>Format samej liczby zyje w {@link com.craftingveloce.util.VeloceFormat}
-     * (jedno miejsce dla calego moda): bez zbednego ".0", bez wiodacego zera
-     * ponizej jedynki i ze skrotem K/M powyzej tysiaca.
+     * <p>The number format itself lives in {@link com.craftingveloce.util.VeloceFormat}
+     * (one place for the whole mod): without a redundant ".0", without a leading zero
+     * below one, and with a K/M abbreviation above a thousand.
      */
     private static String signed(float rate) {
         return (rate < 0f ? "-" : "+")
@@ -489,37 +489,36 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Czy item da sie zrobic OBIEMA drogami: crafterem i piecem.
+     * Can the item be made BOTH ways: with the crafter and with the furnace.
      *
-     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> Preferencje
-     * pokazywalismy kazdemu itemowi z receptura pieca - takze szklu, ktore
-     * powstaje WYLACZNIE w piecu i nie ma receptury craftingowej. Gracz widzial
-     * wiec wybor "Preference: Crafting / Furnace" dla itemu, ktorego craftingiem
-     * nie da sie zrobic, i slusznie pytal, po co ten wybor jest. Preferencja ma
-     * sens tylko wtedy, gdy jest miedzy czym wybierac.
+     * <p><b>The BUG this fixes (player report).</b> We showed the preference for every
+     * item with a furnace recipe - including glass, which is produced ONLY in a furnace
+     * and has no crafting recipe. The player therefore saw the choice "Preference:
+     * Crafting / Furnace" for an item that cannot be made by crafting, and rightly asked
+     * why that choice was there. The preference only makes sense when there is something
+     * to choose between.
      *
-     * <p>Sprawdzamy {@code craftingEnabled} (crafter realnie to zrobi), a nie
-     * samo "ma recepture" - item z wylaczonym craftingiem tez ma tylko jedna
-     * dostepna droge.
+     * <p>We check {@code craftingEnabled} (the crafter really makes it), not just "has a
+     * recipe" - an item with crafting disabled also has only one available path.
      */
     private boolean hasBothPaths(Item item) {
         return craftingEnabled.contains(item) && furnaceCraftable.contains(item);
     }
 
     /**
-     * Preferencja "crafting czy piec" - tylko dla itemow, ktore MOZNA przepalic.
+     * The "crafting or furnace" preference - only for items that CAN be smelted.
      *
-     * <p>Pokazujemy ja wprost ("Preference: Crafting" / "Preference: Furnace"),
-     * bo item moze miec obie drogi naraz i gracz musi widziec, ktora jest
-     * pierwsza. Prawy klik przelacza.
+     * <p>We show it explicitly ("Preference: Crafting" / "Preference: Furnace"), because
+     * an item may have both paths at once and the player has to see which one is first.
+     * A right click toggles it.
      *
-     * <p><b>Jeden kolor w obu stanach</b> - gracz tego chcial: linia ma czytac
-     * sie jak USTAWIENIE, a nie jak alarm. Podpowiedz "kliknij prawym"
-     * zniknela, bo prawy klik jest jedynym sensownym klikiem na tej ikonie.
+     * <p><b>One colour in both states</b> - the player wanted this: the line should read
+     * like a SETTING, not like an alarm. The "right-click" hint disappeared, because a
+     * right click is the only sensible click on this icon.
      */
     private void addPreferenceLines(List<Component> lines, Item item) {
         if (!hasBothPaths(item)) {
-            return;   // jest tylko jedna droga - nie ma czego preferowac
+            return;   // there is only one path - there is nothing to prefer
         }
         boolean furnace = furnacePreferred.contains(item);
         lines.add(Component.translatable(furnace
@@ -529,10 +528,10 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Kontroler pamieta swoja zakladke PER BLOK.
+     * The controller remembers its tab PER BLOCK.
      *
-     * <p>Blok jest na razie wstepnie napisany, ale pamiec zakladki dziala
-     * tak samo jak w pozostalych ekranach.
+     * <p>The block is only a preliminary draft for now, but tab memory works
+     * the same way as in the other screens.
      */
     @Override
     protected Object viewStateKey() {
@@ -541,9 +540,9 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
-        // Controller jest tylko do odczytu - nie przenosimy itemow.
-        // PRAWY klawisz przelacza natomiast PREFERENCJE "crafting czy piec",
-        // tak samo jak prawy klik w crafterze wybiera recepture.
+        // The controller is read-only - we do not move items.
+        // The RIGHT button, however, toggles the PREFERENCE "crafting or furnace",
+        // just as a right click in the crafter selects a recipe.
         if (mouseButton != 1 || slot == null || !slot.hasItem()) {
             return;
         }
@@ -552,8 +551,8 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         }
         Item item = slot.getItem().getItem();
         if (!hasBothPaths(item)) {
-            // Jedna droga (sam crafting albo sam piec) - nie ma miedzy czym
-            // wybierac, wiec prawy klik nic nie robi (patrz hasBothPaths).
+            // One path (crafting only or furnace only) - there is nothing to choose
+            // between, so a right click does nothing (see hasBothPaths).
             return;
         }
         boolean preferFurnace = !furnacePreferred.contains(item);
@@ -567,14 +566,14 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
                         controllerPos, item, preferFurnace));
         com.craftingveloce.util.VeloceLog.Gui.success(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                "preferencja dla %s: %s", item,
-                preferFurnace ? "FURNACE pierwszy" : "CRAFTING pierwszy");
+                "preference for %s: %s", item,
+                preferFurnace ? "FURNACE first" : "CRAFTING first");
     }
 
     @Override
     public void removed() {
-        // Trzymany stos obsluguje teraz klasa bazowa (oddaje do ekwipunku
-        // albo upuszcza). Wczesniej tutaj byl skasowany.
+        // The held stack is now handled by the base class (it returns it to the
+        // inventory or drops it). Previously it was deleted here.
         super.removed();
 
     }

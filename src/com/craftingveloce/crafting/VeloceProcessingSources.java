@@ -10,20 +10,21 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Rejestr maszyn modulow podlaczonych do sieci - analog
- * {@link VeloceHeatSources}, ale dla modulow z innych modow.
+ * Registry of module machines connected to the network - the counterpart of
+ * {@link VeloceHeatSources}, but for modules from other mods.
  *
- * <p><b>Dlaczego osobno od ciepla.</b> Piec jest jeden i ma wlasna, waska
- * semantyke (paliwo/prad, jedno przepalenie). Maszyn modulow jest wiele, kazda
- * obsluguje swoj typ receptury, a ich energia ma inne jednostki (FE/op).
- * Wspolny jest tylko ksztalt pytania: "czy w sieci stoi maszyna dla tego typu
- * receptury i czy jest zasilona?".
+ * <p><b>Why separate from heat.</b> There is one furnace and it has its own
+ * narrow semantics (fuel/power, one smelting). There are many module machines,
+ * each handles its own recipe type, and their energy uses different units
+ * (FE/op). The only thing they share is the shape of the question: "is there a
+ * machine in the network for this recipe type, and is it powered?".
  *
- * <p><b>Trzy stany, jak przy piecu</b> (kontroler je rozroznia):
+ * <p><b>Three states, as with the furnace</b> (the controller tells them
+ * apart):
  * <ul>
- *   <li>brak maszyny - {@link #hasAny} = false,</li>
- *   <li>maszyna bez pradu - {@link #hasAny} = true, {@link #hasPowered} = false,</li>
- *   <li>maszyna zasilona - {@link #hasPowered} = true.</li>
+ *   <li>no machine - {@link #hasAny} = false,</li>
+ *   <li>machine without power - {@link #hasAny} = true, {@link #hasPowered} = false,</li>
+ *   <li>powered machine - {@link #hasPowered} = true.</li>
  * </ul>
  */
 public final class VeloceProcessingSources {
@@ -31,7 +32,7 @@ public final class VeloceProcessingSources {
     private VeloceProcessingSources() {
     }
 
-    /** Wszystkie maszyny modulow w sieci, w kolejnosci uzycia. */
+    /** All module machines in the network, in order of use. */
     public static List<VeloceProcessingSource> allIn(ServerLevel level, VelocePipeNetwork network) {
         List<VeloceProcessingSource> out =
                 VeloceNetworkSources.scan(level, network, VeloceProcessingSource.class);
@@ -39,7 +40,7 @@ public final class VeloceProcessingSources {
         return out;
     }
 
-    /** Maszyny obslugujace dany typ receptury (takze bez pradu). */
+    /** Machines handling the given recipe type (also without power). */
     public static List<VeloceProcessingSource> forType(ServerLevel level, VelocePipeNetwork network,
                                                       RecipeType<?> type) {
         List<VeloceProcessingSource> out = new ArrayList<>();
@@ -52,14 +53,14 @@ public final class VeloceProcessingSources {
     }
 
     /**
-     * Bok najwiekszej ZBUDOWANEJ siatki wsrod maszyn tego typu.
+     * The side of the largest BUILT grid among machines of this type.
      *
-     * <p>Crafter mechaniczny Create nie ma "rozmiaru" w jednym bloku: gracz
-     * stawia oczka i tylko tyle pol ma siatka. Liczba pol to liczba
-     * zbudowanych elementow, a bok siatki to pierwiastek z niej (25 oczek =
-     * siatka 5x5). Gdy maszyna nie ma elementow, bok wynosi 0 i zadna
-     * receptura z siatka sie nie zmiesci - czyli nie da sie craftowac
-     * niezbudowanym crafterem.
+     * <p>A Create mechanical crafter has no "size" in a single block: the player
+     * places cells and the grid has exactly that many slots. The number of slots
+     * is the number of built elements, and the grid side is its square root
+     * (25 cells = a 5x5 grid). When the machine has no elements, the side is 0
+     * and no grid recipe fits - which means you cannot craft with an unbuilt
+     * crafter.
      */
     public static int maxGridSide(ServerLevel level, VelocePipeNetwork network,
                                   RecipeType<?> type) {
@@ -67,10 +68,10 @@ public final class VeloceProcessingSources {
     }
 
     /**
-     * Najwieksza liczba ZBUDOWANYCH pol wsrod maszyn tego typu.
+     * The largest number of BUILT slots among machines of this type.
      *
-     * <p>Sam bok nie wystarcza: receptura 3x3 potrzebuje DZIEWIECIU pol, a przy
-     * osmiu zbudowanych bok wynosi 3 - dlatego planer potrzebuje obu liczb.
+     * <p>The side alone is not enough: a 3x3 recipe needs NINE slots, while with
+     * eight built the side is 3 - that is why the planner needs both numbers.
      */
     public static int maxParts(ServerLevel level, VelocePipeNetwork network,
                                RecipeType<?> type) {
@@ -81,12 +82,12 @@ public final class VeloceProcessingSources {
         return best;
     }
 
-    /** Czy w sieci stoi JAKAKOLWIEK maszyna dla tego typu receptury. */
+    /** Whether ANY machine for this recipe type stands in the network. */
     public static boolean hasAny(ServerLevel level, VelocePipeNetwork network, RecipeType<?> type) {
         return !forType(level, network, type).isEmpty();
     }
 
-    /** Czy maszyna dla tego typu receptury jest teraz zasilona. */
+    /** Whether a machine for this recipe type is powered right now. */
     public static boolean hasPowered(ServerLevel level, VelocePipeNetwork network, RecipeType<?> type) {
         for (VeloceProcessingSource source : forType(level, network, type)) {
             if (source.isPowered()) {
@@ -96,7 +97,7 @@ public final class VeloceProcessingSources {
         return false;
     }
 
-    /** Czy stoi i jest zasilona maszyna dla KTOREJS z podanych rodzin. */
+    /** Whether a machine for ANY of the given families is present and powered. */
     public static boolean hasPoweredAny(ServerLevel level, VelocePipeNetwork network,
                                         Iterable<RecipeType<?>> types) {
         for (RecipeType<?> type : types) {
@@ -107,7 +108,7 @@ public final class VeloceProcessingSources {
         return false;
     }
 
-    /** Czy stoi jakakolwiek maszyna dla ktorejs z podanych rodzin (nawet bez pradu). */
+    /** Whether any machine for any of the given families is present (even unpowered). */
     public static boolean hasAnyOf(ServerLevel level, VelocePipeNetwork network,
                                    Iterable<RecipeType<?>> types) {
         for (RecipeType<?> type : types) {
@@ -119,14 +120,14 @@ public final class VeloceProcessingSources {
     }
 
     /**
-     * Zabiera energie na operacje z JUZ POBIERANEJ listy maszyn.
+     * Takes energy for operations from an ALREADY FETCHED list of machines.
      *
-     * <p>Semantyka jak przy piecu: liczymy sume po wszystkich maszynach, ale
-     * zabieramy wylacznie z zasilonych, w kolejnosci priorytetu. Gdy zabraknie
-     * pradu na calosc, metoda zwraca {@code false} i NIE zabiera niczego
-     * (najpierw sprawdzamy sume).
+     * <p>Semantics as with the furnace: we count the sum over all machines, but
+     * we take only from the powered ones, in priority order. When there is not
+     * enough power for the whole thing, the method returns {@code false} and
+     * takes NOTHING (we check the sum first).
      *
-     * @param sources maszyny dla tego typu receptury (patrz {@link #forType})
+     * @param sources machines for this recipe type (see {@link #forType})
      */
     public static boolean consumeFrom(List<VeloceProcessingSource> sources, long operations) {
         if (operations <= 0) {
@@ -158,11 +159,11 @@ public final class VeloceProcessingSources {
     }
 
     /**
-     * Zabiera energie na operacje, pobierajac liste maszyn samodzielnie.
+     * Takes energy for operations, fetching the list of machines by itself.
      *
-     * <p>Wygodne dla wolajacych jednostkowych. Sciezka wykonania planu (goraca,
-     * raz na kazda sztuke) uzywa {@link #consumeFrom} z lista pobrana RAZ, zeby
-     * nie skanowac sieci setki razy w jednym ticku.
+     * <p>Convenient for one-off callers. The plan execution path (hot, once per
+     * every unit) uses {@link #consumeFrom} with the list fetched ONCE, so as
+     * not to scan the network hundreds of times in a single tick.
      */
     public static boolean consume(ServerLevel level, VelocePipeNetwork network,
                                   RecipeType<?> type, long operations) {

@@ -5,30 +5,30 @@ import com.craftingveloce.config.VeloceConfig.LogLevel;
 import org.slf4j.Logger;
 
 /**
- * Centralny logger Veloce.
+ * Central Veloce logger.
  *
- * <p>Kazda linia ma wspolny prefiks {@code [Veloce]} i krotki tag kategorii
- * w nawiasie, np. {@code [Veloce][CRAFT]} - mozna je filtrowac w logu.
+ * <p>Every line shares the common prefix {@code [Veloce]} and a short category
+ * tag in brackets, e.g. {@code [Veloce][CRAFT]} - they can be filtered in the log.
  *
- * <p>Wzorzec komunikatow jest celowo jednakowy dla kazdej operacji, zeby dalo
- * sie je czytac jak przebieg zdarzen:
+ * <p>The message pattern is deliberately identical for every operation, so that
+ * they can be read as a sequence of events:
  * <pre>
- *   TRY    - co gracz/serwer probuje zrobic
- *   OK     - co sie udalo i co zostalo zwrocone
- *   FAIL   - co sie nie udalo
- *   WHY    - dlaczego (przyczyna, liczby, brakujace elementy)
- *   DETAIL - kroki posrednie
+ *   TRY    - what the player/server is trying to do
+ *   OK     - what succeeded and what was returned
+ *   FAIL   - what did not succeed
+ *   WHY    - why (cause, numbers, missing elements)
+ *   DETAIL - intermediate steps
  * </pre>
  *
- * <p>Wszystkie komunikaty po angielsku: sluza do grepowania i wklejania
- * w zgloszeniach, a nie do czytania przez gracza.
+ * <p>All messages are in English: they are there for grepping and pasting into
+ * reports, not for reading by a player.
  */
 public final class VeloceLog {
 
     public enum Side {
-        /** Log wywolany po stronie serwera (logika swiata). */
+        /** Log called on the server side (world logic). */
         SERVER,
-        /** Log wywolany po stronie klienta (GUI, render). */
+        /** Log called on the client side (GUI, render). */
         CLIENT
     }
 
@@ -36,7 +36,7 @@ public final class VeloceLog {
     }
 
     // ------------------------------------------------------------------
-    // Rdzen
+    // Core
     // ------------------------------------------------------------------
 
     private static void log(Logger log, Side side, LogLevel level, String tag,
@@ -45,14 +45,15 @@ public final class VeloceLog {
     }
 
     /**
-     * Rdzen logowania, z opcjonalnym wyjatkiem.
+     * Logging core, with an optional exception.
      *
-     * <p><b>Po co osobny wariant.</b> Wczesniej wyjatki w module lecialy przez
-     * {@code t.printStackTrace()} - czyli na stderr, obok systemu logow, bez
-     * poziomu i bez kategorii. Efekt: nie dalo sie ich wylaczyc configiem,
-     * nie mialy prefiksu [Veloce] i nie bylo ich w pliku loga w tym samym
-     * formacie co reszta. Podanie wyjatku do log4j wypisuje komunikat RAZEM
-     * ze stosem, we wlasciwym miejscu.
+     * <p><b>Why a separate variant.</b> Previously exceptions in the module went
+     * through {@code t.printStackTrace()} - that is, to stderr, next to the
+     * logging system, without a level and without a category. The effect: they
+     * could not be turned off via config, they had no [Veloce] prefix and they
+     * were not in the log file in the same format as the rest. Passing the
+     * exception to log4j prints the message TOGETHER with the stack, in the
+     * right place.
      */
     private static void logThrown(Logger log, Side side, LogLevel level, String tag,
                                   String action, Throwable thrown,
@@ -79,10 +80,11 @@ public final class VeloceLog {
     }
 
     /**
-     * Blad z wyjatkiem: komunikat plus STOS, w kategorii {@code tag}.
+     * Error with an exception: the message plus the STACK, in the category
+     * {@code tag}.
      *
-     * <p>Uzywane tam, gdzie wczesniej bylo {@code printStackTrace()} - zeby
-     * wyjatek trafil do loga moda, a nie obok niego.
+     * <p>Used where {@code printStackTrace()} used to be - so that the exception
+     * lands in the mod's log, and not next to it.
      */
     public static void error(Side side, String tag, Throwable thrown,
                              String what, Object... args) {
@@ -95,7 +97,7 @@ public final class VeloceLog {
                     ? VeloceConfig.LOG_SERVER.get()
                     : VeloceConfig.LOG_CLIENT.get();
         } catch (Throwable t) {
-            // Config moze nie byc jeszcze wczytany (wczesna faza startu).
+            // The config may not be loaded yet (early start-up phase).
             return false;
         }
     }
@@ -105,39 +107,40 @@ public final class VeloceLog {
     }
 
     // ------------------------------------------------------------------
-    // Wzorce dla typowych sytuacji
+    // Patterns for typical situations
     // ------------------------------------------------------------------
 
-    /** Co ktos probuje zrobic. */
+    /** What someone is trying to do. */
     public static void attempt(Side side, String tag, String what, Object... args) {
         log(logger(), side, LogLevel.VERBOSE, tag, "TRY", what, args);
     }
 
-    /** Co sie udalo i co zostalo zwrocone. */
+    /** What succeeded and what was returned. */
     public static void success(Side side, String tag, String what, Object... args) {
         log(logger(), side, LogLevel.NORMAL, tag, "OK", what, args);
     }
 
-    /** Co sie nie udalo. */
+    /** What did not succeed. */
     public static void failure(Side side, String tag, String what, Object... args) {
         log(logger(), side, LogLevel.ERRORS, tag, "FAIL", what, args);
     }
 
-    /** Dlaczego - przyczyny, liczby, brakujace elementy. */
+    /** Why - causes, numbers, missing elements. */
     public static void why(Side side, String tag, String what, Object... args) {
         log(logger(), side, LogLevel.NORMAL, tag, "WHY", what, args);
     }
 
-    /** Krok posredni. */
+    /** An intermediate step. */
     public static void detail(Side side, String tag, String what, Object... args) {
         log(logger(), side, LogLevel.DETAIL, tag, "DETAIL", what, args);
     }
 
     /**
-     * Czy szczegolowe logi w ogole pojda - tanie sprawdzenie przed budowaniem.
+     * Whether detailed logs will be emitted at all - a cheap check before
+     * building them.
      *
-     * <p>Po to, zeby wolajacy mogl pominac kosztowne zbieranie informacji,
-     * ktore i tak trafilyby do kosza.
+     * <p>This is so that the caller can skip the costly gathering of
+     * information that would have been thrown away anyway.
      */
     public static boolean isDetailEnabled(Side side) {
         try {
@@ -147,16 +150,16 @@ public final class VeloceLog {
         }
     }
 
-    /** Zmiana stanu (np. wlaczenie auto-craftingu). */
+    /** A state change (e.g. enabling auto-crafting). */
     public static void state(Side side, String tag, String what, Object... args) {
         log(logger(), side, LogLevel.VERBOSE, tag, "STATE", what, args);
     }
 
     // ------------------------------------------------------------------
-    // Skroty dla czesto uzywanych kategorii
+    // Shorthands for frequently used categories
     // ------------------------------------------------------------------
 
-    /** Siec rur: skanowanie, endpointy, ekstrakcja. */
+    /** Pipe network: scanning, endpoints, extraction. */
     public static final class Network {
         private static final String TAG = "NET";
 
@@ -172,7 +175,7 @@ public final class VeloceLog {
             if (checkNetwork()) VeloceLog.failure(s, TAG, what, a);
         }
 
-        /** Blad z wyjatkiem - stos trafia do loga. */
+        /** Error with an exception - the stack lands in the log. */
         public static void error(Side s, Throwable t, String what, Object... a) {
             if (checkNetwork()) VeloceLog.error(s, TAG, t, what, a);
         }
@@ -194,7 +197,7 @@ public final class VeloceLog {
         }
     }
 
-    /** Auto-crafting: planowanie, wykonanie, wybor receptur. */
+    /** Auto-crafting: planning, execution, recipe selection. */
     public static final class Craft {
         private static final String TAG = "CRAFT";
 
@@ -210,7 +213,7 @@ public final class VeloceLog {
             if (checkCraft()) VeloceLog.failure(s, TAG, what, a);
         }
 
-        /** Blad z wyjatkiem - stos trafia do loga. */
+        /** Error with an exception - the stack lands in the log. */
         public static void error(Side s, Throwable t, String what, Object... a) {
             if (checkCraft()) VeloceLog.error(s, TAG, t, what, a);
         }
@@ -223,7 +226,7 @@ public final class VeloceLog {
             if (checkCraft()) VeloceLog.detail(s, TAG, what, a);
         }
 
-        /** Czy szczegolowe logi tej kategorii w ogole pojda. */
+        /** Whether detailed logs of this category will be emitted at all. */
         public static boolean isDetailEnabled(Side s) {
             return checkCraft() && VeloceLog.isDetailEnabled(s);
         }
@@ -237,7 +240,7 @@ public final class VeloceLog {
         }
     }
 
-    /** Bloki: stawianie, niszczenie, polaczenia. */
+    /** Blocks: placing, breaking, connections. */
     public static final class Block {
         private static final String TAG = "BLOCK";
 
@@ -253,7 +256,7 @@ public final class VeloceLog {
             if (checkBlocks()) VeloceLog.failure(s, TAG, what, a);
         }
 
-        /** Blad z wyjatkiem - stos trafia do loga. */
+        /** Error with an exception - the stack lands in the log. */
         public static void error(Side s, Throwable t, String what, Object... a) {
             if (checkBlocks()) VeloceLog.error(s, TAG, t, what, a);
         }
@@ -275,7 +278,7 @@ public final class VeloceLog {
         }
     }
 
-    /** GUI: otwieranie, klikniecia, filtry. */
+    /** GUI: opening, clicks, filters. */
     public static final class Gui {
         private static final String TAG = "GUI";
 
@@ -291,7 +294,7 @@ public final class VeloceLog {
             if (checkGui()) VeloceLog.failure(s, TAG, what, a);
         }
 
-        /** Blad z wyjatkiem - stos trafia do loga. */
+        /** Error with an exception - the stack lands in the log. */
         public static void error(Side s, Throwable t, String what, Object... a) {
             if (checkGui()) VeloceLog.error(s, TAG, t, what, a);
         }

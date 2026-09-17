@@ -9,16 +9,17 @@ import snownee.jade.api.ITooltip;
 import snownee.jade.api.config.IPluginConfig;
 
 /**
- * Linie w tooltipie Jade: predkosc/SU albo energia + sieć + status.
+ * Lines in the Jade tooltip: speed/SU or energy + network + status.
  *
- * <p><b>Te same teksty co okno po prawym kliku</b> - obie strony biora je
- * z {@link VeloceModuleInfoLines}, wiec nie da sie ich rozjechac. Dane przyszly
- * z serwera ({@code accessor.getServerData()}), bo tylko on zna wymagana
- * predkosc, pobor SU i stan sieci.
+ * <p><b>The same texts as the right-click window</b> - both sides take them
+ * from {@link VeloceModuleInfoLines}, so they cannot drift apart. The data comes
+ * from the server ({@code accessor.getServerData()}), because only it knows the
+ * required speed, the SU draw and the network state.
  *
- * <p>Filtrujemy po rdzeniowym {@link VeloceModuleInfoSource}: provider jest
- * zarejestrowany dla wszystkich blokow (nie znamy - i nie chcemy znac - klas
- * blokow z modulow integracji), a obcy blok po prostu nie przechodzi testu.
+ * <p>We filter by the core {@link VeloceModuleInfoSource}: the provider is
+ * registered for all blocks (we do not know - and do not want to know - the
+ * block classes from the integration modules), and a foreign block simply does
+ * not pass the test.
  */
 public enum VeloceModuleComponentProvider implements IComponentProvider<BlockAccessor> {
 
@@ -38,8 +39,8 @@ public enum VeloceModuleComponentProvider implements IComponentProvider<BlockAcc
         if (info == null || info.isEmpty()) {
             return;
         }
-        // JEDNA linia: pracuje albo nie ma sily/energii. Gracz nie chce tu nic
-        // wiecej (zadnych predkosci, SU, energii ani sieci).
+        // ONE line: working, or short of power. The player does not want
+        // anything more here (no rates, no load figures, no network details).
         tooltip.add(com.craftingveloce.crafting.VeloceModuleStatus.message(info));
     }
 }

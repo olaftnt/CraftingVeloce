@@ -10,29 +10,29 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * Rodzina receptur Create, ktora Veloce umie obslugiwac.
+ * The Create recipe family that Veloce can handle.
  *
- * <p><b>Po co osobna klasa.</b> Typy receptur Create nie istnieja bez Create,
- * wiec nie moga stac w rdzeniu (patrz {@link VeloceRecipeFamilies}). Ta klasa
- * zyje w {@code compat/create} i wola rejestracje rodziny tylko wtedy, gdy
- * Create jest obecne.
+ * <p><b>Why a separate class.</b> Create recipe types do not exist without
+ * Create, so they cannot live in the core (see {@link VeloceRecipeFamilies}).
+ * This class lives in {@code compat/create} and calls the family registration
+ * only when Create is present.
  *
- * <p><b>Dlaczego dopiero w {@code FMLCommonSetupEvent}.</b> DeferredHoldery
- * Create (a wiec i {@code AllRecipeTypes.X.getType()}) sa zwiazane dopiero po
- * zdarzeniach rejestracji. Odczyt w konstruktorze moda rzucilby wyjatkiem
- * "holder not bound" - dlatego rejestrujemy rodzine w zdarzeniu, ktore leci
- * PO rejestracji.
+ * <p><b>Why only in {@code FMLCommonSetupEvent}.</b> Create's DeferredHolders
+ * (and therefore {@code AllRecipeTypes.X.getType()}) are bound only after the
+ * registration events. Reading them in the mod constructor would throw an
+ * "holder not bound" exception - that is why we register the family in an event
+ * that fires AFTER registration.
  *
- * <p><b>Zakres.</b> Szesc rodzin: milling, cutting, crushing, mechanical
- * crafting, pressing i mixing. Receptury z Basenu i z cieplem sa obslugiwane -
- * planer widzi je tylko wtedy, gdy w sieci jest Basen (press/mixer) albo Blaze
- * Burner (cieplo). Rodziny plynne (spout, fany) poza zakresem: brak warstwy
- * plynow.
+ * <p><b>Scope.</b> Six families: milling, cutting, crushing, mechanical
+ * crafting, pressing and mixing. Recipes from the Basin and heat-based ones are
+ * handled - the planner sees them only when there is a Basin (press/mixer) or a
+ * Blaze Burner (heat) in the network. Fluid families (spout, fans) are out of
+ * scope: no fluid layer.
  *
  */
 public final class CreateRecipeFamily {
 
-    /** Identyfikator rodziny w {@link VeloceRecipeFamilies}. */
+    /** Family identifier in {@link VeloceRecipeFamilies}. */
     public static final String ID = "create";
 
     private static Set<RecipeType<?>> resolved;
@@ -40,57 +40,57 @@ public final class CreateRecipeFamily {
     private CreateRecipeFamily() {
     }
 
-    /** Rejestruje rodzine receptur Create w rdzeniu (po rejestracji blokow). */
+    /** Registers the Create recipe family in the core (after block registration). */
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
             Set<RecipeType<?>> types = types();
             VeloceRecipeFamilies.registerModFamily(ID, types);
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
-                    "[Veloce][COMPAT] {}: zarejestrowano {} typow receptur",
+                    "[Veloce][COMPAT] {}: registered {} recipe types",
                     ID, types.size());
         });
     }
 
-    /** Mlyn: receptury {@code create:milling}. */
+    /** Mill: {@code create:milling} recipes. */
     public static RecipeType<?> milling() {
         return AllRecipeTypes.MILLING.getType();
     }
 
-    /** Piła: receptury {@code create:cutting}. */
+    /** Saw: {@code create:cutting} recipes. */
     public static RecipeType<?> cutting() {
         return AllRecipeTypes.CUTTING.getType();
     }
 
-    /** Kruszarka: receptury {@code create:crushing} (wyniki losowe). */
+    /** Crusher: {@code create:crushing} recipes (random outputs). */
     public static RecipeType<?> crushing() {
         return AllRecipeTypes.CRUSHING.getType();
     }
 
-    /** Prasa: receptury {@code create:pressing} (pracuje na Basenie). */
+    /** Press: {@code create:pressing} recipes (works on the Basin). */
     public static RecipeType<?> pressing() {
         return AllRecipeTypes.PRESSING.getType();
     }
 
-    /** Mixer: receptury {@code create:mixing} (pracuje na Basenie). */
+    /** Mixer: {@code create:mixing} recipes (works on the Basin). */
     public static RecipeType<?> mixing() {
         return AllRecipeTypes.MIXING.getType();
     }
 
-    /** Deployer: receptury {@code create:deploying} (nakladanie itemu na item). */
+    /** Deployer: {@code create:deploying} recipes (applying one item to another). */
     public static RecipeType<?> deploying() {
         return AllRecipeTypes.DEPLOYING.getType();
     }
 
-    /** Mechanical crafter: receptury {@code create:mechanical_crafting}. */
+    /** Mechanical crafter: {@code create:mechanical_crafting} recipes. */
     public static RecipeType<?> mechanicalCrafting() {
         return AllRecipeTypes.MECHANICAL_CRAFTING.getType();
     }
 
     /**
-     * Typy receptur Create obslugiwane przez modul.
+     * Create recipe types handled by the module.
      *
-     * <p>Wolno wolac tylko gdy Create jest obecne - metoda dotyka typow obcego
-     * moda. Wynik jest liczony raz i zapamietany.
+     * <p>May only be called when Create is present - the method touches another
+     * mod's types. The result is computed once and cached.
      */
     public static Set<RecipeType<?>> types() {
         if (resolved == null) {

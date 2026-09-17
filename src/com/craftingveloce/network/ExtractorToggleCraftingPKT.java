@@ -12,11 +12,11 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * C→S: przelacz auto-crafting dla jednego slotu filtra ekstraktora.
+ * C->S: toggles auto-crafting for a single extractor filter slot.
  *
- * <p>Prawy klik na ZAJETYM slocie filtra zmienia wylacznie to, czy extractor
- * moze dla tego itemu zamawiac craft u craftera, czy ma brac tylko to, co juz
- * lezy w sieci. Sam wybor itemu zostaje bez zmian.
+ * <p>A right-click on an OCCUPIED filter slot changes only whether the extractor
+ * may order a craft from the crafter for this item, or should take only what already
+ * lies in the network. The item selection itself stays unchanged.
  */
 public record ExtractorToggleCraftingPKT(BlockPos pos, int filterIndex) implements CustomPacketPayload {
 

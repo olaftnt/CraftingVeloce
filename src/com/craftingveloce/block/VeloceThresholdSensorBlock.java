@@ -37,32 +37,33 @@ import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
- * Veloce Threshold Sensor - wylacznik sieciowy oparty na stanie magazynu.
+ * Veloce Threshold Sensor - a network switch based on storage state.
  *
- * <p><b>Do czego sluzy.</b> Gracz wybiera item i prog ("np. 64 zelaza").
- * Sensor patrzy, ile tego itemu jest FIZYCZNIE w sieci, i wystawia redstone
- * zaleznie od wyniku. Typowe uzycie: skonczylo sie zelazo - wlacz prad, zeby
- * ruszyla fabryka, ktora je dowozi.
+ * <p><b>What it is for.</b> The player picks an item and a threshold ("e.g. 64
+ * iron"). The sensor watches how much of that item there PHYSICALLY is in the
+ * network and emits redstone depending on the result. A typical use: the iron
+ * ran out - turn on the power so the factory that delivers it starts up.
  *
- * <p><b>To WEZEL sieci</b> (jak terminal, crafter czy piec): musi stac obok
- * rury, a jego chunk jest utrzymywany, zeby pilnowal stanu takze wtedy, gdy
- * gracz jest daleko. Bez tego sensor przestalby dzialac dokladnie w tej
- * sytuacji, do ktorej zostal zrobiony - czyli przy automatyzacji bez gracza.
+ * <p><b>It is a NETWORK NODE</b> (like the terminal, crafter or furnace): it
+ * must stand next to a pipe, and its chunk is kept so that it watches the state
+ * also when the player is far away. Without that, the sensor would stop working
+ * in exactly the situation it was made for - automation with no player around.
  *
- * <p><b>Wyjscie redstone.</b> Wynik trzymamy w STANIE BLOKU ({@code POWERED}),
- * a nie tylko w block entity. Powod jest mechaniczny: Minecraft rozglasza
- * zmiane stanu bloku sasiadom, i wlasnie to powiadomienie uruchamia maszyny
- * obok. Sam block entity nie wysyla nikomu nic.
+ * <p><b>Redstone output.</b> We keep the result in the BLOCK STATE
+ * ({@code POWERED}), and not only in the block entity. The reason is
+ * mechanical: Minecraft broadcasts a block state change to neighbors, and that
+ * very notification starts the machines next to it. A block entity alone sends
+ * nothing to anyone.
  *
- * <p>Dajemy moc MOCNA (zarowno {@code getSignal}, jak i {@code getDirectSignal}),
- * czyli zachowujemy sie jak blok redstone: dziala i na maszyny obok, i na
- * przewod polozony przy sensorze. Slabsze wyjscie zmuszaloby gracza do
- * zgadywania, gdzie wolno postawic przewod.
+ * <p>We emit STRONG power (both {@code getSignal} and {@code getDirectSignal}),
+ * so we behave like a redstone block: it works both on the machines next to it
+ * and on a wire placed against the sensor. A weaker output would force the
+ * player to guess where a wire may be placed.
  */
 public class VeloceThresholdSensorBlock extends BaseEntityBlock
         implements EntityBlock, IInventoryCable, VeloceNetworkNode {
 
-    /** Czy sensor wystawia teraz prad. */
+    /** Whether the sensor is currently emitting power. */
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
 
     public VeloceThresholdSensorBlock() {
@@ -77,15 +78,16 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
 
 
     /**
-     * Domkniecie blachy na scianie, przy ktorej stoi rura Veloce.
+     * Closing the plate on the side a Veloce pipe stands against.
      *
-     * <p>Zgloszenie gracza: "kabel sie przelacza, ale scianki sie nie zamykaja
-     * - na crushing wheelu dziala, a na crafting table i piecyku nie".
-     * Przyczyna: te bloki nie mialy nawet WŁASCIWOSCI zaslepek
-     * ({@code CLOSED_BY_DIRECTION}), wiec nie bylo czego zamykac. Teraz maja je
-     * (patrz {@code createBlockStateDefinition}) i przeliczaja je tu - to
-     * waniliowa, bezpieczna sciezka: sasiad wysyla update, my zwracamy nowy
-     * stan (bez wlasnego setBlock przy stawianiu, co kiedys dawalo ghost bloki).
+     * <p>A player report: "the cable toggles, but the walls do not close -
+     * it works on the crushing wheel, but not on the crafting table and the
+     * furnace". The cause: those blocks did not even have the cap PROPERTIES
+     * ({@code CLOSED_BY_DIRECTION}), so there was nothing to close. Now they
+     * have them (see {@code createBlockStateDefinition}) and recompute them
+     * here - this is the vanilla, safe path: a neighbor sends an update, we
+     * return a new state (with no setBlock of our own on placement, which once
+     * produced ghost blocks).
      */
     @Override
     protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
@@ -100,7 +102,7 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
         builder.add(POWERED);
     }
 
-    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    /** On placement we immediately close the sides a cable arrives from. */
     @Override
     public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
         return com.craftingveloce.block.VeloceIntegraleFrame.withPlacementClosures(
@@ -113,7 +115,7 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
     }
 
     // ------------------------------------------------------------------
-    // Wyjscie redstone
+    // Redstone output
     // ------------------------------------------------------------------
 
     @Override
@@ -128,8 +130,8 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
 
     @Override
     public int getDirectSignal(BlockState state, BlockGetter level, BlockPos pos, Direction side) {
-        // Moc mocna: sensor ma dzialac jak blok redstone, takze na przewod
-        // polozony bezposrednio przy nim.
+        // Strong power: the sensor should act like a redstone block, also on a
+        // wire placed directly against it.
         return state.getValue(POWERED) ? 15 : 0;
     }
 
@@ -143,11 +145,11 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
     }
 
     /**
-     * Sensor MUSI tykac - inaczej nigdy nie sprawdzi sieci.
+     * The sensor MUST tick - otherwise it would never check the network.
      *
-     * <p>Sprawdzenie jest rozlozone: raz na 10 tickow, a nie co tick. Skan
-     * magazynow sieci jest drogi, a sensor nie musi reagowac szybciej niz
-     * zareaguje maszyna po drugiej stronie redstone'a.
+     * <p>The check is spread out: once every 10 ticks, not every tick. Scanning
+     * the network's storages is expensive, and the sensor does not have to react
+     * faster than the machine on the other side of the redstone will.
      */
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level world, BlockState state,
@@ -173,7 +175,7 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
     }
 
     // ------------------------------------------------------------------
-    // Wezel sieci - dokladnie jak pozostale maszyny
+    // Network node - exactly like the other machines
     // ------------------------------------------------------------------
 
     @Override
@@ -202,7 +204,7 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
         }
     }
 
-    /** Sensor laczy sie z kazdej strony - nie ma przodu ani tylu. */
+    /** The sensor connects from every side - there is no front or back. */
     @Override
     public boolean canConnectFrom(BlockState state, Direction dir) {
         return true;

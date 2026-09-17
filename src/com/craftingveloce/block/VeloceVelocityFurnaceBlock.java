@@ -23,11 +23,11 @@ import javax.annotation.Nullable;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
- * Velocity Furnace - blok zrodla ciepla dla auto-craftera.
+ * Velocity Furnace - the heat source block for the auto-crafter.
  *
- * <p>Blok jest WEZLEM sieci (tak jak crafter czy extractor): musi byc
- * postawiony obok rury, wtedy siec go widzi i utrzymuje jego chunk, zeby
- * piec mogl palic sie CALY CZAS - nawet gdy gracz jest daleko.
+ * <p>The block is a network NODE (just like the crafter or the extractor): it
+ * must be placed next to a pipe, then the network sees it and keeps its chunk
+ * loaded, so the furnace can burn ALL THE TIME - even when the player is far away.
  */
 public class VeloceVelocityFurnaceBlock extends BaseEntityBlock
         implements EntityBlock, VeloceNetworkNode {
@@ -37,8 +37,8 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock
     }
 
     /**
-     * Piec paliwowy nie ma przodu ani tylu, wiec laczy sie z rura z kazdej
-     * strony - tak samo jak pozostale maszyny w modzie.
+     * A fuel furnace has no front or back, so it connects to a pipe from every
+     * side - just like the other machines in the mod.
      */
     @Override
     public boolean canConnectFrom(BlockState state, Direction towardPipe) {
@@ -72,12 +72,12 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
                                                Player player, BlockHitResult hit) {
         if (!world.isClientSide && player instanceof ServerPlayer serverPlayer) {
-            // Otwieramy normalne menu. Ekran (plomyk + 6 filtrow) jest
-            // zarejestrowany w RegisterMenuScreensEvent - bez tego wpisu
-            // otwarcie menu wysypaloby klienta.
+            // We open the normal menu. The screen (flame + 6 filters) is
+            // registered in RegisterMenuScreensEvent - without that entry
+            // opening the menu would crash the client.
             //
-            // Block entity moze byc chwilowo niedostepne (chunk w trakcie
-            // ladowania) - wtedy po prostu nic nie otwieramy.
+            // The block entity may be temporarily unavailable (chunk currently
+            // loading) - then we simply open nothing.
             if (world.getBlockEntity(pos) instanceof MenuProvider provider) {
                 serverPlayer.openMenu(provider, pos);
             }
@@ -86,17 +86,18 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock
     }
 
     /**
-     * Zglasza piec do sieci rur przy postawieniu.
+     * Registers the furnace with the pipe network when placed.
      *
-     * <p><b>BUG, ktory to naprawia.</b> Piec byl zarejestrowany jako wezel
-     * (VeloceNodeBlocks) i potrafil dzialac jako zrodlo ciepla, ale NIE
-     * zglaszal sie przy postawieniu - w przeciwienstwie do terminala,
-     * kontrolera, craftera i ekstraktora. Skutek: postawienie pieca obok
-     * istniejacej rury nie odswiezalo sieci, wiec piec nie byl w niej widziany
-     * (a bez tego crafter go nie znajdowal i nie mial czym przepalac).
+     * <p><b>The BUG this fixes.</b> The furnace was registered as a node
+     * (VeloceNodeBlocks) and could work as a heat source, but it did NOT
+     * register itself when placed - unlike the terminal, the controller, the
+     * crafter and the extractor. The effect: placing the furnace next to an
+     * existing pipe did not refresh the network, so the furnace was not seen in
+     * it (and without that the crafter did not find it and had nothing to smelt with).
      *
-     * <p>Dzialalo tylko w jedna strone: gdy rura byla stawiana PO piecu,
-     * skan rury sam go odkrywal. Odwrotna kolejnosc - i nic.
+     * <p>It only worked in one direction: when the pipe was placed AFTER the
+     * furnace, the pipe's scan discovered it on its own. The reverse order -
+     * and nothing.
      */
     @Override
     public void setPlacedBy(Level world, BlockPos pos, BlockState state,
@@ -111,12 +112,13 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock
     @Override
     public void destroy(net.minecraft.world.level.LevelAccessor world, BlockPos pos,
                         BlockState state) {
-        // Paliwo lezace w piecu to PRAWDZIWE przedmioty (piec sam je dociaga
-        // z sieci), wiec musza wypasc - inaczej zburzenie pieca je gubi.
+        // The fuel lying in the furnace is REAL items (the furnace pulls them
+        // from the network itself), so they must drop - otherwise breaking the
+        // furnace loses them.
         //
-        // Uwaga: filtry paliwa sa WIDMOWE (klikniecie tylko kopiuje item do
-        // filtra, nie zabiera go graczowi). Ich oddanie tworzyloby przedmioty
-        // z niczego, wiec oddajemy WYLACZNIE realny slot paliwa.
+        // Note: the fuel filters are PHANTOM (clicking only copies the item into
+        // the filter, it does not take it from the player). Returning them would
+        // create items out of nothing, so we return ONLY the real fuel slot.
         if (world instanceof net.minecraft.server.level.ServerLevel sl
                 && sl.getBlockEntity(pos) instanceof com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity be) {
             net.minecraft.world.Container fuel = be.getFuelSlot();
@@ -137,7 +139,7 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock
     }
 
 
-    /** Wlasciwosci zaslepek obudowy: po jednej na kazda strone swiata. */
+    /** Casing cap properties: one per each side of the world. */
     @Override
     protected void createBlockStateDefinition(
             net.minecraft.world.level.block.state.StateDefinition.Builder<
@@ -146,14 +148,14 @@ public class VeloceVelocityFurnaceBlock extends BaseEntityBlock
         com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
     }
 
-    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    /** When placed, we immediately close the sides where a cable comes in. */
     @Override
     public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
         return com.craftingveloce.block.VeloceIntegraleFrame.withPlacementClosures(
                 context.getLevel(), context.getClickedPos(), defaultBlockState());
     }
 
-    /** Domkniecie blachy na scianie, przy ktorej stoi rura Veloce. */
+    /** Closing of the plate on the wall where a Veloce pipe stands. */
     @Override
     protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
                                      BlockState facingState, net.minecraft.world.level.LevelAccessor world,

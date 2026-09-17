@@ -11,12 +11,12 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * Typy block entity modulu Mekanism - po jednym na maszyne.
+ * Block entity types of the Mekanism module - one per machine.
  *
- * <p>Typ jest potrzebny per blok (tak dziala rejestr), ale KLASA jest jedna:
- * {@link VeloceFeModuleBlockEntity}, ktora dostaje swoj {@link FeModule}
- * w konstruktorze. Dlatego cztery maszyny nie maja czterech kopii logiki
- * energii.
+ * <p>A type is needed per block (that is how the registry works), but the CLASS
+ * is a single one: {@link VeloceFeModuleBlockEntity}, which receives its own
+ * {@link FeModule} in the constructor. That is why four machines do not have
+ * four copies of the energy logic.
  */
 public final class MekanismBlockEntities {
 
@@ -152,17 +152,17 @@ public final class MekanismBlockEntities {
     }
 
     /**
-     * Fabryka block entity dla danej maszyny.
+     * Block entity factory for a given machine.
      *
-     * <p>Blok dostaje ja w konstruktorze, wiec nie musi znac czterech holderow
-     * ani siegac do nich po nazwie - a mapowanie maszyna -> typ zyje w JEDNYM
-     * miejscu ({@link #holderFor}).
+     * <p>The block receives it in the constructor, so it does not have to know
+     * the four holders or reach for them by name - and the machine -> type
+     * mapping lives in ONE place ({@link #holderFor}).
      */
     public static VeloceFeModuleBlockEntity.Factory factory(FeModule module) {
         return (pos, state) -> new VeloceFeModuleBlockEntity(module, holderFor(module), pos, state);
     }
 
-    /** Typ block entity dla maszyny - do capability, testow i diagnostyki. */
+    /** Block entity type for a machine - for the capability, tests and diagnostics. */
     public static DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceFeModuleBlockEntity>>
             holderFor(FeModule module) {
         if (module == MekanismFeModules.CRUSHER) {
@@ -235,6 +235,6 @@ public final class MekanismBlockEntities {
         if (module == MekanismFeModules.CHEMICAL_INFUSING) {
             return CHEMICAL_INFUSING_MODULE;
         }
-        throw new IllegalArgumentException("brak typu block entity dla maszyny " + module.id());
+        throw new IllegalArgumentException("no block entity type for machine " + module.id());
     }
 }

@@ -17,18 +17,19 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Modul Create w rdzeniu Veloce.
+ * The Create module in the Veloce core.
  *
- * <p>Rdzen pyta ten modul o to samo, co kazdy inny: co umie zrobic, czy maszyna
- * stoi w sieci, czy jest napedzana i jakie ma receptury. Reszta (planer,
- * liczenie liczb, kontroler) nie zna Create.
+ * <p>The core asks this module the same thing it asks any other: what it can do,
+ * whether the machine stands in the network, whether it is powered, and what
+ * recipes it has. The rest (planner, number counting, controller) does not know
+ * Create.
  *
- * <p>Rejestruje sie w {@code FMLCommonSetupEvent}, bo DeferredHoldery typow
- * receptur Create sa wiazane dopiero po zdarzeniach rejestracji.
+ * <p>It registers in {@code FMLCommonSetupEvent}, because Create's recipe type
+ * DeferredHolders are bound only after the registration events.
  */
 public final class CreateModule implements VeloceProcessingModule {
 
-    /** Jedna instancja - modul nie ma stanu. */
+    /** A single instance - the module has no state. */
     private static final CreateModule INSTANCE = new CreateModule();
 
     private static final String ID = "create";
@@ -40,7 +41,7 @@ public final class CreateModule implements VeloceProcessingModule {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
             VeloceProcessingRegistry.register(INSTANCE);
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
-                    "[Veloce][COMPAT] {}: modul maszyn zarejestrowany", ID);
+                    "[Veloce][COMPAT] {}: machine module registered", ID);
         });
     }
 
@@ -55,17 +56,17 @@ public final class CreateModule implements VeloceProcessingModule {
     }
 
     /**
-     * Itemy, ktore maszyny STOJACE w sieci potrafia zrobic.
+     * The items that the machines STANDING in the network can make.
      *
-     * <p>Rodzina bez swojej maszyny nic nie doklada - sam mlynek nie obiecuje
-     * wynikow kruszarki, nawet jesli Create jest obecne.
+     * <p>A family without its own machine contributes nothing - the mill alone
+     * does not promise the crusher's outputs, even if Create is present.
      */
     @Override
     public Set<Item> producible(ServerLevel level, VelocePipeNetwork network) {
         Set<Item> out = new HashSet<>();
         for (RecipeType<?> type : recipeTypes()) {
-            // Maszyna BEZ pradu nie jest "dostepna" - gracz nie moze z niej
-            // korzystac, wiec nie moze tez pojawiac sie na liscie "co umiemy".
+            // A machine WITHOUT power is not "available" - the player cannot use
+            // it, so it cannot appear on the "what we can do" list either.
             if (!VeloceProcessingSources.hasPowered(level, network, type)) {
                 continue;
             }
@@ -95,10 +96,10 @@ public final class CreateModule implements VeloceProcessingModule {
     }
 
     /**
-     * Receptury na dany item - TYLKO z rodzin, ktorych maszyna jest NAPEDZANA.
+     * Recipes for the given item - ONLY from families whose machine is POWERED.
      *
-     * <p>Filtr per rodzina jest konieczny: krecacy sie mlynek nie znaczy, ze
-     * mozna uzywac receptur kruszarki.
+     * <p>The per-family filter is necessary: a spinning mill does not mean that
+     * the crusher's recipes may be used.
      */
     @Override
     public List<ProcessingEntry> recipesFor(ServerLevel level, VelocePipeNetwork network,
@@ -108,8 +109,8 @@ public final class CreateModule implements VeloceProcessingModule {
             if (!VeloceProcessingSources.hasPowered(level, network, type)) {
                 continue;
             }
-            // Receptura z siatka wchodzi tylko wtedy, gdy maszyna ma dosc
-            // zbudowanych pol (crafter mechaniczny buduje sie z oczek).
+            // A recipe with a grid is included only when the machine has enough
+            // built cells (the mechanical crafter is built out of cells).
             int side = VeloceProcessingSources.maxGridSide(level, network, type);
             int parts = VeloceProcessingSources.maxParts(level, network, type);
             for (ProcessingEntry entry : CreateRecipeHarvest.forItem(level, type, item)) {
@@ -122,11 +123,11 @@ public final class CreateModule implements VeloceProcessingModule {
     }
 
     /**
-     * Receptury na dany item BEZ patrzenia na maszyny i zasilanie.
+     * Recipes for the given item WITHOUT looking at machines and power.
      *
-     * <p>Dla narzedzi diagnostycznych (komenda getitems): gracz pyta "jak to
-     * sie robi", a nie "czy moge to teraz zrobic". Planer nadal uzywa
-     * recipesFor, ktore wymaga maszyny i pradu.
+     * <p>For diagnostic tools (the getitems command): the player asks "how is
+     * this made", not "can I make it right now". The planner still uses
+     * recipesFor, which requires the machine and power.
      */
     @Override
     public List<ProcessingEntry> recipesAnywhere(ServerLevel level, Item item) {
@@ -138,13 +139,14 @@ public final class CreateModule implements VeloceProcessingModule {
     }
 
     /**
-     * Wymagania dodatkowe receptury: cieplo i Basen.
+     * Additional recipe requirements: heat and the Basin.
      *
-     * <p>Gracz opisal to wprost: "jak cos potrzebuje mixer, to mixer jest;
-     * jesli tylko basin jest w jakimkolwiek inventory, to mamy basin
-     * zaliczony, a jak musi byc heated blaze burner, to tez mamy zaliczone,
-     * jesli tylko mamy blaze burner". Dlatego NIE budujemy modelu sieci
-     * przeplywow - pytamy wylacznie o obecnosc przedmiotu w sieci.
+     * <p>The player described it outright: "if something needs a mixer, then
+     * there is a mixer; if there is only a basin in any inventory, then we count
+     * the basin as satisfied, and if it has to be a heated blaze burner, then we
+     * also count that as satisfied as long as we have a blaze burner". That is
+     * why we do NOT build a flow model of the network - we ask only about the
+     * presence of the item in the network.
      */
     private static boolean requirementsMet(ServerLevel level, VelocePipeNetwork network,
                                            RecipeType<?> type, ProcessingEntry entry) {
@@ -157,12 +159,12 @@ public final class CreateModule implements VeloceProcessingModule {
         return true;
     }
 
-    /** Prasa i mixer pracuja na zawartosci Basenu - bez Basenu nie ma czego mieszac. */
+    /** The press and the mixer work on the Basin's contents - without a Basin there is nothing to mix. */
     private static boolean needsBasin(RecipeType<?> type) {
         return type == CreateRecipeFamily.pressing() || type == CreateRecipeFamily.mixing();
     }
 
-    /** Czy siec ma przedmiot z Create (w magazynie albo w buforze craftera). */
+    /** Whether the network has a Create item (in storage or in the crafter's buffer). */
     private static boolean hasItem(ServerLevel level, VelocePipeNetwork network, String path) {
         Item item = net.minecraft.core.registries.BuiltInRegistries.ITEM.get(
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", path));

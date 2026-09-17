@@ -10,28 +10,27 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * Rodzina receptur Mekanism, ktora Veloce umie obslugiwac.
+ * The Mekanism recipe family that Veloce can handle.
  *
- * <p>Typy receptur Mekanism nie istnieja bez tego moda, wiec zyja tutaj.
+ * <p>Mekanism recipe types do not exist without that mod, so they live here.
  *
- * <p><b>Dlaczego w {@code FMLCommonSetupEvent}.</b> {@code TYPE_*} to
- * DeferredHoldery zwiazywane dopiero po zdarzeniach rejestracji - odczyt
- * w konstruktorze moda rzucilby wyjatkiem.
+ * <p><b>Why in {@code FMLCommonSetupEvent}.</b> {@code TYPE_*} are
+ * DeferredHolders bound only after the registration events - reading them in
+ * the mod constructor would throw an exception.
  *
- * <p><b>Czego CELOWO tu nie ma.</b> {@code TYPE_SMELTING} Mekanism dokleja
- * do siebie WSZYSTKIE waniliowe receptury smelting, wiec dodanie go do tej
- * rodziny dublowaloby rodzine pieca ({@link VeloceRecipeFamilies#FURNACE}) -
- * ten sam item mialby dwie konkurencyjne sciezki i liczby w GUI liczyloby
- * sie dwa razy. Energized Smelter dostanie wlasna, osobna rodzine razem ze
- * swoim moduem.
+ * <p><b>What is DELIBERATELY not here.</b> Mekanism's {@code TYPE_SMELTING}
+ * appends ALL vanilla smelting recipes to itself, so adding it to this family
+ * would duplicate the furnace family ({@link VeloceRecipeFamilies#FURNACE}) -
+ * the same item would have two competing paths and the numbers in the GUI would
+ * be counted twice. The Energized Smelter will get its own, separate family
+ * together with its module.
  *
- * <p><b>Zakres v1.</b> Maszyny itemowe: crusher, enrichment chamber,
- * combiner, precision sawmill. Chemikalia i plyny dochodza w etapie warstwy
- * chemicznej.
+ * <p><b>v1 scope.</b> Item machines: crusher, enrichment chamber, combiner,
+ * precision sawmill. Chemicals and fluids come in the chemical layer stage.
  */
 public final class MekanismRecipeFamily {
 
-    /** Identyfikator rodziny w {@link VeloceRecipeFamilies}. */
+    /** Family identifier in {@link VeloceRecipeFamilies}. */
     public static final String ID = "mekanism";
 
     private static Set<RecipeType<?>> resolved;
@@ -39,33 +38,33 @@ public final class MekanismRecipeFamily {
     private MekanismRecipeFamily() {
     }
 
-    /** Rejestruje rodzine receptur Mekanism (po rejestracji blokow). */
+    /** Registers the Mekanism recipe family (after block registration). */
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
             Set<RecipeType<?>> types = types();
             VeloceRecipeFamilies.registerModFamily(ID, types);
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
-                    "[Veloce][COMPAT] {}: zarejestrowano {} typow receptur",
+                    "[Veloce][COMPAT] {}: registered {} recipe types",
                     ID, types.size());
         });
     }
 
-    /** Kruszarka: ruda/sztaba -> pyl (deterministyczne, 1 -> 1). */
+    /** Crusher: ore/ingot -> dust (deterministic, 1 -> 1). */
     public static RecipeType<?> crushing() {
         return MekanismRecipeTypes.TYPE_CRUSHING.get();
     }
 
-    /** Wzbogacanie: ruda -> 3 sztaby (deterministyczne, 1 -> 1). */
+    /** Enrichment: ore -> 3 ingots (deterministic, 1 -> 1). */
     public static RecipeType<?> enriching() {
         return MekanismRecipeTypes.TYPE_ENRICHING.get();
     }
 
-    /** Laczenie: dwa itemy -> jeden (Combiner). */
+    /** Combining: two items -> one (Combiner). */
     public static RecipeType<?> combining() {
         return MekanismRecipeTypes.TYPE_COMBINING.get();
     }
 
-    /** Pilowanie: item -> deski + LOSOWY trocin (Precision Sawmill). */
+    /** Sawing: item -> planks + RANDOM sawdust (Precision Sawmill). */
     public static RecipeType<?> sawing() {
         return MekanismRecipeTypes.TYPE_SAWING.get();
     }
@@ -147,7 +146,7 @@ public final class MekanismRecipeFamily {
     }
 
 
-    /** Typy receptur Mekanism. Wolno wolac tylko gdy mod jest obecny. */
+    /** Mekanism recipe types. May only be called when the mod is present. */
     public static Set<RecipeType<?>> types() {
         if (resolved == null) {
             Set<RecipeType<?>> out = new LinkedHashSet<>();

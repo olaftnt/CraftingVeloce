@@ -12,17 +12,18 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * Bloki modulu Mekanism (rejestracja plain {@code DeferredRegister}, bez
- * Registrate - to biblioteka Create i dolaczylaby obca zaleznosc).
+ * Mekanism module blocks (registered with a plain {@code DeferredRegister},
+ * without Registrate - that is a Create library and would pull in a foreign
+ * dependency).
  *
- * <p><b>Cztery maszyny, dwie linie kazda.</b> Wszystkie dziela jeden blok
- * ({@link VeloceFeModuleBlock}) i jeden block entity; rozni je wylacznie
- * {@link FeModule}. Dodanie kolejnej maszyny itemowej to jeden wiersz tutaj
- * plus jeden w {@link FeModule} i jeden w {@link MekanismBlockEntities}.
+ * <p><b>Four machines, two lines each.</b> They all share one block
+ * ({@link VeloceFeModuleBlock}) and one block entity; the only thing that
+ * differs is {@link FeModule}. Adding another item machine is one line here
+ * plus one in {@link FeModule} and one in {@link MekanismBlockEntities}.
  *
- * <p>Ta klasa laduje sie tylko przy obecnym Mekanism (patrz
- * {@link MekanismCompat}) i nie zawiera zadnego typu Mekanism - maszyna jest
- * w calosci nasza.
+ * <p>This class loads only when Mekanism is present (see
+ * {@link MekanismCompat}) and contains no Mekanism type - the machine is
+ * entirely ours.
  */
 public final class MekanismBlocks {
 
@@ -34,28 +35,28 @@ public final class MekanismBlocks {
     public static final DeferredRegister.Items ITEMS =
             DeferredRegister.createItems(com.craftingveloce.CraftingVeloceMod.MODID);
 
-    /** Kruszarka: receptury {@code mekanism:crushing}. */
+    /** Crusher: {@code mekanism:crushing} recipes. */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_CRUSHER_MODULE =
             BLOCKS.register("veloce_mekanism_crusher_module",
                     () -> block(MekanismFeModules.CRUSHER));
     public static final DeferredItem<BlockItem> VELOCE_CRUSHER_MODULE_ITEM =
             ITEMS.registerSimpleBlockItem("veloce_mekanism_crusher_module", VELOCE_CRUSHER_MODULE);
 
-    /** Wzbogacanie: receptury {@code mekanism:enriching}. */
+    /** Enrichment: {@code mekanism:enriching} recipes. */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_ENRICHMENT_MODULE =
             BLOCKS.register("veloce_mekanism_enrichment_module",
                     () -> block(MekanismFeModules.ENRICHMENT));
     public static final DeferredItem<BlockItem> VELOCE_ENRICHMENT_MODULE_ITEM =
             ITEMS.registerSimpleBlockItem("veloce_mekanism_enrichment_module", VELOCE_ENRICHMENT_MODULE);
 
-    /** Laczenie: receptury {@code mekanism:combining} (dwa wejscia). */
+    /** Combining: {@code mekanism:combining} recipes (two inputs). */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_COMBINER_MODULE =
             BLOCKS.register("veloce_mekanism_combiner_module",
                     () -> block(MekanismFeModules.COMBINER));
     public static final DeferredItem<BlockItem> VELOCE_COMBINER_MODULE_ITEM =
             ITEMS.registerSimpleBlockItem("veloce_mekanism_combiner_module", VELOCE_COMBINER_MODULE);
 
-    /** Pilowanie: receptury {@code mekanism:sawing} (wynik losowy). */
+    /** Sawing: {@code mekanism:sawing} recipes (random output). */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_SAWMILL_MODULE =
             BLOCKS.register("veloce_mekanism_sawmill_module",
                     () -> block(MekanismFeModules.SAWMILL));
@@ -177,7 +178,7 @@ public final class MekanismBlocks {
             ITEMS.registerSimpleBlockItem("veloce_mekanism_chemical_infuser_module", VELOCE_CHEMICAL_INFUSING_MODULE);
 
 
-    /** Jedna linia na maszyne: blok rdzenia + fabryka BE z tego modulu. */
+    /** One line per machine: the core block + the BE factory from this module. */
     private static VeloceFeModuleBlock block(FeModule module) {
         return new VeloceFeModuleBlock(module, MekanismBlockEntities.factory(module),
                 properties());
@@ -200,11 +201,11 @@ public final class MekanismBlocks {
     }
 
     /**
-     * Pozycje do zakladki kreatywnej - wolane TYLKO gdy Mekanism jest obecny.
+     * Creative tab entries - called ONLY when Mekanism is present.
      *
-     * <p>Zakladka kreatywna buduje sie ZAWSZE, takze bez tego moda, wiec
-     * sprawdzenie obecnosci musi byc przed siegnieciem do tych blokow - inaczej
-     * samo budowanie zakladki zaladowaloby klase z typem obcego moda.
+     * <p>The creative tab is built ALWAYS, even without this mod, so the
+     * presence check must happen before reaching for these blocks - otherwise
+     * merely building the tab would load a class with a foreign mod's type.
      */
     public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
         output.accept(VELOCE_CRUSHER_MODULE_ITEM.get());

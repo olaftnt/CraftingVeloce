@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
 """
-Generator tekstury rury Veloce (veloce_pipe.png) - atlas 4 regionow.
+Generator of the Veloce pipe texture (veloce_pipe.png) - an atlas of 4 regions.
 
-Cel: rura ma CIAGLE okno wzdluz dlugosci + cienka opaske (obejme) co blok.
+Goal: the pipe has a CONTINUOUS window along its length + a thin band (clamp)
+per block.
 
 ATLAS 16x16:
-  A  [0,0 .. 8,8]     LICO   - pelna ramka + okno 4x4 (czolo rury)
-  B1 [8,0 .. 12,8]    BOK    - dla scian east/west (u=Z=4, v=Y=8)
-  B2 [8,8 .. 16,12]   BOK    - dla scian up/down  (u=X=8, v=Z=4)
-  C  [0,8 .. 8,16]    GLOWICA- nozzle
+  A  [0,0 .. 8,8]     FACE   - a full frame + a 4x4 window (the pipe's face)
+  B1 [8,0 .. 12,8]    SIDE   - for the east/west walls (u=Z=4, v=Y=8)
+  B2 [8,8 .. 16,12]   SIDE   - for the up/down walls  (u=X=8, v=Z=4)
+  C  [0,8 .. 8,16]    HEAD   - nozzle
 
-KLUCZOWA ZASADA (dlaczego B1 i B2 sa osobne):
-  Rozne sciany maja rozne osie UV. Ramię north to element 8(X) x 8(Y) x 4(Z):
-    east/west (plaszczyzna ZY): u=Z(4) - dlugosc, v=Y(8) - szerokosc
-    up/down   (plaszczyzna XZ): u=X(8) - szerokosc, v=Z(4) - dlugosc
-  czyli na up/down osie sa ZAMIENIONE. Jeden wspolny region dalby
-  rozciagniecie i opaska poszlaby w zlym kierunku (efekt: brak opaski
-  od gory i kratki po bokach).
+THE KEY RULE (why B1 and B2 are separate):
+  Different walls have different UV axes. The north arm is an element 8(X) x 8(Y) x 4(Z):
+    east/west (the ZY plane): u=Z(4) - length, v=Y(8) - width
+    up/down   (the XZ plane): u=X(8) - width,  v=Z(4) - length
+  so on up/down the axes are SWAPPED. A single shared region would give
+  stretching and the band would run in the wrong direction (the effect: no band
+  from the top and a grid pattern on the sides).
 
-  Dlatego B1 ma 4 kolumny x 8 wierszy, a B2 8 kolumn x 4 wiersze -
-  to ten sam wzor obrocony o 90 stopni.
+  That is why B1 has 4 columns x 8 rows and B2 has 8 columns x 4 rows -
+  it is the same pattern rotated by 90 degrees.
 """
 import struct, zlib
 
@@ -36,7 +37,7 @@ def put(x, y, c):
 
 
 def region_A():
-    """LICO [0,0..8,8]: pelna ramka + okno 4x4 (srodek)."""
+    """FACE [0,0..8,8]: a full frame + a 4x4 window (the centre)."""
     for y in range(8):
         for x in range(8):
             put(x, y, BLACK)
@@ -46,37 +47,37 @@ def region_A():
 
 
 def region_B1():
-    """BOK east/west [8,0..12,8]: 4 kolumny (Z) x 8 wierszy (Y).
+    """SIDE east/west [8,0..12,8]: 4 columns (Z) x 8 rows (Y).
 
-    kolumna 0 (Z=0) = opaska na calej szerokosci -> obejma bloku
-    kolumny 1-3     = okno
-    wiersze 0,1,6,7 = opaska po bokach (biegnie wzdluz rury)
+    column 0 (Z=0) = a band across the full width -> the block's clamp
+    columns 1-3    = the window
+    rows 0,1,6,7   = the band on the sides (it runs along the pipe)
     """
     for y in range(8):
         for x in range(8, 12):
             put(x, y, BLACK)
     for y in range(2, 6):
-        for x in range(9, 12):     # kolumna 8 zostaje opaska
+        for x in range(9, 12):     # column 8 stays a band
             put(x, y, CLEAR)
 
 
 def region_B2():
-    """BOK up/down [8,8..16,12]: 8 kolumn (X) x 4 wiersze (Z).
+    """SIDE up/down [8,8..16,12]: 8 columns (X) x 4 rows (Z).
 
-    wiersz 0 (Z=0)  = opaska na calej szerokosci -> obejma bloku
-    wiersze 1-3     = okno
-    kolumny 0,1,6,7 = opaska po bokach
+    row 0 (Z=0)     = a band across the full width -> the block's clamp
+    rows 1-3        = the window
+    columns 0,1,6,7 = the band on the sides
     """
     for y in range(8, 12):
         for x in range(8, 16):
             put(x, y, BLACK)
-    for y in range(9, 12):         # wiersz 8 zostaje opaska
-        for x in range(10, 14):    # srodek szerokosci
+    for y in range(9, 12):         # row 8 stays a band
+        for x in range(10, 14):    # the middle of the width
             put(x, y, CLEAR)
 
 
 def region_C():
-    """GLOWICA [0,8..8,16]: ramka + okno 4x4."""
+    """HEAD [0,8..8,16]: a frame + a 4x4 window."""
     for y in range(8, 16):
         for x in range(0, 8):
             put(x, y, BLACK)
@@ -110,12 +111,12 @@ png = (b'\x89PNG\r\n\x1a\n'
 out = 'assets/craftingveloce/textures/block/veloce_pipe.png'
 with open(out, 'wb') as f:
     f.write(png)
-print(f"zapisano {out} ({len(png)} bajtow)")
+print(f"saved {out} ({len(png)} bytes)")
 
-print("\nAtlas (K=czarny, .=okno):")
+print("\nAtlas (K=black, .=window):")
 for y in range(H):
     s = ''.join('.' if px[y][x][3] == 0 else 'K' for x in range(W))
     note = ''
-    if y == 0: note = '   A=[0,0..8,8] LICO | B1=[8,0..12,8] BOK ew'
-    if y == 8: note = '   C=[0,8..8,16] GLOW | B2=[8,8..16,12] BOK ud'
+    if y == 0: note = '   A=[0,0..8,8] FACE | B1=[8,0..12,8] SIDE ew'
+    if y == 8: note = '   C=[0,8..8,16] HEAD | B2=[8,8..16,12] SIDE ud'
     print(f"  {y:2d} {s}{note}")

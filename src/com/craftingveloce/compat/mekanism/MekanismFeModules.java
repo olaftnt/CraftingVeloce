@@ -5,16 +5,16 @@ import com.craftingveloce.crafting.FeModule;
 import java.util.List;
 
 /**
- * Maszyny modulu Mekanism - jeden wiersz danych na maszyne.
+ * Mekanism module machines - one row of data per machine.
  *
- * <p>Cztery maszyny itemowe Mekanism (kruszarka, wzbogacanie, laczenie,
- * pilowanie) roznia sie TYLKO typem receptury, kosztem FE i etykieta. Opis
- * maszyny to rekord {@link FeModule} z rdzenia, a nie osobna klasa - inaczej
- * powstaloby cztery kopie tej samej logiki energii.
+ * <p>The four Mekanism item machines (crusher, enrichment, combining,
+ * sawing) differ ONLY in recipe type, FE cost and label. A machine description
+ * is the {@link FeModule} record from the core, not a separate class - otherwise
+ * there would be four copies of the same energy logic.
  *
- * <p>Typ receptury jest dostawca ({@code Supplier}), bo DeferredHoldery obcego
- * moda sa wiazane dopiero po zdarzeniach rejestracji, a te stale powstaja przy
- * ladowaniu klas blokow (w konstruktorze moda).
+ * <p>The recipe type is a supplier ({@code Supplier}), because DeferredHolders of
+ * a foreign mod are bound only after the registration events, and these constants
+ * are created while the block classes load (in the mod constructor).
  */
 public final class MekanismFeModules {
 
@@ -22,33 +22,33 @@ public final class MekanismFeModules {
     }
 
     /**
-     * Kruszarka: ruda/sztaba -> pyl.
+     * Crusher: ore/ingot -> dust.
      *
-     * <p><b>Koszt jak w elektrycznym piecu.</b> Piecyk bierze 200 000 FE za
-     * przepalenie i ma 25 000 000 FE bufora, wiec moduły maja te sama skale:
-     * koszt jednej operacji to 200 000 FE (dawniej 4 000 - bylo praktycznie
-     * darmowe), a akumulator 25 000 000 FE.
+     * <p><b>Cost as in the electric furnace.</b> The furnace takes 200 000 FE per
+     * smelt and has a 25 000 000 FE buffer, so the modules have the same scale:
+     * the cost of one operation is 200 000 FE (formerly 4 000 - it was practically
+     * free), and the accumulator is 25 000 000 FE.
      */
     public static final FeModule CRUSHER = new FeModule(
             "mekanism:crusher", "Veloce Crusher Module",
             200_000, 25_000_000, MekanismRecipeFamily::crushing);
 
     /**
-     * Wzbogacanie: ruda -> 3 sztaby. Ten sam koszt co kruszarka.
+     * Enrichment: ore -> 3 ingots. The same cost as the crusher.
      */
     public static final FeModule ENRICHMENT = new FeModule(
             "mekanism:enriching", "Veloce Enrichment Module",
             200_000, 25_000_000, MekanismRecipeFamily::enriching);
 
     /**
-     * Laczenie: dwa itemy -> jeden (Combiner). Ten sam koszt.
+     * Combining: two items -> one (Combiner). The same cost.
      */
     public static final FeModule COMBINER = new FeModule(
             "mekanism:combining", "Veloce Combiner Module",
             200_000, 25_000_000, MekanismRecipeFamily::combining);
 
     /**
-     * Pilowanie: item -> deski + losowe trociny (Precision Sawmill).
+     * Sawing: item -> planks + random sawdust (Precision Sawmill).
      */
     public static final FeModule SAWMILL = new FeModule(
             "mekanism:sawing", "Veloce Sawmill Module",
@@ -131,6 +131,6 @@ public final class MekanismFeModules {
             200_000, 25_000_000, MekanismRecipeFamily::chemical_infusing);
 
 
-    /** Wszystkie maszyny itemowe v1 - do rejestracji i zakladki kreatywnej. */
+    /** All v1 item machines - for registration and the creative tab. */
     public static final List<FeModule> ALL = List.of(CRUSHER, ENRICHMENT, COMBINER, SAWMILL, SMELTING, COMPRESSING, METALLURGIC_INFUSING, PURIFYING, INJECTING, CRYSTALLIZING, DISSOLUTION, WASHING, SEPARATING, REACTION, ROTARY, ACTIVATING, CENTRIFUGING, NUCLEOSYNTHESIZING, PIGMENT_EXTRACTING, PIGMENT_MIXING, PAINTING, OXIDIZING, CHEMICAL_INFUSING);
 }

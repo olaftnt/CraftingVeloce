@@ -6,69 +6,69 @@ import com.craftingveloce.compat.VeloceMods;
 import net.neoforged.bus.api.IEventBus;
 
 /**
- * Bramka integracji z Create.
+ * Gate for the Create integration.
  *
- * <p><b>Izolacja.</b> Ta klasa jest ladowana ZAWSZE - takze bez Create - wiec
- * nie moze miec w polach ani sygnaturach zadnego typu Create. Cialo
- * {@link #register(IEventBus)} odwoluje sie do klas z typami Create, ale JVM
- * rozwija takie odwolanie dopiero przy WYWOLANIU, a wolamy je tylko wtedy, gdy
- * Create jest obecne.
+ * <p><b>Isolation.</b> This class is ALWAYS loaded - also without Create - so it
+ * may not have any Create type in its fields or signatures. The body of
+ * {@link #register(IEventBus)} references classes with Create types, but the JVM
+ * resolves such a reference only when it is CALLED, and we call it only when
+ * Create is present.
  *
- * <p>Sprawdzenia {@code try/catch} wokol kodu integracji NIE dzialaja:
- * {@code NoClassDefFoundError} leci przy ladowaniu i linkowaniu klasy, zanim
- * try zdazy zadzialac.
+ * <p>{@code try/catch} checks around integration code do NOT work:
+ * {@code NoClassDefFoundError} is thrown during class loading and linking,
+ * before the try has a chance to act.
  */
 public final class CreateCompat {
 
     private CreateCompat() {
     }
 
-    /** Czy Create jest obecne. Bezpieczne takze bez Create. */
+    /** Whether Create is present. Safe also without Create. */
     public static boolean isPresent() {
         return VeloceMods.CREATE.isLoaded();
     }
 
     /**
-     * Rejestruje integracje. Wolno wolac WYLACZNIE gdy {@link #isPresent()}.
+     * Registers the integration. May be called EXCLUSIVELY when {@link #isPresent()}.
      */
     public static void register(IEventBus modEventBus) {
         CreateBlocks.register(modEventBus);
         CreateBlockEntities.register(modEventBus);
         CreateRecipeFamily.register(modEventBus);
         CreateModule.register(modEventBus);
-        // Obudowy modulow: kazdy nasz modul Create ma model obudowy Integrale,
-        // a w srodku renderuje sie BLOK BAZOWY z Create (kolo mlynskie, mlyn,
-        // pila, crafter mechaniczny).
+        // Module casings: each of our Create modules has an Integrale casing model,
+        // and inside it the BASE BLOCK from Create is rendered (millstone, mill,
+        // saw, mechanical crafter).
         registerCases();
         registerConversions();
-        // Kategorie przepisow Create dla JEI (same UID-y + nasze klocki).
+        // Create recipe categories for JEI (just UIDs + our blocks).
         CreateJeiCatalysts.register();
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             registerCaseRenderers(modEventBus);
         }
-        // Stresu NIE rejestrujemy: CStress.setImpact rzuca wyjatek dla blokow
-        // spoza Create, a nasza maszyna liczy stale SU sama
+        // We do NOT register stress: CStress.setImpact throws an exception for
+        // blocks outside Create, and our machine computes the constant SU itself
         // (VeloceKineticModuleBlockEntity.calculateStressApplied).
     }
 
-    /** ID klocka z Create (wygodne dla tabeli konwersji). */
+    /** ID of a block from Create (handy for the conversion table). */
     private static net.minecraft.resources.ResourceLocation create(String id) {
         return net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", id);
     }
 
     /**
-     * Blok bazowy z Create po ID.
+     * Create's base block by ID.
      *
-     * <p>NIE przez {@code AllBlocks}: ten typ ({@code BlockEntry} z registrate)
-     * nie jest na classpath kompilacji, a nazwa bloku w rejestrze jest tak samo
-     * stabilna jak pole w klasie.
+     * <p>NOT through {@code AllBlocks}: that type ({@code BlockEntry} from
+     * registrate) is not on the compilation classpath, and a block name in the
+     * registry is just as stable as a field in a class.
      */
     private static net.minecraft.world.level.block.Block block(String id) {
         return net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", id));
     }
 
-    /** Wiersze tabeli obudow: nasz modul -&gt; blok bazowy z Create. */
+    /** Casing table rows: our module -&gt; the base block from Create. */
     private static void registerCases() {
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MILLSTONE_MODULE.get(),
                 () -> block("millstone"), 0.7F, 0.0F, false);
@@ -87,13 +87,14 @@ public final class CreateCompat {
     }
 
     /**
-     * Wiersze konwersji: pusty Integrale + klocek z Create = nasz modul.
+     * Conversion rows: an empty Integrale + a block from Create = our module.
      *
-     * <p>To jest ta sciezka, ktora gracz opisal: "biore puste veloce integrale,
-     * stawiam, klikam prawym crushing wheel'em - pojawia sie jeden w srodku,
-     * klikam drugi raz - jest drugi i dopiero teraz maszyna dziala".
-     * Pierwszy klik zamienia obudowe na modul (i wklada jeden element), drugi
-     * klik trafia juz w modul i doklada kolejny element.
+     * <p>This is the path the player described: "I take an empty veloce
+     * integrale, place it, right-click it with a crushing wheel - one appears in
+     * the middle, I click a second time - there is a second one and only now does
+     * the machine work". The first click turns the casing into a module (and
+     * inserts one part), the second click already hits the module and adds
+     * another part.
      */
     private static void registerConversions() {
         VeloceIntegraleConversions.register(create("crushing_wheel"),
@@ -113,10 +114,10 @@ public final class CreateCompat {
     }
 
     /**
-     * Renderer zawartosci obudowy dla block entity modulow - TYLKO klient.
+     * Renderer of the casing contents for the module block entities - CLIENT only.
      *
-     * <p>Wolane wylacznie gdy Create jest obecne i gdy jestesmy na kliencie,
-     * wiec klasa renderera (klasy klienta) nie laduje sie na serwerze.
+     * <p>Called only when Create is present and when we are on the client, so the
+     * renderer class (a client class) does not load on the server.
      */
     private static void registerCaseRenderers(IEventBus modEventBus) {
         modEventBus.addListener(
@@ -140,10 +141,10 @@ public final class CreateCompat {
     }
 
     /**
-     * Pozycje modulu do zakladki kreatywnej.
+     * Module items for the creative tab.
      *
-     * <p>Zakladka buduje sie ZAWSZE (takze bez Create), wiec to wywolanie jest
-     * warunkowane obecnoscia moda w {@code CraftingVeloceMod}.
+     * <p>The tab is built ALWAYS (also without Create), so this call is
+     * conditioned on the mod being present in {@code CraftingVeloceMod}.
      */
     public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
         CreateBlocks.addCreativeItems(output);

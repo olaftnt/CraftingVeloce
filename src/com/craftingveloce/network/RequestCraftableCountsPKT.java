@@ -19,14 +19,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * C→S: prosba o policzenie "ile da sie dorobic" dla podanych itemow.
+ * C->S: a request to count "how many can still be crafted" for the given items.
  *
- * <p>Klient wysyla tylko itemy widoczne na ekranie (jeden ekran creative to
- * ok. 45 slotow), a nie wszystkie ~850 craftowalnych. Serwer odpowiada
+ * <p>The client sends only the items visible on the screen (one creative screen
+ * is about 45 slots), not all ~850 craftable ones. The server responds with
  * {@link SyncCraftableCountsPKT}.
  *
- * <p>To rozwiazuje problem wydajnosciowy: wczesniej serwer liczyl craftowalnosc
- * dla wszystkich itemow co sekunde, rekurencyjnie, i sie zadlawial.
+ * <p>This solves the performance problem: previously the server counted
+ * craftability for all items once per second, recursively, and choked on it.
  */
 public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
         implements CustomPacketPayload {
@@ -40,8 +40,8 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
 
     private static void encode(FriendlyByteBuf buf, RequestCraftableCountsPKT pkt) {
         buf.writeBlockPos(pkt.pos);
-        // Nigdy nie wysylamy wiecej, niz druga strona przyjmie - inaczej
-        // nasze wlasne zadanie zostanie odrzucone jako bledne.
+        // We never send more than the other side will accept - otherwise our own
+        // request would be rejected as malformed.
         if (pkt.items.size() > MAX_ITEMS) {
             throw new IllegalArgumentException(
                     "RequestCraftableCountsPKT: too many items (" + pkt.items.size() + ")");
@@ -53,24 +53,24 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
     }
 
     /**
-     * Gorny limit liczby itemow w jednym zadaniu.
+     * The upper limit on the number of items in a single request.
      *
-     * <p><b>Bezpieczenstwo.</b> {@code n} przychodzi OD KLIENTA i przed tą
-     * zmiana bylo uzywane bez zadnego ograniczenia: {@code new ArrayList<>(n)}
-     * z ogromnym {@code n} to natychmiastowa proba alokacji (OutOfMemoryError),
-     * a petla czytajaca potrafila ciagnac dalej, az do bledu bufora. Zlosliwy
-     * albo po prostu popsuty klient mogl wiec polozyc serwer jednym pakietem.
+     * <p><b>Security.</b> {@code n} comes FROM THE CLIENT and before this change
+     * it was used without any bound: {@code new ArrayList<>(n)} with a huge
+     * {@code n} is an immediate allocation attempt (OutOfMemoryError), and the
+     * reading loop could keep going until a buffer error. A malicious or simply
+     * broken client could therefore take down the server with a single packet.
      *
-     * <p>Limit jest hojny - terminal widzi najwyzej kilkadziesiat pozycji na
-     * strone, wiec setka z zapasem wystarcza.
+     * <p>The limit is generous - the terminal sees at most a few dozen entries
+     * per page, so a hundred with room to spare is enough.
      */
     public static final int MAX_ITEMS = 256;
 
     private static RequestCraftableCountsPKT decode(FriendlyByteBuf buf) {
         BlockPos pos = buf.readBlockPos();
         int n = buf.readInt();
-        // Odrzucamy zadania spoza sensownego zakresu, zamiast probowac je
-        // zaalokowac. Wartosc ujemna tez jest tu bledem, nie "zero itemow".
+        // We reject requests outside a sensible range instead of trying to
+        // allocate them. A negative value is an error here too, not "zero items".
         if (n < 0 || n > MAX_ITEMS) {
             throw new io.netty.handler.codec.DecoderException(
                     "RequestCraftableCountsPKT: invalid item count " + n
@@ -96,31 +96,33 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             if (!(context.player() instanceof ServerPlayer player)) {
                 return;
             }
-            // Nie liczymy liczb dla terminala na drugim koncu swiata.
-            // Kazdy inny nasz pakiet po stronie serwera ma taki bezpiecznik -
-            // ten go nie mial, a jako jedyny zleca serwerowi realna prace
-            // (planowanie drzewa receptur dla widocznej strony).
+            // We do not count numbers for a terminal at the other end of the
+            // world. Every other packet of ours on the server side has such a
+            // safety catch - this one did not, and it is the only one that
+            // orders the server to do real work (planning the recipe tree for
+            // the visible page).
             if (player.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
                     pkt.pos().getZ() + 0.5) > 64.0) {
                 return;
             }
-            // Rozgalezienie po INTERFEJSIE, nie po konkretnym bloku: dzieki
-            // temu kontroler (i kazdy przyszly ekran z liczbami) dziala bez
-            // zmiany tego pakietu.
+            // Branching by INTERFACE, not by a concrete block: thanks to that
+            // the controller (and any future screen with numbers) works without
+            // changing this packet.
             BlockEntity be = player.level().getBlockEntity(pkt.pos());
             if (!(be instanceof com.craftingveloce.block.entity.VeloceCraftCountSource source)) {
                 return;
             }
-            // Siec tej maszyny - z niej idzie cache (jeden na siec, wspolny dla
-            // terminala i kontrolera).
+            // The network of this machine - the cache comes from it (one per
+            // network, shared by the terminal and the controller).
             var serverLevel = (net.minecraft.server.level.ServerLevel) player.level();
             var network = com.craftingveloce.network.pipe.VelocePipeNetworkManager
                     .get(serverLevel)
                     .getNetworkForTerminal(serverLevel, pkt.pos());
 
-            // 1) NATYCHMIAST cache: gracz otwiera GUI i od razu widzi cyferki,
-            //    ktore siec juz policzyla. Bez tego liczenie widocznej strony
-            //    zaczynalo sie od zera i cyferki "wchodzily" po kolei.
+            // 1) IMMEDIATELY the cache: the player opens the GUI and instantly
+            //    sees the numbers the network has already computed. Without this
+            //    the counting of the visible page started from scratch and the
+            //    numbers "came in" one after another.
             if (network != null) {
                 var memo = network.getCraftableMemo();
                 if (!memo.isEmpty()) {
@@ -129,13 +131,14 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                 }
             }
 
-            // 2) Dopiero teraz dzisiejsza logika: liczy WIDOCZNA strone
-            //    i dopisuje wynik do cache (cache sam sie doucza - bez osobnego
-            //    budowania w tle i bez obciazania serwera).
-            // Punkt 3: liczymy TYLKO to, czego NIE MA w cache sieci. Raz
-            // policzona liczba jest wspolna dla calej sieci, wiec drugi
-            // terminal (albo to samo GUI otwarte drugi raz) nie liczy tego
-            // samego od nowa - dostaje wpis z cache.
+            // 2) Only now the current logic: it counts the VISIBLE page and
+            //    writes the result into the cache (the cache teaches itself -
+            //    without a separate background build and without loading the
+            //    server).
+            // Point 3: we count ONLY what is NOT in the network cache. Once
+            // computed, a number is shared by the whole network, so a second
+            // terminal (or the same GUI opened a second time) does not count
+            // the same thing from scratch - it gets the entry from the cache.
             java.util.Map<Item, Long> known = network == null
                     ? java.util.Map.of() : network.getCraftableMemo();
             java.util.Map<Item, Long> result = new java.util.HashMap<>();
@@ -155,8 +158,8 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                 complete = computed.complete();
                 if (network != null) {
                     network.rememberCraftable(computed.counts());
-                    // Cache ma przetrwac restart swiata - bez setDirty SavedData
-                    // nie zostanie zapisany (patrz markDirty).
+                    // The cache has to survive a world restart - without setDirty
+                    // SavedData will not be written (see markDirty).
                     com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
                             .markDirty();
                 }

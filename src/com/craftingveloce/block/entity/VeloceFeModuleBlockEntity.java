@@ -17,29 +17,31 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import java.util.Set;
 
 /**
- * Akumulator energii JEDNEJ maszyny modulu Mekanism.
+ * The energy accumulator of ONE Mekanism module machine.
  *
- * <p><b>Jedna klasa na cztery maszyny.</b> Maszyny itemowe Mekanism roznia sie
- * tylko typem receptury i etykieta, wiec nie ma powodu pisac czterech kopii
- * tej samej logiki energii - rozni je pole {@link FeModule} podane
- * w konstruktorze.
+ * <p><b>One class for four machines.</b> Mekanism item machines differ only in
+ * the recipe type and the label, so there is no reason to write four copies of
+ * the same energy logic - they are distinguished by the {@link FeModule} field
+ * passed in the constructor.
  *
- * <p><b>Model pracy.</b> Jak Velocity Electric Furnace: brak wlasnego tickera
- * i postepu. Auto-crafter pyta o {@link #availableOperations()} ("ile operacji
- * jeszcze uciagniesz"), zabiera operacje przy wykonaniu receptury
- * ({@link #consumeOperations(long)}) i sam wklada wyniki do sieci. Dzieki temu
- * energia jest rozliczana dokladnie raz na wykonana recepture.
+ * <p><b>The work model.</b> Like the Velocity Electric Furnace: no own ticker
+ * and no progress. The auto-crafter asks for {@link #availableOperations()}
+ * ("how many operations can you still sustain"), takes operations when the
+ * recipe is executed ({@link #consumeOperations(long)}) and inserts the results
+ * into the network itself. Thanks to that energy is settled exactly once per
+ * completed recipe.
  */
 public class VeloceFeModuleBlockEntity extends BlockEntity
         implements VeloceProcessingSource, IEnergyStorage, VeloceModuleInfoSource,
         VeloceModuleDisplay {
 
     /**
-     * Fabryka block entity - dostarczana przez modul.
+     * The block entity factory - supplied by the module.
      *
-     * <p>Kazdy mod ma wlasne typy block entity, a rdzen nie moze znac ich
-     * rejestrow - dlatego blok dostaje fabryke w konstruktorze. Dzieki temu
-     * jeden blok rdzenia obsluguje maszyny z roznych modow.
+     * <p>Each mod has its own block entity types, and the core cannot know their
+     * registrations - that is why the block receives the factory in the
+     * constructor. Thanks to that one core block serves machines from different
+     * mods.
      */
     @FunctionalInterface
     public interface Factory {
@@ -61,12 +63,12 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
         this.typeHolder = typeHolder;
     }
 
-    /** Opis maszyny (typ receptury, koszt, etykieta) - do diagnostyki. */
+    /** Machine description (recipe type, cost, label) - for diagnostics. */
     public FeModule module() {
         return module;
     }
 
-    /** Typ block entity, do ktorego ta maszyna jest zarejestrowana. */
+    /** The block entity type this machine is registered to. */
     public BlockEntityType<?> registeredType() {
         return typeHolder.get();
     }
@@ -76,13 +78,14 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     // ------------------------------------------------------------------
 
     /**
-     * Dane do okna modulu: energia, koszt operacji i sieć rur.
+     * Data for the module window: energy, operation cost and the pipe network.
      *
-     * <p>Gracz: "ma byc widoczny wskaznik naladowania (bateryjka) pokazujacy
-     * aktualny stan zmagazynowanego pradu". Okno liczy sie na serwerze (tylko
-     * tam sa prawdziwe liczby), a klient rysuje pasek baterii z tych pol.
+     * <p>Player: "there should be a visible charge indicator (a little battery)
+     * showing the current state of the stored power". The window is computed on
+     * the server (that is the only place with the real numbers), and the client
+     * draws the battery bar from those fields.
      */
-    /** Pola okna u KLIENTA (energia jest synchronizowana przez block entity). */
+    /** Window fields on the CLIENT (energy is synchronised through the block entity). */
     @Override
     public net.minecraft.nbt.CompoundTag moduleDisplay() {
         net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
@@ -122,8 +125,8 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
 
     @Override
     public Set<RecipeType<?>> recipeTypes() {
-        // Typ receptury rozwiazujemy DOPIERO tutaj (nie przy ladowaniu klasy):
-        // DeferredHolder obcego moda jest wiazany po zdarzeniach rejestracji.
+        // We resolve the recipe type ONLY here (not at class load):
+        // a DeferredHolder of a foreign mod is bound after the registration events.
         return Set.of(module.recipeType().get());
     }
 
@@ -152,7 +155,7 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // IEnergyStorage - wkladanie z kabli, wyciaganie zabronione
+    // IEnergyStorage - insertion from cables, extraction forbidden
     // ------------------------------------------------------------------
 
     @Override
@@ -169,11 +172,11 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     }
 
     /**
-     * Wyciaganie jest CELOWO zablokowane.
+     * Extraction is DELIBERATELY blocked.
      *
-     * <p>Akumulator maszyny nie jest magazynem dla sieci - kabel nie moze
-     * "wyssac" energii, ktora maszyna ma do wykonania operacji. Ta sama zasada
-     * co w Velocity Electric Furnace.
+     * <p>A machine's accumulator is not storage for the network - a cable must
+     * not "suck out" the energy the machine has for performing operations. The
+     * same rule as in the Velocity Electric Furnace.
      */
     @Override
     public int extractEnergy(int toExtract, boolean simulate) {
@@ -201,10 +204,10 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // Pomoc dla gracza - ile pradu zostalo (maszyna nie ma GUI)
+    // Help for the player - how much power is left (the machine has no GUI)
     // ------------------------------------------------------------------
 
-    /** Wysyla graczowi stan akumulatora na pasek akcji. */
+    /** Sends the accumulator state to the player on the action bar. */
     public void sendStatus(ServerPlayer player) {
         player.displayClientMessage(Component.translatable(
                 "gui.craftingveloce.module.energy",
@@ -213,26 +216,26 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // Zapis / odczyt
+    // Save / load
     // ------------------------------------------------------------------
 
     // ------------------------------------------------------------------
-    // Slot baterii (jak w Velocity Electric Furnace)
+    // Battery slot (as in the Velocity Electric Furnace)
     // ------------------------------------------------------------------
 
-    /** Item z energia (bateria, energy cube, tablet) - jedyne, co tu wejdzie. */
+    /** An item with energy (battery, energy cube, tablet) - the only thing that goes in here. */
     private final net.minecraft.world.SimpleContainer batterySlot =
             new net.minecraft.world.SimpleContainer(1);
 
-    /** Ile FE na tick najwyzej wyciagamy z itemu. */
+    /** How much FE per tick we pull from the item at most. */
     public static final int MAX_ITEM_DRAIN_PER_TICK = 1_000_000;
 
-    /** Slot baterii - dla menu i dla ekranu. */
+    /** The battery slot - for the menu and for the screen. */
     public net.minecraft.world.Container getBatterySlot() {
         return batterySlot;
     }
 
-    /** Czy item ma energie do oddania (standardowa zdolnosc NeoForge). */
+    /** Whether the item has energy to give (the standard NeoForge capability). */
     public static boolean isEnergyItem(ItemStack stack) {
         if (stack.isEmpty()) {
             return false;
@@ -242,16 +245,17 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
         return st != null && st.canExtract() && st.getMaxEnergyStored() > 0;
     }
 
-    /** Co tick (serwer): dobierz prad z itemu w slocie baterii i z sieci. */
+    /** Every tick (server): draw power from the item in the battery slot and from the network. */
 
     /**
-     * Siec, do ktorej NAPRAWDE nalezy ta maszyna.
+     * The network this machine REALLY belongs to.
      *
-     * <p>BUG z logu: piec pytal o siec przez {@code getNetworkForTerminal}
-     * i dostawal CUDZA siec - w logu jej jedyna rura sasiadowala trawie
-     * i powietrzu, wiec Energy Cube ani pieca tam nie bylo i pobor nie mial
-     * z czego dzialac. Teraz najpierw szukamy rury OBOK maszyny i pytamy
-     * o siec tej rury; dopiero gdy takiej nie ma, wracamy do starej sciezki.
+     * <p>The BUG from the log: the furnace asked for a network via
+     * {@code getNetworkForTerminal} and got SOMEBODY ELSE'S network - in the log
+     * its only pipe was adjacent to grass and air, so neither an Energy Cube nor
+     * a furnace was there and the draw had nothing to work from. Now we first
+     * look for a pipe NEXT TO the machine and ask about that pipe's network; only
+     * when there is none do we fall back to the old path.
      */
     private com.craftingveloce.network.pipe.VelocePipeNetwork networkFor(net.minecraft.server.level.ServerLevel sl) {
         var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
@@ -289,10 +293,11 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     }
 
     /**
-     * Sciaga prad z OBCYCH zrodel podpietych do sieci rur (Energy Cube,
-     * generator). Tylko nasza maszyna sciaga - rura nie przewodzi pradu dla
-     * innych modow, a maszyny nie sa dla siebie zrodlem (skan sieci pomija
-     * nasze bloki). Pelny akumulator = zero prob (patrz VeloceEnergyPull).
+     * Draws power from FOREIGN sources hooked up to the pipe network (Energy
+     * Cube, generator). Only our machine draws - the pipe does not conduct power
+     * for other mods, and the machines are not a source for each other (the
+     * network scan skips our blocks). A full accumulator = zero attempts (see
+     * VeloceEnergyPull).
      */
     private void pullFromNetwork() {
         if (level == null || level.isClientSide) {
@@ -304,15 +309,15 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
                 serverLevel, network, this, MAX_PULL_PER_TICK);
     }
 
-    /** Ile FE na tick najwyzej przyjmujemy z sieci (obok limitu zrodla). */
+    /** How much FE per tick we accept from the network at most (next to the source's limit). */
     public static final int MAX_PULL_PER_TICK = 1_000_000;
 
     /**
-     * Bierze prad z itemu i wlewa do akumulatora.
+     * Takes power from the item and pours it into the accumulator.
      *
-     * <p>Kolejnosc jak w piecu: NAJPIERW symulacja, potem wlew do akumulatora,
-     * a z itemu zabieramy tylko to, co naprawde weszlo - inaczej przy pelnym
-     * akumulatorze energia znikalaby z itemu.
+     * <p>The order as in the furnace: simulation FIRST, then the pour into the
+     * accumulator, and we take from the item only what actually went in -
+     * otherwise, with a full accumulator, energy would disappear from the item.
      */
     private void chargeFromItem() {
         ItemStack stack = batterySlot.getItem(0);
@@ -347,12 +352,13 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     }
 
     /**
-     * Wysyla energie na KLIENTA.
+     * Sends the energy to the CLIENT.
      *
-     * <p>BUG, ktory to naprawia (zgloszenie gracza): pasek baterii w oknie
-     * modulu pokazywal ciagle pusty akumulator. Okno czyta energie z block
-     * entity u siebie (jak piec), ale modul NIE wysylal jej na klienta -
-     * piec robi to od poczatku ({@code sendBlockUpdated} + pakiet z danymi).
+     * <p>The BUG this fixes (a player report): the battery bar in the module
+     * window kept showing an empty accumulator. The window reads the energy from
+     * the block entity locally (like the furnace), but the module did NOT send it
+     * to the client - the furnace has done that from the start
+     * ({@code sendBlockUpdated} + a data packet).
      */
     private void syncEnergy() {
         setChanged();

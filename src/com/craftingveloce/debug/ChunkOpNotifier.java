@@ -14,26 +14,27 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * Debug na czacie: raportuje operacje na itemach w NIEZALADOWANYCH chunkach.
+ * Chat debug: reports item operations in UNLOADED chunks.
  *
- * <p><b>Po co.</b> Gdy siec siega do skrzyni stojacej w chunku, ktory nie jest
- * symulowany, serwer musi ten chunk najpierw wczytac. To jest dokladnie ta
- * operacja, ktora potrafi zamrozic tick albo zawiesic zapis swiata - i ktora
- * jest niewidoczna z perspektywy gracza. Ten notifier pokazuje ja na czacie:
- * ktory chunk, przy jakim bloku, jaka operacja i ile to zajelo.
+ * <p><b>Why.</b> When the network reaches into a chest standing in a chunk that
+ * is not simulated, the server has to load that chunk first. That is exactly the
+ * operation that can freeze a tick or hang a world save - and that is invisible
+ * from the player's perspective. This notifier shows it in chat: which chunk, at
+ * which block, what operation and how long it took.
  *
- * <p><b>Nie spamuje.</b> Ta sama pozycja z ta sama operacja jest raportowana
- * najwyzej raz na {@link #THROTTLE_TICKS} tickow. Bez tego jedna seria
- * wyciagania itemow zalalaby czat setkami linii - a to nie diagnoza, tylko szum.
+ * <p><b>It does not spam.</b> The same position with the same operation is
+ * reported at most once per {@link #THROTTLE_TICKS} ticks. Without that, one
+ * batch of item extraction would flood the chat with hundreds of lines - and
+ * that is not a diagnosis, just noise.
  *
- * <p>Domyslnie WYLACZONE. Wlacz komenda {@code /cv chunkdebug ops on}.
+ * <p>DISABLED by default. Enable it with the command {@code /cv chunkdebug ops on}.
  */
 public final class ChunkOpNotifier {
 
-    /** Rodzaj operacji na zawartosci chunku. */
+    /** Kind of operation on the contents of a chunk. */
     public enum Op {
-        EXTRACT("wyciagniecie"),
-        INSERT("wlozenie");
+        EXTRACT("extraction"),
+        INSERT("insertion");
 
         private final String label;
 
@@ -46,13 +47,13 @@ public final class ChunkOpNotifier {
         }
     }
 
-    /** Czy raportowac operacje. */
+    /** Whether to report operations. */
     private static boolean enabled = false;
 
-    /** Ile tickow odstepu dla tej samej pozycji i operacji. */
+    /** How many ticks of spacing for the same position and operation. */
     private static final int THROTTLE_TICKS = 100;
 
-    /** (level, pos, op) -> tick ostatniego raportu. Slabe klucze na swiaty. */
+    /** (level, pos, op) -> tick of the last report. Weak keys for the worlds. */
     private static final Map<ServerLevel, Map<String, Long>> LAST_REPORT =
             new WeakHashMap<>();
 
@@ -71,10 +72,10 @@ public final class ChunkOpNotifier {
     }
 
     /**
-     * Raportuje, ze operacja wymusila wczytanie chunku.
+     * Reports that an operation forced a chunk load.
      *
-     * @param chunkKey klucz chunku ({@link ChunkPos#asLong})
-     * @param pos      pozycja bloku, do ktorego siegniemy
+     * @param chunkKey the chunk key ({@link ChunkPos#asLong})
+     * @param pos      the position of the block we reach into
      */
     public static void reportLoad(ServerLevel level, long chunkKey, BlockPos pos, Op op) {
         if (!enabled) {
@@ -89,37 +90,38 @@ public final class ChunkOpNotifier {
         boolean frozen = com.craftingveloce.network.pipe.VeloceChunkLoader.isFrozen();
 
         MutableComponent head = Component.literal("§8[§6Veloce§8] §e" + op.label()
-                + " §7w §cNIEZALADOWANYM §7chunku §f[" + cx + ", " + cz + "]");
+                + " §7in §cUNLOADED §7chunk §f[" + cx + ", " + cz + "]");
         for (ServerPlayer player : level.players()) {
             player.displayClientMessage(head, false);
             player.displayClientMessage(coordsLine(pos), false);
             if (frozen) {
-                // To najwazniejszy przypadek: operacja w trakcie zapisu swiata
-                // jest tym, co zawiesza zapis.
+                // This is the most important case: an operation during a world
+                // save is what hangs the save.
                 player.displayClientMessage(Component.literal(
-                        "§8    ! §4swiat jest ZAMROZONY (zapis/zamkniecie) - "
-                                + "ta operacja moze zawiesic zapis"), false);
+                        "§8    ! §4the world is FROZEN (save/shutdown) - "
+                                + "this operation may hang the save"), false);
             }
         }
     }
 
-    /** Linia z klikalnymi wspolrzednymi bloku - klik = teleport. */
+    /** A line with clickable block coordinates - click = teleport. */
     private static MutableComponent coordsLine(BlockPos pos) {
         String plain = pos.getX() + " " + pos.getY() + " " + pos.getZ();
-        MutableComponent coords = Component.literal("§8    blok: §f" + plain)
+        MutableComponent coords = Component.literal("§8    block: §f" + plain)
                 .withStyle(style -> style
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
                                 "/tp @s " + plain))
                         .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                Component.literal("Kliknij, aby sie teleportowac"))));
+                                Component.literal("Click to teleport there"))));
         return coords;
     }
 
     /**
-     * Czy ten raport jest zbyt swiezy, zeby go powtorzyc.
+     * Whether this report is too recent to repeat.
      *
-     * <p>Klucz zawiera pozycje I operacje, wiec wyciaganie i wkladanie w to
-     * samo miejsce sa raportowane osobno - to dwie rozne rzeczy do diagnozy.
+     * <p>The key contains the position AND the operation, so extraction and
+     * insertion at the same place are reported separately - those are two
+     * different things to diagnose.
      */
     private static boolean isThrottled(ServerLevel level, BlockPos pos, Op op) {
         String key = pos.asLong() + ":" + op.name();
@@ -130,17 +132,17 @@ public final class ChunkOpNotifier {
             return true;
         }
         seen.put(key, now);
-        // Przy cofnietym czasie swiata licznik tez jest bez sensu - czyscimy,
-        // zeby mapa nie rosla bez konca.
+        // With the world time turned back the counter makes no sense either - we
+        // clear it so that the map does not grow without bound.
         if (last != null && now < last) {
             seen.clear();
             seen.put(key, now);
         }
-        // BEZPIECZNIK PAMIECI. Klucz to "pozycja:operacja", wiec dluga sesja
-        // diagnozy z lataniem po swiecie dorzucalaby wpis za kazdym nowym
-        // miejscem - i nic by ich nie usuwalo. Licznik sluzy WYLACZNIE do
-        // ograniczenia spamu, wiec wyczyszczenie go nic nie psuje: najwyzej
-        // kilka komunikatow przejdzie podwojnie.
+        // MEMORY SAFETY CATCH. The key is "position:operation", so a long
+        // diagnostic session flying around the world would add an entry for
+        // every new place - and nothing would ever remove them. The counter
+        // serves ONLY to limit spam, so clearing it breaks nothing: at most a
+        // few messages will get through twice.
         if (seen.size() > MAX_TRACKED_KEYS) {
             seen.clear();
             seen.put(key, now);
@@ -148,6 +150,6 @@ public final class ChunkOpNotifier {
         return false;
     }
 
-    /** Powyzej tylu wpisow czyscimy licznik miejsc (patrz {@link #isThrottled}). */
+    /** Above this many entries we clear the position counter (see {@link #isThrottled}). */
     private static final int MAX_TRACKED_KEYS = 4096;
 }

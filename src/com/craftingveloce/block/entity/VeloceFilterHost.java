@@ -3,27 +3,27 @@ package com.craftingveloce.block.entity;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * Blok, ktory ma liste FILTROW wybieranych przez gracza.
+ * A block that has a list of FILTERS selected by the player.
  *
- * <p>Dwa bloki w modzie maja filtry i oba wybiera sie tak samo - przez ekran
- * wyboru itemu: ekstraktor (co ma wyciagac z sieci) i Velocity Furnace (jakie
- * paliwo ma zaciagac). Bez wspolnego interfejsu kazdy z nich potrzebowalby
- * wlasnego pakietu "ustaw filtr", wlasnej sciezki otwierania wyboru i wlasnego
- * ponownego otwarcia ekranu - czyli trzech kopii tej samej logiki, ktore
- * predzej czy pozniej rozjechalyby sie tak, jak rozjechala sie lista wezlow
- * sieci i lista typow receptur pieca.
+ * <p>Two blocks in the mod have filters and both are selected the same way -
+ * through the item picker screen: the extractor (what it should pull from the
+ * network) and the Velocity Furnace (which fuel it should draw). Without a
+ * shared interface each of them would need its own "set filter" packet, its own
+ * path for opening the picker and its own screen reopening - that is, three
+ * copies of the same logic that would sooner or later drift apart, just as the
+ * network node list and the furnace recipe type list drifted apart.
  *
- * <p>Filtry NIE sa przedmiotami w swiecie - to tylko wybor "jaki item".
- * Dlatego ich sloty sa widmami i nie da sie ich wypelnic przeciaganiem.
+ * <p>The filters are NOT items in the world - they are only a choice of "which
+ * item". That is why their slots are ghosts and cannot be filled by dragging.
  */
 public interface VeloceFilterHost {
 
-    /** Ile filtrów ma ten blok. */
+    /** How many filters this block has. */
     int filterCount();
 
-    /** Filtr o danym numerze (pusty stos = brak filtra). */
+    /** The filter with the given number (empty stack = no filter). */
     ItemStack getFilterAt(int index);
 
-    /** Ustawia filtr; pusty stos kasuje filtr. */
+    /** Sets the filter; an empty stack clears the filter. */
     void setFilterAt(int index, ItemStack stack);
 }

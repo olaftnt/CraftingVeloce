@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Generuje loot table i tagi "mineable" dla WSZYSTKICH zarejestrowanych blokow.
+"""Generates loot tables and "mineable" tags for ALL registered blocks.
 
-Po co generator, a nie recznie pisane pliki
--------------------------------------------
-Bez loot table blok nie wypada po zniszczeniu - w trybie przetrwania gracz
-traci rure, terminal czy ekstraktor bezpowrotnie (w creative tego nie widac,
-wiec latwo to przeoczyc). To dokladnie ta sama klasa bledu, ktora w tym
-projekcie trafiala juz czterokrotnie: lista przepisana RECZNIE w drugim
-miejscu, ktora z czasem sie rozjezdza. Dlatego lista blokow NIE jest tu
-wypisana - czytamy ja z rejestru (VeloceRegistry.java), ktory jest jedynym
-zrodlem prawdy.
+Why a generator instead of hand-written files
+---------------------------------------------
+Without a loot table a block does not drop when destroyed - in survival mode
+the player loses a pipe, a terminal or an extractor irrecoverably (in creative
+you do not see it, so it is easy to overlook). This is exactly the same class
+of bug that has already hit this project four times: a list rewritten BY HAND
+in a second place, which drifts apart over time. That is why the block list is
+NOT written out here - we read it from the registry (VeloceRegistry.java),
+which is the single source of truth.
 
-Skrypt jest idempotentny:
-  * brakujace loot table dopisuje,
-  * ISTNIEJACYCH loot table nie rusza (recznie dostrojone zostaja),
-  * tagi mineable przepisuje w calosci na podstawie rejestru.
+The script is idempotent:
+  * missing loot tables are added,
+  * EXISTING loot tables are left alone (the hand-tuned ones survive),
+  * mineable tags are rewritten in full from the registry.
 
-Uruchomienie:  python3 scripts/gen_loot_tables.py
+Usage:  python3 scripts/gen_loot_tables.py
 """
 
 import glob
@@ -28,51 +28,52 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REGISTRY = os.path.join(ROOT, "src/com/craftingveloce/init/VeloceRegistry.java")
 
-# Rejestry blokow modulow opcjonalnych (compat/<mod>/XBlocks.java). Czytamy je
-# TAKZE wtedy, gdy mod jest nieobecny: dane (loot table, tag mineable) sa
-# zwyklymi plikami JSON i nie szkodza, gdy blok sie nie rejestruje. Bez tego
-# nowy blok modulu nie dostalby loot table - a to jest blad widoczny dopiero
-# w grze, po zniszczeniu bloku.
+# Block registries of the optional modules (compat/<mod>/XBlocks.java). We read
+# them ALSO when the mod is absent: the data (loot table, mineable tag) are
+# ordinary JSON files and do no harm when the block does not register. Without
+# this a new module block would get no loot table - and that is a bug visible
+# only in game, after the block is destroyed.
 COMPAT_REGISTRY_GLOB = "src/com/craftingveloce/compat/*/*Blocks.java"
 LOOT_DIR = os.path.join(ROOT, "data/craftingveloce/loot_table/blocks")
 TAG_DIR = os.path.join(ROOT, "data/minecraft/tags/block/mineable")
 
 MODID = "craftingveloce"
 
-# Narzedzie, ktorym blok zbiera sie najszybciej. Wypisane JAWNIE, zeby nowy
-# blok bez decyzji od razu krzyczal ostrzezeniem, a nie po cichu dostawal kilof.
+# The tool with which the block is mined fastest. Listed EXPLICITLY so that a
+# new block with no decision immediately screams a warning instead of quietly
+# getting a pickaxe.
 TOOL_BY_BLOCK = {
-    "veloce_tom_terminal": "axe",        # drewniana obudowa terminala
-    "veloce_crafting_table": "axe",      # jak vanilla crafting table
-    "veloce_pipe": "pickaxe",            # metalowa rura
-    "veloce_extractor": "pickaxe",       # maszyna
-    "veloce_controller": "pickaxe",      # maszyna
-    "velocity_furnace": "pickaxe",       # jak vanilla furnace
-    "electric_furnace": "pickaxe",       # jak vanilla furnace
-    "threshold_sensor": "pickaxe",       # jak vanilla observer
-    "veloce_mekanism_crusher_module": "pickaxe",     # maszyny z modulu Mekanism
+    "veloce_tom_terminal": "axe",        # the terminal's wooden casing
+    "veloce_crafting_table": "axe",      # like the vanilla crafting table
+    "veloce_pipe": "pickaxe",            # metal pipe
+    "veloce_extractor": "pickaxe",       # machine
+    "veloce_controller": "pickaxe",      # machine
+    "velocity_furnace": "pickaxe",       # like the vanilla furnace
+    "electric_furnace": "pickaxe",       # like the vanilla furnace
+    "threshold_sensor": "pickaxe",       # like the vanilla observer
+    "veloce_mekanism_crusher_module": "pickaxe",     # machines from the Mekanism module
     "veloce_mekanism_enrichment_module": "pickaxe",
     "veloce_mekanism_combiner_module": "pickaxe",
     "veloce_mekanism_sawmill_module": "pickaxe",
-    "veloce_alchemistry_compactor_module": "pickaxe",  # maszyny z modulu Alchemistry
+    "veloce_alchemistry_compactor_module": "pickaxe",  # machines from the Alchemistry module
     "veloce_alchemistry_combiner_module": "pickaxe",
     "veloce_alchemistry_fission_module": "pickaxe",
     "veloce_alchemistry_fusion_module": "pickaxe",
-    "veloce_create_millstone_module": "pickaxe",       # maszyny z modulu Create
+    "veloce_create_millstone_module": "pickaxe",       # machines from the Create module
     "veloce_create_saw_module": "pickaxe",
     "veloce_create_crushing_module": "pickaxe",
     "veloce_create_mechanical_crafter_module": "pickaxe",
-    "veloce_integrale": "pickaxe",                     # ozdobna klatka
+    "veloce_integrale": "pickaxe",                     # decorative cage
 }
 DEFAULT_TOOL = "pickaxe"
 
-# Bloki, ktore NIE maja wypadac (np. techniczne). Puste - wszystkie nasze
-# bloki sa normalnymi blokami do postawienia i zburzenia.
+# Blocks that must NOT drop (e.g. technical ones). Empty - all of our blocks
+# are normal blocks to place and break.
 NO_DROP = set()
 
 
 def registered_block_ids():
-    """Wyciaga identyfikatory blokow z rejestrow - jedynych zrodel prawdy."""
+    """Extracts block identifiers from the registries - the only sources of truth."""
     files = [REGISTRY] + sorted(glob.glob(os.path.join(ROOT, COMPAT_REGISTRY_GLOB)))
     ids = []
     for path in files:
@@ -80,10 +81,11 @@ def registered_block_ids():
             continue
         ids += re.findall(r'\bBLOCKS\.register\(\s*"([a-z0-9_]+)"',
                           open(path, encoding="utf-8").read())
-    # Rejestr MENU_TYPES uzywa tego samego wzorca, ale innego DeferredRegister,
-    # wiec powyzszy wzorzec go nie lapie. Uprzedzamy sie jednak na przyszlosc.
+    # The MENU_TYPES registry uses the same pattern but a different
+    # DeferredRegister, so the pattern above does not catch it. We guard against
+    # it anyway, for the future.
     ids = [i for i in ids if not i.endswith("_menu")]
-    # Kolejnosc rejestracji = kolejnosc w plikach wynikowych (stabilne diffy).
+    # Registration order = order in the output files (stable diffs).
     seen, ordered = set(), []
     for i in ids:
         if i not in seen:
@@ -93,7 +95,7 @@ def registered_block_ids():
 
 
 def loot_table_for(block_id):
-    """Standardowy drop: sam blok, zachowany przy wybuchu."""
+    """Standard drop: the block itself, preserved on explosion."""
     return {
         "type": "minecraft:block",
         "pools": [
@@ -117,10 +119,11 @@ def generate_loot_tables(block_ids):
     created, kept, skipped, repaired = [], [], [], []
     for b in block_ids:
         path = os.path.join(LOOT_DIR, f"{b}.json")
-        # Istniejacy plik NIE jest slepo zostawiany: porownujemy tresc z tym,
-        # co generator by dzis wygenerowal i naprawiamy rozjazd. Stare pliki
-        # zostawaly nietkniete, a przez to 4 loot table modulow Mekanism
-        # wskazywaly nieistniejacy item ("Unknown registry key ... veloce_crusher_module").
+        # An existing file is NOT blindly left in place: we compare its content
+        # with what the generator would produce today and repair any drift. Old
+        # files used to be left untouched, and because of that 4 loot tables of
+        # Mekanism modules pointed at a non-existent item ("Unknown registry
+        # key ... veloce_crusher_module").
         if os.path.exists(path):
             try:
                 current = json.load(open(path, encoding="utf-8"))
@@ -143,7 +146,7 @@ def generate_loot_tables(block_ids):
 
 
 def generate_mineable_tags(block_ids):
-    """Grupuje bloki po narzedziu i przepisuje tagi mineable."""
+    """Groups blocks by tool and rewrites the mineable tags."""
     groups = {}
     for b in block_ids:
         if b in NO_DROP:
@@ -160,8 +163,8 @@ def generate_mineable_tags(block_ids):
         write_json(path, tag)
         written[tool] = len(blocks)
 
-    # Tag dla narzedzia, ktore nie ma juz zadnego bloku, usuwamy - inaczej
-    # zostaje plik "na zapas" i myli przy czytaniu danych.
+    # A tag for a tool that no longer has any block is deleted - otherwise a
+    # spare file is left behind and confuses whoever reads the data.
     for name in os.listdir(TAG_DIR) if os.path.isdir(TAG_DIR) else []:
         if not name.endswith(".json"):
             continue
@@ -173,29 +176,29 @@ def generate_mineable_tags(block_ids):
 
 def main():
     if not os.path.exists(REGISTRY):
-        print(f"BLAD: nie znajduje rejestru {REGISTRY}", file=sys.stderr)
+        print(f"ERROR: cannot find the registry {REGISTRY}", file=sys.stderr)
         return 1
 
     blocks = registered_block_ids()
     if not blocks:
-        print("BLAD: nie znalazlem zadnego bloku w rejestrze", file=sys.stderr)
+        print("ERROR: found no block in the registry", file=sys.stderr)
         return 1
 
-    print(f"blokow w rejestrze: {len(blocks)}")
+    print(f"blocks in registry: {len(blocks)}")
     created, kept, skipped = generate_loot_tables(blocks)
-    print(f"  loot table dopisane: {len(created)}" + (f" -> {created}" if created else ""))
-    print(f"  loot table istniejace (nietkniete): {len(kept)}")
+    print(f"  loot tables added: {len(created)}" + (f" -> {created}" if created else ""))
+    print(f"  existing loot tables (untouched): {len(kept)}")
     if skipped:
-        print(f"  celowo bez dropu: {skipped}")
+        print(f"  intentionally without a drop: {skipped}")
 
     tools = generate_mineable_tags(blocks)
     for tool, n in sorted(tools.items()):
-        print(f"  tag mineable/{tool}: {n} blok(ow)")
+        print(f"  mineable/{tool} tag: {n} block(s)")
 
     known = set(TOOL_BY_BLOCK) | NO_DROP
     unknown = [b for b in blocks if b not in known]
     if unknown:
-        print(f"  uwaga: nowe bloki bez przypisanego narzedzia (dostaly '{DEFAULT_TOOL}'): {unknown}")
+        print(f"  note: new blocks with no tool assigned (they got '{DEFAULT_TOOL}'): {unknown}")
     return 0
 
 

@@ -14,11 +14,12 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * C→S: ustawia preferowana recepture dla itemu (shift+scroll w GUI).
+ * C->S: sets the preferred recipe for an item (shift+scroll in the GUI).
  *
- * <p>Dotyczy itemow z wieloma recepturami - gracz wybiera, ktora crafter
- * ma uzyc jako pierwsza. Jesli wybrana receptura jest chwilowo niewykonalna
- * (brakuje skladnikow), silnik auto-craftowania sam sprobuje kolejnych.
+ * <p>Applies to items with multiple recipes - the player picks which one the
+ * crafter should use first. If the selected recipe is temporarily infeasible
+ * (ingredients missing), the auto-crafting engine will try the next ones by
+ * itself.
  */
 public record CraftingTableCycleRecipePKT(BlockPos pos, Item item, ResourceLocation recipeId)
         implements CustomPacketPayload {
@@ -50,7 +51,7 @@ public record CraftingTableCycleRecipePKT(BlockPos pos, Item item, ResourceLocat
     public static void handle(CraftingTableCycleRecipePKT pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (ctx.player() instanceof ServerPlayer sp) {
-                // Bezpiecznik odleglosci - spojnie z pozostalymi pakietami.
+                // Distance guard - consistent with the other packets.
                 if (sp.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
                         pkt.pos().getZ() + 0.5) > 64.0) {
                     return;

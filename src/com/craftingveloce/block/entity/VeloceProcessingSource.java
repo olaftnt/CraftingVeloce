@@ -5,72 +5,77 @@ import net.minecraft.world.item.crafting.RecipeType;
 import java.util.Set;
 
 /**
- * Maszyna modulu, ktora potrafi wykonac receptury z innego moda.
+ * A module machine that is able to execute recipes from another mod.
  *
- * <p><b>Po co wspolny interfejs.</b> Dokladnie z tego samego powodu, co
- * {@link VeloceHeatSource}: crafter ma obslugiwac wiele maszyn z wielu modow
- * (Create, Alchemistry, Mekanism, a potem kolejne), a bez wspolnego interfejsu
- * musialby znac kazdy typ z osobna - i kazdy nowy modul wymagalby zmiany
- * w rdzeniu. Jednostka jest jedna: <b>OPERACJA</b> (jedno wykonanie receptury),
- * a kazda maszyna sama przelicza swoja energie na operacje.
+ * <p><b>Why a common interface.</b> For exactly the same reason as
+ * {@link VeloceHeatSource}: the crafter has to handle many machines from many
+ * mods (Create, Alchemistry, Mekanism, and then more), and without a common
+ * interface it would have to know every type separately - and every new module
+ * would require a change in the core. The unit is one: an <b>OPERATION</b>
+ * (a single execution of a recipe), and each machine converts its own energy
+ * into operations itself.
  *
- * <p><b>To jest jedyne, czego rdzen wymaga od modulu.</b> Maszyna:
+ * <p><b>This is the only thing the core requires of a module.</b> A machine:
  * <ul>
- *   <li>mowi, jakie TYPY RECEPTUR obsluguje ({@link #recipeTypes()}) - dzieki
- *       temu rdzen nie musi znac nazw rodzin z innych modow,</li>
- *   <li>mowi, ile operacji jeszcze uciagnie ({@link #availableOperations()})
- *       i pozwala je zabrac ({@link #consumeOperations(long)}),</li>
- *   <li>mowi, czy jest w ogole zasilana ({@link #isPowered()}) - kontroler
- *       rozroznia "brak maszyny" od "maszyna bez pradu".</li>
+ *   <li>says what RECIPE TYPES it handles ({@link #recipeTypes()}) - thanks to
+ *       that the core does not have to know the family names from other mods,</li>
+ *   <li>says how many operations it can still sustain
+ *       ({@link #availableOperations()}) and allows them to be taken
+ *       ({@link #consumeOperations(long)}),</li>
+ *   <li>says whether it is powered at all ({@link #isPowered()}) - the
+ *       controller distinguishes "no machine" from "machine without
+ *       power".</li>
  * </ul>
  */
 public interface VeloceProcessingSource {
 
-    /** Krotki identyfikator modulu, np. {@code "mekanism:crusher"}. Do logow. */
+    /** A short module identifier, e.g. {@code "mekanism:crusher"}. For logs. */
     String moduleId();
 
     /**
-     * Typy receptur, ktore TA maszyna potrafi wykonac.
+     * Recipe types that THIS machine is able to execute.
      *
-     * <p>Moze byc wiecej niz jeden (np. maszyna wielofunkcyjna), ale w praktyce
-     * to jeden typ - i po nim rdzen kojarzy recepture z maszyna.
+     * <p>There may be more than one (e.g. a multi-purpose machine), but in
+     * practice it is one type - and that is what the core uses to associate
+     * a recipe with a machine.
      */
     Set<RecipeType<?>> recipeTypes();
 
-    /** Ile operacji (wykonan receptury) ta maszyna jeszcze uciagnie. */
+    /** How many operations (recipe executions) this machine can still sustain. */
     long availableOperations();
 
     /**
-     * Zabiera energie na {@code operations} operacji.
+     * Takes energy for {@code operations} operations.
      *
-     * <p>Wolajacy MUSI najpierw sprawdzic {@link #availableOperations()}.
-     * Implementacja nie zejdzie ponizej zera, ale to nie jest miejsce na
-     * kontrole bledow.
+     * <p>The caller MUST first check {@link #availableOperations()}. The
+     * implementation will not go below zero, but this is not the place for
+     * error handling.
      */
     void consumeOperations(long operations);
 
-    /** Czy maszyna jest w ogole zasilana (ma dosc energii na jedna operacje). */
+    /** Whether the machine is powered at all (it has enough energy for one operation). */
     boolean isPowered();
 
     /**
-     * Priorytet przy wyborze maszyny. <b>Mniejszy = wazniejszy.</b>
+     * Priority when choosing a machine. <b>Smaller = more important.</b>
      *
-     * <p>Ten sam sposob co {@link VeloceHeatSource#heatPriority()}: gdy w sieci
-     * stoi kilka maszyn tej samej rodziny, crafter wybiera pierwsza z listy,
-     * a lista jest deterministyczna.
+     * <p>The same approach as {@link VeloceHeatSource#heatPriority()}: when
+     * several machines of the same family stand in the network, the crafter
+     * picks the first from the list, and the list is deterministic.
      */
     default int processingPriority() {
         return 0;
     }
 
-    /** Etykieta do logow i raportu (np. "Veloce Crusher Module"). */
+    /** A label for logs and the report (e.g. "Veloce Crusher Module"). */
     String sourceName();
     /**
-     * Ile elementow maszyny jest ZBUDOWANYCH (kola mlynskie, oczka craftera).
+     * How many machine elements are BUILT (millstones, crafter cells).
      *
-     * <p>Domyslnie zero: zwykla maszyna nie ma czesci skladowych. Crafter
-     * mechaniczny Create buduje sie z oczek i tylko tyle pol ma jego siatka,
-     * dlatego planer pyta o te liczbe przed obieceniem receptury z siatka.
+     * <p>Zero by default: an ordinary machine has no component parts. The Create
+     * mechanical crafter is built from cells and that is the only field its grid
+     * has, which is why the planner asks for this number before running a recipe
+     * with a grid.
      */
     default int availableParts() {
         return 0;

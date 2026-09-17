@@ -26,37 +26,37 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Block entity Veloce Controller.
+ * Block entity of the Veloce Controller.
  *
- * <p>Zbiera i wysyla do klienta pelny obraz sieci potrzebny do GUI:
+ * <p>It collects and sends to the client the full picture of the network needed by the GUI:
  * <ul>
- *   <li>{@code stock} - ile sztuk kazdego itemu jest fizycznie w sieci</li>
- *   <li>{@code craftable} - ktore itemy maja recepture wykonywalna bez energii</li>
- *   <li>{@code craftingEnabled} - dla ktorych auto-crafting jest wlaczony
- *       (czyli crafter potrafi je zrobic, nawet bez itemow na stocku)</li>
- *   <li>{@code hotbar} - co gracz ma w hotbarze (do kolorowania ikon)</li>
+ *   <li>{@code stock} - how many pieces of every item are physically in the network</li>
+ *   <li>{@code craftable} - which items have a recipe executable without energy</li>
+ *   <li>{@code craftingEnabled} - for which ones auto-crafting is enabled
+ *       (i.e. the crafter can make them, even without items in stock)</li>
+ *   <li>{@code hotbar} - what the player has in the hotbar (for colouring the icons)</li>
  * </ul>
  */
 public class VeloceControllerBlockEntity extends BlockEntity
         implements VeloceCraftCountSource {
 
     /**
-     * Jak blisko musi stac gracz, zeby kontroler obsluzyl jego zapytanie
-     * o tempo przeplywu. Bez tego limitu dowolny gracz moglby zamowic prace
-     * serwera dla dowolnej pozycji w swiecie.
+     * How close a player must be for the controller to handle their request
+     * for the flow rate. Without this limit any player could order server work
+     * for any position in the world.
      */
     public static final double MAX_FLOW_REQUEST_DISTANCE = 64.0;
 
     /**
-     * Miernik przeplywu. Zyje razem z kontrolerem i mierzy siec, do ktorej
-     * kontroler jest AKTUALNIE podlaczony.
+     * The flow meter. It lives together with the controller and measures the
+     * network the controller is CURRENTLY connected to.
      */
     private final VeloceFlowTracker flow = new VeloceFlowTracker();
-    /** Roznica stocku wobec tego, co juz poszlo do klientow (patrz sendFlowTo). */
+    /** The stock difference against what has already gone to the clients (see sendFlowTo). */
     private final com.craftingveloce.crafting.VeloceStockDeltas stockDeltas =
             new com.craftingveloce.crafting.VeloceStockDeltas();
 
-    /** Siec, dla ktorej zbieramy migawki - zeby wykryc przestawienie kontrolera. */
+    /** The network we collect snapshots for - to detect the controller being moved. */
     private java.util.UUID sampledNetworkId;
 
     public VeloceControllerBlockEntity(BlockPos pos, BlockState state) {
@@ -64,12 +64,12 @@ public class VeloceControllerBlockEntity extends BlockEntity
     }
 
     /**
-     * Jedno tykniecie kontrolera: migawka stocku (raz na 5 s) i nic wiecej.
+     * One tick of the controller: a stock snapshot (once every 5 s) and nothing more.
      *
-     * <p>Nie wysylamy tu nic do graczy - o tempo pyta klient osobnym pakietem
-     * (patrz {@link com.craftingveloce.network.ControllerFlowRequestPKT}).
-     * Dzieki temu kontroler nie musi pamietac, kto patrzy, i nie ma czego
-     * zgubic, gdy klient wyjdzie z gry albo sie teleportuje.
+     * <p>We do not send anything to players here - the client asks for the rate with
+     * a separate packet (see {@link com.craftingveloce.network.ControllerFlowRequestPKT}).
+     * Thanks to that the controller does not have to remember who is looking, and
+     * there is nothing to lose when the client leaves the game or teleports.
      */
     public void serverTick() {
         if (!(level instanceof ServerLevel sl)) {
@@ -82,16 +82,17 @@ public class VeloceControllerBlockEntity extends BlockEntity
         VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
                 .getNetworkForTerminal(sl, worldPosition);
         if (net == null) {
-            // Kontroler bez sieci nie ma czego mierzyc. Zerujemy pomiar, zeby
-            // po ponownym podlaczeniu nie mieszac historii z innej sieci.
+            // A controller without a network has nothing to measure. We zero the
+            // measurement so that after reconnecting we do not mix in history from
+            // another network.
             if (sampledNetworkId != null) {
                 flow.reset();
                 sampledNetworkId = null;
             }
             return;
         }
-        // Inna siec niz dotad (kontroler przestawiony) - stara historia jest
-        // bez znaczenia i tylko zafalszowalaby tempo.
+        // A different network than before (the controller was moved) - the old
+        // history is meaningless and would only falsify the rate.
         if (sampledNetworkId != null && !sampledNetworkId.equals(net.getId())) {
             flow.reset();
         }
@@ -100,11 +101,11 @@ public class VeloceControllerBlockEntity extends BlockEntity
     }
 
     /**
-     * Liczby "ile da sie jeszcze dorobic" dla widocznej strony kontrolera.
+     * The "how many can still be made" numbers for the visible page of the controller.
      *
-     * <p>Ta sama logika co w terminalu (i ten sam wspolny interfejs), bo
-     * kontroler ma pokazywac DOKLADNIE te same dwie liczby co terminal -
-     * a nie wlasne, uproszczone przyblizenie.
+     * <p>The same logic as in the terminal (and the same shared interface), because
+     * the controller is to show EXACTLY the same two numbers as the terminal -
+     * and not its own, simplified approximation.
      */
     @Override
     public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult computeCraftableCounts(
@@ -115,8 +116,8 @@ public class VeloceControllerBlockEntity extends BlockEntity
         VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
                 .getNetworkForTerminal(sl, worldPosition);
         if (net == null) {
-            // Siec jeszcze nie gotowa - NIE mowimy "nic sie nie da zrobic",
-            // bo klient skasowalby wtedy poprawne liczby.
+            // The network is not ready yet - we do NOT say "nothing can be made",
+            // because the client would then wipe the correct numbers.
             return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), false);
         }
         Set<Item> enabled = VeloceCraftingRegistry.getAllEnabledItems(sl, net);
@@ -129,31 +130,32 @@ public class VeloceControllerBlockEntity extends BlockEntity
         var result = com.craftingveloce.crafting.VeloceAutoCrafter.countCraftableBatchResult(
                 sl, net, items, enabled, preferred,
                 com.craftingveloce.crafting.VeloceAutoCrafter.DEFAULT_ESTIMATE_BUDGET_NS);
-        // Ten sam log co terminal - bez niego nie da sie stwierdzic, czy
-        // kontroler w ogole dostal liczby (a gracz wlasnie to zglosil).
+        // The same log as the terminal - without it there is no way to tell whether
+        // the controller received the numbers at all (and the player just reported
+        // exactly that).
         com.craftingveloce.util.VeloceLog.Craft.detail(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
                 "controller craftable count for %d item(s) -> %d result(s) in %d ms "
                         + "(complete=%s, heat=%s)",
                 items.size(), result.counts().size(),
                 (System.nanoTime() - start) / 1_000_000L, result.complete(),
-                result.heatAvailable() ? "piec w sieci" : "brak pieca");
+                result.heatAvailable() ? "furnace in network" : "no furnace");
         return result;
     }
 
     /**
-     * Wysyla graczowi tempo przeplywu I ZMIANE stocku (odpowiedz na zapytanie).
+     * Sends the player the flow rate AND the stock CHANGE (the answer to the request).
      *
-     * <p>Stock jedzie razem z tempem, bo kontroler ma sie odswiezac tak samo
-     * jak terminal: bez tego wyjecie itemu ze skrzynki przy otwartym GUI nie
-     * zmienialo ani liczby, ani koloru ikony.
+     * <p>The stock travels together with the rate, because the controller is to
+     * refresh just like the terminal: without it, taking an item out of a chest with
+     * the GUI open changed neither the number nor the colour of the icon.
      *
-     * <p><b>Tylko zmiany.</b> Zapytanie leci raz na sekunde, a stock prawie
-     * nigdy sie nie zmienia - wysylanie calego obrazu sieci za kazdym razem
-     * znaczyloby tysiace wpisow na sekunde w duzej sieci (im wieksza siec, tym
-     * wiekszy ruch bez pozytku). Roznice liczy
-     * {@link com.craftingveloce.crafting.VeloceStockDeltas}, a raz na minute
-     * leci pelny zrzut jako zabezpieczenie przed rozjazdem.
+     * <p><b>Changes only.</b> The request comes once a second, and the stock almost
+     * never changes - sending the whole picture of the network every time would mean
+     * thousands of entries per second in a large network (the larger the network, the
+     * more traffic for no benefit). The differences are computed by
+     * {@link com.craftingveloce.crafting.VeloceStockDeltas}, and once a minute a full
+     * dump is sent as a safeguard against drift.
      */
     public void sendFlowTo(ServerPlayer player) {
         Map<Item, Long> stock = Map.of();
@@ -172,7 +174,7 @@ public class VeloceControllerBlockEntity extends BlockEntity
                 worldPosition, delta.changed(), delta.removed(), flow.steadyRates(), delta.full()));
     }
 
-    /** Zbiera aktualny stan sieci i wysyla GUI graczowi. */
+    /** Collects the current network state and sends it to the player's GUI. */
     public void syncToPlayer(ServerPlayer player) {
         if (!(level instanceof ServerLevel sl)) {
             return;
@@ -180,14 +182,14 @@ public class VeloceControllerBlockEntity extends BlockEntity
         VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
 
-        // BRAK SIECI NIE MOZE BYC PRZEMILCZANY.
+        // A MISSING NETWORK MUST NOT BE PASSED OVER IN SILENCE.
         //
-        // BUG, ktory to ukrywalo: kontroler nie byl rozpoznawany jako wezel
-        // (patrz VeloceNodeBlocks), wiec `net` bylo tu ZAWSZE null. Kontroler
-        // dostawal pusty stock i pusty zbior itemow z wlaczonym auto-craftingiem
-        // - i pokazywal "auto-crafting wylaczony" dla WSZYSTKICH itemow, mimo
-        // ze crafter w sieci mial je wlaczone. Bez tego logu wygladalo to jak
-        // blad w samym auto-craftingu, a nie w podlaczeniu kontrolera.
+        // The BUG this was hiding: the controller was not recognized as a node
+        // (see VeloceNodeBlocks), so `net` was ALWAYS null here. The controller
+        // got an empty stock and an empty set of items with auto-crafting enabled
+        // - and showed "auto-crafting disabled" for ALL items, even though the
+        // crafter in the network had them enabled. Without this log it looked like
+        // a bug in auto-crafting itself, and not in the controller's connection.
         if (net == null) {
             com.craftingveloce.util.VeloceLog.Block.failure(
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
@@ -202,32 +204,33 @@ public class VeloceControllerBlockEntity extends BlockEntity
                 ? Set.of()
                 : VeloceCraftingRegistry.getAllEnabledItems(sl, net);
 
-        // PIEC: receptury pieca sa uzywalne TYLKO gdy w sieci stoi ZASILONY piec.
-        // Klient uzywa tego do JEDNEJ rzeczy: zolte tlo dla itemow, ktore da sie
-        // przepalic. "Stoi jakikolwiek piec bez paliwa" nie jest juz potrzebne -
-        // te informacje nosily usuniete teksty w tooltipie.
+        // FURNACE: the furnace's recipes are usable ONLY when a POWERED furnace is
+        // in the network. The client uses this for ONE thing: a yellow background
+        // for items that can be smelted. "Any furnace without fuel is present" is no
+        // longer needed - that information used to be carried by the removed tooltip
+        // texts.
         Set<Item> furnaceCraftable = VeloceRecipeRegistry.getAllFurnaceCraftableItems(sl);
         boolean furnacePowered = net != null && VeloceHeatSources.hasPower(sl, net);
 
-        // Preferencja "crafting czy piec" - z sieci, wiec widzi ja cala siec,
-        // a nie jeden kontroler. Zamiast hotbara (usuniety na zyczenie):
-        // gracz nie chcial informacji "in hotbar" na ikonach.
+        // The "crafting or furnace" preference - from the network, so the whole
+        // network sees it, not just one controller. Instead of the hotbar (removed
+        // on request): the player did not want the "in hotbar" information on the icons.
         Set<Item> furnacePreferred = net == null ? Set.of() : net.getFurnacePreferred();
 
         PacketDistributor.sendToPlayer(player, new OpenControllerScreenPKT(
                 this.getBlockPos(), stock, craftingEnabled,
                 furnaceCraftable, furnacePowered, furnacePreferred));
 
-        // Tempo przeplywu idzie osobnym, lekkim pakietem. Wysylamy je od razu,
-        // zeby gracz nie czekal sekundy na pierwsze liczby - a potem klient
-        // dopytuje sam, dopoki ma otwarte GUI.
+        // The flow rate goes in a separate, lightweight packet. We send it right
+        // away so that the player does not wait a second for the first numbers -
+        // and then the client asks on its own for as long as it has the GUI open.
         sendFlowTo(player);
     }
 
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        // Controller nie przechowuje stanu - jest tylko widokiem na siec.
+        // The controller does not store state - it is only a view onto the network.
     }
 
     @Override
@@ -235,7 +238,7 @@ public class VeloceControllerBlockEntity extends BlockEntity
         super.loadAdditional(tag, registries);
     }
 
-    /** Pomocnicze: id itemu (do NBT/debugowania). */
+    /** Helper: the item's id (for NBT/debugging). */
     public static ResourceLocation idOf(Item item) {
         return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item);
     }

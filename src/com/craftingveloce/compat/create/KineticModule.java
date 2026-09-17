@@ -5,21 +5,21 @@ import net.minecraft.world.item.crafting.RecipeType;
 import java.util.function.Supplier;
 
 /**
- * JEDEN opis maszyny kinetycznej Create - dane, nie klasa.
+ * ONE description of a Create kinetic machine - data, not a class.
  *
- * <p>Maszyny kinetyczne (mlyn, piła, kruszarka, mechanical crafter) roznia sie
- * tylko typem receptury, etykieta i poborem SU, wiec korzystaja z jednego
- * bloku i jednego block entity.
+ * <p>Kinetic machines (millstone, saw, crusher, mechanical crafter) differ only
+ * in recipe type, label and SU draw, so they use one block and one block
+ * entity.
  *
- * <p><b>Dlaczego {@link Supplier}, a nie gotowy typ receptury.</b> Typy
- * receptur Create to DeferredHoldery wiazane dopiero po zdarzeniach
- * rejestracji, a te stale powstaja w konstruktorze moda - typ musi byc
- * rozwiazany leniwie.
+ * <p><b>Why {@link Supplier} and not a ready recipe type.</b> Create recipe
+ * types are DeferredHolders bound only after the registration events, and these
+ * constants are created in the mod constructor - the type must be resolved
+ * lazily.
  *
- * @param id           identyfikator do logow, np. {@code "create:milling"}
- * @param label        etykieta maszyny (logi, komunikaty)
- * @param recipeType   typ receptury obslugiwany przez maszyne (leniwie)
- * @param constantSu   stala pula SU pobierana z sieci kinetycznej (patrz
+ * @param id           identifier for logs, e.g. {@code "create:milling"}
+ * @param label        machine label (logs, messages)
+ * @param recipeType   recipe type handled by the machine (lazily)
+ * @param constantSu   constant SU pool drawn from the kinetic network (see
  *                     {@code VeloceKineticModuleBlockEntity.calculateStressApplied})
  */
 public record KineticModule(String id, String label, Supplier<RecipeType<?>> recipeType,

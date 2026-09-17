@@ -37,21 +37,23 @@ public class CraftingVeloceMod {
                         output.accept(VeloceRegistry.VELOCE_CRAFTING_TABLE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CONTROLLER_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_PIPE_ITEM.get());
-                        // BUG, ktory to naprawia: piece byly zarejestrowane, ale
-                        // NIE bylo ich w zakladce - czyli nie dalo sie ich
-                        // zdobyc inaczej niz komenda. Nowy blok latwo o to
-                        // przyprawic, bo rejestracja i zakladka to dwa miejsca.
+                        // BUG this fixes: the furnaces were registered, but they
+                        // were NOT in the tab - so there was no way to obtain them
+                        // other than a command. A new block is easy to get wrong
+                        // this way, because registration and the tab are two
+                        // separate places.
                         output.accept(VeloceRegistry.VELOCITY_FURNACE_ITEM.get());
                         output.accept(VeloceRegistry.ELECTRIC_FURNACE_ITEM.get());
                         output.accept(VeloceRegistry.THRESHOLD_SENSOR_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_WRENCH.get());
-                        // Ozdobna klatka - widac tylko krawedzie, srodek pusty.
+                        // Decorative casing - only the edges are visible, the
+                        // middle is empty.
                         output.accept(VeloceRegistry.VELOCE_INTEGRALE_ITEM.get());
-                        // Pozycje z opcjonalnych integracji - TYLKO gdy mod
-                        // jest obecny. Sprawdzenie musi byc W SRODKU lambdy:
-                        // displayItems wykonuje sie ZAWSZE (takze bez tych
-                        // modow), wiec siegniecie do bloku modulu bez tego
-                        // warunku zaladowaloby klase z obcym typem.
+                        // Entries from optional integrations - ONLY when the mod
+                        // is present. The check must be INSIDE the lambda:
+                        // displayItems ALWAYS runs (also without those mods), so
+                        // reaching for a module block without that condition
+                        // would load a class with a foreign type.
                         if (com.craftingveloce.compat.mekanism.MekanismCompat.isPresent()) {
                             com.craftingveloce.compat.mekanism.MekanismCompat
                                     .addCreativeItems(output);
@@ -71,11 +73,11 @@ public class CraftingVeloceMod {
     public CraftingVeloceMod(IEventBus modEventBus, ModContainer modContainer) {
         LOGGER.info("CraftingVeloce initializing...");
 
-        // Rejestracja configu (config/craftingveloce-common.toml).
-        // UWAGA: wartosci configu mozna czytac DOPIERO po jego wczytaniu.
-        // Odczyt w konstruktorze rzuca "Cannot get config value before config
-        // is loaded" i wywala caly mod - dlatego logujemy dopiero w zdarzeniu
-        // ModConfigEvent.Loading, ktore odpala sie po wczytaniu.
+        // Config registration (config/craftingveloce-common.toml).
+        // NOTE: config values can only be read AFTER the config has been loaded.
+        // Reading in the constructor throws "Cannot get config value before config
+        // is loaded" and takes down the whole mod - so we log only in the
+        // ModConfigEvent.Loading event, which fires after loading.
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.COMMON,
                 com.craftingveloce.config.VeloceConfig.SPEC);
 
@@ -91,23 +93,23 @@ public class CraftingVeloceMod {
 
         VeloceRegistry.register(modEventBus);
         com.craftingveloce.crafting.VeloceRecipes.register(modEventBus);
-        // JEI: nasze klocki obok stolu rzemieslniczego (szczegoly - VeloceJeiCatalysts).
+        // JEI: our blocks next to the crafting table (details - VeloceJeiCatalysts).
         com.craftingveloce.compat.VeloceJeiCatalysts.registerDefaults();
         CREATIVE_TABS.register(modEventBus);
         VelocePacketHandler.register(modEventBus);
 
-        // --- Opcjonalne integracje z innymi modami ------------------------
+        // --- Optional integrations with other mods ------------------------
         //
-        // KAZDA bramka jest sprawdzana PRZED pierwszym odwolaniem do klasy
-        // z obcym typem. Kolejnosc ma znaczenie: NoClassDefFoundError leci przy
-        // ladowaniu i linkowaniu klasy, wiec zaden try/catch by go nie zlapal -
-        // bez sprawdzenia mod po prostu nie wstaje bez tamtego moda.
+        // EVERY gate is checked BEFORE the first reference to a class with a
+        // foreign type. Order matters: NoClassDefFoundError is thrown when a
+        // class is loaded and linked, so no try/catch would catch it - without
+        // the check the mod simply does not start without that other mod.
         //
-        // Bramki (XCompat) nie maja obcych typow w polach ani sygnaturach; obce
-        // typy sa dopiero w cialach metod wolanych warunkowo.
+        // Gates (XCompat) have no foreign types in their fields or signatures;
+        // foreign types appear only in the bodies of methods called conditionally.
         for (com.craftingveloce.compat.VeloceMods mod : com.craftingveloce.compat.VeloceMods.values()) {
             LOGGER.info("[Veloce][COMPAT] {}: {}", mod.id(),
-                    mod.isLoaded() ? "obecny" : "brak");
+                    mod.isLoaded() ? "present" : "missing");
         }
         if (com.craftingveloce.compat.create.CreateCompat.isPresent()) {
             com.craftingveloce.compat.create.CreateCompat.register(modEventBus);
@@ -119,10 +121,11 @@ public class CraftingVeloceMod {
             com.craftingveloce.compat.mekanism.MekanismCompat.register(modEventBus);
         }
 
-        // Renderer ZAWARTOSCI obudowy Veloce Integrale: kazdy nasz klocek ma
-        // model obudowy (rama + szyba), a w srodku renderuje sie model klocka
-        // bazowego (pulpit, dozownik, obserwator, stol, piec). Zawartosc wynika
-        // z TYPU bloku, wiec serwer nic nie zapisuje ani nie synchronizuje.
+        // Renderer for the CONTENTS of the Veloce Integrale casing: each of our
+        // blocks has a casing model (frame + glass), and inside it the base
+        // block model is rendered (crafting table, dispenser, observer,
+        // crafting table, furnace). The contents follow from the block TYPE, so
+        // the server neither saves nor synchronises anything.
         modEventBus.addListener(
                 net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class,
                 event -> {
@@ -156,23 +159,23 @@ public class CraftingVeloceMod {
                     com.craftingveloce.client.gui.VeloceThresholdSensorScreen::new);
         });
 
-        // Wyjscie ze swiata czysci zapamietane widoki terminali.
-        // Pozycje blokow nie maja sensu w innym swiecie, a w nowym moga
-        // przypadkiem wskazywac inny terminal.
+        // Leaving the world clears the remembered terminal views.
+        // Block positions make no sense in another world, and in a new one they
+        // could accidentally point at a different terminal.
         NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent.LoggingOut.class,
                 event -> com.craftingveloce.client.ClientTerminalHelper.clearSavedTerminalViews());
 
-        // UWAGA: przezroczystosc blokow zostala CELOWO WYLACZONA.
-        // Usunieto zarowno "render_type" z modeli w assets/.../models/block/,
-        // jak i rejestracje render layeru ponizej. Wszystkie bloki Veloce
-        // renderuja sie teraz jako solid (nieprzezroczyste).
+        // NOTE: block transparency was DELIBERATELY DISABLED.
+        // Both "render_type" was removed from the models in
+        // assets/.../models/block/, and the render layer registration below.
+        // All Veloce blocks now render as solid (opaque).
         //
-        // Jesli kiedys bedziesz chcial wrocic do przezroczystosci, potrzebne sa OBA:
-        //   1. "render_type": "minecraft:translucent" w kazdym modelu bloku
-        //   2. rejestracja ponizej (ItemBlockRenderTypes.setRenderLayer)
-        // Sam render_type w JSON wystarcza dla wiekszosci przypadkow, ale
-        // rejestracja w kodzie gwarantuje poprawny chunk render type set.
+        // If you ever want to go back to transparency, you need BOTH:
+        //   1. "render_type": "minecraft:translucent" in every block model
+        //   2. the registration below (ItemBlockRenderTypes.setRenderLayer)
+        // render_type in the JSON alone is enough for most cases, but
+        // registering in code guarantees a correct chunk render type set.
 
         modEventBus.addListener(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent.class, event -> {
             event.registerBlockEntity(
@@ -180,16 +183,16 @@ public class CraftingVeloceMod {
                     VeloceRegistry.VELOCE_EXTRACTOR_BE.get(),
                     (be, side) -> new net.neoforged.neoforge.items.wrapper.InvWrapper(be.getOutputInventory())
             );
-            // Bufor auto-craftera - dzieki temu nadwyzka produkcji jest normalnie
-            // widoczna dla sieci (rury, terminal, extractor).
+            // Auto-crafter buffer - thanks to this, surplus production is
+            // normally visible to the network (pipes, terminal, extractor).
             event.registerBlockEntity(
                     net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
                     VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(),
                     (be, side) -> new net.neoforged.neoforge.items.wrapper.InvWrapper(be.getBuffer())
             );
-            // Velocity Electric Furnace przyjmuje Forge Energy z kabli.
-            // Akumulator jest WEWNETRZNY, wiec extractEnergy zwraca 0 - kabel
-            // nie moze "wyssac" pieca.
+            // Velocity Electric Furnace accepts Forge Energy from cables.
+            // The accumulator is INTERNAL, so extractEnergy returns 0 - a cable
+            // cannot "suck" the furnace dry.
             event.registerBlockEntity(
                     net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
                     VeloceRegistry.ELECTRIC_FURNACE_BE.get(),
@@ -204,24 +207,25 @@ public class CraftingVeloceMod {
 
         });
 
-        // Napis "not enough rotation speed" przy celowniku ZOSTAL USUNIETY.
+        // The "not enough rotation speed" caption at the crosshair WAS REMOVED.
         //
-        // Gracz: "wywal to cos, zamiast tego zrob integracje z Jade" - te same
-        // informacje (predkosc, wymagana predkosc, pobor SU, energia i status)
-        // pokazuje teraz tooltip Jade (compat/jade) i okno po prawym kliku.
-        // Oba miejsca biora teksty z jednego zrodla (VeloceModuleInfoLines),
-        // wiec nie ma juz wlasnego rysowania po ekranie.
+        // Player: "get rid of that thing, do a Jade integration instead" - the
+        // same information (speed, required speed, SU draw, energy and status)
+        // is now shown by the Jade tooltip (compat/jade) and the right-click
+        // window. Both places take their text from a single source
+        // (VeloceModuleInfoLines), so there is no custom on-screen drawing
+        // anymore.
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
         }
 
         NeoForge.EVENT_BUS.addListener(RegisterCommandsEvent.class, event -> {
             CVDebugCommand.register(event.getDispatcher());
-            // /cv showcase: stawia wszystkie nasze bloki do testow renderu.
+            // /cv showcase: places all our blocks for render testing.
             com.craftingveloce.commands.CVShowcaseCommand.register(event.getDispatcher());
             com.craftingveloce.commands.CVTestNetworkCommand.register(event.getDispatcher());
             com.craftingveloce.commands.CVTraceCommand.register(event.getDispatcher());
-            // getitems potrzebuje build contextu - ItemArgument podpowiada
-            // identyfikatory itemow, wiec gracz nie musi ich znac na pamiec.
+            // getitems needs a build context - ItemArgument suggests item
+            // identifiers, so the player does not have to know them by heart.
             com.craftingveloce.commands.CVGetItemsCommand.register(
                     event.getDispatcher(), event.getBuildContext());
         });
@@ -250,61 +254,64 @@ public class CraftingVeloceMod {
             }
         });
 
-        // --- Reakcja na zmiany w swiecie ---------------------------------
-        // Chunki z blokami sieci moga sie zaladowac/rozladowac w dowolnym
-        // momencie (gracz podchodzi, odchodzi, chunk zostaje wyciagniety przez
-        // inny mod). Stock sieci zmienia sie wtedy gwaltownie, wiec cache
-        // craftowalnosci musi o tym wiedziec - inaczej GUI pokazuje stare liczby.
-        // Dodatkowe zabezpieczenie: zwolnij force-loady przy rozladowaniu
-        // wymiaru (zmiana swiata, powrot do menu glownego).
-        // Odroczone przebudowy sieci rur. Bez tego kazdy neighborChanged
-        // (a jest ich duzo, gdy obok pracuje maszyna) robil pelny BFS sieci
-        // natychmiast - kilka razy na tick.
+        // --- Reaction to changes in the world ----------------------------
+        // Chunks with network blocks can load/unload at any moment (the player
+        // walks up, walks away, the chunk gets pulled in by another mod). The
+        // network stock then changes abruptly, so the craftability cache has to
+        // know about it - otherwise the GUI shows stale numbers.
+        // Extra safeguard: release force-loads when a dimension unloads
+        // (world change, return to the main menu).
+        // Deferred pipe network rebuilds. Without this, every neighborChanged
+        // (and there are many when a machine works next door) did a full BFS of
+        // the network immediately - several times per tick.
         NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.event.tick.LevelTickEvent.Post.class, event -> {
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
-                        // Kazda z tych trzech operacji siega do kodu obcego moda
-                        // (block entity Toma, Refined Storage, kontenery), a leci
-                        // z ticku POZIOMU. Bez osłony jeden wyjatek z obcej
-                        // biblioteki konczy sie crashem "Exception ticking world",
-                        // bez wskazania, ze to nasza robota. Osłona loguje pelny
-                        // stack trace (zawsze, niezaleznie od configu) i tlumi
-                        // tylko powtarzanie tego samego bledu.
+                        // Each of these three operations reaches into foreign mod
+                        // code (Tom's block entity, Refined Storage, containers),
+                        // and it runs from the LEVEL tick. Without a guard, one
+                        // exception from a foreign library ends in an
+                        // "Exception ticking world" crash, without any hint that
+                        // it was our doing. The guard logs the full stack trace
+                        // (always, regardless of config) and only suppresses the
+                        // repeating of the same error.
                         long now = sl.getGameTime();
-                        com.craftingveloce.util.VeloceGuard.run("krok sieci rur", now,
+                        com.craftingveloce.util.VeloceGuard.run("pipe network step", now,
                                 () -> com.craftingveloce.network.pipe.VelocePipeNetworkManager
                                         .get(sl).tick(sl));
-                        // Stany crafterow rozglaszamy raz na tick, a nie raz
-                        // na kazde przelaczenie itemu.
-                        com.craftingveloce.util.VeloceGuard.run("rozglaszanie stanow crafterow", now,
+                        // Crafter states are broadcast once per tick, not once
+                        // per every item toggle.
+                        com.craftingveloce.util.VeloceGuard.run("crafter state broadcast", now,
                                 () -> com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity
                                         .flushPendingSyncs(sl));
-                        // Utrzymanie force-loadow sieci. Sterownikiem jest TICK
-                        // POZIOMU, a nie terminal - inaczej siec bez terminala nie
-                        // trzymalaby swoich chunkow i automatyka padalaby, gdy
-                        // gracz odejdzie (patrz VeloceCraftingCache.tickAll).
-                        com.craftingveloce.util.VeloceGuard.run("utrzymanie force-loadow", now,
+                        // Network force-load upkeep. The driver is the LEVEL tick,
+                        // not the terminal - otherwise a network without a
+                        // terminal would not keep its chunks and automation would
+                        // break when the player walks away (see
+                        // VeloceCraftingCache.tickAll).
+                        com.craftingveloce.util.VeloceGuard.run("force-load upkeep", now,
                                 () -> com.craftingveloce.crafting.VeloceCraftingCache.tickAll(sl));
                     }
                 });
 
         NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.event.level.LevelEvent.Load.class, event -> {
-                    // Powrot do swiata po wyjsciu do menu. releaseAll() ustawia
-                    // flage "serwer sie zamyka" i ktos musi ja zdjac - inaczej
-                    // force-loading chunkow zostaje wylaczony do konca sesji.
+                    // Returning to the world after leaving to the menu. releaseAll()
+                    // sets the "server is shutting down" flag and someone has to
+                    // clear it - otherwise chunk force-loading stays disabled for
+                    // the rest of the session.
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                         com.craftingveloce.crafting.VeloceCraftingCache.onLevelLoaded();
-                        // Sprzatanie sierocych force-loadow po starszej wersji
-                        // kodu. Minecraft zapisuje setChunkForced TRWALE, wiec
-                        // bez tego chunki zostawaly zaladowane na zawsze, mimo
-                        // ze nasz raport pokazywal zero.
+                        // Cleanup of orphaned force-loads left by an older
+                        // version of the code. Minecraft saves setChunkForced
+                        // PERSISTENTLY, so without this the chunks stayed loaded
+                        // forever, even though our report showed zero.
                         int orphans = com.craftingveloce.network.pipe.VelocePipeNetworkManager
                                 .get(sl).releaseOrphanForceLoads(sl);
                         if (orphans > 0) {
                             com.craftingveloce.util.VeloceLog.Network.success(
                                     com.craftingveloce.util.VeloceLog.Side.SERVER,
-                                    "usunieto %d sierocych force-loadow przy wejsciu do swiata",
+                                    "removed %d orphaned force-loads on world entry",
                                     orphans);
                         }
                     }
@@ -315,16 +322,16 @@ public class CraftingVeloceMod {
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                         com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)
                                 .clearPendingRebuilds();
-                        // Rozladowanie wymiaru != zamkniecie serwera. Uzywamy
-                        // lżejszej sciezki, zeby nie wylaczyc force-loadingu
-                        // pozostalym swiatom na stale.
+                        // Unloading a dimension != shutting down the server. We use
+                        // the lighter path so we do not disable force-loading for
+                        // the remaining worlds permanently.
                         com.craftingveloce.crafting.VeloceCraftingCache.onLevelUnloaded(sl);
                     }
                 });
 
-        // Zwalniamy force-loady chunkow PRZED zapisem swiata.
-        // Bez tego Minecraft probuje rozladowac chunki, ktore my trzymamy,
-        // w kolko - i zapis sie zawiesza.
+        // We release the chunk force-loads BEFORE the world is saved.
+        // Without this, Minecraft tries to unload the chunks we are keeping,
+        // over and over - and the save hangs.
         NeoForge.EVENT_BUS.addListener(
                 net.neoforged.neoforge.event.server.ServerStoppingEvent.class, event -> {
                     var server = event.getServer();
@@ -342,13 +349,13 @@ public class CraftingVeloceMod {
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.ChunkEvent.Unload.class, event -> {
             if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                 var chunkPos = event.getChunk().getPos();
-                // Komunikat o FAKTYCZNYM rozladowaniu - wpiety dokladnie w to
-                // zdarzenie, a nie zgadywany z odleglosci gracza.
+                // A message about an ACTUAL chunk unload - hooked exactly into
+                // this event, and not guessed from the player's distance.
                 //
-                // Po co: bez tego nie da sie ustalic, czy testowany obszar w
-                // ogole sie rozladowuje. Obszar moze byc trzymany przez inny
-                // mod, przez spawn-chunks albo przez nasze wlasne force-loady -
-                // i wtedy "test" nie dowodzi niczego, bo chunk nigdy nie wypada.
+                // Why: without this you cannot tell whether the area under test
+                // unloads at all. The area may be kept by another mod, by
+                // spawn-chunks or by our own force-loads - and then the "test"
+                // proves nothing, because the chunk never falls out.
                 com.craftingveloce.debug.ChunkDebugNotifier.notifyUnload(
                         sl, chunkPos, com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl));
                 com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl)

@@ -18,12 +18,12 @@ import net.neoforged.neoforge.items.wrapper.PlayerMainInvWrapper;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * C→S: wyciagniecie itemu z bufora auto-craftera.
+ * C->S: pulling an item out of the auto-crafter buffer.
  *
- * <p>Bufor craftera pelni role magazynu (nadwyzka produkcji), wiec gracz moze
- * go przegladac i wyciagac z niego itemy - tak samo jak z terminala. Wkładanie
- * jest zablokowane celowo: bufor ma byc pamiecia podreczna produkcji, a nie
- * kolejna skrzynia do recznego zapełniania.
+ * <p>The crafter buffer plays the role of storage (surplus production), so the
+ * player can browse it and pull items out of it - just like from the terminal.
+ * Insertion is blocked on purpose: the buffer is meant to be a cache of
+ * production, not another chest to fill by hand.
  */
 public record BufferPullItemPKT(BlockPos pos, ItemStack itemStack, int count)
         implements CustomPacketPayload {
@@ -97,7 +97,7 @@ public record BufferPullItemPKT(BlockPos pos, ItemStack itemStack, int count)
             ItemStack leftover = ItemHandlerHelper.insertItemStacked(
                     new PlayerMainInvWrapper(player.getInventory()), taken, false);
             if (!leftover.isEmpty()) {
-                // Nie zmiescilo sie - wracamy do bufora, zeby nic nie zginelo.
+                // It did not fit - it goes back into the buffer so nothing is lost.
                 buffer.insert(leftover);
                 player.displayClientMessage(
                         net.minecraft.network.chat.Component.translatable(
@@ -108,7 +108,7 @@ public record BufferPullItemPKT(BlockPos pos, ItemStack itemStack, int count)
             player.level().playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.ITEM_PICKUP, SoundSource.PLAYERS, 0.2F, 1.0F);
 
-            // Odswiez widok GUI, zeby wyciagniete itemy zniknely od razu.
+            // Refresh the GUI view so the pulled items disappear right away.
             crafter.syncToPlayer(player);
             TerminalPullItemPKT.resyncInventories(player);
         });

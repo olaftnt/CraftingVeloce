@@ -24,32 +24,33 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * Tlumaczenie receptur Mekanism na wspolny model Veloce.
+ * Translating Mekanism recipes into the common Veloce model.
  *
- * <p><b>Po co.</b> Rdzen nie zna typow receptur Mekanism - zna tylko
- * {@link ProcessingEntry} (wyniki, szanse, skladniki z liczbami sztuk).
- * Ta klasa czyta receptury Mekanism i buduje z nich ten sam model, wiec planer
- * obsluguje je bez zadnej wiedzy o Mekanism.
+ * <p><b>Why.</b> The core does not know Mekanism recipe types - it only knows
+ * {@link ProcessingEntry} (results, chances, ingredients with unit counts).
+ * This class reads Mekanism recipes and builds that same model from them, so
+ * the planner handles them without any knowledge of Mekanism.
  *
- * <p><b>Trzy ksztalty receptur, trzy konwersje:</b>
+ * <p><b>Three recipe shapes, three conversions:</b>
  * <ul>
- *   <li>{@code ItemStackToItemStackRecipe} (crushing, enriching) - jeden
- *       skladnik z liczba sztuk ({@code SizedIngredient.count()}) i jeden
- *       deterministyczny wynik,</li>
- *   <li>{@code SawmillRecipe} - wynik glowny (gwarantowany) plus wynik
- *       dodatkowy z szansa {@code getSecondaryChance()} - planowanie widzi
- *       tylko glowny, wykonanie rzuca koscia (polityka z {@link ProcessingEntry}),</li>
- *   <li>{@code CombinerRecipe} - DWA nazwane wejscia (main + extra), kazde
- *       z wlasna liczba sztuk.</li>
+ *   <li>{@code ItemStackToItemStackRecipe} (crushing, enriching) - one
+ *       ingredient with a unit count ({@code SizedIngredient.count()}) and one
+ *       deterministic result,</li>
+ *   <li>{@code SawmillRecipe} - the main result (guaranteed) plus a secondary
+ *       result with probability {@code getSecondaryChance()} - planning sees
+ *       only the main one, execution rolls the dice (policy from
+ *       {@link ProcessingEntry}),</li>
+ *   <li>{@code CombinerRecipe} - TWO named inputs (main + extra), each with its
+ *       own unit count.</li>
  * </ul>
  *
- * <p><b>Pamiec.</b> Receptury to dane statyczne dla danego menedzera receptur,
- * wiec indeks liczymy raz na menedzer (jak indeks waniliowy). Bez tego kazde
- * zapytanie planera o item skanowaloby wszystkie receptury gry.
+ * <p><b>Memory.</b> Recipes are static data for a given recipe manager, so we
+ * compute the index once per manager (like the vanilla index). Without that,
+ * every planner query for an item would scan all recipes in the game.
  *
- * <p><b>Czego tu nie ma.</b> {@code mekanism:smelting} celowo poza rodzina -
- * dokleja wszystkie waniliowe receptury smelting, wiec dublowalby rodzine
- * pieca (patrz {@link MekanismRecipeFamily}).
+ * <p><b>What is not here.</b> {@code mekanism:smelting} is deliberately left
+ * outside the family - it appends all vanilla smelting recipes to itself, so it
+ * would duplicate the furnace family (see {@link MekanismRecipeFamily}).
  */
 public final class MekanismRecipeHarvest {
 
@@ -59,7 +60,7 @@ public final class MekanismRecipeHarvest {
     private static final Map<RecipeManager, Map<RecipeType<?>, Map<Item, List<ProcessingEntry>>>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    /** Indeks "wynik -> receptury" dla danego typu receptury Mekanism. */
+    /** Index "result -> recipes" for a given Mekanism recipe type. */
     public static Map<Item, List<ProcessingEntry>> index(ServerLevel level, RecipeType<?> type) {
         RecipeManager manager = level.getRecipeManager();
         Map<RecipeType<?>, Map<Item, List<ProcessingEntry>>> byType =
@@ -67,12 +68,12 @@ public final class MekanismRecipeHarvest {
         return byType.computeIfAbsent(type, t -> build(level, t));
     }
 
-    /** Receptury Mekanism wytwarzajace dany item (dla jednego typu). */
+    /** Mekanism recipes producing the given item (for one type). */
     public static List<ProcessingEntry> forItem(ServerLevel level, RecipeType<?> type, Item item) {
         return index(level, type).getOrDefault(item, List.of());
     }
 
-    /** Czysci pamiec - wolane przy zmianie swiata, razem z innymi cache'ami. */
+    /** Clears the memory - called on world change, together with the other caches. */
     public static void invalidate() {
         CACHE.clear();
     }
@@ -88,8 +89,8 @@ public final class MekanismRecipeHarvest {
             if (entry == null) {
                 continue;
             }
-            // Do indeksu trafiaja wylacznie wyniki GWARANTOWANE - planer nie
-            // moze obiecac itemu, ktory wypada tylko czasem.
+            // Only GUARANTEED results make it into the index - the planner must
+            // not promise an item that only drops sometimes.
             for (ItemStack result : entry.guaranteedResults()) {
                 if (!result.isEmpty()) {
                     out.computeIfAbsent(result.getItem(), k -> new ArrayList<>()).add(entry);
@@ -99,7 +100,7 @@ public final class MekanismRecipeHarvest {
         return out;
     }
 
-    /** Zamienia recepture Mekanism na wspolny model (albo {@code null}). */
+    /** Converts a Mekanism recipe into the common model (or {@code null}). */
     private static ProcessingEntry convert(ResourceLocation id, Recipe<?> recipe,
                                            RecipeType<?> type) {
         if (recipe instanceof SawmillRecipe sawmill) {
@@ -114,7 +115,7 @@ public final class MekanismRecipeHarvest {
         return null;
     }
 
-    /** Jeden skladnik (z liczba sztuk) -> jeden deterministyczny wynik. */
+    /** One ingredient (with a unit count) -> one deterministic result. */
     private static ProcessingEntry singleOutput(ResourceLocation id,
                                                 ItemStackToItemStackRecipe recipe,
                                                 RecipeType<?> type) {
@@ -134,10 +135,11 @@ public final class MekanismRecipeHarvest {
     }
 
     /**
-     * Pilowanie: wynik glowny gwarantowany + wynik dodatkowy z szansa.
+     * Sawing: the main result is guaranteed + a secondary result with a chance.
      *
-     * <p>Planowanie zobaczy tylko wynik glowny, a wykonanie dorzuci dodatkowy
-     * po rzucie koscia - gracz czasem dostanie wiecej, nigdy mniej.
+     * <p>Planning will see only the main result, and execution adds the
+     * secondary one after a dice roll - the player sometimes gets more, never
+     * less.
      */
     private static ProcessingEntry sawmill(ResourceLocation id, SawmillRecipe recipe,
                                            RecipeType<?> type) {
@@ -168,7 +170,7 @@ public final class MekanismRecipeHarvest {
                 List.of(Math.max(1, input.count())), type);
     }
 
-    /** Laczenie: DWA nazwane wejscia, kazde z wlasna liczba sztuk. */
+    /** Combining: TWO named inputs, each with its own unit count. */
     private static ProcessingEntry combiner(ResourceLocation id, CombinerRecipe recipe,
                                             RecipeType<?> type) {
         List<ItemStack> definitions = recipe.getOutputDefinition();

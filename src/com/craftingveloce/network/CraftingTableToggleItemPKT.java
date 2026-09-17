@@ -41,7 +41,7 @@ public record CraftingTableToggleItemPKT(BlockPos pos, Item item) implements Cus
     public static void handle(CraftingTableToggleItemPKT pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (ctx.player() instanceof ServerPlayer sp) {
-                // Bezpiecznik odleglosci - spojnie z pozostalymi pakietami.
+                // Distance safety catch - consistent with the other packets.
                 if (sp.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
                         pkt.pos().getZ() + 0.5) > 64.0) {
                     return;
@@ -50,9 +50,9 @@ public record CraftingTableToggleItemPKT(BlockPos pos, Item item) implements Cus
                 BlockEntity be = level.getBlockEntity(pkt.pos());
                 if (be instanceof VeloceCraftingTableBlockEntity ctBE) {
                     ctBE.toggleItem(pkt.item());
-                    // Punkt 3/5: wlaczenie/wylaczenie itemu w crafterze zmienia
-                    // "ile da sie dorobic", wiec cache sieci przestaje byc
-                    // aktualny i leci do kosza.
+                    // Point 3/5: enabling/disabling an item in the crafter changes
+                    // "how many can still be crafted", so the network cache is no
+                    // longer up to date and goes in the bin.
                     com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level)
                             .clearCraftableMemo(level, pkt.pos());
                 }

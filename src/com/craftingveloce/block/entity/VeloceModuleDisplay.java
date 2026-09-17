@@ -3,20 +3,20 @@ package com.craftingveloce.block.entity;
 import net.minecraft.nbt.CompoundTag;
 
 /**
- * Liczby maszyny do okna - po OBU stronach (serwer i klient).
+ * Machine values for the window - on BOTH sides (server and client).
  *
- * <p>Okno jest zwyklym kontenerem (jak piec), wiec menu czyta te wartosci
- * z block entity u klienta. Dlatego ten interfejs zwraca tylko to, co klient
- * naprawde ma: predkosc kinetyczna jest synchronizowana przez Create, a energia
- * przez nasz block entity. Stan sieci rur (liczony na serwerze) tu NIE wchodzi -
- * okno pokazuje tylko predkosc, SU i energie.
+ * <p>The window is an ordinary container (like a furnace), so the menu reads these values
+ * from the block entity on the client. That is why this interface returns only what the
+ * client really has: kinetic speed is synchronized by Create, and energy
+ * by our block entity. The pipe network state (computed on the server) does NOT enter
+ * here - the window shows only speed, SU and energy.
  *
- * <p>Wariant rozpoznaje obecnosc klucza {@code energy} (maszyna na FE) albo jego
- * brak (maszyna kinetyczna).
+ * <p>The variant is recognized by the presence of the {@code energy} key (an FE machine) or
+ * its absence (a kinetic machine).
  */
 public interface VeloceModuleDisplay {
 
-    /** Pola okna: energy/energyCapacity/fePerOperation/operations/powered
-     *  albo speed/requiredSpeed/suDraw/parts/enoughSpeed. */
+    /** Window fields: energy/energyCapacity/fePerOperation/operations/powered
+     *  or speed/requiredSpeed/suDraw/parts/enoughSpeed. */
     CompoundTag moduleDisplay();
 }

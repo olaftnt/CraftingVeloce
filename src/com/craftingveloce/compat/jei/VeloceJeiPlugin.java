@@ -14,47 +14,47 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Plugin JEI: nasze klocki na liscie "w tym mozna zrobic ten przepis".
+ * JEI plugin: our blocks on the "this recipe can be made in this" list.
  *
- * <p><b>Co to daje.</b> JEI przy kazdym przepisie pokazuje po lewej stronie
- * ikonki maszyn, ktore go obsluguja (stol rzemieslniczy, crafter, formulatic
- * assembler, robot, terminal...). Ten plugin dopisuje do tych list NASZE klocki:
- * stol Veloce do przepisow wytwarzania, a moduly kinetyczne i na energie - do
- * kategorii Create, Mekanism i Alchemistry.
+ * <p><b>What it gives.</b> For every recipe JEI shows icons of the machines that
+ * handle it on the left side (crafting table, crafter, formulaic assembler,
+ * robot, terminal...). This plugin adds OUR blocks to those lists: the Veloce
+ * table to crafting recipes, and the kinetic and energy modules to the Create,
+ * Mekanism and Alchemistry categories.
  *
- * <p><b>Dlaczego plugin NIE zna Create, Mekanism ani Alchemistry.</b> Zna tylko
- * UID kategorii i szuka gotowego typu przez JEI API
- * ({@link IJeiHelpers#getRecipeType(ResourceLocation)}), a nie przez klasy tych
- * modow. Trzy powody:
+ * <p><b>Why the plugin does NOT know Create, Mekanism or Alchemistry.</b> It
+ * only knows the category UID and looks up the ready-made type through the JEI
+ * API ({@link IJeiHelpers#getRecipeType(ResourceLocation)}), not through the
+ * classes of those mods. Three reasons:
  * <ol>
- *   <li>plugin JEI jest skanowany przez JEI na starcie i zaladowany ZAWSZE, gdy
- *       JEI jest obecne - takze bez Create/Mekanism/Alchemistry. Odwolanie do
- *       ich klas konczyloby sie {@code NoClassDefFoundError} u kazdego gracza
- *       bez tych modow,</li>
- *   <li>typ kategorii obcego moda da sie zbudowac tylko z jego klasy przepisu,
- *       a {@code RecipeType.equals} porownuje TE KLASE - wiec samodzielnie
- *       sklecony typ nigdy nie trafilby w kategorie zarejestrowana przez tamten
- *       plugin (a szukanie po UID trafia w prawdziwy obiekt),</li>
- *   <li>UID kategorii to dane, nie kod: brak kategorii (np. wylaczona integracja
- *       JEI w tamtym modzie) jest zwyklym pominieciem, a nie crashem.</li>
+ *   <li>the JEI plugin is scanned by JEI at startup and loaded ALWAYS when JEI
+ *       is present - also without Create/Mekanism/Alchemistry. Referring to
+ *       their classes would end in a {@code NoClassDefFoundError} for every
+ *       player without those mods,</li>
+ *   <li>a foreign mod's category type can only be built from its recipe class,
+ *       and {@code RecipeType.equals} compares THAT CLASS - so a type cobbled
+ *       together on our own would never match a category registered by that
+ *       plugin (whereas a lookup by UID hits the real object),</li>
+ *   <li>the category UID is data, not code: a missing category (e.g. the JEI
+ *       integration disabled in that mod) is an ordinary skip, not a crash.</li>
  * </ol>
  *
- * <p><b>Faza rejestracji.</b> Katalizatory dodajemy w
- * {@code registerRecipeCatalysts}, czyli PO fazie {@code registerCategories}
- * wszystkich pluginow - dopiero wtedy JEI zna typy kategorii i
- * {@code getRecipeType(UID)} ma co zwrocic. Kategorie nieznalezione raportujemy
- * w logu, bo to jedyny sygnal, ze ktorys UID przestal sie zgadzac (np. po
- * aktualizacji tamtego moda).
+ * <p><b>The registration phase.</b> We add the catalysts in
+ * {@code registerRecipeCatalysts}, that is AFTER the {@code registerCategories}
+ * phase of all plugins - only then does JEI know the category types and
+ * {@code getRecipeType(UID)} has something to return. We report categories that
+ * were not found in the log, because that is the only signal that one of the
+ * UIDs stopped matching (e.g. after an update of that mod).
  */
 @JeiPlugin
 public class VeloceJeiPlugin implements IModPlugin {
 
-    /** Identyfikator naszego moda - ten sam co w {@code neoforge.mods.toml}. */
+    /** Our mod identifier - the same as in {@code neoforge.mods.toml}. */
     public static final String MOD_ID = "craftingveloce";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID + "-jei");
 
-    /** UID tego pluginu (musi byc unikalny w calym JEI). */
+    /** UID of this plugin (it must be unique within the whole of JEI). */
     private static final ResourceLocation PLUGIN_UID =
             ResourceLocation.fromNamespaceAndPath(MOD_ID, "jei");
 
@@ -77,7 +77,7 @@ public class VeloceJeiPlugin implements IModPlugin {
             registration.addRecipeCatalysts(category.get(), catalyst.item().get());
             added++;
         }
-        LOGGER.info("[Veloce][JEI] katalizatory: {} dodanych, {} bez kategorii {}",
+        LOGGER.info("[Veloce][JEI] catalysts: {} added, {} without a category {}",
                 added, unknown.size(), unknown);
     }
 }

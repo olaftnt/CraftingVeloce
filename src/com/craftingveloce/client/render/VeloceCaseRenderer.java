@@ -24,66 +24,71 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Renderuje ZAWARTOSC obudowy Veloce Integrale - dla kazdego naszego klocka.
+ * Renders the CONTENTS of the Veloce Integrale casing - for each of our blocks.
  *
- * <p><b>Co pokazuje.</b> Model klocka bazowego z tabeli
- * {@link VeloceCaseContents}: w obudowie kontrolera stoi pulpit, w ekstraktorze
- * dozownik, w sensorze obserwator, w stole craftingu stol, w module Create
- * mlynek / pila / kolo mlynskie / crafter.
+ * <p><b>What it shows.</b> The base block's model from the
+ * {@link VeloceCaseContents} table: inside the controller's casing stands a
+ * lectern, in the extractor a dispenser, in the sensor an observer, in the
+ * crafting table a table, and in the Create module a millstone / saw /
+ * water wheel / crafter.
  *
- * <p><b>Dlaczego model ITEMU, a nie model bloku.</b> Ustalenie z JARa Create:
- * model BLOKU tych maszyn jest okrojony - {@code block/millstone/block} nie ma
- * srodkowego kamienia, {@code block/mechanical_saw/block} nie ma ostrza - bo te
- * czesci rysuje osobny renderer (u Create: Flywheel). Model ITEMU jest ich
- * PELNA, statyczna reprezentacja ({@code block/millstone/item} ma Gear5, a
- * {@code crushing_wheel/item} to model OBJ). Dlatego przedmiot rzucony na
- * ziemie wyglada dobrze, a obudowa z modelem bloku byla "w polowie
- * rozpieprzona". Rysujemy wiec zawsze model itemu - takze dla wanilii, gdzie
- * jest to ten sam model co blok.
+ * <p><b>Why the ITEM model, and not the block model.</b> A finding from the
+ * Create JAR: the BLOCK model of those machines is trimmed down -
+ * {@code block/millstone/block} has no centre stone,
+ * {@code block/mechanical_saw/block} has no blade - because those parts are
+ * drawn by a separate renderer (in Create: Flywheel). The ITEM model is their
+ * COMPLETE, static representation ({@code block/millstone/item} has Gear5, and
+ * {@code crushing_wheel/item} is an OBJ model). That is why an item dropped on
+ * the ground looks fine, while a casing with the block model was "half
+ * wrecked". So we always draw the item model - also for vanilla, where it is
+ * the same model as the block.
  *
- * <p><b>Skala i srodek.</b> Model itemu renderuje sie z wlasna transformacja
- * (FIXED: przesuniecie + zmniejszenie), dlatego wczesniej wychodzil maly i w
- * rogu. Transformacje czytamy z modelu ({@code getTransforms}) i kompensujemy
- * ja nasza poza, wiec zawartosc jest zawsze tej samej wielkosci i dokladnie na
- * srodku obudowy - niezaleznie od moda i jego modelu.
+ * <p><b>Scale and centre.</b> The item model renders with its own transform
+ * (FIXED: translation + shrink), which is why it previously came out small and
+ * in a corner. We read the transform from the model ({@code getTransforms}) and
+ * compensate for it in our own pose, so the content is always the same size and
+ * exactly in the centre of the casing - regardless of the mod and its model.
  *
- * <p><b>Bez pracy po stronie serwera.</b> Zawartosc wynika z TYPU bloku, wiec
- * nic nie trzeba zapisywac ani synchronizowac - klient czyta sam stan bloku.
+ * <p><b>No server-side work.</b> The content follows from the TYPE of the
+ * block, so nothing has to be saved or synchronized - the client reads the
+ * block state itself.
  */
 public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRenderer<T> {
 
-    /** Rozmiar zawartosci: okno obudowy ma 12 px (0.75 klocka). */
+    /** Size of the content: the casing window is 12 px (0.75 of a block). */
     private static final float CONTENT_SCALE = 0.45F;
 
-    /** Predkosc obrotu calej zawartosci w stopniach na tick (pelny obrot ~10 s). */
+    /** Rotation speed of the whole content in degrees per tick (full turn ~10 s). */
     private static final float SPIN_DEGREES_PER_TICK = 0.6F;
 
     /**
-     * Rozmiar calej SIATKI elementow w oknie obudowy.
+     * Size of the whole GRID of elements in the casing window.
      *
-     * <p>Okno ma 12 px (0.75 klocka), a zawartosc dodatkowo buja sie w gore-dol
-     * i kazdy element ma swoja polowe grubosci. Gracz zglosil, ze przy
-     * najwyzszej klatce animacji craftery wystawaly ponad model - dlatego
-     * siatka zajmuje tylko 0.62 klocka, a nie 0.72: reszta to zapas na ruch
-     * i na grubosc elementu.
+     * <p>The window is 12 px (0.75 of a block), the content additionally sways
+     * up and down, and each element has half its thickness. A player reported
+     * that at the highest frame of the animation the crafters stuck out beyond
+     * the model - which is why the grid occupies only 0.62 of a block instead
+     * of 0.72: the rest is headroom for the movement and for the element's
+     * thickness.
      */
     private static final float GRID_EXTENT = 0.62F;
 
-    /** Stos przedmiotu dla klocka bazowego (bez alokacji na klatke). */
+    /** Item stack for the base block (no allocation per frame). */
     private static final Map<Block, ItemStack> CONTENT_STACKS = new ConcurrentHashMap<>();
 
-    /** Transformacja FIXED modelu itemu - potrzebna do kompensacji rozmiaru. */
+    /** FIXED transform of the item model - needed to compensate the size. */
     private static final Map<Block, ItemTransform> CONTENT_TRANSFORMS = new ConcurrentHashMap<>();
 
     private static int cachedGeneration = 0;
 
     /**
-     * Kolejnosc pol w kwadracie: od SRODKA na zewnatrz.
+     * Order of cells in the square: from the CENTRE outwards.
      *
-     * <p>Gracz: "ma sie rozszerzac od srodka do zewnatrz w kwadracie". Dzieki
-     * temu pierwsze oczka sa w srodku obudowy, a kolejne dokladaja sie jako
-     * pierscienie wokol nich - zamiast rosnac w jednym rogu. Sortowanie po
-     * odleglosci od srodka (a nie chodzenie spirala) jest zawsze skonczone.
+     * <p>Player: "it is supposed to expand from the centre outwards in a
+     * square". Thanks to that the first cells are in the middle of the casing,
+     * and the following ones add themselves as rings around them - instead of
+     * growing in one corner. Sorting by distance from the centre (rather than
+     * walking a spiral) always terminates.
      */
     private static final Map<Integer, int[][]> CENTRE_ORDER = new ConcurrentHashMap<>();
 
@@ -98,7 +103,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         }
         Block content = VeloceCaseContents.contentFor(be.getBlockState());
         if (content == null) {
-            return;   // rura, terminal albo zwykly blok - nic nie renderujemy
+            return;   // pipe, terminal or an ordinary block - we render nothing
         }
         float contentScale = VeloceCaseContents.contentScale(be.getBlockState());
         float contentPitch = VeloceCaseContents.contentPitch(be.getBlockState());
@@ -111,14 +116,14 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 return;
             }
             if (spin.caseBuiltFromParts()) {
-                // Kruszarka/crafter bez wklikanych elementow: PUSTA obudowa.
+                // Crusher/crafter with no elements clicked in: EMPTY casing.
                 return;
             }
         }
         renderStandard(content, contentScale, contentPitch, keepRotation, pose, buffers, packedLight, packedOverlay, time);
     }
 
-    /** Zwykla animacja zawartosci: obrot wokol pionowej osi + bujanie. */
+    /** Ordinary content animation: rotation around the vertical axis + swaying. */
     private void renderStandard(Block content, float contentScale, float contentPitch,
                                 boolean keepRotation, PoseStack pose,
                                 MultiBufferSource buffers, int packedLight, int packedOverlay,
@@ -130,7 +135,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         pose.popPose();
     }
 
-    /** Przejscie do srodka obudowy + obrot + bujanie (wspolne dla calych ukladow). */
+    /** Moving to the centre of the casing + rotation + swaying (shared by whole layouts). */
     private static void beginStandardAnimation(PoseStack pose, float time) {
         pose.translate(0.5D, 0.5D, 0.5D);
         pose.mulPose(Axis.YP.rotationDegrees((time * SPIN_DEGREES_PER_TICK) % 360.0F));
@@ -140,13 +145,13 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
     }
 
     /**
-     * Elementy maszyny (oczka craftera, kola mlynskie) w ukladzie podanym przez
-     * maszyne.
+     * Machine elements (crafter cells, millstones) in the layout given by the
+     * machine.
      *
-     * <p>Uklad jako CALOSC obraca sie wokol srodka obudowy zwykla animacja, a
-     * tylko kola mlynskie krecA sie kazde wokol siebie i z predkoscia napedu
-     * (tak sie zazebiaja). Rozmiar elementu wynika z gestosci siatki, wiec
-     * 81 oczek jest odpowiednio mniejsze niz jedno.
+     * <p>The layout as a WHOLE rotates around the centre of the casing with the
+     * ordinary animation, and only the millstones each spin around themselves
+     * and at the drive speed (that is how they mesh). The element size follows
+     * from the grid density, so 81 cells are correspondingly smaller than one.
      */
     private void renderParts(VeloceCaseSpin spin, Block content, float contentScale,
                              float contentPitch, boolean keepRotation, PoseStack pose,
@@ -177,8 +182,8 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 float direction = (i % 2 == 0) ? 1.0F : -1.0F;
                 pose.mulPose(Axis.ZP.rotationDegrees((time * speed * direction) % 360.0F));
             }
-            // Zawartosc rysuje sie w skali CONTENT_SCALE, wiec element siatki
-            // skalujemy wzgledem niej (a nie drugi raz od zera).
+            // The content draws itself at CONTENT_SCALE, so we scale the grid
+            // element relative to it (and not a second time from scratch).
             float factor = scale / (CONTENT_SCALE * contentScale);
             pose.scale(factor, factor, factor);
             renderContent(content, contentScale, contentPitch, keepRotation, pose, buffers,
@@ -189,8 +194,8 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
     }
 
     /**
-     * Rysuje klocek bazowy jako PRZEDMIOT - tak, jak wyglada jako encja na
-     * ziemi, ale przeskalowany i wysrodkowany w obudowie.
+     * Draws the base block as an ITEM - the way it looks as an entity on the
+     * ground, but rescaled and centred in the casing.
      */
     private void renderContent(Block content, float contentScale, float contentPitch,
                                boolean keepRotation, PoseStack pose,
@@ -203,20 +208,22 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         }
         ItemTransform transform = contentTransform(content, stack);
         pose.pushPose();
-        // Obrt per maszyna (piła i deployer maja patrzec w DOL) - najzewnetrzniejszy,
-        // wiec kreci cala zawartosc wokol srodka obudowy, a nie wokol jej rogu.
+        // Per-machine tilt (the saw and the deployer are supposed to face DOWN) -
+        // the outermost one, so it turns the whole content around the centre of
+        // the casing, and not around its corner.
         if (contentPitch != 0.0F) {
             pose.mulPose(Axis.XP.rotationDegrees(contentPitch));
         }
-        // Kompensacja transformacji przedmiotu: model itemu rysuje sie z wlasnym
-        // przesunieciem i zmniejszeniem (FIXED), wiec bez tego zawartosc wychodzi
-        // mala i przesunieta. Skalujemy do CONTENT_SCALE i zerujemy przesuniecie.
+        // Compensation of the item transform: the item model draws itself with
+        // its own translation and shrink (FIXED), so without this the content
+        // comes out small and offset. We scale to CONTENT_SCALE and zero the
+        // translation.
         float factor = (CONTENT_SCALE * contentScale) / Math.max(0.01F, transform.scale.x);
         pose.scale(factor, factor, factor);
-        // ZERUJEMY PRZECHYL modelu (transformacja FIXED przekreca przedmiot jak
-        // w ekwipunku: 30/225 stopni). Gracz: "saw i deployer patrzA na bok,
-        // a maja patrzec w gore". Odwrotnosc rotacji = rotationZYX z minusami,
-        // bo JOML buduje ja jako Rx * Ry * Rz.
+        // WE ZERO the model's TILT (the FIXED transform tips the item over as in
+        // the inventory: 30/225 degrees). Player: "the saw and the deployer face
+        // sideways, but they are supposed to face up". The inverse rotation =
+        // rotationZYX with minuses, because JOML builds it as Rx * Ry * Rz.
         if (!keepRotation) {
             float deg = (float) (Math.PI / 180.0);
             pose.mulPose(new Quaternionf().rotationZYX(-transform.rotation.z * deg,
@@ -229,7 +236,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         pose.popPose();
     }
 
-    /** Transformacja FIXED modelu itemu (liczona raz na generacje modeli). */
+    /** FIXED transform of the item model (computed once per model generation). */
     private static ItemTransform contentTransform(Block block, ItemStack stack) {
         ModelManager manager = Minecraft.getInstance().getModelManager();
         int generation = System.identityHashCode(manager);
@@ -244,7 +251,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 .getTransform(ItemDisplayContext.FIXED));
     }
 
-    /** Pola kwadratu w kolejnosci od srodka na zewnatrz. */
+    /** Cells of the square in order from the centre outwards. */
     private static int[][] centreOrder(int side) {
         return CENTRE_ORDER.computeIfAbsent(side, s -> {
             double centre = (s - 1) / 2.0;

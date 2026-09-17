@@ -12,26 +12,29 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * C→S: gracz wrzuca itemy do magazynu sieci (slot "strzalki" w GUI).
+ * C->S: the player puts items into the network storage (the "arrow" slot in the
+ * GUI).
  *
- * <p><b>Pakiet niesie TYLKO INTENCJE, nie itemy.</b> To jest istotne.
+ * <p><b>The packet carries ONLY INTENT, not items.</b> This matters.
  *
- * <p>Poprzednia wersja przysylala kopie stosu z klienta, a serwer wrzucal ja
- * do sieci - ale NIGDY nie zabieral itemu graczowi. Item istnial wiec
- * jednoczesnie w beczce i w ekwipunku: fizyczna DUPLIKACJA. Klient dodatkowo
- * czyscil kursor tylko u siebie, wiec serwer oddawal go z powrotem przy
- * najblizszej synchronizacji.
+ * <p>The previous version sent a copy of the stack from the client, and the
+ * server put it into the network - but NEVER took the item away from the player.
+ * The item therefore existed both in the barrel and in the inventory at the same
+ * time: a physical DUPLICATION. On top of that the client cleared the cursor
+ * only on its own side, so the server handed it back at the next
+ * synchronisation.
  *
- * <p>Teraz serwer sam czyta stan gracza, zabiera dokladnie tyle, ile udalo sie
- * wlozyc, i odsyla zmiany. Klient nie rusza u siebie niczego.
+ * <p>Now the server reads the player state itself, takes away exactly as much as
+ * it managed to insert, and sends the changes back. The client does not touch
+ * anything locally.
  */
 public record TerminalStoreItemPKT(BlockPos terminalPos, int mode) implements CustomPacketPayload {
 
-    /** To, co gracz trzyma na kursorze. */
+    /** What the player is holding on the cursor. */
     public static final int MODE_CURSOR = 0;
-    /** Caly ekwipunek OPROCZ hotbara. */
+    /** The whole inventory EXCEPT the hotbar. */
     public static final int MODE_INVENTORY = 1;
-    /** Doslownie wszystko, hotbar tez. */
+    /** Literally everything, hotbar included. */
     public static final int MODE_EVERYTHING = 2;
 
     public static final Type<TerminalStoreItemPKT> TYPE =

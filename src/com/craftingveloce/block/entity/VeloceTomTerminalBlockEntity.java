@@ -85,12 +85,12 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
     }
 
     /**
-     * Dodaje/usuwa gracza z listy odbiorcow odswiezen.
+     * Adds/removes a player from the list of refresh recipients.
      *
-     * <p>Usuwanie przy zamknieciu GUI jest wazne: wczesniej wpis znikal tylko
-     * przy rozlaczeniu albo odejsciu dalej niz 64 klocki, wiec gracz stojacy
-     * obok terminala dostawal pelna mape sieci co sekunde bez konca - mimo ze
-     * nic nie ogladal.
+     * <p>Removing on GUI close matters: previously the entry disappeared only
+     * on disconnect or on moving further away than 64 blocks, so a player
+     * standing next to the terminal received the full network map every second
+     * forever - even though they were not looking at anything.
      */
     public void setPlayerWatching(ServerPlayer player, boolean watching) {
         activeWatchingPlayers.removeIf(ref -> ref.get() == null || ref.get() == player);
@@ -99,26 +99,27 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         }
     }
 
-    // UWAGA: usunieto stad martwa metode craftableSnapshot() wraz z dwoma
-    // nieaktualnymi javadokami. Opisywaly one liczby "+N" utrzymywane
-    // w tle przez VeloceCraftingCache - a tego tla JUZ NIE MA (bylo zbyt
-    // drogie). Zostaly po nim: metoda zwracajaca Map.of() i dokumentacja
-    // opisujaca nieistniejace zachowanie, czyli dokladnie to, co myli przy
-    // czytaniu kodu i przy diagnozie.
+    // NOTE: the dead craftableSnapshot() method along with two outdated
+    // javadocs was removed from here. They described the "+N" numbers kept
+    // in the background by VeloceCraftingCache - and that background NO
+    // LONGER EXISTS (it was too expensive). What was left of it: a method
+    // returning Map.of() and documentation describing behaviour that does not
+    // exist, which is exactly what confuses people when reading the code and
+    // when diagnosing.
     //
-    // Liczby "+N" powstaja wylacznie na zadanie klienta, dla itemow
-    // widocznych na ekranie (RequestCraftableCountsPKT -> ponizsza metoda).
+    // The "+N" numbers are produced exclusively on client request, for the
+    // items visible on screen (RequestCraftableCountsPKT -> the method below).
     /**
-     * Liczy NATYCHMIAST "ile da sie dorobic" dla podanych itemow.
+     * Computes IMMEDIATELY "how many more can be crafted" for the given items.
      *
-     * <p>Wywolywane gdy klient otwiera terminal albo zmienia strone - gracz
-     * ma zobaczyc aktualne liczby od razu, a nie po sekundzie. Liczymy cala
-     * partie z jednym wspoldzielonym budzetem czasowym (25 ms), wiec ~45
-     * widocznych itemow oblicza sie w kilka milisekund.
+     * <p>Called when the client opens the terminal or changes page - the player
+     * must see current numbers right away, not after a second. We compute the
+     * whole batch with one shared time budget (25 ms), so ~45 visible items are
+     * computed within a few milliseconds.
      *
-     * <p>To jedyne miejsce, w ktorym te liczby powstaja. Proba utrzymywania
-     * ich "na zapas" dla calej sieci zadlawila kiedys serwer i zostala
-     * usunieta - dlatego liczymy wylacznie to, o co pyta ekran.
+     * <p>This is the only place where those numbers are produced. The attempt
+     * to keep them "in reserve" for the whole network once choked the server
+     * and was removed - that is why we compute only what the screen asks for.
      */
     @Override
     public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult computeCraftableCounts(Collection<Item> items) {
@@ -128,22 +129,22 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
                 .getNetworkForTerminal(sl, worldPosition);
         if (net == null) {
-            // Siec jeszcze nie gotowa - NIE mowimy "nic sie nie da zrobic",
-            // bo klient skasowalby wtedy poprawne liczby.
+            // Network is not ready yet - we do NOT say "nothing can be done",
+            // because the client would then erase the correct numbers.
             return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), false);
         }
         Set<Item> enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getAllEnabledItems(sl, net);
         if (enabled.isEmpty()) {
-            // Brak craftera w sieci = faktycznie nic nie da sie zrobic.
+            // No crafter in the network = indeed nothing can be done.
             return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), true);
         }
         Map<Item, ResourceLocation> preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getPreferredRecipes(sl, net);
 
-        // Ktos patrzy na terminal - obudz cache w tle (patrz punkt 0c w
-        // VeloceCraftingCache). Bez tego cache spalby, bo domyslnie liczy
-        // wylacznie wtedy, gdy gracz ma otwarte GUI.
+        // Someone is looking at the terminal - wake the background cache (see
+        // point 0c in VeloceCraftingCache). Without this the cache would sleep,
+        // because by default it only computes when a player has the GUI open.
         long start = System.nanoTime();
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
                 .countCraftableBatchResult(sl, net, items, enabled, preferred,
@@ -155,16 +156,16 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                         + "(complete=%s, heat=%s)",
                 items.size(), result.counts().size(),
                 (System.nanoTime() - start) / 1_000_000L, result.complete(),
-                result.heatAvailable() ? "piec w sieci" : "brak pieca");
+                result.heatAvailable() ? "furnace in network" : "no furnace");
         return result;
     }
 
-    /** Tick ostatniego rozgloszenia licznikow do obserwujacych. */
+    /** Tick of the last broadcast of counters to the watchers. */
     private long lastSyncTick = Long.MIN_VALUE;
 
     /**
-     * Krotka migawka stocku sieci - bez liczenia craftowalnosci.
-     * Tanie (sam odczyt cache endpointow), wystarcza do zielonych liczb.
+     * A short snapshot of the network stock - without computing craftability.
+     * Cheap (just reading the endpoint cache), enough for the green numbers.
      */
     public Map<Item, Long> snapshotStock() {
         if (!(level instanceof ServerLevel sl)) {
@@ -177,16 +178,16 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
 
     public void syncCountsToAllWatchers() {
         if (level == null || level.isClientSide || activeWatchingPlayers.isEmpty()) return;
-        // Tylko stock - liczenie craftowalnosci dla wszystkich itemow co sekunde
-        // zadlawialo serwer (patrz computeCraftableCounts). Zolta liczba "+N"
-        // jest doliczana osobno, na zadanie, tylko dla widocznych itemow.
+        // Stock only - computing craftability for all items every second choked
+        // the server (see computeCraftableCounts). The yellow "+N" number
+        // is added separately, on demand, only for the visible items.
         Map<Item, Long> counts = getAllStoredItemCounts();
-        // BEZ liczb craftowalnosci z cache.
+        // WITHOUT the craftability numbers from the cache.
         //
-        // Bylo tu doklejanie gotowej migawki z tla. Teraz tlo nic nie liczy:
-        // liczby "+N" powstaja WYLACZNIE na zadanie klienta, dla itemow
-        // widocznych na ekranie. Doklejanie starej migawki tylko mieszalo
-        // swieze odpowiedzi z nieaktualnymi.
+        // There used to be an append of a ready snapshot from the background.
+        // Now the background computes nothing: the "+N" numbers are produced
+        // EXCLUSIVELY on client request, for the items visible on screen.
+        // Appending the old snapshot only mixed fresh answers with outdated ones.
         Map<Item, Long> craftable = Map.of();
         Iterator<WeakReference<ServerPlayer>> it = activeWatchingPlayers.iterator();
         while (it.hasNext()) {
@@ -236,10 +237,10 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
 
         // 3. Fallback: Tom's Storage counts (only if terminal is directly connected to a Tom's Storage cable)
         //
-        // Bez getStacks(): ponizej sami pytamy tracker o zmiany i sami ciagniemy
-        // stosy (streamWrappedStacks). getStacks() dokladaloby tylko przebudowe
-        // mapy itemow Toma, ktorej nie czytamy - a ta sciezka leci co sekunde
-        // w syncCountsToAllWatchers.
+        // Without getStacks(): below we ask the tracker about changes ourselves
+        // and pull the stacks ourselves (streamWrappedStacks). getStacks() would
+        // only add a rebuild of Tom's item map, which we do not read - and that
+        // path runs every second in syncCountsToAllWatchers.
         IInventoryAccess access = getTomAccess();
         if (access != null) {
             IInventoryChangeTracker tracker = access.tracker();
@@ -276,29 +277,30 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
 
     @Override
     public void updateServer() {
-        // NIE wolamy tu getStacks().
+        // We do NOT call getStacks() here.
         //
-        // getStacks() ustawia u Toma flage updateItems, przez co Tom przy KAZDEJ
-        // zmianie zawartosci sieci przebudowywal cala mape itemow terminala:
-        // pelny skan wszystkich inwentarzy + alokacja TerminalItemStack per stos
-        // + grupowanie i scalanie. To mapa, ktora nasz mod CZYTA NIGDZIE - nasze
-        // liczby pochodza z VelocePipeNetwork.getAllItemCounts.
+        // getStacks() sets Tom's updateItems flag, which made Tom rebuild the
+        // whole terminal item map on EVERY change of the network contents:
+        // a full scan of all inventories + allocation of a TerminalItemStack per
+        // stack + grouping and merging. That is a map which our mod reads
+        // NOWHERE - our numbers come from VelocePipeNetwork.getAllItemCounts.
         //
-        // Tom sam nie ustawia tej flagi - robi to jego menu (StorageTerminalMenu)
-        // przy odpytywaniu. My otwieramy wlasny ekran, wiec ta praca byla
-        // wykonywana wylacznie dla nas i wylacznie na marne.
+        // Tom does not set that flag himself - his menu (StorageTerminalMenu)
+        // does it when polling. We open our own screen, so that work was
+        // performed solely for us and solely in vain.
         //
-        // Z tego samego powodu nie polegamy na slotCount/freeCount/beaconLevel.
+        // For the same reason we do not rely on slotCount/freeCount/beaconLevel.
         super.updateServer();
 
-        // UWAGA: utrzymanie force-loadow sieci NIE jest juz wolane stad.
+        // NOTE: keeping the network's force-loads is NO LONGER called from here.
         //
-        // Bylo tu `VeloceCraftingCache.get(net).tickIdle(sl)` pod warunkiem
-        // "raz na 5 tickow". Skutek: cale utrzymanie chunkow zalezalo od tego,
-        // czy w sieci stoi AKURAT terminal - siec z samym crafterem i piecem
-        // nie trzymala swoich chunkow ani razu, wiec automatyka padala, gdy
-        // gracz odszedl. Sterownikiem jest teraz tick poziomu
-        // (patrz VeloceCraftingCache.tickAll) - dziala niezaleznie od blokow.
+        // There used to be `VeloceCraftingCache.get(net).tickIdle(sl)` under the
+        // condition "once every 5 ticks". The effect: all chunk keeping depended
+        // on whether a terminal happened to stand in the network - a network with
+        // just a crafter and a furnace did not keep its chunks even once, so the
+        // automation died when the player walked away. The driver is now the
+        // level tick (see VeloceCraftingCache.tickAll) - it works independently
+        // of blocks.
 
         // Periodically refresh active viewers
         if (level != null && !activeWatchingPlayers.isEmpty()) {
@@ -327,8 +329,8 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
         if (net != null) {
             player.sendSystemMessage(Component.literal("§a[Pipe Network Found] §7ID: §e" + net.getId()));
-            // "Nodes", nie "Terminals": getTerminals() zwraca takze craftery
-            // i extractory, wiec stara etykieta klamala o tym, co liczy.
+            // "Nodes", not "Terminals": getTerminals() also returns crafters
+            // and extractors, so the old label lied about what it counted.
             player.sendSystemMessage(Component.literal("  §7Pipes: §f" + net.getPipes().size() + "§7, Nodes (terminal/crafter/extractor): §f" + net.getTerminals().size()));
             player.sendSystemMessage(Component.literal("  §bTracked Chunks (" + net.getTrackedChunks().size() + "):"));
             for (ChunkPos cp : net.getTrackedChunks()) {
@@ -377,34 +379,34 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
     /**
      * Extracts an item from the connected network (Refined Storage or Tom's Storage / chests or Pipe Network).
      *
-     * <p>Jesli itemu nie ma w sieci, probuje go <b>auto-wycraftowac</b> - patrz
-     * {@link #craftItemFromNetwork}. Dzieki temu gracz moze wyciagnac deski,
-     * majac wlaczone auto-craftowanie dla desek, nawet jesli nikt ich nie
-     * wyprodukowal wczesniej: craftowanie jest natychmiastowe i nie przechodzi
-     * przez zaden fizyczny blok posredni.
+     * <p>If the item is not in the network, it tries to <b>auto-craft</b> it - see
+     * {@link #craftItemFromNetwork}. Thanks to that the player can pull planks
+     * with auto-crafting enabled for planks, even if nobody produced them
+     * earlier: crafting is instant and does not pass through any physical
+     * intermediate block.
      */
     public ItemStack extractItemFromConnectedNetwork(ItemStack requested, int count) {
         return extractWithReason(requested, count, true).stack();
     }
 
     /**
-     * @param allowCrafting czy wolno dotworzyc item auto-craftingiem, gdy brak go w sieci
+     * @param allowCrafting whether the item may be produced by auto-crafting when it is missing from the network
      */
     public ItemStack extractItemFromConnectedNetwork(ItemStack requested, int count, boolean allowCrafting) {
         return extractWithReason(requested, count, allowCrafting).stack();
     }
 
     /**
-     * Wynik pobrania razem z POWODEM niepowodzenia.
+     * The pull result together with the REASON for failure.
      *
-     * <p><b>Po co.</b> Wczesniej gracz dostawal tylko ogolne "Item not in
-     * network: X" - bez roznicy miedzy "nie ma receptury", "brakuje
-     * skladnika", "maszyna bez pradu" i "plan nie zmiescil sie w budzecie".
-     * Zgloszenie "GUI pokazuje, ze moge, a nie moge zrobic" nie da sie wtedy
-     * rozwiazac inaczej niz czytaniem logow.
+     * <p><b>Why.</b> Previously the player only got a generic "Item not in
+     * network: X" - with no distinction between "there is no recipe", "an
+     * ingredient is missing", "machine has no power" and "the plan did not fit
+     * in the budget". The report "the GUI shows I can, but I cannot craft" then
+     * cannot be solved other than by reading logs.
      *
-     * @param reason klucz jezykowy powodu (pusty = brak powodu, np. itemu
-     *               po prostu nie ma w sieci), {@code detail} jego dopelnienie
+     * @param reason language key of the reason (empty = no reason, e.g. the item
+     *               simply is not in the network), {@code detail} is its complement
      */
     public record PullResult(ItemStack stack, String reason, String detail) {
         static PullResult ok(ItemStack stack) {
@@ -417,7 +419,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
     }
 
     /**
-     * @param allowCrafting czy wolno dotworzyc item auto-craftingiem, gdy brak go w sieci
+     * @param allowCrafting whether the item may be produced by auto-crafting when it is missing from the network
      */
     public PullResult extractWithReason(ItemStack requested, int count, boolean allowCrafting) {
         if (level == null || level.isClientSide || !(level instanceof ServerLevel sl) || requested.isEmpty() || count <= 0) {
@@ -428,10 +430,10 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
         com.craftingveloce.crafting.VeloceCraftTrace.log(
-                "terminal @%s: szukam %dx %s (%s), siec=%s, auto-crafting=%s",
+                "terminal @%s: looking for %dx %s (%s), network=%s, auto-crafting=%s",
                 worldPosition, count, requested.getHoverName().getString(),
                 com.craftingveloce.crafting.VeloceCraftTrace.id(requested.getItem()),
-                net == null ? "BRAK (terminal nie podlaczony?)" : net.getId(),
+                net == null ? "NONE (terminal not connected?)" : net.getId(),
                 allowCrafting);
         com.craftingveloce.util.VeloceLog.Craft.attempt(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
@@ -442,7 +444,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
                     "network found: %d endpoint(s) for terminal at %s",
                     net.getEndpoints().size(), worldPosition);
-            // Gracz wlasnie cos wyciagnal - przyspiesz odswiezanie liczb.
+            // The player just pulled something - speed up the refresh of numbers.
 
             ItemStack extracted = net.extractItem(sl, requested.getItem(), count);
             if (!extracted.isEmpty()) {
@@ -456,27 +458,28 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
                     "%s not in stock, trying auto-crafting", requested.getItem());
             com.craftingveloce.crafting.VeloceCraftTrace.log(
-                    "stock: brak w sieci - probuje auto-craftingu");
-            // 1b. Nie ma w sieci - sprobuj auto-craftingu (jesli wlaczony dla tego itemu).
+                    "stock: not in network - trying auto-crafting");
+            // 1b. Not in the network - try auto-crafting (if enabled for this item).
             if (allowCrafting) {
                 PullResult crafted = craftItemFromNetwork(sl, net, requested, count);
                 if (!crafted.stack().isEmpty()) {
-                    // Craftowanie zmienilo stock. Klient sam poprosi o nowe
-                    // liczby dla widocznej strony po dostaniu nowego stocku -
-                    // nie ma tu czego uniewazniac, bo nic nie jest cache'owane.
+                    // Crafting changed the stock. The client will ask for new
+                    // numbers for the visible page on its own after receiving
+                    // the new stock - there is nothing to invalidate here,
+                    // because nothing is cached.
                     syncCountsToAllWatchers();
                     return crafted;
                 }
                 com.craftingveloce.crafting.VeloceCraftTrace.log(
-                        "auto-crafting nie dal itemu: reason=%s detail=%s",
+                        "auto-crafting did not yield the item: reason=%s detail=%s",
                         crafted.reason(), crafted.detail());
-                // Craftowanie sie nie udalo - przekazujemy POWOD dalej.
+                // Crafting failed - we pass the REASON on.
                 if (!crafted.reason().isEmpty()) {
                     return crafted;
                 }
             }
             com.craftingveloce.crafting.VeloceCraftTrace.log(
-                    "siec istnieje, ale nie ma itemu w stocku i auto-crafting nic nie dal");
+                    "network exists, but the item is not in stock and auto-crafting yielded nothing");
             return PullResult.empty();
         }
 
@@ -493,7 +496,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         }
 
         com.craftingveloce.crafting.VeloceCraftTrace.log(
-                "terminal bez sieci rur - probuje skrzyni/RS przy %s", targetPos);
+                "terminal without a pipe network - trying chest/RS at %s", targetPos);
         // 3. Try Tom's Storage / connected chests
         try {
             StoredItemStack pulled = pullStack(new StoredItemStack(requested), count);
@@ -510,21 +513,21 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
     }
 
     /**
-     * Wklada itemy gracza do sieci (slot "strzalki" w GUI terminala).
+     * Inserts the player's items into the network (the "arrow" slot in the terminal GUI).
      *
-     * <p><b>Serwer sam czyta stan gracza i sam zabiera itemy.</b> To jest
-     * kluczowe dla poprawnosci: poprzednia wersja dostawala stos w pakiecie
-     * i wrzucala go do sieci, nie zabierajac niczego graczowi - item
-     * istnial jednoczesnie w beczce i w ekwipunku (duplikacja). Teraz
-     * wkladamy DOKLADNIE tyle, ile udalo sie zabrac, i zabieramy DOKLADNIE
-     * tyle, ile udalo sie wlozyc.
+     * <p><b>The server reads the player's state itself and takes the items
+     * itself.</b> This is crucial for correctness: the previous version received
+     * a stack in a packet and threw it into the network without taking anything
+     * from the player - the item existed simultaneously in the barrel and in the
+     * inventory (duplication). Now we insert EXACTLY as much as we managed to
+     * take, and we take EXACTLY as much as we managed to insert.
      *
-     * <p><b>Czego nie ruszamy:</b> bufory crafterow (pamiec robocza planera,
-     * nie magazyn) i ekstraktory (tylko wydaja). Patrz
+     * <p><b>What we do not touch:</b> crafter buffers (the planner's working
+     * memory, not storage) and extractors (they only output). See
      * {@link VelocePipeNetwork#insertIntoStorage}.
      *
      * @param mode {@link com.craftingveloce.network.TerminalStoreItemPKT#MODE_CURSOR},
-     *             {@code MODE_INVENTORY} (bez hotbara) albo {@code MODE_EVERYTHING}
+     *             {@code MODE_INVENTORY} (without the hotbar) or {@code MODE_EVERYTHING}
      */
     public void storeFromPlayer(ServerPlayer player, int mode) {
         if (!(level instanceof ServerLevel sl)) {
@@ -537,14 +540,15 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         }
 
         if (!hasAnythingToStore(player, mode)) {
-            // Nie ma czego odkladac - zaden komunikat. Bez tego pusty kursor
-            // (albo pusty ekwipunek) konczyl sie komunikatem "network full",
-            // co bylo po prostu klamstwem.
+            // Nothing to deposit - no message. Without this an empty cursor
+            // (or an empty inventory) ended with the "network full" message,
+            // which was simply a lie.
             return;
         }
         if (VeloceChunkLoader.isFrozen()) {
-            // Przy zapisie swiata celowo NIE wymuszamy chunkow, wiec wkladanie
-            // zwraca caly stos. To nie jest "pelna siec" - to "sprobuj za chwile".
+            // During world save we deliberately do NOT force-load chunks, so
+            // inserting returns the whole stack. This is not "network full" -
+            // it is "try again in a moment".
             player.displayClientMessage(
                     Component.translatable("gui.craftingveloce.terminal.storeBusy")
                             .withStyle(ChatFormatting.YELLOW),
@@ -554,16 +558,16 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
 
         int moved = 0;
         if (mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR) {
-            // inventoryMenu, a nie containerMenu: sync kursora idzie wlasnie
-            // przez to menu (tak samo jak w TerminalPullItemPKT.resyncInventories).
-            // Ekran terminala nie otwiera menu po stronie serwera, wiec
-            // containerMenu to wlasnie inventoryMenu - ale nie zgadujemy.
+            // inventoryMenu, not containerMenu: the cursor sync goes precisely
+            // through that menu (just like in TerminalPullItemPKT.resyncInventories).
+            // The terminal screen does not open a menu on the server side, so
+            // containerMenu is exactly inventoryMenu - but we do not guess.
             moved += storeStack(sl, net, player.inventoryMenu);
         } else {
             boolean includeHotbar = mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_EVERYTHING;
             var inv = player.getInventory();
             for (int i = 0; i < inv.getContainerSize(); i++) {
-                // Sloty 0..8 to hotbar - zwykly shift je pomija.
+                // Slots 0..8 are the hotbar - a normal shift skips them.
                 if (!includeHotbar && i < 9) {
                     continue;
                 }
@@ -584,25 +588,27 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         }
 
         if (moved <= 0) {
-            // Nic nie weszlo - mowimy o tym graczowi.
+            // Nothing went in - we tell the player about it.
             //
-            // Decyzja nalezy do serwera, bo klient nie zna zawartosci
-            // poszczegolnych slotow ani tego, czy jego dane sa swieze (klient
-            // NIE blokuje juz tej akcji - patrz VeloceTerminalScreen).
-            // Gracz MUSI wiec dostac powod, inaczej wyglada to jak zepsuty
-            // przycisk.
+            // The decision belongs to the server, because the client does not
+            // know the contents of individual slots nor whether its data is
+            // fresh (the client NO LONGER blocks this action - see
+            // VeloceTerminalScreen). The player MUST therefore get a reason,
+            // otherwise it looks like a broken button.
             //
-            // WAZNE: "nic nie weszlo" NIE znaczy jeszcze "siec pelna".
-            // Pytamy wiec cache o pojemnosc DLA KONKRETNEGO ITEMU - i tylko
-            // gdy wynosi ona twarde 0 dla wszystkich jego typow, mowimy
-            // "pelna". Inaczej mowimy "sprobuj za chwile", bo to np. odmowa
-            // przez budzet wczytywania chunkow albo trwajacy zapis swiata.
+            // IMPORTANT: "nothing went in" does NOT yet mean "network full".
+            // So we ask the cache about the capacity FOR THIS SPECIFIC ITEM -
+            // and only when it is a hard 0 for all of its types do we say
+            // "full". Otherwise we say "try again in a moment", because it may
+            // be e.g. a refusal due to the chunk loading budget or an ongoing
+            // world save.
             //
-            // UWAGA: uzywamy ZAIMPORTOWANYCH nazw (Component, ChatFormatting),
-            // a nie `net.minecraft...` - w tej metodzie jest lokalna zmienna
-            // `net` (siec rur), ktora PRZESLANIA nazwe pakietu `net`.
-            // Zapis `net.minecraft.network.chat.Component` kompilowal sie jako
-            // odwolanie do pola `minecraft` zmiennej `net` i nie dzialal.
+            // NOTE: we use the IMPORTED names (Component, ChatFormatting),
+            // and not `net.minecraft...` - in this method there is a local
+            // variable `net` (the pipe network) which SHADOWS the `net`
+            // package name. The code `net.minecraft.network.chat.Component`
+            // compiled as a reference to the `minecraft` field of the `net`
+            // variable and did not work.
             String reason = nothingStoredReason(sl, net, player, mode);
             player.displayClientMessage(
                     Component.translatable(reason)
@@ -611,29 +617,29 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                     true);
             return;
         }
-        // Odsylamy zmiany, zeby kursor i ekwipunek zgadzaly sie u klienta.
+        // We send the changes back so the cursor and the inventory match on the client.
         com.craftingveloce.network.TerminalPullItemPKT.resyncInventories(player);
         syncCountsToAllWatchers();
     }
 
     /**
-     * Czy gracz ma cokolwiek do odlozenia w trybie {@code mode}.
+     * Whether the player has anything to deposit in mode {@code mode}.
      *
-     * <p>Sprawdzamy to PRZED wkladaniem, zeby odroznic "nie bylo czego odlozyc"
-     * (brak komunikatu) od "nie udalo sie odlozyc" (komunikat). Wczesniej oba
-     * przypadki konczyly sie tekstem "network full".
+     * <p>We check this BEFORE inserting, to distinguish "there was nothing to
+     * deposit" (no message) from "depositing failed" (a message). Previously
+     * both cases ended with the text "network full".
      */
     private boolean hasAnythingToStore(ServerPlayer player, int mode) {
         return !stacksToStore(player, mode).isEmpty();
     }
 
     /**
-     * Stosy, ktore tryb {@code mode} probowalby odlozyc.
+     * The stacks that mode {@code mode} would try to deposit.
      *
-     * <p>Jedno miejsce decydujace o tym, CO jest kandydatem do odlozenia -
-     * uzywane i przy sprawdzaniu "czy jest co odkladac", i przy ustalaniu
-     * powodu odmowy. Wczesniej te dwa miejsca liczyly sie niezaleznie i mogly
-     * sie rozjechac.
+     * <p>The single place deciding WHAT is a candidate for depositing - used
+     * both when checking "is there anything to deposit" and when determining
+     * the reason for refusal. Previously those two places computed independently
+     * and could drift apart.
      */
     private List<ItemStack> stacksToStore(ServerPlayer player, int mode) {
         List<ItemStack> out = new ArrayList<>();
@@ -646,7 +652,7 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         }
         boolean includeHotbar = mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_EVERYTHING;
         var inv = player.getInventory();
-        // Sloty 0..8 to hotbar - zwykly shift je pomija.
+        // Slots 0..8 are the hotbar - a normal shift skips them.
         for (int i = includeHotbar ? 0 : 9; i < inv.getContainerSize(); i++) {
             ItemStack st = inv.getItem(i);
             if (!st.isEmpty()) {
@@ -657,21 +663,22 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
     }
 
     /**
-     * Dlaczego nic nie weszlo - gotowy klucz tlumaczenia.
+     * Why nothing went in - a ready translation key.
      *
-     * <p>Rozrozniamy DWA powody, bo maja rozne konsekwencje dla gracza:
+     * <p>We distinguish TWO reasons, because they have different consequences
+     * for the player:
      * <ul>
-     *   <li>{@code storeFull} - pojemnosc sieci dla KAZDEGO z jego itemow to
-     *       twarde 0. Siec naprawde jest pelna, nie ma co probowac.</li>
-     *   <li>{@code storeBusy} - pojemnosc jest dodatnia albo NIEZNANA
-     *       ({@code -1}). Czyli nie mozemy uczciwie powiedziec "pelna" -
-     *       najczesciej to odmowa przez budzet wczytywania chunkow albo
-     *       trwajacy zapis swiata. Warto sprobowac za chwile.</li>
+     *   <li>{@code storeFull} - the network's capacity for EACH of their items
+     *       is a hard 0. The network really is full, there is no point trying.</li>
+     *   <li>{@code storeBusy} - the capacity is positive or UNKNOWN
+     *       ({@code -1}). That is, we cannot honestly say "full" -
+     *       most often it is a refusal due to the chunk loading budget or an
+     *       ongoing world save. It is worth trying again in a moment.</li>
      * </ul>
      *
-     * <p>Bez tego rozroznienia kazda nieudana proba - takze tymczasowa -
-     * konczyla sie tekstem "network full", czyli klamstwem, ktore wysylalo
-     * gracza na szukanie nieistniejacego problemu z pojemmoscia.
+     * <p>Without this distinction every failed attempt - including a temporary
+     * one - ended with the text "network full", which is a lie that sent the
+     * player looking for a non-existent capacity problem.
      */
     private String nothingStoredReason(ServerLevel sl, VelocePipeNetwork net,
                                        ServerPlayer player, int mode) {
@@ -684,9 +691,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
     }
 
     /**
-     * Zabiera stos z kursora gracza i wklada go do sieci.
+     * Takes a stack from the player's cursor and inserts it into the network.
      *
-     * @return ile sztuk udalo sie przeniesc
+     * @return how many items were moved
      */
     private int storeStack(ServerLevel sl, VelocePipeNetwork net,
                            net.minecraft.world.inventory.AbstractContainerMenu menu) {
@@ -707,54 +714,56 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
     }
 
     /**
-     * Probuje auto-wycraftowac item i natychmiast go oddac.
+     * Tries to auto-craft the item and hand it over immediately.
      *
-     * <p>Warunki:
+     * <p>Conditions:
      * <ol>
-     *   <li>W sieci musi byc auto-crafter, ktory ma <b>wlaczona</b> recepture
-     *       dla tego itemu (patrz {@code VeloceCraftingTableBlockEntity}).
-     *       Jesli nie ma zadnego wlaczonego craftera dla itemu - nie craftujemy.</li>
-     *   <li>Craftowanie jest natychmiastowe: silnik pobiera skladniki z sieci
-     *       i wklada wynik. Nic nie idzie przez fizyczny blok posredni.</li>
+     *   <li>The network must contain an auto-crafter with the recipe for this
+     *       item <b>enabled</b> (see {@code VeloceCraftingTableBlockEntity}).
+     *       If there is no enabled crafter for the item - we do not craft.</li>
+     *   <li>Crafting is instant: the engine pulls the ingredients from the
+     *       network and inserts the result. Nothing goes through a physical
+     *       intermediate block.</li>
      * </ol>
      *
-     * @return wycraftowany stack albo {@link ItemStack#EMPTY}
+     * @return the crafted stack or {@link ItemStack#EMPTY}
      */
     private PullResult craftItemFromNetwork(ServerLevel sl, VelocePipeNetwork net,
                                             ItemStack requested, int count) {
         Item item = requested.getItem();
 
-        // ZRZUT DIAGNOSTYCZNY PRZED JAKAKOLWIEK BRAMKA.
+        // DIAGNOSTIC DUMP BEFORE ANY GATE.
         //
-        // Dzieki temu slad odpowiada takze wtedy, gdy craft NIE dojdzie do
-        // planowania (np. item nie jest w zbiorze craftowalnych) - gracz wlasnie
-        // o takim przypadku zglaszal "nie moge skraftowac".
+        // Thanks to this the trace answers also when the craft does NOT reach
+        // planning (e.g. the item is not in the craftable set) - the player
+        // reported exactly such a case as "I cannot craft it".
         if (com.craftingveloce.crafting.VeloceCraftTrace.active()) {
             com.craftingveloce.crafting.VeloceCraftTrace.log(
-                    "zadanie z terminala: %dx %s (%s)", count,
+                    "request from terminal: %dx %s (%s)", count,
                     requested.getHoverName().getString(),
                     com.craftingveloce.crafting.VeloceCraftTrace.id(item));
             com.craftingveloce.crafting.VeloceCraftTrace.dumpEnvironment(sl, net, item);
             com.craftingveloce.crafting.VeloceCraftTrace.dumpRecipes(sl, net, item);
         }
 
-        // CZY WOLNO CRAFTowac - decyduje ZBIOR WLACZONYCH ITEMOW.
+        // WHETHER CRAFTING IS ALLOWED - decided by the SET OF ENABLED ITEMS.
         //
-        // BUG, ktory to naprawia (zgloszenie gracza: "z piecyka veloce tez nic
-        // nie moge skraftowac"): bramka pytala o CRAFTER w sieci
-        // (findEnabledCrafter), a nie o to, czy siec potrafi zrobic ten item.
-        // Odkad moce przetwarzania sa modulami (piec, Create, Mekanism...),
-        // crafter nie jest juz potrzebny do receptur pieca ani do maszyn
-        // modulow - a GUI pokazywalo liczby z wlasnie tak policzonego zbioru.
-        // Skutek: GUI mowilo "mozesz", a craft konczyl sie "disabled".
+        // The BUG this fixes (player report: "I cannot craft anything from the
+        // veloce furnace either"): the gate asked about a CRAFTER in the network
+        // (findEnabledCrafter), and not about whether the network is able to
+        // make this item. Ever since processing powers are modules (furnace,
+        // Create, Mekanism...), a crafter is no longer needed for furnace
+        // recipes nor for module machines - yet the GUI showed numbers from a
+        // set computed exactly that way. Effect: the GUI said "you can", and the
+        // craft ended with "disabled".
         var enabled = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getAllEnabledItems(sl, net);
         if (!enabled.contains(item)) {
-            // Powod dla gracza i do sladu: DLACZEGO nie ma tego w zbiorze.
+            // The reason for the player and for the trace: WHY it is not in the set.
             var reason = com.craftingveloce.crafting.VeloceCraftingRegistry
                     .whyNotCraftable(sl, net, item);
             com.craftingveloce.crafting.VeloceCraftTrace.log(
-                    "item NIE jest w zbiorze craftowalnych: %s (szczegol: %s)",
+                    "item is NOT in the craftable set: %s (detail: %s)",
                     reason.reasonKey(), reason.detail());
             return new PullResult(ItemStack.EMPTY, reason.reasonKey(), reason.detail());
         }
@@ -763,23 +772,23 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
 
         var buffers = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getBuffers(sl, net);
-        // Pozycja bloku = miejsce awaryjnego zrzutu, gdyby siec byla pelna.
+        // The block position = the emergency drop location, in case the network were full.
         var ctx = new com.craftingveloce.crafting.VeloceAutoCrafter.Context(
                 sl, net, enabled, preferred, null, buffers, this.getBlockPos());
 
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
                 .ensureAvailable(sl, net, item, count, ctx);
         if (!result.success()) {
-            // Powod z planera: noBase + nazwa brakujacego skladnika,
-            // tooComplex albo extract. Bez tego gracz widzial tylko ogolne
-            // "nie ma itemu w sieci".
+            // Reason from the planner: noBase + the name of the missing
+            // ingredient, tooComplex or extract. Without this the player only
+            // saw a generic "item not in network".
             return new PullResult(ItemStack.EMPTY, result.reason(), result.detail());
         }
 
-        // Wynik craftowania trafia najpierw do bufora craftera (pamiec podreczna),
-        // a dopiero potem do endpointow sieci. Bufor NIE jest endpointem, wiec
-        // net.extractItem() go nie widzi - dlatego najpierw probujemy wyciagnac
-        // wlasnie z buforow, i tylko jako fallback z sieci.
+        // The crafting result goes first to the crafter's buffer (working memory),
+        // and only then to the network endpoints. The buffer is NOT an endpoint,
+        // so net.extractItem() does not see it - that is why we first try to pull
+        // from the buffers, and only as a fallback from the network.
         ItemStack fromBuffer = extractFromBuffers(buffers, item, count);
         if (!fromBuffer.isEmpty()) {
             return PullResult.ok(fromBuffer);
@@ -788,11 +797,11 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
     }
 
     /**
-     * Wyciaga item z buforow auto-crafterow.
+     * Pulls the item from the auto-crafter buffers.
      *
-     * <p>Bufor nie jest endpointem sieci, wiec standardowa ekstrakcja go pomija.
-     * Bez tego itemy wycraftowane na poczekaniu zostawalyby w bloku craftera
-     * zamiast trafic do gracza.
+     * <p>The buffer is not a network endpoint, so the standard extraction skips
+     * it. Without this, items crafted on the spot would stay in the crafter
+     * block instead of reaching the player.
      */
     private static ItemStack extractFromBuffers(
             java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers,

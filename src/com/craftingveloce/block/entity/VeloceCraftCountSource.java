@@ -6,28 +6,28 @@ import net.minecraft.world.item.Item;
 import java.util.Collection;
 
 /**
- * Blok, ktory potrafi policzyc "ile da sie jeszcze dorobic" dla swojej sieci.
+ * A block that can count "how many can still be crafted" for its network.
  *
- * <p><b>Po co wspolny interfejs.</b> Terminal liczyl te wartosci dla widocznej
- * strony, a kontroler potrzebuje DOKLADNIE tego samego - tych samych liczb,
- * z tej samej logiki. Bez wspolnego interfejsu pakiet
- * {@code RequestCraftableCountsPKT} musialby znac oba typy blokow i rozgalezac
- * sie po nich, a kazdy kolejny ekran pokazujacy liczby dokladalby trzecia
- * galez. To ten sam blad, ktory juz raz rozjechal liste wezlow sieci i liste
- * typow receptur pieca.
+ * <p><b>Why a shared interface.</b> The terminal counted these values for the
+ * visible page, and the controller needs EXACTLY the same thing - the same
+ * numbers, from the same logic. Without a shared interface the
+ * {@code RequestCraftableCountsPKT} packet would have to know both block types
+ * and branch on them, and every further screen showing numbers would add a third
+ * branch. That is the same mistake that already once made the network node list
+ * and the furnace recipe type list drift apart.
  *
- * <p>Implementacja MUSI sama znalezc swoja siec (terminal i kontroler robia to
- * identycznie) i sama zadbac o swoj budzet czasu - liczenie drzewa receptur
- * dla calej strony to realna praca na watku serwera.
+ * <p>The implementation MUST find its own network (the terminal and the
+ * controller do it identically) and MUST take care of its own time budget -
+ * counting the recipe tree for a whole page is real work on the server thread.
  */
 public interface VeloceCraftCountSource {
 
     /**
-     * Liczby craftowalne dla podanych itemow.
+     * Craftable numbers for the given items.
      *
-     * @param items itemy widoczne na ekranie gracza
-     * @return liczby + informacja, czy policzono WSZYSTKIE zadane itemy
-     *         (niepelny wynik nie moze kasowac poprawnych liczb u klienta)
+     * @param items the items visible on the player's screen
+     * @return the numbers + information whether ALL requested items were counted
+     *         (an incomplete result must not erase valid numbers on the client)
      */
     VeloceAutoCrafter.BatchResult computeCraftableCounts(Collection<Item> items);
 }

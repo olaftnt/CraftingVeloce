@@ -15,24 +15,30 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * S→C: otwiera GUI Veloce Controller z pelnym obrazem sieci.
+ * S->C: opens the Veloce Controller GUI with the full picture of the network.
  *
- * <p>Niesie:
+ * <p>It carries:
  * <ul>
- *   <li>{@code stock} - ile sztuk kazdego itemu jest fizycznie w sieci</li>
- *   <li>{@code craftingEnabled} - itemy, ktore crafter realnie potrafi zrobic
- *       (wlaczone; model opt-out, wiec to jest "wszystko oprocz wylaczonych")</li>
- *   <li>{@code furnaceCraftable} - itemy z receptura PIECA (smelting /
- *       blasting / smoking); niezaleznie od tego, czy piec jest w sieci</li>
- *   <li>{@code furnacePowered} - czy ktorys piec jest zasilony; tylko wtedy
- *       receptury pieca sa realne (i tylko wtedy item dostaje zolte tlo)</li>
- *   <li>{@code furnacePreferred} - itemy, dla ktorych gracz woli PRZEPALANIE</li>
+ *   <li>{@code stock} - how many pieces of each item are physically in the
+ *       network</li>
+ *   <li>{@code craftingEnabled} - items the crafter can actually make
+ *       (enabled; opt-out model, so this is "everything except the disabled
+ *       ones")</li>
+ *   <li>{@code furnaceCraftable} - items with a FURNACE recipe (smelting /
+ *       blasting / smoking); regardless of whether a furnace is in the
+ *       network</li>
+ *   <li>{@code furnacePowered} - whether any furnace is powered; only then are
+ *       furnace recipes real (and only then does the item get a yellow
+ *       background)</li>
+ *   <li>{@code furnacePreferred} - items for which the player prefers
+ *       SMELTING</li>
  * </ul>
  *
- * <p><b>Czego tu NIE ma.</b> {@code craftable} ("ma recepture, ale crafter
- * moze miec wylaczona") i {@code furnaceInNetwork} ("stoi jakikolwiek piec")
- * sluzyly wylacznie tekstom o powodach braku dostepnosci - gracz kazal je
- * usunac, wiec zniknely razem z nimi. Dostepnosc widac po kolorze tla ikony.
+ * <p><b>What is NOT here.</b> {@code craftable} ("has a recipe, but the crafter
+ * may have it disabled") and {@code furnaceInNetwork} ("any furnace at all is
+ * present") served only the texts explaining why something was unavailable - the
+ * player asked for them to be removed, so they disappeared along with them.
+ * Availability is visible from the background colour of the icon.
  */
 public record OpenControllerScreenPKT(BlockPos pos,
                                       Map<Item, Long> stock,
@@ -57,9 +63,9 @@ public record OpenControllerScreenPKT(BlockPos pos,
             buf.writeVarLong(e.getValue());
         }
 
-        // Zbiory itemow kodujemy tym samym kodem - wczesniej bylo to
-        // trzy razy przeklejone, wiec kazda zmiana formatu wymagala trzech
-        // zgodnych poprawek.
+        // We encode the item sets with the same code - previously this was
+        // copy-pasted three times, so every format change required three
+        // matching fixes.
         writeItems(buf, pkt.craftingEnabled);
         writeItems(buf, pkt.furnaceCraftable);
 

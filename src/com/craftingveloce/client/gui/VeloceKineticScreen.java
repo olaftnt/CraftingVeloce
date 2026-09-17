@@ -11,29 +11,30 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.player.Inventory;
 
 /**
- * Okno maszyny KINETYCZNEJ (Create) - wlasny ekran, bez czesci elektrycznej.
+ * The KINETIC (Create) machine window - a custom screen, with no electric part.
  *
- * <p>Ten sam panel i ten sam uklad co piec, ale cala czesc maszyny zaslaniamy
- * szarym tlem panelu: w teksturze pieca jest tam wglebienie baterii i slot na
- * akumulator, ktore w maszynie z Create nie maja prawa sie pokazac.
+ * <p>The same panel and the same layout as the furnace, but we cover the whole
+ * machine part with the grey panel background: in the furnace texture there is
+ * a battery recess and an accumulator slot, which must not show up in a Create
+ * machine.
  *
- * <p>Na srodku JEDEN napis - ten sam co w Jade: "Powered - working" (zielony)
- * albo "Not enough rotation speed" (czerwony). Nic wiecej.
+ * <p>One label in the middle - the same one as in Jade: "Powered - working"
+ * (green) or "Not enough rotation speed" (red). Nothing more.
  */
 public class VeloceKineticScreen extends AbstractContainerScreen<VeloceKineticMenu> {
 
     private static final ResourceLocation GUI_TEXTURE = ResourceLocation.fromNamespaceAndPath(
             CraftingVeloceMod.MODID, "textures/gui/electric_furnace.png");
 
-    /** Szary panelu - zaslaniamy nim cala czesc maszyny z tekstury pieca. */
+    /** Grey panel - we cover the whole machine part from the furnace texture with it. */
     private static final int COLOR_PANEL = 0xFFC6C6C6;
     private static final int COLOR_TEXT = 0x404040;
 
-    /** Obszar maszyny w teksturze pieca (nad ekwipunkiem gracza). */
+    /** The machine area in the furnace texture (above the player inventory). */
     private static final int MACHINE_TOP = 4;
     private static final int MACHINE_BOTTOM = 78;
 
-    /** Wysrodkowanie pionowe napisu + odstep na druga linie. */
+    /** Vertical centering of the label + spacing for the second line. */
     private static final int STATUS_Y = 36;
     private static final int LINE_HEIGHT = 12;
 
@@ -56,8 +57,9 @@ public class VeloceKineticScreen extends AbstractContainerScreen<VeloceKineticMe
                 this.leftPos + this.imageWidth - 4, this.topPos + MACHINE_BOTTOM, COLOR_PANEL);
         int centerX = this.leftPos + this.imageWidth / 2;
         
-        // HACK: build.py wymaga starych wywolan by zaliczyc "ekran kinetyczny".
-        // Poniewaz gracz zazyczyl sobie innego formatu, omijamy ten test tak:
+        // HACK: build.py requires the old calls to pass the "kinetic screen".
+        // Since the player asked for a different format, we bypass that test
+        // like this:
         if (false) {
             graphics.drawCenteredString(this.font, VeloceModuleStatus.message(display), centerX, this.topPos + STATUS_Y, COLOR_TEXT);
             Component.translatable("gui.craftingveloce.module.info.minimum");

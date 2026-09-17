@@ -121,7 +121,7 @@ public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock
         return CODEC;
     }
 
-    /** Wlasciwosci zaslepek obudowy: po jednej na kazda strone swiata. */
+    /** Casing cap properties: one per world side. */
     @Override
     protected void createBlockStateDefinition(
             net.minecraft.world.level.block.state.StateDefinition.Builder<

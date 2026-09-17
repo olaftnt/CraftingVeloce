@@ -25,32 +25,33 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * Tlumaczenie receptur Create na wspolny model Veloce.
+ * Translation of Create recipes into the common Veloce model.
  *
- * <p><b>Dwa ksztalty receptur Create:</b>
+ * <p><b>Two shapes of Create recipes:</b>
  * <ul>
- *   <li>{@code ProcessingRecipe} (milling, cutting, crushing) - lista
- *       skladnikow i lista wynikow z PRAWDOPODOBIENSTWEM
- *       ({@code ProcessingOutput.getChance()}). Planowanie zobaczy tylko
- *       wyniki gwarantowane, a wykonanie rzuci koscia - dokladnie zgodnie
- *       z polityka {@link ProcessingEntry},</li>
- *   <li>{@code MechanicalCraftingRecipe} - receptura z siatka (takze wieksza
- *       niz 3x3) i jednym wynikiem.</li>
+ *   <li>{@code ProcessingRecipe} (milling, cutting, crushing) - a list of
+ *       ingredients and a list of results with PROBABILITY
+ *       ({@code ProcessingOutput.getChance()}). Planning will only see the
+ *       guaranteed results, while execution rolls the dice - exactly as the
+ *       policy of {@link ProcessingEntry} prescribes,</li>
+ *   <li>{@code MechanicalCraftingRecipe} - a recipe with a grid (also larger
+ *       than 3x3) and a single result.</li>
  * </ul>
  *
- * <p><b>Czego celowo nie ma w v1:</b>
+ * <p><b>What is deliberately missing in v1:</b>
  * <ul>
- *   <li>receptur z plynami ({@code getFluidIngredients/Results}) - Veloce nie
- *       ma jeszcze warstwy plynow, a "policzenie polowy receptury" znaczyloby
- *       obietnice bez pokrycia,</li>
- *   <li>receptur wymagajacych ciepla ({@code HeatCondition != NONE}) - nasza
- *       maszyna nie ma blaze burnera, wiec taka receptura nie mialaby czym
- *       zaplacic.</li>
+ *   <li>recipes with fluids ({@code getFluidIngredients/Results}) - Veloce does
+ *       not have a fluid layer yet, and "counting half a recipe" would mean
+ *       making a promise we cannot keep,</li>
+ *   <li>recipes requiring heat ({@code HeatCondition != NONE}) - our machine
+ *       has no blaze burner, so such a recipe would have nothing to pay
+ *       with.</li>
  * </ul>
  *
- * <p><b>Pamiec.</b> Indeks "wynik -> receptury" liczymy raz na menedzer
- * receptur, tak jak indeks waniliowy - inaczej kazde pytanie planera o item
- * skanowaloby wszystkie receptury gry (a Create ma ich kilkaset).
+ * <p><b>Memory.</b> We compute the "result -> recipes" index once per recipe
+ * manager, just like the vanilla index - otherwise every planner question about
+ * an item would scan every recipe in the game (and Create has several hundred
+ * of them).
  */
 public final class CreateRecipeHarvest {
 
@@ -60,7 +61,7 @@ public final class CreateRecipeHarvest {
     private static final Map<RecipeManager, Map<RecipeType<?>, Map<Item, List<ProcessingEntry>>>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    /** Indeks "wynik -> receptury" dla danego typu receptury Create. */
+    /** The "result -> recipes" index for a given Create recipe type. */
     public static Map<Item, List<ProcessingEntry>> index(ServerLevel level, RecipeType<?> type) {
         RecipeManager manager = level.getRecipeManager();
         Map<RecipeType<?>, Map<Item, List<ProcessingEntry>>> byType =
@@ -68,12 +69,12 @@ public final class CreateRecipeHarvest {
         return byType.computeIfAbsent(type, t -> build(level, t));
     }
 
-    /** Receptury Create wytwarzajace dany item (dla jednego typu). */
+    /** Create recipes producing the given item (for one type). */
     public static List<ProcessingEntry> forItem(ServerLevel level, RecipeType<?> type, Item item) {
         return index(level, type).getOrDefault(item, List.of());
     }
 
-    /** Czysci pamiec - wolane przy zmianie swiata, razem z innymi cache'ami. */
+    /** Clears the memory - called on world change, together with the other caches. */
     public static void invalidate() {
         CACHE.clear();
     }
@@ -90,8 +91,8 @@ public final class CreateRecipeHarvest {
             if (entry == null) {
                 continue;
             }
-            // Do indeksu trafiaja tylko wyniki GWARANTOWANE - planer nie moze
-            // obiecac itemu, ktory wypada tylko czasem.
+            // Only GUARANTEED results make it into the index - the planner must
+            // not promise an item that only drops sometimes.
             for (ItemStack result : entry.guaranteedResults()) {
                 if (!result.isEmpty()) {
                     out.computeIfAbsent(result.getItem(), k -> new ArrayList<>()).add(entry);
@@ -114,22 +115,24 @@ public final class CreateRecipeHarvest {
     }
 
     /**
-     * Receptura przetwarzania (mlynek, piła, kruszarka).
+     * A processing recipe (millstone, saw, crusher).
      *
-     * <p>Wyniki z szansa ida do modelu razem z szansa; planowanie widzi tylko
-     * te z szansa 1.0 (patrz {@link ProcessingEntry#guaranteedResults()}).
+     * <p>Results with a chance go into the model together with that chance;
+     * planning only sees the ones with chance 1.0 (see
+     * {@link ProcessingEntry#guaranteedResults()}).
      */
     private static ProcessingEntry processing(ResourceLocation id,
                                               ProcessingRecipe<?, ?> recipe,
                                               RecipeType<?> type) {
-        // Plyny poza zakresem (brak warstwy plynow). Cieplo NIE jest
-        // odrzucane - jedzie dalej z flaga requiresHeat.
+        // Fluids are out of scope (no fluid layer). Heat is NOT rejected - it
+        // travels on with the requiresHeat flag.
         if (!recipe.getFluidIngredients().isEmpty() || !recipe.getFluidResults().isEmpty()) {
             return null;
         }
-        // Receptury wymagajace ciepla NIE sa odrzucane: ida do planera z flaga,
-        // a modul sprawdza, czy w sieci jest Blaze Burner (gracz: "jak musi byc
-        // heated blaze burner, to tez mamy zaliczone, jesli tylko go mamy").
+        // Recipes requiring heat are NOT rejected: they go to the planner with
+        // the flag, and the module checks whether there is a Blaze Burner in the
+        // network (player: "if it has to be a heated blaze burner, then that
+        // counts too, as long as we have one").
         boolean requiresHeat = recipe.getRequiredHeat() != HeatCondition.NONE;
         NonNullList<Ingredient> ingredients = recipe.getIngredients();
         if (ingredients.isEmpty()) {
@@ -156,12 +159,12 @@ public final class CreateRecipeHarvest {
     }
 
     /**
-     * Mechanical crafting - receptura z siatka (takze wieksza niz 3x3).
+     * Mechanical crafting - a recipe with a grid (also larger than 3x3).
      *
-     * <p>Uwaga: Create oznacza te receptury jako {@code isSpecial()}, ale to
-     * nie znaczy "nie do odtworzenia automatycznie" (jak waniliowe barwienie
-     * zbroi) - dlatego rejestr Veloce filtruje po namespace typu, a nie po
-     * samym {@code isSpecial()}.
+     * <p>Note: Create marks these recipes as {@code isSpecial()}, but that does
+     * not mean "not reproducible automatically" (like vanilla armor dyeing) -
+     * that is why the Veloce registry filters by the type's namespace and not
+     * by {@code isSpecial()} alone.
      */
     private static ProcessingEntry mechanical(ResourceLocation id,
                                               MechanicalCraftingRecipe recipe,
@@ -184,8 +187,9 @@ public final class CreateRecipeHarvest {
         for (int i = 0; i < ingredients.size(); i++) {
             counts.add(1);
         }
-        // Rozmiar siatki jedzie z receptury: bez tego crafter "umialby"
-        // wszystko, takze receptury wieksze niz zbudowana siatka.
+        // The grid size travels with the recipe: without it the crafter "would
+        // be able to" do everything, including recipes larger than the built
+        // grid.
         return new ProcessingEntry(id, List.of(result.copy()), List.of(1.0f),
                 ingredients, counts, type, recipe.getWidth(), recipe.getHeight());
     }

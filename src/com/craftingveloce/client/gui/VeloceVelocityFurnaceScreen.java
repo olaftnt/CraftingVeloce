@@ -18,20 +18,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * GUI Velocity Furnace.
+ * GUI of the Velocity Furnace.
  *
- * <p><b>Uklad (zgodnie z ustaleniem):</b> plomyk jak w zwyklym piecu + szesc
- * slotow filtra (jak w ekstraktorze) na dopuszczalne paliwa, plus realny slot
- * paliwa, ktore piec wlasnie spala.
+ * <p><b>Layout (as agreed):</b> a flame like in a vanilla furnace + six filter
+ * slots (like in the extractor) for the accepted fuels, plus a real fuel slot
+ * holding what the furnace is burning right now.
  *
- * <p><b>Plomyk pokazuje BUFOR CIEPLA</b>, a nie "postep przepalania". Ten piec
- * nie ma jednego przepalanego przedmiotu - pali sie bez przerwy, a kazde
- * przepalenie dla craftera zjada od razu porcje tego buforu. Wysokosc plomyka
- * to wiec {@code burnTicksRemaining / burnTicksTotal}, czyli dokladnie to, ile
- * ciepla zostalo do rozdania.
+ * <p><b>The flame shows the HEAT BUFFER</b>, not the "smelting progress". This
+ * furnace does not smelt one item at a time - it burns continuously, and every
+ * smelting operation for the crafter eats a portion of that buffer right away.
+ * The flame height is therefore {@code burnTicksRemaining / burnTicksTotal},
+ * which is exactly how much heat is left to distribute.
  *
- * <p>Filtry sa WIDMAMI: nie da sie ich wypelnic przeciaganiem. Wybiera sie je
- * z listy itemow (lewy klik na pustym slocie), a trzyma je block entity.
+ * <p>The filters are GHOST slots: they cannot be filled by dragging. They are
+ * picked from a list of items (left click on an empty slot), and they are kept
+ * by the block entity.
  */
 public class VeloceVelocityFurnaceScreen
         extends AbstractContainerScreen<VeloceVelocityFurnaceMenu> {
@@ -39,28 +40,29 @@ public class VeloceVelocityFurnaceScreen
     private static final ResourceLocation GUI_TEXTURE = ResourceLocation.fromNamespaceAndPath(
             CraftingVeloceMod.MODID, "textures/gui/velocity_furnace.png");
 
-    /** Tekstura waniliowego pieca - z niej bierzemy WYGASZONY obrys plomienia. */
+    /** Texture of the vanilla furnace - we take the EXTINGUISHED flame outline from it. */
     private static final ResourceLocation VANILLA_FURNACE = ResourceLocation
             .withDefaultNamespace("textures/gui/container/furnace.png");
 
     /**
-     * ZAPALONA czesc plomienia - waniliowy sprite (osobny plik od 1.20.2).
+     * The LIT part of the flame - a vanilla sprite (a separate file since 1.20.2).
      *
-     * <p><b>BUG, ktory to naprawia.</b> Wczesniej bralem plomien ze starej
-     * tekstury panelu pod (176, 0). W 1.21 wanilia przeniosla ten sprite do
-     * {@code textures/gui/sprites/container/furnace/lit_progress.png} i pod
-     * (176, 0) w panelu nie ma NIC - rysowala sie wiec PUSTKA, a jedynym
-     * sladem plomienia byl tekst w tooltipie. Teraz idziemy ta sama droga co
-     * waniliowy piec: sprite {@code minecraft:container/furnace/lit_progress}.
+     * <p><b>The BUG this fixes.</b> Previously I took the flame from the old
+     * panel texture at (176, 0). In 1.21 vanilla moved that sprite to
+     * {@code textures/gui/sprites/container/furnace/lit_progress.png} and there
+     * is NOTHING at (176, 0) in the panel any more - so EMPTINESS was drawn,
+     * and the only trace of the flame was the text in the tooltip. Now we take
+     * the same route as the vanilla furnace: the sprite
+     * {@code minecraft:container/furnace/lit_progress}.
      */
     private static final ResourceLocation LIT_PROGRESS_SPRITE = ResourceLocation
             .withDefaultNamespace("container/furnace/lit_progress");
 
-    /** Wygaszony obrys plomienia w teksturze waniliowego pieca (jak w wanilii). */
+    /** Extinguished flame outline in the vanilla furnace texture (same as vanilla). */
     private static final int EMPTY_FLAME_U = 56;
     private static final int EMPTY_FLAME_V = 36;
 
-    /** Plomien: 14x14 - dokladnie jak w waniliowym piecu. */
+    /** Flame: 14x14 - exactly like in the vanilla furnace. */
     private static final int FLAME_W = 14;
     private static final int FLAME_H = 14;
 
@@ -68,15 +70,15 @@ public class VeloceVelocityFurnaceScreen
             new ArrayList<>(java.util.Collections.nCopies(
                     VeloceVelocityFurnaceMenu.FILTER_SLOTS, ItemStack.EMPTY));
 
-    /** Bufor ciepla z ostatniej aktualizacji - plomyk nie moze migac. */
+    /** Heat buffer from the last update - the flame must not flicker. */
     private long burnRemaining;
     private long burnTotal;
 
     public VeloceVelocityFurnaceScreen(VeloceVelocityFurnaceMenu menu,
                                        Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        // Wymiary i etykiety DOKLADNIE jak w ekstraktorze - oba ekrany maja
-        // wygladac jak jedna rodzina, a nie jak dwa rozne mody.
+        // Dimensions and labels EXACTLY like in the extractor - both screens are
+        // supposed to look like one family, not like two different mods.
         this.imageWidth = 212;
         this.imageHeight = 166;
         this.inventoryLabelY = this.imageHeight - 94;
@@ -99,26 +101,28 @@ public class VeloceVelocityFurnaceScreen
     }
 
     /**
-     * Plomyk: najpierw wygaszony, potem zapalona czesc od DOLU.
+     * The flame: first the extinguished outline, then the lit part from the BOTTOM.
      *
-     * <p>Dokladnie tak rysuje to waniliowy piec - dlatego sciezka "od dolu"
-     * jest wazna: plomien ma gasnac z gory, bo tak wyglada ogien.
+     * <p>This is exactly how the vanilla furnace draws it - which is why the
+     * "from the bottom" path matters: the flame has to go out from the top,
+     * because that is what fire looks like.
      */
     private void renderFlame(GuiGraphics graphics) {
         int x = this.leftPos + FLAME_X;
         int y = this.topPos + FLAME_Y;
 
-        // 1. Wygaszony obrys - z tekstury waniliowego pieca, dokladnie ten
-        //    fragment, nad ktorym wanilia rysuje zapalona czesc.
+        // 1. Extinguished outline - from the vanilla furnace texture, exactly the
+        //    fragment over which vanilla draws the lit part.
         graphics.blit(VANILLA_FURNACE, x, y, EMPTY_FLAME_U, EMPTY_FLAME_V,
                 FLAME_W, FLAME_H);
 
-        // 2. Zapalona czesc - waniliowy sprite, przycinany OD GORY.
+        // 2. Lit part - the vanilla sprite, clipped FROM THE TOP.
         //
-        // Wzor jest przepisany z AbstractFurnaceScreen:
+        // The formula is copied from AbstractFurnaceScreen:
         //     lit = floor(progress * 13) + 1
         //     blitSprite(sprite, 14, 14, 0, 14 - lit, x, y + 14 - lit, 14, lit)
-        // Dlatego plomien opada z gory, a nie rosnie od dolu - tak gasnie ogien.
+        // That is why the flame falls from the top instead of growing from the
+        // bottom - that is how fire goes out.
         if (burnTotal > 0 && burnRemaining > 0) {
             int lit = net.minecraft.util.Mth.floor(
                     Math.min(1.0f, (float) burnRemaining / (float) burnTotal) * 13.0F) + 1;
@@ -128,7 +132,7 @@ public class VeloceVelocityFurnaceScreen
         }
     }
 
-    /** Ikony filtrow - rysujemy je sami, bo sloty sa widmami. */
+    /** Filter icons - we draw them ourselves, because the slots are ghosts. */
     private void renderFilterIcons(GuiGraphics graphics) {
         for (int i = 0; i < clientFilters.size(); i++) {
             ItemStack filter = clientFilters.get(i);
@@ -138,20 +142,20 @@ public class VeloceVelocityFurnaceScreen
             int sx = this.leftPos + filterX(i);
             int sy = this.topPos + filterY(i);
             graphics.renderFakeItem(filter, sx, sy);
-            // UWAGA: nie ma tu juz fioletowych paskow nad i pod ikona.
+            // NOTE: the purple bars above and below the icon are gone now.
             //
-            // BUG, ktory to naprawia: rysowalem je od sx-1 do sx+17, czyli
-            // o piksel POZA slot - nachodzily na sasiednia kratke i wygladaly
-            // jak przypadkowe fioletowe podkreslenie (dokladnie to zglosil
-            // uzytkownik). Sam wybrany item jest wystarczajaco widoczny.
+            // The BUG this fixes: I drew them from sx-1 to sx+17, that is one
+            // pixel BEYOND the slot - they overlapped the neighbouring cell and
+            // looked like an accidental purple underline (exactly what the user
+            // reported). The selected item itself is visible enough.
         }
     }
 
-    // Polozenie pol - JEDNO zrodlo, uzywane i do rysowania, i do klikania.
+    // Field positions - ONE source, used both for drawing and for clicking.
     private static final int FILTER_X = 63;
     private static final int FILTER_Y = 18;
-    // Plomien NAD slotem paliwa - uklad: filtry 3x2 | (plomien / paliwo).
-    // Pozycja musi sie zgadzac z menu i z gen_furnace_gui.py (sprawdza build.py).
+    // Flame ABOVE the fuel slot - layout: filters 3x2 | (flame / fuel).
+    // The position must agree with the menu and with gen_furnace_gui.py (build.py checks it).
     private static final int FLAME_X = 135;
     private static final int FLAME_Y = 19;
 
@@ -172,18 +176,18 @@ public class VeloceVelocityFurnaceScreen
     }
 
     /**
-     * Na plomyku - TYLKO ile tickow palenia zostalo.
+     * On the flame - ONLY how many burn ticks are left.
      *
-     * <p>Wczesniej byl tu opis z liczba przepalen i podpowiedzia; uzytkownik
-     * chcial dokladnie jednej liczby. Plomien jest ikonka waniliowa, wiec
-     * tooltip ma tylko dopowiedziec to, czego z ikonki nie widac.
+     * <p>There used to be a description here with the number of smeltings and a
+     * hint; the user wanted exactly one number. The flame is a vanilla icon, so
+     * the tooltip only has to add what cannot be seen from the icon.
      */
     private void renderHeatTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         if (!isHovering(FLAME_X, FLAME_Y, FLAME_W, FLAME_H, mouseX, mouseY)) {
             return;
         }
-        // Sam stosunek: ile tickow ZOSTALO z tego, co dodal ten itemek.
-        // Bez zadnego "left to burn" - tak prosil uzytkownik.
+        // Just the ratio: how many ticks are LEFT out of what that item added.
+        // Without any "left to burn" - that is what the user asked for.
         graphics.renderTooltip(this.font,
                 Component.translatable("gui.craftingveloce.furnace.ticks",
                         burnRemaining, burnTotal),
@@ -198,8 +202,9 @@ public class VeloceVelocityFurnaceScreen
             ItemStack filter = clientFilters.get(i);
             List<Component> lines = new ArrayList<>();
             if (filter.isEmpty()) {
-                // Bez numeru slotu ("Slot 1/2/3/4"): gracz ma wiedziec, ze slot
-                // jest PUSTY i ze moze go kliknac, a nie liczyc, ktory to.
+                // No slot number ("Slot 1/2/3/4"): the player is supposed to know
+                // that the slot is EMPTY and that it can be clicked, not to count
+                // which one it is.
                 lines.add(Component.translatable("gui.craftingveloce.furnace.filterEmpty"));
             } else {
                 lines.add(filter.getHoverName());
@@ -214,16 +219,17 @@ public class VeloceVelocityFurnaceScreen
     }
 
     /**
-     * Klikniecia w filtry.
+     * Clicks on the filters.
      *
-     * <p>Zachowanie takie samo jak w ekstraktorze, bo to ten sam wybor:
+     * <p>The behaviour is the same as in the extractor, because it is the same
+     * choice:
      * <ul>
-     *   <li>kursor z itemem -> ustaw ten item jako filtr (nie zabierajac go),</li>
-     *   <li>lewy klik na zajetym -> skasuj filtr,</li>
-     *   <li>lewy klik na pustym -> otworz wybor itemu.</li>
+     *   <li>cursor with an item -> set that item as the filter (without taking it),</li>
+     *   <li>left click on a filled one -> clear the filter,</li>
+     *   <li>left click on an empty one -> open the item picker.</li>
      * </ul>
-     * Prawy klik nie jest tu do niczego potrzebny - piec nie ma per-filtr
-     * przelacznika auto-craftingu, wiec nie udajemy, ze ma.
+     * A right click is of no use here - the furnace has no per-filter
+     * auto-crafting toggle, so we do not pretend it does.
      */
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
@@ -231,9 +237,9 @@ public class VeloceVelocityFurnaceScreen
         if (filterIndex >= 0) {
             ItemStack carried = this.menu.getCarried();
             if (!carried.isEmpty()) {
-                // Z RĘKI: filtr ma sens tylko dla paliwa. Item, ktorego nie da
-                // sie przepalic, NIE zostaje przyjety - akcja po prostu sie nie
-                // dzieje (filtr bez zmian, item zostaje na kursorze).
+                // FROM THE CURSOR: a filter only makes sense for fuel. An item
+                // that cannot be smelted is NOT accepted - the action simply does
+                // not happen (filter unchanged, item stays on the cursor).
                 if (com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity
                         .isUnusableFuelFilter(carried)) {
                     return;
@@ -254,7 +260,7 @@ public class VeloceVelocityFurnaceScreen
         super.slotClicked(slot, slotId, mouseButton, clickType);
     }
 
-    /** Numer filtra dla slotu-widma, albo -1 gdy to nie slot filtra. */
+    /** Filter number for a ghost slot, or -1 when it is not a filter slot. */
     private int filterIndexFor(Slot slot) {
         if (slot == null || slot.container == this.minecraft.player.getInventory()) {
             return -1;
@@ -272,13 +278,13 @@ public class VeloceVelocityFurnaceScreen
     }
 
     /**
-     * Odswieza plomyk i filtry z block entity.
+     * Refreshes the flame and the filters from the block entity.
      *
-     * <p><b>Dlaczego bez osobnego pakietu.</b> Menu trzyma block entity
-     * klienta, a piec wysyla swoj stan na biezaco w blokowym pakiecie
-     * aktualizacji - wiec ekran ma pelne dane POD RECE. Osobny pakiet
-     * "zaktualizuj plomyk" bylby druga, rownolegla droga po te same liczby,
-     * czyli dokladnie tym, co sie rozjezdza.
+     * <p><b>Why without a separate packet.</b> The menu holds the client's block
+     * entity, and the furnace sends its state on an ongoing basis in the block
+     * update packet - so the screen has the full data AT HAND. A separate
+     * "update the flame" packet would be a second, parallel path for the same
+     * numbers, that is exactly the thing that drifts apart.
      */
     @Override
     public void containerTick() {

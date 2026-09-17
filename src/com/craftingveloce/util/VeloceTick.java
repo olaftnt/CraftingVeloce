@@ -3,34 +3,33 @@ package com.craftingveloce.util;
 import net.minecraft.core.BlockPos;
 
 /**
- * Sprawdzanie "czy to juz czas na okresowa prace" - odporne na faze ticku.
+ * Checking "is it time for periodic work yet" - resistant to the tick phase.
  *
- * <p><b>Problem, ktory to rozwiazuje.</b> W modzie bylo kilka miejsc, ktore
- * robily to tak:
+ * <p><b>The problem this solves.</b> The mod had several places that did it
+ * like this:
  *
  * <pre>
- *   if (level.getGameTime() % 20 == 0) { zrobCos(); }
+ *   if (level.getGameTime() % 20 == 0) { doSomething(); }
  * </pre>
  *
- * <p>To wyglada niewinnie, ale jest bledne wszedzie tam, gdzie wywolujacy
- * <b>nie</b> trafia w kazdy tick. Konkretny przypadek, ktory to ujawnil:
- * {@code tickIdle} w cache wolane jest tylko raz na tick, i tylko przez ten
- * terminal, ktory akurat trafil (blokada {@code claimTick}). Jesli terminal
- * wola w tickach 1, 6, 11, 16, 21..., to w wielokrotnosc 20 <b>nie trafi
- * nigdy</b> - i wymuszanie chunkow nie zdarzylo sie ANI RAZU. Objaw w grze:
- * "wymuszonych chunkow: 0" mimo stojacego terminala, a bez force-loadu
- * terminal i crafter przestaja pracowac, gdy gracz odejdzie od bazy.
+ * <p>That looks innocent, but it is wrong everywhere the caller does <b>not</b>
+ * hit every tick. The concrete case that revealed it: {@code tickIdle} in the
+ * cache is called only once per tick, and only by whichever terminal won the
+ * race (the {@code claimTick} lock). If a terminal calls on ticks 1, 6, 11, 16,
+ * 21..., it will <b>never</b> hit a multiple of 20 - and chunk keeping did not
+ * happen EVEN ONCE. The symptom in game: "forced chunks: 0" despite a terminal
+ * standing there, and without force-load the terminal and the crafter stop
+ * working when the player walks away from the base.
  *
- * <p><b>Rozwiazanie.</b> Mierzymy ODSTEP od ostatniego wykonania, a nie
- * rownosc z wielokrotnoscia. Dziala niezaleznie od tego, w ktorych tickach
- * wolajacy trafia.
+ * <p><b>The solution.</b> We measure the INTERVAL since the last execution
+ * rather than equality with a multiple. It works regardless of which ticks the
+ * caller hits.
  *
- * <p><b>Rozproszenie.</b> Drugi problem z {@code % N == 0} jest taki, ze
- * WSZYSTKIE bloki robia swoja okresowa prace w TYM SAMYM ticku - przy
- * kilkudziesieciu blokach to jeden skok obciazenia na sekunde zamiast pracy
- * rozlozonej rownomiernie. Dlatego oferujemy tez wariant z rozproszeniem po
- * pozycji bloku: kazdy blok dostaje wlasna faze, ale jego wlasny odstep
- * pozostaje zachowany.
+ * <p><b>Spreading.</b> The second problem with {@code % N == 0} is that ALL
+ * blocks do their periodic work on the SAME tick - with several dozen blocks
+ * that is one load spike per second instead of work spread evenly. That is why
+ * we also offer a variant spread by block position: every block gets its own
+ * phase, but its own interval is preserved.
  */
 public final class VeloceTick {
 
@@ -38,68 +37,70 @@ public final class VeloceTick {
     }
 
     /**
-     * Czy minelo juz {@code interval} tickow od {@code lastRun}.
+     * Whether {@code interval} ticks have already passed since {@code lastRun}.
      *
-     * <p>Wariant bezstanowy - wolajacy sam trzyma znacznik czasu. Uzywaj go,
-     * gdy klasa i tak ma juz pole na ostatni tick.
+     * <p>The stateless variant - the caller keeps the timestamp itself. Use it
+     * when the class already has a field for the last tick.
      *
-     * <p>Uwaga na cofniety czas swiata (wczytanie starszego save'a): gdy
-     * {@code now < lastRun}, uznajemy ze czas "przewinieto" i pozwalamy
-     * wykonac prace od razu, zamiast czekac w nieskonczonosc.
+     * <p>Watch out for a world time that went backwards (loading an older save):
+     * when {@code now < lastRun}, we assume time was "rewound" and let the work
+     * run immediately, instead of waiting forever.
      */
     public static boolean every(long now, long lastRun, long interval) {
         if (interval <= 0) {
             return true;
         }
         if (lastRun == Long.MIN_VALUE) {
-            return true;   // nigdy nie bylo - zrob teraz
+            return true;   // never ran - do it now
         }
         if (now < lastRun) {
-            return true;   // czas sie cofnal - nie blokuj na zawsze
+            return true;   // time went backwards - do not block forever
         }
         return now - lastRun >= interval;
     }
 
     /**
-     * Czy minelo juz {@code interval} tickow - z rozproszeniem po pozycji.
+     * Whether {@code interval} ticks have already passed - with spreading by
+     * position.
      *
-     * <p>Rozproszenie sprawia, ze bloki nie wykonuja pracy w tym samym ticku.
-     * Faza jest wyliczana z pozycji, wiec jest stabilna miedzy uruchomieniami
-     * i taka sama dla tego samego bloku.
+     * <p>Spread makes blocks not do their work on the same tick. The phase is
+     * computed from the position, so it is stable between runs and the same for
+     * the same block.
      *
-     * <p>Odstep jest zachowany: po wykonaniu pracy blok odczekuje pelne
-     * {@code interval} tickow, a nie "czeka do najblizszej pasujacej fazy".
+     * <p>The interval is preserved: after doing the work a block waits a full
+     * {@code interval} ticks, rather than "waiting for the next matching phase".
      */
     public static boolean everySpread(long now, long lastRun, long interval, BlockPos pos) {
-        // Zabezpieczenie PRZED `now % interval`: dla odstepu 0 lub mniejszego
-        // to zwykle dzielenie przez zero. `every()` ma taki sam warunek, a ten
-        // wariant wolal modulo WCZESNIEJ, wiec byl od niego mniej odporny.
+        // A guard BEFORE `now % interval`: for an interval of 0 or less this is
+        // normally a division by zero. `every()` has the same condition, and this
+        // variant used to call modulo EARLIER, so it was less resistant than it.
         if (interval <= 0) {
             return true;
         }
         if (lastRun == Long.MIN_VALUE) {
-            // Pierwszy raz: rozkladamy start w czasie, zeby nie wszystkie
-            // bloki zrobily prace w jednym ticku.
+            // First time: we spread the start over time, so that not all blocks
+            // do their work on one tick.
             return now % interval == phase(pos, interval);
         }
         return every(now, lastRun, interval);
     }
 
     /**
-     * Faza tego bloku w cyklu o dlugosci {@code interval}.
+     * The phase of this block in a cycle of length {@code interval}.
      *
-     * <p>Hash pozycji jest mieszany, zeby sasiednie bloki nie wypadaly w tej
-     * samej fazie - inaczej cala sciana rur robilaby prace naraz.
+     * <p>The position hash is mixed, so that neighbouring blocks do not land in
+     * the same phase - otherwise a whole wall of pipes would do its work at once.
      */
     private static long phase(BlockPos pos, long interval) {
         int h = pos.getX() * 73856093 ^ pos.getY() * 19349663 ^ pos.getZ() * 83492791;
-        // floorMod, a nie %, bo hash moze byc ujemny - a faza musi byc z zakresu.
+        // floorMod, not %, because the hash may be negative - and the phase must
+        // be in range.
         //
-        // RZUTOWANIE NA int MUSI byc sprawdzone: dla odstepu wiekszego niz
-        // Integer.MAX_VALUE daloby 0, a wtedy floorMod rzuca
-        // ArithmeticException (dzielenie przez zero). Wszyscy obecni wolajacy
-        // podaja male stale (20), ale ta metoda jest w gorącej sciezce rur -
-        // wyjatek tutaj zabilby tick serwera, a nie jedna operacje.
+        // THE CAST TO int MUST be checked: for an interval larger than
+        // Integer.MAX_VALUE it would give 0, and then floorMod throws
+        // ArithmeticException (division by zero). All current callers pass small
+        // constants (20), but this method is on the hot path of the pipes - an
+        // exception here would kill the server tick, not just one operation.
         if (interval <= 0 || interval > Integer.MAX_VALUE) {
             return 0L;
         }

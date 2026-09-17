@@ -14,10 +14,10 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
 import java.util.List;
 
 /**
- * S→C: filtry ekstraktora wraz z flagami auto-craftingu.
+ * S->C: extractor filters together with the auto-crafting flags.
  *
- * <p>{@code allowCrafting} jest per slot: false = ten slot dostaje tylko to,
- * co juz lezy w sieci, bez zamawiania craftu.
+ * <p>{@code allowCrafting} is per slot: false = this slot receives only what is
+ * already in the network, without ordering a craft.
  */
 public record SyncExtractorFiltersPKT(BlockPos pos, List<ItemStack> filters,
                                       List<Boolean> allowCrafting) implements CustomPacketPayload {

@@ -11,13 +11,13 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
- * Menu maszyny KINETYCZNEJ (Create) - bez slotu baterii.
+ * Menu of a KINETIC (Create) machine - without a battery slot.
  *
- * <p>Gracz: "w GUI modulow z Create w tle widoczny jest pasek bateryjki oraz
- * slot na akumulator ... te elementy zasilania elektrycznego nie powinny sie
- * tam znajdowac. Przygotuj osobny ekran dedykowany wylacznie blokom
- * kinetycznym". Dlatego maszyny z Create maja WLASNY typ menu i wlasny ekran:
- * zero slotu, zero wskaznika energii - tylko status pracy.
+ * <p>The player: "in the GUI of the Create modules a battery bar and a slot for
+ * an accumulator are visible in the background ... these electric power elements
+ * should not be there. Prepare a separate screen dedicated solely to kinetic
+ * blocks". That is why the Create machines have their OWN menu type and their
+ * own screen: zero slots, zero energy indicator - only the working status.
  */
 public class VeloceKineticMenu extends AbstractContainerMenu {
 
@@ -44,14 +44,14 @@ public class VeloceKineticMenu extends AbstractContainerMenu {
         }
     }
 
-    /** Pola do okna (status pracy). */
+    /** Fields for the window (working status). */
     public CompoundTag display() {
         return module == null ? new CompoundTag() : module.moduleDisplay();
     }
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
-        return ItemStack.EMPTY;   // brak wlasnych slotow
+        return ItemStack.EMPTY;   // no slots of our own
     }
 
     @Override

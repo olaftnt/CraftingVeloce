@@ -23,12 +23,12 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
     private final int filterIndex;
 
     /**
-     * Czy wybieramy filtr do PIECA PALIWOWEGO (wtedy liczy sie tylko paliwo).
+     * Whether we are picking a filter for the FUEL FURNACE (then only fuel counts).
      *
-     * <p>Rozpoznajemy po bloku-gospodarzu, a nie po osobnym pakiecie: selektor
-     * jest JEDEN dla ekstraktora, pieca i czujnika, wiec dokladanie do niego
-     * "rodzaju bloku" znaczyloby trzy miejsca do zsynchronizowania przy kazdym
-     * nowym bloku z filtrem.
+     * <p>We detect this from the host block, not from a separate packet: the picker
+     * is a SINGLE one for the extractor, the furnace and the sensor, so adding a
+     * "block kind" to it would mean three places to keep in sync with every new
+     * block that has a filter.
      */
     private final boolean fuelOnly;
 
@@ -45,7 +45,7 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
         this.fuelOnly = isFuelOnlyHost(player, extractorPos);
     }
 
-    /** Czy blok pod ta pozycja to piec paliwowy (filtr = filtr paliwa). */
+    /** Whether the block at this position is a fuel furnace (filter = fuel filter). */
     private static boolean isFuelOnlyHost(LocalPlayer player, BlockPos pos) {
         if (player == null || player.level() == null) {
             return false;
@@ -54,13 +54,13 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
                 instanceof com.craftingveloce.block.VeloceVelocityFurnaceBlock;
     }
 
-    /** Czy ten stos nadaje sie na filtr (w trybie paliwa: tylko paliwo). */
+    /** Whether this stack is acceptable as a filter (in fuel mode: only fuel). */
     private boolean acceptable(ItemStack stack) {
         if (stack.isEmpty()) {
             return false;
         }
-        // fuelOnly: paliwo. Wspolna regula z ekranem pieca - patrz
-        // VeloceVelocityFurnaceBlockEntity.isUnusableFuelFilter (z kanarkiem).
+        // fuelOnly: fuel. Shared rule with the furnace screen - see
+        // VeloceVelocityFurnaceBlockEntity.isUnusableFuelFilter (with the canary).
         return !fuelOnly
                 || !com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity
                         .isUnusableFuelFilter(stack);
@@ -68,29 +68,30 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
 
     @Override
     protected void init() {
-        // Uwaga: NIE ukrywamy tu slotow gracza po raz drugi.
+        // Note: we do NOT hide the player slots a second time here.
         //
-        // Bylo tu wlasne suppressHotbarSlots() z anonimowym Slotem, ktore
-        // robilo dokladnie to samo co suppressPlayerSlots() z klasy bazowej
-        // (i to po nim), a dodatkowo nie rozpoznawalo juz ukrytego slotu -
-        // przez co przy kazdym init() zawijalo slot w nowy wrapper.
+        // There used to be a custom suppressHotbarSlots() with an anonymous Slot
+        // that did exactly the same thing as suppressPlayerSlots() from the base
+        // class (and did it after it), and on top of that it no longer recognized
+        // an already hidden slot - so on every init() it wrapped the slot in a new
+        // wrapper.
         //
-        // Tak samo zniknela DRUGA kopia przelaczania trybu lokalnego
-        // (survival -> creative na czas GUI): klasa bazowa robi to samo, a jej
-        // zapamietany tryb byl przez te kopie nadpisywany PO podmianie, wiec
-        // "tryb przed otwarciem" znaczyl "tryb juz podmieniony". Jedno miejsce
-        // = jedno zrodlo prawdy.
+        // The SECOND copy of the local mode switch (survival -> creative for the
+        // duration of the GUI) disappeared the same way: the base class does the
+        // same thing, and its remembered mode was overwritten by that copy AFTER
+        // the swap, so "mode before opening" meant "mode already swapped". One
+        // place = one source of truth.
         super.init();
     }
 
 
     @Override
     public void containerTick() {
-        // MUSI byc super. Baza (VeloceCreativeScreen) utrzymuje w tym miejscu
-        // filtr listy itemow i ukrywanie zakladek administracyjnych. Wczesniej
-        // ta metoda byla pusta, wiec po zmianie zakladki w tym oknie lista nie
-        // byla juz filtrowana - picker pokazywal itemy, ktorych nie powinien
-        // (i tracil spojnosc z reszta naszych GUI).
+        // MUST call super. The base class (VeloceCreativeScreen) maintains the
+        // item list filter and the hiding of operator tabs here. This method used
+        // to be empty, so after switching tabs in this window the list was no
+        // longer filtered - the picker showed items it should not have (and lost
+        // consistency with the rest of our GUIs).
         super.containerTick();
     }
 
@@ -103,9 +104,9 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
         if (slot.hasItem()) {
             ItemStack stack = slot.getItem();
 
-            // W trybie "tylko paliwo" itemy, ktorych nie da sie przepalic, sa
-            // zaznaczone NA CZERWONO - gracz widzi od razu, czego nie wybierze
-            // (klik na taki item nic nie robi, patrz slotClicked).
+            // In "fuel only" mode, items that cannot be smelted are marked in RED -
+            // the player immediately sees what they cannot pick (clicking such an
+            // item does nothing, see slotClicked).
             if (fuelOnly && !acceptable(stack)) {
                 RenderSystem.disableDepthTest();
                 graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 16, 0x77AA0000);
@@ -131,7 +132,7 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
         float inverseScale = 1.0f / scaleFactor;
         int textX = (int) (((float) x + 16.0f - font.width(text) * scaleFactor) * inverseScale);
         int textY = (int) (((float) y + 16.0f - 7.0f * scaleFactor) * inverseScale);
-        // Bialy = ile jest na stanie (spojnie z terminalem).
+        // White = how much is in stock (consistent with the terminal).
         graphics.drawString(font, text, textX, textY, 0xFFFFFF, true);
         graphics.pose().popPose();
         RenderSystem.enableDepthTest();
@@ -141,17 +142,17 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        // Pasek hotbara jest nieuzywany - zamalowujemy go wspolnym helperem
-        // z klasy bazowej, zeby geometria nie rozjechala sie z reszta GUI.
+        // The hotbar strip is unused - we paint it over with the shared helper
+        // from the base class, so the geometry does not drift from the rest of the GUI.
         drawHotbarCover(graphics, 0xFFC6C6C6);
     }
 
     /**
-     * Wybor filtra NIE pamieta zakladki.
+     * The filter picker does NOT remember the tab.
      *
-     * <p>Ma sie zawsze otwierac na pierwszej zakladce (lewy gorny rog) -
-     * gracz szuka tam konkretnego itemu, a nie wraca do miejsca sprzed
-     * poprzedniego otwarcia.
+     * <p>It must always open on the first tab (top left corner) - the player is
+     * looking for a specific item there, not returning to the place from the
+     * previous opening.
      */
     @Override
     protected boolean rememberTab() {
@@ -169,17 +170,17 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
             return;
         }
 
-        // Slot smieci - uzywamy wspolnego helpera z klasy bazowej, zamiast
-        // powtarzac tu te same wspolrzedne (rozjechalyby sie przy zmianie ukladu).
+        // Trash slot - we use the shared helper from the base class instead of
+        // repeating the same coordinates here (they would drift when the layout changes).
         if (isTrashSlot(slot)) {
             return;
         }
 
         ItemStack item = slot.getItem();
         if (!item.isEmpty()) {
-            // Nie nadaje sie na filtr w tym oknie (w piecu paliwowym: to nie
-            // jest paliwo). NIC nie robimy - gracz zostaje w selektorze, ekran
-            // sie nie zmienia, a filtr zostaje jaki byl.
+            // Not acceptable as a filter in this window (in the fuel furnace: this
+            // is not fuel). We do NOTHING - the player stays in the picker, the
+            // screen does not change, and the filter stays as it was.
             if (!acceptable(item)) {
                 return;
             }
@@ -188,27 +189,28 @@ public class VeloceFilterPickerScreen extends VeloceCreativeScreen {
             filterItem.setCount(1);
             PacketDistributor.sendToServer(new SetFilterPKT(extractorPos, filterIndex, filterItem));
 
-            // WROC DO EKSTRAKTORA, a nie do gry.
+            // GO BACK TO THE EXTRACTOR, not to the game.
             //
-            // Bylo tu this.onClose(), ktore zamyka ekran calkowicie - gracz
-            // wybieral item i ladowal w swiecie zamiast wrocic do klocka.
+            // There used to be this.onClose(), which closed the screen entirely -
+            // the player picked an item and landed in the world instead of
+            // returning to the block.
             com.craftingveloce.client.ClientTerminalHelper.reopenFilterHostScreen(extractorPos);
         }
     }
 
     /**
-     * Esc (i klawisz ekwipunku) WRACA do GUI bloku, nie do swiata.
+     * Esc (and the inventory key) GOES BACK to the block GUI, not to the world.
      *
-     * <p>Selektor jest czescia ekranu bloku: gracz, ktory chcial tylko cofnac
-     * wybor, ladowal w swiecie z niedokonczonym filtrem - a do klocka musial
-     * wracac sam. "Wstecz" ma znaczyc "wroc tam".
+     * <p>The picker is part of the block screen: a player who only wanted to undo
+     * the choice landed in the world with an unfinished filter - and had to walk
+     * back to the block on their own. "Back" must mean "go back there".
      *
-     * <p>Ta sama sciezka co po wybraniu itemu, wiec menu gracza wraca na
-     * miejsce razem z ekranem (patrz ClientTerminalHelper.handBackMenu).
+     * <p>The same path as after picking an item, so the player menu returns to its
+     * place together with the screen (see ClientTerminalHelper.handBackMenu).
      *
-     * <p>Gdy nie ma do czego wracac (host nie zostal zapamietany, np. po
-     * przeladowaniu zasobow), musi zadzialac ZWYKLE zamkniecie - inaczej Esc
-     * nie robilby nic i gracz zostalby uwieziony w selektorze.
+     * <p>When there is nothing to go back to (the host was not remembered, e.g.
+     * after a resource reload), the ORDINARY close must work - otherwise Esc
+     * would do nothing and the player would be trapped in the picker.
      */
     @Override
     public void onClose() {

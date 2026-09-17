@@ -15,30 +15,32 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
 /**
- * {@code /cv block} - statystyki klocka, na ktory patrzysz.
+ * {@code /cv block} - statistics of the block you are looking at.
  *
- * <p>Gracz: "mam creative motor, ktory teoretycznie daje 256 obrotow, a modul
- * pokazuje not enough. Dodaj komende, ktora pokazuje statystyki klocka, na
- * ktory patrze - ile mu brakuje speeda i wszystko o tym bloku".
+ * <p>Player: "I have a creative motor that theoretically gives 256 rotation, and
+ * the module shows not enough. Add a command that shows the statistics of the
+ * block I am looking at - how much speed it is missing and everything about that
+ * block".
  *
- * <p>Dane bierze z rdzeniowego {@link VeloceModuleInfoSource#moduleInfo} - tego
- * samego, ktory wypelnia okno maszyny i Jade. Dlatego komenda dziala dla maszyn
- * z Create, Mekanism i Alchemistry bez znajomosci ani jednego typu z tych modow.
+ * <p>It takes the data from the core {@link VeloceModuleInfoSource#moduleInfo} -
+ * the same one that fills the machine window and Jade. That is why the command
+ * works for Create, Mekanism and Alchemistry machines without knowing a single
+ * type from those mods.
  */
 public final class BlockProbeCommand {
 
-    /** Zasięg "patrzenia" - jak w vanilla (kreatywny zasieg to 5, survival 4.5). */
+    /** "Look" reach - as in vanilla (creative reach is 5, survival 4.5). */
     private static final double REACH = 8.0;
 
     private BlockProbeCommand() {
     }
 
-    /** Wypisuje wszystko, co wiemy o klocku pod celownikiem. */
+    /** Prints everything we know about the block under the crosshair. */
     public static int describe(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendFailure(Component.literal("Ta komenda dziala tylko dla gracza."));
+            source.sendFailure(Component.literal("This command only works for a player."));
             return 0;
         }
         if (!(player.level() instanceof ServerLevel level)) {
@@ -46,73 +48,73 @@ public final class BlockProbeCommand {
         }
         BlockHitResult hit = (BlockHitResult) player.pick(REACH, 0.0F, false);
         if (hit.getType() != HitResult.Type.BLOCK) {
-            source.sendSuccess(() -> Component.literal("§ePatrz na jakis blok."), false);
+            source.sendSuccess(() -> Component.literal("§eLook at some block."), false);
             return 0;
         }
         BlockPos pos = hit.getBlockPos();
         BlockEntity be = level.getBlockEntity(pos);
-        line(source, ChatFormatting.GOLD, "=== [Veloce] blok " + pos.toShortString() + " ===");
-        line(source, ChatFormatting.GRAY, "blok: " + level.getBlockState(pos).getBlock()
+        line(source, ChatFormatting.GOLD, "=== [Veloce] block " + pos.toShortString() + " ===");
+        line(source, ChatFormatting.GRAY, "block: " + level.getBlockState(pos).getBlock()
                 + "  state: " + level.getBlockState(pos));
         line(source, ChatFormatting.GRAY, "block entity: "
-                + (be == null ? "brak" : be.getClass().getSimpleName())
-                + (be instanceof VeloceNetworkNode ? "  [wezel sieci rur]" : ""));
+                + (be == null ? "none" : be.getClass().getSimpleName())
+                + (be instanceof VeloceNetworkNode ? "  [pipe network node]" : ""));
 
         if (be instanceof VeloceModuleInfoSource module) {
             describeModule(source, module.moduleInfo(level));
         } else {
             line(source, ChatFormatting.YELLOW,
-                    "To nie jest nasza maszyna - brak statystyk modulu.");
+                    "This is not one of our machines - no module statistics.");
         }
         return 1;
     }
 
-    /** Statystyki maszyny: predkosc i ILE BRAKUJE, SU, elementy, energia, sieć. */
+    /** Machine statistics: speed and HOW MUCH IS MISSING, SU, parts, energy, network. */
     private static void describeModule(CommandSourceStack source, CompoundTag info) {
         if (info.contains("speed")) {
             float speed = info.getFloat("speed");
             int required = info.getInt("requiredSpeed");
             float missing = required - speed;
-            line(source, ChatFormatting.AQUA, "--- kinetyczna (Create) ---");
-            line(source, ChatFormatting.WHITE, "predkosc: " + fmt(speed)
-                    + " RPM / wymagane " + fmt(required) + " RPM");
+            line(source, ChatFormatting.AQUA, "--- kinetic (Create) ---");
+            line(source, ChatFormatting.WHITE, "speed: " + fmt(speed)
+                    + " RPM / required " + fmt(required) + " RPM");
             line(source, missing > 0 ? ChatFormatting.RED : ChatFormatting.GREEN,
                     missing > 0
-                            ? "BRAKUJE: " + fmt(missing) + " RPM"
-                            : "predkosc wystarcza (z zapasem " + fmt(-missing) + " RPM)");
-            line(source, ChatFormatting.YELLOW, "pobor SU: " + fmt(info.getFloat("suDraw"))
-                    + "  (modul zada " + fmt(info.getFloat("suNeeded")) + " SU)");
-            line(source, ChatFormatting.YELLOW, "siec kinetyczna: stress "
-                    + fmt(info.getFloat("suStress")) + " / pojemnosc "
+                            ? "MISSING: " + fmt(missing) + " RPM"
+                            : "speed is sufficient (with a margin of " + fmt(-missing) + " RPM)");
+            line(source, ChatFormatting.YELLOW, "SU draw: " + fmt(info.getFloat("suDraw"))
+                    + "  (module demands " + fmt(info.getFloat("suNeeded")) + " SU)");
+            line(source, ChatFormatting.YELLOW, "kinetic network: stress "
+                    + fmt(info.getFloat("suStress")) + " / capacity "
                     + fmt(info.getFloat("suCapacity")));
-            line(source, ChatFormatting.GRAY, "wklikane elementy: " + info.getInt("parts"));
+            line(source, ChatFormatting.GRAY, "clicked-in parts: " + info.getInt("parts"));
         }
         if (info.contains("energy")) {
             long energy = info.getLong("energy");
             long capacity = Math.max(1L, info.getLong("energyCapacity"));
-            line(source, ChatFormatting.AQUA, "--- na energie (FE) ---");
-            line(source, ChatFormatting.WHITE, "energia: "
+            line(source, ChatFormatting.AQUA, "--- energy (FE) ---");
+            line(source, ChatFormatting.WHITE, "energy: "
                     + com.craftingveloce.util.VeloceFormat.feCompact(energy) + " / "
                     + com.craftingveloce.util.VeloceFormat.feCompact(capacity) + " FE ("
                     + fmt((float) (100.0 * energy / capacity)) + "%)");
             line(source, info.getBoolean("powered") ? ChatFormatting.GREEN : ChatFormatting.RED,
-                    "koszt cyklu: "
+                    "cycle cost: "
                             + com.craftingveloce.util.VeloceFormat.feCompact(
                                     info.getLong("fePerOperation"))
-                            + " FE  ->  cykli: "
+                            + " FE  ->  cycles: "
                             + com.craftingveloce.util.VeloceFormat.compact(
                                     info.getLong("operations"))
-                            + (info.getBoolean("powered") ? "  [zasilane]" : "  [BRAK ZASILANIA]"));
+                            + (info.getBoolean("powered") ? "  [powered]" : "  [NO POWER]"));
         }
         if (info.contains("networkNodes")) {
-            line(source, ChatFormatting.GRAY, "siec rur: wezly " + info.getInt("networkNodes")
-                    + ", magazyny " + info.getInt("networkStorages")
-                    + ", typy itemow "
+            line(source, ChatFormatting.GRAY, "pipe network: nodes " + info.getInt("networkNodes")
+                    + ", storage " + info.getInt("networkStorages")
+                    + ", item types "
                     + com.craftingveloce.util.VeloceFormat.compact(info.getInt("networkItems")));
         }
     }
 
-    /** Liczby tylko przez wspolny formater (inaczej tooltipy rozjezdzaja sie stylami). */
+    /** Numbers only through the shared formatter (otherwise tooltips drift in style). */
     private static String fmt(float value) {
         return com.craftingveloce.util.VeloceFormat.rate(value);
     }

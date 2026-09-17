@@ -17,24 +17,26 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Modul Mekanism w rdzeniu Veloce.
+ * The Mekanism module in the Veloce core.
  *
- * <p><b>To jest cala integracja od strony rdzenia.</b> Reszta rdzenia
- * (planer, liczenie liczb, kontroler) nie wie, ze istnieje Mekanism - pyta
- * tylko ten modul o to samo, co kazdy inny:
+ * <p><b>This is the whole core-side integration.</b> The rest of the core
+ * (planner, number counting, controller) does not know that Mekanism exists - it
+ * just asks this module the same thing it asks any other:
  * <ul>
- *   <li>{@link #producible} - co umiem zrobic (tylko rodziny, ktorych maszyna
- *       stoi w sieci; inaczej kruszarka bez piły obiecywalaby deski),</li>
- *   <li>{@link #available} / {@link #powered} - czy maszyna stoi i czy ma prad,</li>
- *   <li>{@link #recipesFor} - konkretne receptury z liczbami sztuk.</li>
+ *   <li>{@link #producible} - what I can make (only families whose machine
+ *       stands in the network; otherwise a crusher without a saw would promise
+ *       planks),</li>
+ *   <li>{@link #available} / {@link #powered} - whether the machine stands and
+ *       whether it has power,</li>
+ *   <li>{@link #recipesFor} - the concrete recipes with their unit counts.</li>
  * </ul>
  *
- * <p>Rejestruje sie w {@code FMLCommonSetupEvent}, bo typy receptur Mekanism
- * (DeferredHoldery) sa wiazane dopiero po zdarzeniach rejestracji.
+ * <p>It registers in {@code FMLCommonSetupEvent}, because Mekanism's recipe
+ * types (DeferredHolders) are bound only after the registration events.
  */
 public final class MekanismModule implements VeloceProcessingModule {
 
-    /** Jedna instancja - modul nie ma stanu. */
+    /** A single instance - the module has no state. */
     private static final MekanismModule INSTANCE = new MekanismModule();
 
     private MekanismModule() {
@@ -44,7 +46,7 @@ public final class MekanismModule implements VeloceProcessingModule {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
             VeloceProcessingRegistry.register(INSTANCE);
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
-                    "[Veloce][COMPAT] {}: modul maszyn zarejestrowany", ID);
+                    "[Veloce][COMPAT] {}: machine module registered", ID);
         });
     }
 
@@ -61,19 +63,19 @@ public final class MekanismModule implements VeloceProcessingModule {
     }
 
     /**
-     * Itemy, ktore maszyny STOJACE w sieci potrafia zrobic.
+     * The items that the machines STANDING in the network can make.
      *
-     * <p>Rodzina bez swojej maszyny nie doklada nic: kruszarka nie umie
-     * pilowac, wiec receptury sawing nie moga sie liczyc jako produkowalne,
-     * nawet jesli sam mod jest obecny.
+     * <p>A family without its own machine contributes nothing: a crusher cannot
+     * saw, so sawing recipes cannot count as producible, even if the mod itself
+     * is present.
      */
     @Override
     public Set<Item> producible(ServerLevel level, VelocePipeNetwork network) {
         Set<Item> out = new HashSet<>();
         for (RecipeType<?> type : recipeTypes()) {
-            // Bez pradu maszyna nie jest dostepna dla gracza, wiec nie moze
-            // pojawiac sie na liscie "co umiemy" (gracz: "jesli nie maja pradu,
-            // to nie chcemy, zeby byly w sieci jako dostepne").
+            // Without power the machine is not available to the player, so it
+            // cannot appear on the "what we can do" list (the player: "if they
+            // have no power, we do not want them in the network as available").
             if (!VeloceProcessingSources.hasPowered(level, network, type)) {
                 continue;
             }
@@ -93,11 +95,11 @@ public final class MekanismModule implements VeloceProcessingModule {
     }
 
     /**
-     * Receptury na dany item - TYLKO z rodzin, ktorych maszyna jest zasilona.
+     * Recipes for the given item - ONLY from families whose machine is powered.
      *
-     * <p>Filtr per rodzina jest tu konieczny: sam fakt, ze modul jest "zasilony"
-     * (bo gdzies stoi kruszarka z pradem), nie znaczy, ze mozna uzyc receptur
-     * pilowania - do tego trzeba piły.
+     * <p>The per-family filter is necessary here: the mere fact that the module
+     * is "powered" (because somewhere there is a crusher with power) does not
+     * mean that sawing recipes may be used - that requires a saw.
      */
     @Override
     public List<ProcessingEntry> recipesFor(ServerLevel level, VelocePipeNetwork network,
@@ -113,11 +115,11 @@ public final class MekanismModule implements VeloceProcessingModule {
     }
 
     /**
-     * Receptury na dany item BEZ patrzenia na maszyny i zasilanie.
+     * Recipes for the given item WITHOUT looking at machines and power.
      *
-     * <p>Dla narzedzi diagnostycznych (komenda getitems): gracz pyta "jak to
-     * sie robi", a nie "czy moge to teraz zrobic". Planer nadal uzywa
-     * recipesFor, ktore wymaga maszyny i pradu.
+     * <p>For diagnostic tools (the getitems command): the player asks "how is
+     * this made", not "can I make it right now". The planner still uses
+     * recipesFor, which requires the machine and power.
      */
     @Override
     public List<ProcessingEntry> recipesAnywhere(ServerLevel level, Item item) {

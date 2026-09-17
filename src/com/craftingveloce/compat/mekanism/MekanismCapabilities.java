@@ -6,16 +6,17 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 
 /**
- * Capability naszych maszyn modulu Mekanism.
+ * Capability of our Mekanism module machines.
  *
- * <p>Maszyna wystawia NeoForge {@code EnergyStorage} (FE), tak samo jak
- * Velocity Electric Furnace. Kabli Mekanism nie da sie tu uzyc bez tego -
- * one wlasnie pytaja o te capability.
+ * <p>The machine exposes the NeoForge {@code EnergyStorage} (FE), just like the
+ * Velocity Electric Furnace. Mekanism cables cannot be used here without it -
+ * they are precisely what asks for this capability.
  *
- * <p><b>Czego tu (jeszcze) nie ma.</b> Chemikaliow ({@code IChemicalHandler}).
- * To osobny, duzy etap: capability zyje w pakiecie implementacji Mekanism
- * (nie w samym API), wiec trzeba je odtworzyc po nazwie
- * {@code mekanism:chemical_handler}. Maszyny z tego etapu sa w 100% itemowe.
+ * <p><b>What is (still) missing here.</b> Chemicals ({@code IChemicalHandler}).
+ * That is a separate, large stage: the capability lives in the Mekanism
+ * implementation package (not in the API itself), so it has to be recreated by
+ * the name {@code mekanism:chemical_handler}. The machines from this stage are
+ * 100% item-based.
  */
 public final class MekanismCapabilities {
 
@@ -24,9 +25,9 @@ public final class MekanismCapabilities {
 
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(RegisterCapabilitiesEvent.class, event -> {
-            // Jedna petla po wszystkich maszynach: nowa maszyna w
+            // A single loop over all machines: a new machine in
             // MekanismFeModules.ALL
-            // dostaje capability sama, bez dopisywania sie tutaj.
+            // gets the capability on its own, without adding itself here.
             for (FeModule module : MekanismFeModules.ALL) {
                 event.registerBlockEntity(
                         Capabilities.EnergyStorage.BLOCK,

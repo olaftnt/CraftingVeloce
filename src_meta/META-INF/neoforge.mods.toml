@@ -27,20 +27,21 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="NONE"
     side="BOTH"
 
-# TOM'S SIMPLE STORAGE - WYMAGANY i to nie jest przypadkowe.
+# TOM'S SIMPLE STORAGE - REQUIRED, and that is not accidental.
 #
-# Trzydziesci piec odwolan w siedmiu plikach, wszystkie strukturalne:
-#   - VelocePipeBlock / VelocePipeBlockEntity  implementuja IInventoryCable
-#     i dziedzicza po PlatformBlockEntity; nasze rury SA kablami Toma
-#   - VeloceTomTerminalBlock dziedziczy po AbstractStorageTerminalBlock
-#   - VeloceTomTerminalBlockEntity dziedziczy po StorageTerminalBlockEntity
-#     i uzywa NetworkInventory / StoredItemStack / IInventoryAccess
-#   - Controller, CraftingTable, Extractor implementuja IInventoryCable
+# Thirty-five references across seven files, all of them structural:
+#   - VelocePipeBlock / VelocePipeBlockEntity  implement IInventoryCable
+#     and extend PlatformBlockEntity; our pipes ARE Tom's cables
+#   - VeloceTomTerminalBlock extends AbstractStorageTerminalBlock
+#   - VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
+#     and uses NetworkInventory / StoredItemStack / IInventoryAccess
+#   - Controller, CraftingTable, Extractor implement IInventoryCable
 #
-# NIE zmieniaj tego na "optional" bez przepisania tych klas. Samo przelaczenie
-# flagi nie sprawi, ze mod ruszy bez Toma - klasy nie zaladuja sie bez jego
-# typow (NoClassDefFoundError przy rejestracji blokow). Zamiast czytelnego
-# "brakuje zaleznosci" gracz dostalby niezrozumialy crash.
+# Do NOT change this to "optional" without rewriting those classes. Flipping
+# the flag alone will not make the mod run without Tom - the classes will not
+# load without his types (NoClassDefFoundError during block registration).
+# Instead of a readable "missing dependency" the player would get an
+# incomprehensible crash.
 [[dependencies.craftingveloce]]
     modId="toms_storage"
     type="required"
@@ -48,9 +49,9 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="AFTER"
     side="BOTH"
 
-# REFINED STORAGE - opcjonalny. Integracja (RefinedStorageHelper) jest w calosci
-# opakowana w try/catch(Throwable), a jej sygnatury nie uzywaja typow RS, wiec
-# brak tego moda niczego nie psuje - endpointy RS po prostu nie istnieja.
+# REFINED STORAGE - optional. The integration (RefinedStorageHelper) is wrapped
+# entirely in try/catch(Throwable) and its signatures do not use RS types, so a
+# missing mod breaks nothing - the RS endpoints simply do not exist.
 [[dependencies.craftingveloce]]
     modId="refinedstorage"
     type="optional"
@@ -58,22 +59,23 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="AFTER"
     side="BOTH"
 
-# --- OPCJONALNE INTEGRACJE (soft-dependencies) --------------------------
+# --- OPTIONAL INTEGRATIONS (soft dependencies) --------------------------
 #
-# KAZDA z nich jest "optional" CELOWO. Modul z integracja zyje w
-# com/craftingveloce/compat/<mod>/ i ma obce typy WYLACZNIE w ciele metod,
-# wolanych po sprawdzeniu obecnosci moda (bramka XCompat.isPresent()).
-# Rdzen nie importuje niczego z tych modow - pilnuje tego build.py
-# (validate_core_isolation) i kontrola wyciekow w JARze.
+# EACH of them is "optional" ON PURPOSE. An integration module lives in
+# com/craftingveloce/compat/<mod>/ and has foreign types ONLY in method
+# bodies, called after checking that the mod is present (the
+# XCompat.isPresent() gate). The core imports nothing from those mods -
+# build.py enforces this (validate_core_isolation) along with the JAR leak
+# check.
 #
-# NIE zmieniaj "optional" na "required": gracz bez Create/Alchemistry/
-# Mekanism ma dostac dzialajacy mod bez tych integracji, a nie blad
-# ladowania. Odwrotnie - dopisanie "required" nie naprawi zadnego bledu,
-# tylko uniemozliwi uruchomienie.
+# Do NOT change "optional" to "required": a player without Create/Alchemistry/
+# Mekanism is supposed to get a working mod without those integrations, not a
+# loading error. Conversely, adding "required" fixes no error - it only makes
+# the mod impossible to start.
 
-# CREATE - maszyny kinetyczne (mlyn, piła, prasa, basen, mechanical crafting).
-# Wersja przypieta do serii 6.0.x: klasy kinetyczne to API "spolecznosciowe",
-# ktore potrafi sie zmienic miedzy wersjami.
+# CREATE - kinetic machines (millstone, saw, press, basin, mechanical crafting).
+# The version is pinned to the 6.0.x series: the kinetic classes are a
+# "community" API that can change between versions.
 [[dependencies.craftingveloce]]
     modId="create"
     type="optional"
@@ -81,8 +83,8 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="AFTER"
     side="BOTH"
 
-# ALCHEMISTRY - maszyny chemiczne zasilane FE (compactor, combiner, fission).
-# Wchodzi razem z AlchemyLib i ChemLib (biblioteki Alchemistry).
+# ALCHEMISTRY - FE-powered chemical machines (compactor, combiner, fission).
+# Comes together with AlchemyLib and ChemLib (Alchemistry's libraries).
 [[dependencies.craftingveloce]]
     modId="alchemistry"
     type="optional"
@@ -90,7 +92,7 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="AFTER"
     side="BOTH"
 
-# MEKANISM - maszyny itemowe zasilane FE (crusher, enrichment, combiner, sawmill).
+# MEKANISM - FE-powered item machines (crusher, enrichment, combiner, sawmill).
 [[dependencies.craftingveloce]]
     modId="mekanism"
     type="optional"
@@ -98,10 +100,11 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="AFTER"
     side="BOTH"
 
-# JEI - podglad przepisow. Opcjonalny i to nie jest forma grzecznosci: plugin
-# (compat/jei/VeloceJeiPlugin) jest z obcym typem w sygnaturze, wiec bez JEI nie
-# ma go kto zaladowac - JEI samo skanuje adnotacje @JeiPlugin. Bez JEI mod dziala
-# normalnie, tylko nie ma listy "w tym mozna to zrobic".
+# JEI - recipe viewer. Optional, and that is not a courtesy: the plugin
+# (compat/jei/VeloceJeiPlugin) has a foreign type in its signature, so without
+# JEI nothing would load it - JEI itself scans for the @JeiPlugin annotation.
+# Without JEI the mod works normally, it just lacks the "this can be made in"
+# list.
 [[dependencies.craftingveloce]]
     modId="jei"
     type="optional"
@@ -109,9 +112,10 @@ is built on its terminal block. Refined Storage support is optional.
     ordering="AFTER"
     side="BOTH"
 
-# JADE - podpowiedz przy celowniku: predkosc/SU/energia, stan sieci i status
-# ("za malo sily"). Tak samo jak JEI: plugin (compat/jade/VeloceJadePlugin) ma
-# obce typy w sygnaturach i laduje go samo Jade po adnotacji @WailaPlugin.
+# JADE - the crosshair tooltip: speed/SU/energy, network state and status
+# ("not enough power"). Just like JEI: the plugin (compat/jade/VeloceJadePlugin)
+# has foreign types in its signatures and Jade loads it itself via the
+# @WailaPlugin annotation.
 [[dependencies.craftingveloce]]
     modId="jade"
     type="optional"

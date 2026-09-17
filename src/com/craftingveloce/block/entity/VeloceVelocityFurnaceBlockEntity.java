@@ -19,96 +19,97 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Velocity Furnace - piec "instant" dla auto-craftera.
+ * Velocity Furnace - an "instant" furnace for the auto-crafter.
  *
- * <p><b>Jak dziala.</b> To NIE jest piec, ktory fizycznie przepala surowiec.
- * To <b>zrodlo ciepla</b> dla craftera:
+ * <p><b>How it works.</b> This is NOT a furnace that physically smelts the raw
+ * material. It is a <b>heat source</b> for the crafter:
  * <ol>
- *   <li>Pali sie CALY CZAS, niezaleznie od tego, czy cos jest craftowane.
- *       To jest koszt, ktory gracz placi za instant przepalanie.</li>
- *   <li>Paliwo zaciaga z sieci wedlug 6 filtrow, w kolejnosci priorytetu:
- *       najpierw wyczerpuje filtr 1, potem 2, potem 3...</li>
- *   <li>Crafter, ktory znajdzie ten piec w sieci i zobaczy, ze sie pali,
- *       moze uzywac receptur pieca (smelting/blasting/smoking) INSTANT.</li>
- *   <li>Kazde takie przepalenie zabiera piecowi {@link #SMELT_HEAT_COST}
- *       jednostek ciepla. Gdy cieplo zejdzie do zera, piec musi pobrac
- *       kolejny item paliwa - czyli im wiecej crafter przepala, tym szybciej
- *       piec zre paliwo.</li>
+ *   <li>It burns ALL THE TIME, regardless of whether anything is being crafted.
+ *       That is the cost the player pays for instant smelting.</li>
+ *   <li>It pulls fuel from the network according to 6 filters, in priority
+ *       order: first it exhausts filter 1, then 2, then 3...</li>
+ *   <li>A crafter that finds this furnace in the network and sees that it is
+ *       burning may use furnace recipes (smelting/blasting/smoking) INSTANTLY.</li>
+ *   <li>Each such smelt takes {@link #SMELT_HEAT_COST} heat units from the
+ *       furnace. When the heat drops to zero, the furnace must pull another
+ *       fuel item - so the more the crafter smelts, the faster the furnace
+ *       devours fuel.</li>
  * </ol>
  *
- * <p><b>Koszt paliwa.</b> Vanilla przepala 1 przedmiot za 200 tickow, wiec
- * węgiel (1600 t) starcza na 8 sztuk. Tutaj przepalenie kosztuje
- * {@link #SMELT_HEAT_COST} = 300 tickow, czyli <b>1.5x wiecej paliwa</b>:
- * węgiel starcza na 5 sztuk. Mnoznik siedzi w koszcie, a nie w wartosci
- * opalowej - dzieki temu dziala jednolicie dla kazdego paliwa (takze modowego),
- * bo wartosci opalowe bierzemy z vanilla.
+ * <p><b>Fuel cost.</b> Vanilla smelts 1 item in 200 ticks, so coal (1600 t)
+ * lasts for 8 pieces. Here a smelt costs {@link #SMELT_HEAT_COST} = 300 ticks,
+ * that is <b>1.5x more fuel</b>: coal lasts for 5 pieces. The multiplier sits
+ * in the cost, and not in the burn value - thanks to that it works uniformly
+ * for every fuel (including modded ones), because we take the burn values from
+ * vanilla.
  */
 public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         implements MenuProvider, VeloceHeatSource, VeloceFilterHost {
 
-    /** Ile filtrow paliwa (priorytet od 0 w gore). */
+    /** How many fuel filters there are (priority from 0 upwards). */
     public static final int FUEL_FILTERS = 6;
 
     /**
-     * Koszt jednego instantowego przepalenia, w tickach palenia.
+     * The cost of one instant smelt, in burn ticks.
      *
-     * <p>Vanilla: 200 tickow na przedmiot. Tutaj 300 = mnoznik 1.5x.
+     * <p>Vanilla: 200 ticks per item. Here 300 = a 1.5x multiplier.
      */
     public static final long SMELT_HEAT_COST = 300L;
 
-    /** Co ile tickow probujemy dociagnac paliwo z sieci. */
+    /** Every how many ticks we try to pull fuel from the network. */
     private static final int PULL_INTERVAL_TICKS = 10;
 
-    /** Ile sztuk paliwa zaciagamy naraz (zapas, zeby nie ciagnac co tick). */
+    /** How many fuel items we pull at once (a reserve, so we do not pull every tick). */
     private static final int PULL_BATCH = 8;
 
-    /** Filtry paliwa - ktore itemy piec moze palic i w jakiej kolejnosci. */
+    /** Fuel filters - which items the furnace may burn and in what order. */
     private final NonNullList<ItemStack> fuelFilters =
             NonNullList.withSize(FUEL_FILTERS, ItemStack.EMPTY);
 
-    /** Slot z paliwem, ktore piec aktualnie przetwarza. */
+    /** The slot holding the fuel the furnace is currently processing. */
     private final SimpleContainer fuelSlot = new SimpleContainer(1);
 
-    /** Ile tickow palenia zostalo w buforze ciepla. */
+    /** How many burn ticks are left in the heat buffer. */
     private long burnTicksRemaining;
 
     /**
-     * Ile tickow palenia dawal ostatnio spalony item.
+     * How many burn ticks the last burned item gave.
      *
-     * <p>Potrzebne tylko do paska/plomienia - pokazuje pelny zakres.
+     * <p>Needed only for the bar/flame - it shows the full range.
      */
     private long burnTicksTotal;
 
     /**
-     * Tick, w ktorym ostatnio pobralismy paliwo z sieci (harmonogram okresowy).
+     * The tick in which we last pulled fuel from the network (periodic schedule).
      *
-     * <p>{@code Long.MIN_VALUE} = jeszcze ani razu. Wtedy o pierwszym pobraniu
-     * decyduje faza wyliczona z pozycji pieca, a nie wspolny start od zera -
-     * inaczej wszystkie piece dobieraly paliwo w tym samym ticku.
+     * <p>{@code Long.MIN_VALUE} = not even once yet. Then the first pull is
+     * decided by a phase computed from the furnace position, and not by a
+     * common start from zero - otherwise all furnaces would pick up fuel in the
+     * same tick.
      */
     private long lastFuelPullTick = Long.MIN_VALUE;
 
     /**
-     * Czy piec ma pominac odliczanie i pobrac paliwo w tym ticku.
+     * Whether the furnace should skip the countdown and pull fuel in this tick.
      *
-     * <p>Ustawiane przez {@link #consumeOperations(long)}, gdy crafter zje
-     * cieplo do zera. Jednorazowe - po pobraniu flaga gasnie.
+     * <p>Set by {@link #consumeOperations(long)}, when the crafter eats the heat
+     * down to zero. One-shot - after pulling, the flag goes out.
      */
     private boolean wantImmediatePull = false;
 
-    /** Co ile tickow dosylamy stan ciepla do klienta (plomyk w GUI). */
+    /** Every how many ticks we send the heat state to the client (the flame in the GUI). */
     private static final int CLIENT_SYNC_INTERVAL_TICKS = 10;
 
     private int clientSyncCooldown = CLIENT_SYNC_INTERVAL_TICKS;
 
     public VeloceVelocityFurnaceBlockEntity(BlockPos pos, BlockState state) {
         super(com.craftingveloce.init.VeloceRegistry.VELOCITY_FURNACE_BE.get(), pos, state);
-        // Kazda zmiana w slocie paliwa musi trafic do zapisu.
+        // Every change in the fuel slot must reach the save.
         this.fuelSlot.addListener(c -> setChanged());
     }
 
     // ------------------------------------------------------------------
-    // VeloceHeatSource - to widzi crafter
+    // VeloceHeatSource - this is what the crafter sees
     // ------------------------------------------------------------------
 
     @Override
@@ -122,8 +123,8 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             return;
         }
         burnTicksRemaining = Math.max(0L, burnTicksRemaining - operations * SMELT_HEAT_COST);
-        // Bufor spadl ponizej jednego przepalenia - piec musi jak najszybciej
-        // siegnac po kolejne paliwo, inaczej przestanie byc "zasilony".
+        // The buffer dropped below one smelt - the furnace must reach for more
+        // fuel as soon as possible, otherwise it stops being "powered".
         if (burnTicksRemaining < SMELT_HEAT_COST) {
             wantImmediatePull = true;
         }
@@ -132,15 +133,15 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
 
     @Override
     public boolean isPowered() {
-        // "Zasilony" = plomien sie pali. Piec z pustym buforem ciepla nie
-        // odblokowuje receptur, nawet jesli ma paliwo w slocie - musi je
-        // najpierw spalic.
+        // "Powered" = the flame is burning. A furnace with an empty heat buffer
+        // does not unlock recipes, even if it has fuel in the slot - it must
+        // burn it first.
         return burnTicksRemaining > 0;
     }
 
     @Override
     public int heatPriority() {
-        return 1;   // paliwowy - fallback po elektrycznym
+        return 1;   // fuel-based - fallback after the electric one
     }
 
     @Override
@@ -149,15 +150,15 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // Dostep do slotow (menu i GUI)
+    // Slot access (menu and GUI)
     // ------------------------------------------------------------------
 
-    /** Slot, w ktorym lezy paliwo do spalenia. */
+    /** The slot holding the fuel to be burned. */
     public Container getFuelSlot() {
         return fuelSlot;
     }
 
-    /** Filtr paliwa o danym indeksie (0..5). */
+    /** The fuel filter with the given index (0..5). */
     @Override
     public int filterCount() {
         return FUEL_FILTERS;
@@ -177,7 +178,7 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         return index >= 0 && index < FUEL_FILTERS ? fuelFilters.get(index) : ItemStack.EMPTY;
     }
 
-    /** Ustawia filtr paliwa. Zmiana trafia do zapisu. */
+    /** Sets the fuel filter. The change reaches the save. */
     public void setFuelFilter(int index, ItemStack stack) {
         if (index < 0 || index >= FUEL_FILTERS) {
             return;
@@ -186,23 +187,23 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         setChanged();
     }
 
-    /** Czy plomien sie pali - do rysowania ikony. */
+    /** Whether the flame is burning - for drawing the icon. */
     public boolean isLit() {
         return burnTicksRemaining > 0;
     }
 
-    /** Ile ciepla zostalo (tickow palenia). */
+    /** How much heat is left (burn ticks). */
     public long getBurnTicksRemaining() {
         return burnTicksRemaining;
     }
 
-    /** Pelny zakres ostatniego palenia - do paska. */
+    /** The full range of the last burn - for the bar. */
     public long getBurnTicksTotal() {
         return burnTicksTotal;
     }
 
     // ------------------------------------------------------------------
-    // Praca w tle
+    // Background work
     // ------------------------------------------------------------------
 
     public void serverTick() {
@@ -211,40 +212,39 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         }
         boolean wasLit = isLit();
 
-        // 0. Crafter wlasnie zjadl nam cieplo - dobierz paliwo NATYCHMIAST.
+        // 0. The crafter has just eaten our heat - pick up fuel IMMEDIATELY.
         //
-        // To jest wprost wymog specyfikacji: "gdy Crafter wykonuje operacje
-        // przetapiania, wysyla tick do pieca i ścina mu czas spalania, co
-        // wymusza szybsze pobranie kolejnego paliwa". Bez tego piec czekalby
-        // do PULL_INTERVAL_TICKS, a przez ten czas bylby "niezasilony" - i
-        // crafter, ktory wlasnie zaplacil cieplem, nie moglby zaplacic
-        // nastepnym razem, mimo ze paliwo lezy w sieci.
+        // This is directly a specification requirement: "when the Crafter
+        // performs a smelting operation, it sends a tick to the furnace and cuts
+        // its burn time, which forces a faster pickup of the next fuel". Without
+        // this the furnace would wait until PULL_INTERVAL_TICKS, and during that
+        // time it would be "unpowered" - and the crafter that just paid with
+        // heat could not pay next time, even though the fuel lies in the network.
         //
-        // Flaga jest obslugiwana w kroku 3 ponizej (razem z rozproszonym
-        // harmonogramem), zeby nie bylo dwoch miejsc decydujacych o pobraniu.
+        // The flag is handled in step 3 below (together with the spread
+        // schedule), so that there are not two places deciding about the pull.
 
-        // 1. Piec pali sie CALY CZAS - to jest koszt instant craftowania.
-        //    Bufor ciepla schodzi niezaleznie od tego, czy ktokolwiek craftuje.
+        // 1. The furnace burns ALL THE TIME - this is the cost of instant crafting.
+        //    The heat buffer drains regardless of whether anyone is crafting.
         if (burnTicksRemaining > 0) {
             burnTicksRemaining--;
         }
 
-        // 2. Bufor pusty -> spal jeden item z paliwa.
+        // 2. Buffer empty -> burn one item of fuel.
         if (burnTicksRemaining <= 0) {
             tryBurnFuel();
         }
 
-        // 3. Zapas paliwa niski -> dociagnij z sieci wedlug filtrow.
+        // 3. Fuel reserve low -> pull from the network according to the filters.
         //
-        // ROZPROSZENIE PO TICKACH: cooldown liczony od zera u kazdego pieca
-        // oznaczal, ze WSZYSTKIE piece dobieraly paliwo w TYM SAMYM ticku
-        // (kazdy startowal z pullCooldown == 0), czyli zamiast pracy rozlozonej
-        // rownomiernie powstawal skok obciazenia co 10 tickow. Teraz faza
-        // kazdego pieca wynika z jego pozycji.
+        // SPREAD ACROSS TICKS: a cooldown counted from zero at every furnace meant
+        // that ALL furnaces picked up fuel in the SAME tick (each started with
+        // pullCooldown == 0), so instead of work spread evenly there was a load
+        // spike every 10 ticks. Now each furnace's phase follows from its position.
         //
-        // Dobranie NATYCHMIASTOWE (po tym, jak crafter zjadl cieplo) zostaje
-        // bez zmian - i celowo NIE przesuwa harmonogramu, zeby kilka piecow
-        // obslugujacych jeden craft nie zsynchronizowalo sie na nowo.
+        // The IMMEDIATE pickup (after the crafter ate the heat) stays unchanged -
+        // and deliberately does NOT shift the schedule, so that several furnaces
+        // serving one craft do not re-synchronise.
         long nowTick = sl.getGameTime();
         if (wantImmediatePull) {
             wantImmediatePull = false;
@@ -256,21 +256,22 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         }
 
         if (wasLit != isLit()) {
-            // Zmiana stanu plomienia - klient musi to zobaczyc.
+            // Flame state changed - the client must see it.
             setChanged();
             syncToClients();
         }
 
-        // Plomyk w GUI ma pokazywac ZUZYCIE bufora, wiec sam stan "pali sie"
-        // nie wystarcza - trzeba dosylac wartosc. Raz na 10 tickow to 2 razy
-        // na sekunde: dla oka plynne, a dla sieci pomijalne (kilka bajtow).
+        // The flame in the GUI should show the CONSUMPTION of the buffer, so the
+        // "burning" state alone is not enough - the value must be sent too. Once
+        // every 10 ticks is twice per second: smooth for the eye, and negligible
+        // for the network (a few bytes).
         if (--clientSyncCooldown <= 0) {
             clientSyncCooldown = CLIENT_SYNC_INTERVAL_TICKS;
             syncToClients();
         }
     }
 
-    /** Spala jeden item z zapasu paliwa, jesli to w ogole paliwo. */
+    /** Burns one item from the fuel reserve, if it is fuel at all. */
     private void tryBurnFuel() {
         ItemStack fuel = fuelSlot.getItem(0);
         if (fuel.isEmpty()) {
@@ -278,7 +279,7 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         }
         long burn = burnTicksOf(fuel);
         if (burn <= 0) {
-            // Nie jest paliwem - nie spalamy go i nie blokujemy slotu.
+            // It is not fuel - we do not burn it and we do not block the slot.
             return;
         }
         ItemStack burned = fuel.copyWithCount(1);
@@ -289,14 +290,15 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
     }
 
     /**
-     * Oddaje to, co zostaje po spalonym paliwie - np. PUSTE WIADERKO po lawie.
+     * Returns whatever is left after burning the fuel - e.g. an EMPTY BUCKET after lava.
      *
-     * <p><b>BUG, ktory to naprawia (pytanie gracza: "co zrobi z wiaderkiem?").</b>
-     * Piec robil tylko {@code removeItem(0, 1)} i tyle - wiaderko znikalo.
-     * Vanilla oddaje pozostalosc z receptury itemu ({@code getCraftingRemainingItem}),
-     * a paliwo przyjezdza do nas z sieci, wiec tam tez wraca pozostalosc.
-     * Gdy siec jest pelna, reszta leci na ziemie przy piecu (patrz
-     * {@link #depositBack}) - NIGDY nie jest kasowana.
+     * <p><b>The BUG this fixes (player question: "what will it do with the bucket?").</b>
+     * The furnace only did {@code removeItem(0, 1)} and that was it - the bucket
+     * disappeared. Vanilla returns the item's crafting remainder
+     * ({@code getCraftingRemainingItem}), and the fuel arrives to us from the
+     * network, so the remainder goes back there too. When the network is full,
+     * the rest is dropped on the ground next to the furnace (see
+     * {@link #depositBack}) - it is NEVER deleted.
      */
     private void returnContainerRemainder(ItemStack burnedFuel) {
         if (!burnedFuel.hasCraftingRemainingItem()) {
@@ -310,25 +312,26 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
     }
 
     /**
-     * Czy z tego itemu da sie w ogole przepalac.
+     * Whether this item can be smelted as fuel at all.
      *
-     * <p>JEDNO miejsce na cale "co jest paliwem" - korzysta z tego serwer
-     * (przyjmowanie paliwa) i klient (filtry, selektor filtrow). Inaczej
-     * klient i serwer moglyby miec dwie rozne odpowiedzi na to samo pytanie.
+     * <p>The ONE place for the whole "what is fuel" question - used by the server
+     * (accepting fuel) and by the client (filters, filter selector). Otherwise
+     * the client and the server could have two different answers to the same
+     * question.
      */
     public static boolean isFuel(ItemStack stack) {
         return burnTicksOf(stack) > 0;
     }
 
     /**
-     * Czy dane o paliwach sa w ogole dostepne po tej stronie.
+     * Whether the fuel data is available on this side at all.
      *
-     * <p><b>Kanarek.</b> Pytamy o wegiel - to paliwo w kazdym modpacku. Jesli
-     * odpowiedz brzmi "nie", to znaczy, ze tej stronie brakuje danych o
-     * paliwach i NIE WOLNO na ich podstawie niczego blokowac ani kolorowac:
-     * w selektorze filtrow zrobiloby to na czerwono WSZYSTKIE itemy, a gracz
-     * nie moglby wybrac nawet wegla. W takiej sytuacji po prostu nie
-     * egzekwujemy filtra paliwa (serwer i tak sprawdza je po swojej stronie).
+     * <p><b>Canary.</b> We ask about coal - that is fuel in every modpack. If the
+     * answer is "no", it means this side lacks the fuel data and we MUST NOT
+     * block or colour anything based on it: in the filter selector it would
+     * colour ALL items red, and the player could not even pick coal. In such a
+     * situation we simply do not enforce the fuel filter (the server checks them
+     * on its side anyway).
      */
     private static Boolean fuelDataAvailable;
 
@@ -338,56 +341,56 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             if (!fuelDataAvailable) {
                 com.craftingveloce.util.VeloceLog.Network.failure(
                         com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                        "brak danych o paliwach po tej stronie (wegiel wyszedl jako nie-paliwo) -"
-                                + " filtr paliwa NIE bedzie egzekwowany w GUI");
+                        "no fuel data on this side (coal came out as non-fuel) -"
+                                + " the fuel filter will NOT be enforced in the GUI");
             }
         }
         return fuelDataAvailable;
     }
 
     /**
-     * Czy tego itemu NIE wolno wlozyc do filtra paliwa.
+     * Whether this item MUST NOT be placed into the fuel filter.
      *
-     * <p>Jedno miejsce dla GUI (selektor + ekran pieca): czerwone zaznaczenie
-     * i odrzucenie klikniecia musza pytac o to samo.
+     * <p>One place for the GUI (selector + furnace screen): the red highlight
+     * and the click rejection must ask about the same thing.
      */
     public static boolean isUnusableFuelFilter(ItemStack stack) {
         return fuelDataAvailable() && !isFuel(stack);
     }
 
-    /** Ile tickow palenia daje ten stos (0 = nie jest paliwem). */
+    /** How many burn ticks this stack gives (0 = it is not fuel). */
     public static long burnTicksOf(ItemStack stack) {
         if (stack.isEmpty()) {
             return 0L;
         }
-        // TA SAMA SCIEZKA CO WANILIOWY PIEC.
+        // THE SAME PATH AS THE VANILLA FURNACE.
         //
-        // Vanilla liczy czas palenia tak: AbstractFurnaceBlockEntity
-        // .getBurnDuration() -> ItemStack.getBurnTime(recipeType). Idziemy
-        // dokladnie ta droga, bo ona przechodzi przez wartosci paliw z danych
-        // (FuelValues) i ROZWIJA TAGI.
+        // Vanilla computes the burn time like this: AbstractFurnaceBlockEntity
+        // .getBurnDuration() -> ItemStack.getBurnTime(recipeType). We follow
+        // exactly that route, because it goes through the fuel values from data
+        // (FuelValues) and UNROLLS TAGS.
         //
-        // BUG, ktory tu byl: pytalismy przestarzala statyczna mape
-        // AbstractFurnaceBlockEntity.getFuel(), ktora zna wylacznie paliwa
-        // wpisane per-item. Paliwo zdefiniowane tagiem albo dodane przez inny
-        // mod danymi nie mialo tam wpisu, wiec nasz zapasowy fallback dawal mu
-        // rowne 200 tickow - czyli takie paliwo spalalo sie w naszym piecu
-        // wielokrotnie szybciej, niz powinno (weglu to 1600 tickow).
+        // The BUG that was here: we asked an obsolete static map
+        // AbstractFurnaceBlockEntity.getFuel(), which only knows fuels entered
+        // per-item. Fuel defined by a tag or added by another mod through data
+        // had no entry there, so our fallback gave it exactly 200 ticks - that
+        // is, such fuel burned in our furnace many times faster than it should
+        // (coal is 1600 ticks).
         int ticks = stack.getBurnTime(net.minecraft.world.item.crafting.RecipeType.SMELTING);
         return Math.max(0L, ticks);
     }
 
     /**
-     * Zaciaga paliwo z sieci wedlug filtrow, w kolejnosci priorytetu.
+     * Pulls fuel from the network according to the filters, in priority order.
      *
-     * <p>Najpierw wyczerpujemy filtr 1, potem 2, potem 3... - tak jak ustalono.
-     * Pusty filtr jest pomijany, wiec gracz moze ustawic tylko te, ktorych chce.
+     * <p>First we exhaust filter 1, then 2, then 3... - as agreed. An empty
+     * filter is skipped, so the player may set only the ones they want.
      */
     private void pullFuelFromNetwork(ServerLevel sl) {
         ItemStack current = fuelSlot.getItem(0);
         int space = 64 - current.getCount();
         if (space <= 0) {
-            return;   // zapas pelny
+            return;   // reserve full
         }
         VelocePipeNetwork net = VelocePipeNetworkManager.get(sl)
                 .getNetworkForTerminal(sl, worldPosition);
@@ -396,10 +399,11 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         }
         int wanted = Math.min(space, PULL_BATCH);
 
-        // BRAK FILTROW = paliwo dowolne.
+        // NO FILTERS = any fuel.
         //
-        // Dzieki temu piec dziala od razu po postawieniu, bez konfiguracji -
-        // a filtry sluza do ZAWEZENIA wyboru, nie do jego umozliwienia.
+        // Thanks to that the furnace works right after being placed, with no
+        // configuration - and the filters serve to NARROW the choice, not to
+        // enable it.
         boolean anyFilter = false;
         for (int i = 0; i < FUEL_FILTERS; i++) {
             if (!fuelFilters.get(i).isEmpty()) {
@@ -423,14 +427,14 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             }
             ItemStack got = net.extractItem(sl, filter.getItem(), wanted);
             if (got.isEmpty()) {
-                continue;   // ten filtr sie skonczyl - nastepny w kolejnosci
+                continue;   // this filter ran out - on to the next in order
             }
             wanted -= got.getCount();
             mergeIntoFuelSlot(got);
         }
     }
 
-    /** Tryb bez filtrow: bierze cokolwiek, co jest paliwem. */
+    /** The no-filter mode: it takes anything that is fuel. */
     private void pullAnyFuel(ServerLevel sl, VelocePipeNetwork net, int wanted) {
         for (var entry : net.getAllItemCounts(sl).entrySet()) {
             if (wanted <= 0) {
@@ -452,36 +456,36 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
     }
 
     /**
-     * Czy to paliwo zmiesci sie do slotu - sprawdzane PRZED pobraniem.
+     * Whether this fuel fits in the slot - checked BEFORE pulling.
      *
-     * <p><b>BUG, ktory to naprawia (petla pobierz-oddaj).</b> Wczesniej piec
-     * pobieral paliwo, a dopiero potem {@link #mergeIntoFuelSlot} odkrywal, ze
-     * w slocie lezy INNY rodzaj paliwa i nie da sie ich polaczyc - wiec
-     * oddawal je z powrotem do sieci przez {@code depositBack}.
+     * <p><b>The BUG this fixes (a pull-return loop).</b> Previously the furnace
+     * pulled the fuel first, and only then did {@link #mergeIntoFuelSlot}
+     * discover that a DIFFERENT kind of fuel lay in the slot and they could not
+     * be merged - so it gave it back to the network via {@code depositBack}.
      *
-     * <p>Wygladalo to tak, co PULL_INTERVAL_TICKS, w nieskonczonosc:
+     * <p>It looked like this, every PULL_INTERVAL_TICKS, endlessly:
      * <pre>
-     *   pobierz charcoal z sieci -> nie pasuje do wegla w slocie -> oddaj charcoal
-     *   pobierz charcoal z sieci -> nie pasuje do wegla w slocie -> oddaj charcoal
+     *   pull charcoal from network -> does not match the coal in the slot -> return charcoal
+     *   pull charcoal from network -> does not match the coal in the slot -> return charcoal
      *   ...
      * </pre>
-     * A ze oddawanie do magazynu w niezaladowanym chunku wczytuje ten chunk,
-     * kazdy obrot petli to kolejne wczytanie chunku - czyli dokladnie ta
-     * petla load/unload, ktora widac bylo w grze.
+     * And since returning to storage in an unloaded chunk loads that chunk, every
+     * turn of the loop meant another chunk load - that is, exactly the
+     * load/unload loop that could be seen in the game.
      *
-     * <p>Teraz po prostu NIE pobieramy tego, czego nie mozemy przyjac: piec
-     * najpierw wypala to, co ma w slocie, a dopiero potem siega po kolejny
-     * rodzaj paliwa.
+     * <p>Now we simply do NOT pull what we cannot accept: the furnace first
+     * burns what it has in the slot, and only then reaches for the next kind of
+     * fuel.
      */
     private boolean canMergeIntoFuelSlot(ItemStack fuel) {
         ItemStack current = fuelSlot.getItem(0);
         if (current.isEmpty()) {
-            return true;   // pusty slot przyjmie wszystko
+            return true;   // an empty slot will accept anything
         }
         return ItemStack.isSameItemSameComponents(current, fuel);
     }
 
-    /** Doklada pobrane paliwo do slotu (albo je zostawia, gdy sie nie zmiesci). */
+    /** Adds the pulled fuel to the slot (or leaves it, when it does not fit). */
     private void mergeIntoFuelSlot(ItemStack got) {
         ItemStack current = fuelSlot.getItem(0);
         if (current.isEmpty()) {
@@ -492,7 +496,7 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             int space = current.getMaxStackSize() - current.getCount();
             int move = Math.min(space, got.getCount());
             current.grow(move);
-            // Nadwyzka wraca do sieci - nie gubimy itemow.
+            // The surplus returns to the network - we do not lose items.
             if (move < got.getCount()) {
                 ItemStack rest = got.copyWithCount(got.getCount() - move);
                 depositBack(rest);
@@ -504,22 +508,23 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
     }
 
     /**
-     * Oddaje item do sieci, a to czego siec nie przyjmie - upuszcza przy piecu.
+     * Returns the item to the network, and whatever the network will not accept
+     * is dropped next to the furnace.
      *
-     * <p><b>BUG, ktory to naprawia (pytanie gracza: "co jesli siec nie ma
-     * miejsca?").</b> {@code insertIntoStorage} zwraca RESZTE, ktorej nie udalo
-     * sie wcisnac - a my ja ignorowalismy, wiec przy pelnej sieci item po prostu
-     * ZNIKAL (nadwyzka paliwa, puste wiaderko po lawie, cokolwiek). Teraz
-     * reszta trafia na ziemie przed piecem, tak jak robi to gracz wypelniajac
-     * skrzynke. Zaden item nie ginie.
+     * <p><b>The BUG this fixes (player question: "what if the network has no
+     * room?").</b> {@code insertIntoStorage} returns the LEFTOVER that could not
+     * be squeezed in - and we ignored it, so with a full network the item simply
+     * DISAPPEARED (the fuel surplus, the empty bucket after lava, anything).
+     * Now the leftover lands on the ground in front of the furnace, just as a
+     * player does when filling a chest. No item is lost.
      */
     private void depositBack(ItemStack stack) {
         if (stack.isEmpty() || !(level instanceof ServerLevel sl)) {
             return;
         }
-        // UWAGA: zmienna NIE moze nazywac sie `net` - przeslonilaby pakiet
-        // `net` i `net.minecraft...` przestaloby sie kompilowac (ten sam trap,
-        // ktory juz raz trafil sie w VelocePipeNetwork).
+        // NOTE: the variable MUST NOT be named `net` - it would shadow the `net`
+        // package and `net.minecraft...` would stop compiling (the same trap
+        // that already happened once in VelocePipeNetwork).
         VelocePipeNetwork network = VelocePipeNetworkManager.get(sl)
                 .getNetworkForTerminal(sl, worldPosition);
         ItemStack leftover = stack;
@@ -530,7 +535,7 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             net.minecraft.world.level.block.Block.popResource(sl, worldPosition, leftover);
             com.craftingveloce.util.VeloceLog.Block.failure(
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
-                    "piec: siec nie przyjmuje (%s) - upuszczam przy piecu", leftover);
+                    "furnace: network does not accept (%s) - dropping next to the furnace", leftover);
         }
     }
 
@@ -541,7 +546,7 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // Zapis / odczyt
+    // Save / load
     // ------------------------------------------------------------------
 
     @Override
@@ -554,7 +559,7 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
             if (!f.isEmpty()) {
                 CompoundTag e = new CompoundTag();
                 e.putByte("Slot", (byte) i);
-                // UWAGA: save() ZWRACA nowy tag, nie mutuje przekazanego.
+                // NOTE: save() RETURNS a new tag, it does not mutate the one passed in.
                 CompoundTag saved = (CompoundTag) f.save(registries, new CompoundTag());
                 saved.putByte("Slot", (byte) i);
                 filters.add(saved);

@@ -1,56 +1,60 @@
 package com.craftingveloce.block;
 
 /**
- * Maszyna, ktora ma w obudowie RUSZAJACE sie elementy (kola mlynskie, oczka).
+ * A machine that has MOVING elements in its casing (mill wheels, crafter eyes).
  *
- * <p><b>Po co interfejs w rdzeniu.</b> Renderer obudowy dziala w rdzeniu i nie
- * moze znac typow Create - a to wlasnie maszyna kinetyczna Create wie, z jaka
- * predkoscia sie kreci. Rdzen pyta wiec o dwie liczby, a kto je zna, ten je
- * implementuje (patrz {@code VeloceKineticModuleBlockEntity} w compat/create).
+ * <p><b>Why an interface in the core.</b> The casing renderer runs in the core
+ * and cannot know Create's types - and it is exactly Create's kinetic machine
+ * that knows at what speed it is spinning. So the core asks for two numbers, and
+ * whoever knows them implements them (see {@code VeloceKineticModuleBlockEntity}
+ * in compat/create).
  *
- * <p>Bez tego renderer musialby albo znac Create (zlamanie izolacji: mod nie
- * wstalby bez Create), albo rysowac elementy nieruchomo - czyli klamac.
+ * <p>Without this the renderer would either have to know Create (a broken
+ * isolation: the mod would not start without Create), or draw the elements
+ * motionless - that is, lie.
  */
 public interface VeloceCaseSpin {
 
-    /** Ile elementow pokazac w obudowie (0 = brak, renderer rysuje zwykla zawartosc). */
+    /** How many elements to show in the casing (0 = none, the renderer draws the plain contents). */
     int caseParts();
 
     /**
-     * Predkosc obrotu elementow w stopniach na tick.
+     * The rotation speed of the elements in degrees per tick.
      *
-     * <p>Zero oznacza "stoi" - wtedy elementy sa nieruchome, ale nadal widoczne
-     * (maszyna zbudowana, a nie napedzana).
+     * <p>Zero means "stopped" - the elements are then motionless, but still
+     * visible (a machine that is built, but not powered).
      */
     float caseSpinDegreesPerTick();
 
     /**
-     * Ile kolumn ma uklad elementow w obudowie.
+     * How many columns the element layout in the casing has.
      *
-     * <p>Kola mlynskie stoja obok siebie (kolumny = liczba kol), a oczka
-     * craftera rosna w slupku: 1x2, 1x3, ... az do 9x9.
+     * <p>Mill wheels stand next to each other (columns = the number of wheels),
+     * and the crafter's eyes grow in a column: 1x2, 1x3, ... up to 9x9.
      */
     int caseGridColumns();
 
-    /** Ile rzedow ma uklad elementow w obudowie (patrz {@link #caseGridColumns()}). */
+    /** How many rows the element layout in the casing has (see {@link #caseGridColumns()}). */
     int caseGridRows();
 
     /**
-     * Czy ta maszyna jest BUDOWANA z elementow (kola, oczka).
+     * Whether this machine is BUILT from elements (wheels, eyes).
      *
-     * <p>Rozroznia dwie sytuacje, ktore wygladaja tak samo, gdy licznik jest
-     * zerowy: kruszarka bez kol ma byc PUSTA obudowa, a mlynek bez kol (bo ich
-     * nie potrzebuje) ma pokazywac swoj klocek bazowy.
+     * <p>It distinguishes two situations that look the same when the counter is
+     * zero: a crusher without wheels is supposed to be an EMPTY casing, while a
+     * mill without wheels (because it does not need them) is supposed to show
+     * its base block.
      */
     boolean caseBuiltFromParts();
 
     /**
-     * Czy elementy krecA sie KAZDY wokol siebie (kola mlynskie), czy caly
-     * uklad razem, wokol srodka obudowy (oczka craftera, kazda inna maszyna).
+     * Whether the elements spin EACH around itself (mill wheels), or the whole
+     * layout together, around the centre of the casing (the crafter's eyes, any
+     * other machine).
      *
-     * <p>Gracz: "craftery krecA sie jak beyblade - to nie o to chodzi, maja sie
-     * krecic wszystkie razem wokol srodka wlasnej osi, tak jak kazdy inny
-     * render, np. crafting czy furnace".
+     * <p>Player: "the crafters spin like a beyblade - that is not it, they are
+     * supposed to all spin together around the centre of their own axis, just
+     * like any other render, e.g. crafting or furnace".
      */
     boolean casePartsSpinIndividually();
 }

@@ -28,64 +28,65 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Auto-crafter Veloce.
+ * The Veloce auto-crafter.
  *
- * <p>Przechowuje:
+ * <p>It stores:
  * <ul>
- *   <li>{@code enabledItems} - itemy, dla ktorych auto-crafting jest wlaczony.
- *       Gracz wlacza je w GUI (klikniecie itemu).</li>
- *   <li>{@code preferredRecipes} - dla itemow z wieloma recepturami: ktora
- *       receptura ma byc uzyta jako pierwsza. Wybor przez shift+scroll w GUI.</li>
+ *   <li>{@code enabledItems} - the items for which auto-crafting is enabled.
+ *       The player enables them in the GUI (by clicking the item).</li>
+ *   <li>{@code preferredRecipes} - for items with multiple recipes: which
+ *       recipe should be used first. Chosen with shift+scroll in the GUI.</li>
  * </ul>
  *
- * <p>Uwaga: ten blok NIE posiada wlasnego ekwipunku - craftowanie odbywa sie
- * bezposrednio na sieci (patrz {@code VeloceAutoCrafter}). Dzieki temu
- * craftowanie jest natychmiastowe i nic nie przechodzi przez fizyczny blok.
+ * <p>Note: this block does NOT have its own inventory - crafting happens
+ * directly on the network (see {@code VeloceAutoCrafter}). Thanks to that
+ * crafting is instant and nothing passes through a physical block.
  */
 public class VeloceCraftingTableBlockEntity extends BlockEntity {
 
     /**
-     * Itemy, dla ktorych auto-crafting jest <b>wylaczony</b>.
+     * The items for which auto-crafting is <b>disabled</b>.
      *
-     * <p>Model jest opt-out: nowo postawiony crafter ma wlaczone wszystko,
-     * a gracz swiadomie wylacza to, czego nie chce. Dzieki temu nie trzeba
-     * klikac setek itemow, zeby crafter zaczal dzialac, a lista wyjatkow
-     * jest krotka i miesci sie w NBT.
+     * <p>The model is opt-out: a newly placed crafter has everything enabled,
+     * and the player consciously disables what they do not want. Thanks to that
+     * there is no need to click hundreds of items for the crafter to start
+     * working, and the exception list is short and fits in NBT.
      *
-     * <p>Uwaga na puapke: swiezo wczytany blok bez zapisanych wyjatkow
-     * znaczy "wszystko wlaczone". Gdyby kiedys zmienic domyslna wartosc na
-     * "wszystko wylaczone", stare swiaty nagle przestalyby craftowac.
+     * <p>Watch out for a trap: a freshly loaded block without saved exceptions
+     * means "everything enabled". If the default value were ever changed to
+     * "everything disabled", old worlds would suddenly stop crafting.
      */
     private Set<Item> disabledItems = new HashSet<>();
 
     /**
-     * Migracja ze starego formatu (opt-in) czeka na wykonanie.
+     * The migration from the old (opt-in) format is waiting to be performed.
      *
-     * <p><b>BUG, ktory to naprawia.</b> Migracja liczyla wyjatki jako
-     * "wszystko craftowalne MINUS lista wlaczonych ze starego zapisu" i robila
-     * to w {@code loadAdditional}. Ale tam {@code level} jest JESZCZE NULL -
-     * Minecraft tworzy block entity i wola {@code loadAdditional}, a poziom
-     * przypisuje dopiero potem ({@code setLevel}). A
-     * {@code getAllCraftableItems(null)} zwraca zbior PUSTY (bo {@code null}
-     * nie jest {@code instanceof ServerLevel}), wiec petla nie miala po czym
-     * iterowac i {@code disabledItems} zostawalo puste.
+     * <p><b>The BUG this fixes.</b> The migration computed the exceptions as
+     * "everything craftable MINUS the list of enabled ones from the old save" and
+     * did it in {@code loadAdditional}. But there {@code level} is STILL NULL -
+     * Minecraft creates the block entity and calls {@code loadAdditional}, and
+     * assigns the level only afterwards ({@code setLevel}). And
+     * {@code getAllCraftableItems(null)} returns an EMPTY set (because {@code null}
+     * is not {@code instanceof ServerLevel}), so the loop had nothing to iterate
+     * over and {@code disabledItems} stayed empty.
      *
-     * <p>Skutek: stary swiat zapisany w formacie opt-in dostawal WSZYSTKO
-     * WLACZONE - czyli dokladnie ta regresja, przed ktora ostrzega komentarz
-     * przy {@link #disabledItems}.
+     * <p>Effect: an old world saved in the opt-in format got EVERYTHING ENABLED -
+     * that is, exactly the regression the comment next to {@link #disabledItems}
+     * warns about.
      *
-     * <p>Dlatego liste ze starego zapisu tylko zapamietujemy, a przeliczamy ja
-     * pozniej - gdy poziom i receptury sa juz dostepne.
+     * <p>That is why we only remember the list from the old save, and recompute it
+     * later - when the level and the recipes are already available.
      */
     @Nullable
     private Set<Item> pendingOptInMigration;
 
     /**
-     * Domyka migracje ze starego formatu, gdy tylko da sie ja policzyc.
+     * Finishes the migration from the old format as soon as it can be computed.
      *
-     * <p>Wolane z {@link #setLevel} (poziom jest juz przypisany) ORAZ przy
-     * kazdym pytaniu o wyjatki - gdyby w chwili wczytania chunka receptury nie
-     * byly jeszcze gotowe, proba wroci przy pierwszym uzyciu zamiast przepasc.
+     * <p>Called from {@link #setLevel} (the level is already assigned) AND on
+     * every query for the exceptions - if the recipes were not ready yet at the
+     * moment the chunk was loaded, the attempt will come back on first use
+     * instead of being lost.
      */
     private void finishOptInMigration() {
         if (pendingOptInMigration == null || !(level instanceof ServerLevel sl)) {
@@ -93,9 +94,9 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         }
         Set<Item> craftable = VeloceRecipeRegistry.getAllCraftableItems(sl);
         if (craftable.isEmpty()) {
-            // Receptury jeszcze nie wczytane - zostawiamy flage i sprobujemy
-            // ponownie przy nastepnym pytaniu. Wyczyszczenie jej teraz znaczyloby
-            // zapisanie pustej listy wyjatkow, czyli "wszystko wlaczone".
+            // Recipes not loaded yet - we leave the flag and will try again on
+            // the next query. Clearing it now would mean saving an empty
+            // exception list, that is "everything enabled".
             return;
         }
         for (Item candidate : craftable) {
@@ -110,21 +111,22 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
                 worldPosition, disabledItems.size(), 0);
     }
 
+
     @Override
     public void setLevel(net.minecraft.world.level.Level level) {
         super.setLevel(level);
-        // Poziom jest od teraz dostepny - to pierwsza okazja, zeby dokonczyc
-        // migracje ze starego formatu (patrz finishOptInMigration).
+        // The level is available from now on - this is the first opportunity to
+        // finish the migration from the old format (see finishOptInMigration).
         finishOptInMigration();
     }
 
-    /** Item -> id receptury, ktora ma priorytet przy auto-craftowaniu. */
+    /** Item -> recipe id that has priority during auto-crafting. */
     private Map<Item, ResourceLocation> preferredRecipes = new HashMap<>();
 
     /**
-     * Bufor nadwyzki produkcji - dostepny normalnie dla calej sieci.
-     * Gdy craftowanie daje wiecej niz gracz pobral (np. 1 log -> 4 deski,
-     * a chcial 1), reszta ladauje tutaj i mozna ja wyciagnac z terminala.
+     * The production surplus buffer - normally available to the whole network.
+     * When crafting yields more than the player pulled (e.g. 1 log -> 4 planks,
+     * but they wanted 1), the rest lands here and can be pulled from the terminal.
      */
     private final com.craftingveloce.inventory.VeloceCraftingBuffer buffer =
             new com.craftingveloce.inventory.VeloceCraftingBuffer() {
@@ -139,13 +141,13 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
     }
 
     /**
-     * Czy ten block entity jest CRAFTEREM dla sieci.
+     * Whether this block entity is the CRAFTER for the network.
      *
-     * <p><b>Decyduje TYP BLOKU.</b> Klatka Veloce Integrale nie ma juz nawet
-     * wlasnego block entity - prawy klik odpowiednim klockiem podmienia ja na
-     * prawdziwa maszyne (patrz {@code VeloceIntegraleConversions}), a stol
-     * craftingu tylko wtedy, gdy gracz wklada stol. Crafterem jest wiec
-     * wylacznie blok stolu craftingu.
+     * <p><b>The BLOCK TYPE decides.</b> The Veloce Integrale frame no longer even
+     * has its own block entity - a right click with the right block replaces it
+     * with a real machine (see {@code VeloceIntegraleConversions}), and with the
+     * crafting table only when the player inserts a crafting table. So the crafter
+     * is exclusively the crafting table block.
      */
     public boolean isActiveCrafter() {
         return getBlockState().getBlock()
@@ -156,17 +158,17 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         super(VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(), pos, state);
     }
 
-    /** Itemy wylaczone (wyjatki od reguly "wszystko wlaczone"). */
+    /** The disabled items (exceptions to the "everything enabled" rule). */
     public Set<Item> getDisabledItems() {
-        // Ponowienie migracji: jesli w chwili wczytania chunka receptury nie byly
-        // jeszcze gotowe, dokanczamy ja teraz - ten call ma juz poziom.
+        // Retry the migration: if the recipes were not ready yet when the chunk
+        // was loaded, we finish it now - this call already has the level.
         finishOptInMigration();
         return disabledItems;
     }
 
     /**
-     * Czy auto-crafting dla tego itemu jest wlaczony.
-     * Domyslnie TAK - wylaczone sa tylko jawne wyjatki.
+     * Whether auto-crafting for this item is enabled.
+     * Default YES - only explicit exceptions are disabled.
      */
     public boolean isEnabled(Item item) {
         return !disabledItems.contains(item);
@@ -176,15 +178,15 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         return preferredRecipes;
     }
 
-    /** Receptura preferowana dla itemu (moze byc null = pierwsza dostepna). */
+    /** The preferred recipe for the item (may be null = the first available one). */
     @Nullable
     public ResourceLocation getPreferredRecipe(Item item) {
         return preferredRecipes.get(item);
     }
 
     /**
-     * Przelacza auto-crafting dla itemu. Wylaczenie czysci tez preferencje,
-     * zeby nie zostawac ze stanem po itemie, ktory nie jest juz craftowany.
+     * Toggles auto-crafting for the item. Disabling also clears the preference,
+     * so as not to be left with state from an item that is no longer crafted.
      */
     public void toggleItem(Item item) {
         if (disabledItems.contains(item)) {
@@ -198,8 +200,8 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
     }
 
     /**
-     * Ustawia preferowana recepture dla itemu (shift+scroll w GUI).
-     * Przechodzi do kolejnej receptury z listy podanej przez serwer.
+     * Sets the preferred recipe for the item (shift+scroll in the GUI).
+     * It advances to the next recipe from the list provided by the server.
      */
     public void cyclePreferredRecipe(Item item, java.util.List<ResourceLocation> available) {
         if (available == null || available.isEmpty()) {
@@ -213,7 +215,7 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         markUpdated();
     }
 
-    /** Ustawia konkretna recepture jako preferowana. */
+    /** Sets a specific recipe as preferred. */
     public void setPreferredRecipe(Item item, ResourceLocation recipeId) {
         if (recipeId == null) {
             preferredRecipes.remove(item);
@@ -225,23 +227,23 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
     }
 
     /**
-     * Craftery czekajace na rozgloszenie swojego stanu.
+     * Crafters waiting to have their state broadcast.
      *
-     * <p><b>Po co kolejka.</b> Prawy klik na zakladce przelacza CALA grupe
-     * itemow, a klient wysyla wtedy jeden pakiet na item (przy duzej zakladce
-     * setki). Kazdy taki pakiet konczyl sie natychmiastowym rozgloszeniem
-     * {@code SyncCraftingTableStatePKT} do WSZYSTKICH graczy w swiecie, ze
-     * wszystkimi wylaczonymi itemami w srodku. Setki broadcastow po kilkanascie
-     * kilobajtow w ulamku sekundy to realne zacięcie.
+     * <p><b>Why a queue.</b> A right click on a tab toggles a WHOLE group of
+     * items, and the client then sends one packet per item (hundreds for a large
+     * tab). Each such packet ended with an immediate broadcast of
+     * {@code SyncCraftingTableStatePKT} to ALL players in the world, with all the
+     * disabled items inside. Hundreds of broadcasts of a dozen-odd kilobytes in a
+     * fraction of a second is a real stutter.
      *
-     * <p>Teraz zbieramy tylko "ten crafter sie zmienil" i wysylamy RAZ na tick
-     * (patrz {@link #flushPendingSyncs}). Slaby zbior, zeby nie trzymac
-     * block entity na sztywno.
+     * <p>Now we only collect "this crafter changed" and send it ONCE per tick
+     * (see {@link #flushPendingSyncs}). A weak set, so as not to hold the block
+     * entity strongly.
      */
     private static final java.util.Set<VeloceCraftingTableBlockEntity> PENDING_SYNC =
             java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
 
-    /** Wysyla zalegle stany crafterow. Wolane z ticku serwera. */
+    /** Sends the pending crafter states. Called from the server tick. */
     public static void flushPendingSyncs(ServerLevel level) {
         if (PENDING_SYNC.isEmpty()) {
             return;
@@ -250,15 +252,15 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         while (it.hasNext()) {
             VeloceCraftingTableBlockEntity be = it.next();
 
-            // BUG, ktory tu byl: `it.remove()` wykonywalo sie PRZED sprawdzeniem
-            // wymiaru, wiec pierwszy tickujacy swiat zjadal (i wyrzucal) wpisy
-            // należace do WSZYSTKICH pozostalych. Przelaczenie receptury w
-            // crafterze stojacym w Netherze (gdy Overworld tika pierwszy) nie
-            // wysylalo wiec SyncCraftingTableStatePKT - GUI pokazywalo stare
-            // wylaczone/wlaczone itemy az do ponownego otwarcia.
+            // The BUG that was here: `it.remove()` ran BEFORE the dimension check,
+            // so the first ticking world ate (and discarded) entries belonging to
+            // ALL the others. Toggling a recipe in a crafter standing in the
+            // Nether (when the Overworld ticks first) therefore did not send
+            // SyncCraftingTableStatePKT - the GUI showed the old disabled/enabled
+            // items until it was reopened.
             //
-            // Teraz wpis usuwamy TYLKO wtedy, gdy faktycznie go obsluzymy albo
-            // jest martwy. Wpisy innych wymiarow czekaja na swoj tick.
+            // Now we remove an entry ONLY when we actually handle it or it is
+            // dead. Entries of other dimensions wait for their tick.
             if (be.isRemoved() || be.getLevel() == null) {
                 it.remove();
                 continue;
@@ -272,15 +274,15 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
 
     private void markUpdated() {
         if (level instanceof ServerLevel) {
-            // Nie wysylamy od razu - zbieramy i rozglaszamy raz na tick,
-            // zeby seria przelaczen nie zamienila sie w lawine broadcastow.
+            // We do not send right away - we collect and broadcast once per tick,
+            // so that a series of toggles does not turn into an avalanche of broadcasts.
             PENDING_SYNC.add(this);
         }
     }
 
     public void syncToPlayer(ServerPlayer player) {
-        // Wysylamy tez zawartosc bufora - gracz przeglada go w zakladce
-        // "Survival Inventory" i moze z niego wyciagac (ale nie wkladac).
+        // We also send the buffer contents - the player browses it in the
+        // "Survival Inventory" tab and can pull from it (but not insert into it).
         java.util.List<ItemStack> contents = new java.util.ArrayList<>();
         for (int i = 0; i < buffer.getContainerSize(); i++) {
             ItemStack st = buffer.getItem(i);
@@ -313,7 +315,7 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         }
         tag.put("DisabledItems", list);
 
-        // Preferowane receptury: item -> recipe id
+        // Preferred recipes: item -> recipe id
         CompoundTag prefs = new CompoundTag();
         for (Map.Entry<Item, ResourceLocation> e : preferredRecipes.entrySet()) {
             ResourceLocation itemKey = BuiltInRegistries.ITEM.getKey(e.getKey());
@@ -323,7 +325,7 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
         }
         tag.put("PreferredRecipes", prefs);
 
-        // Bufor nadwyzki produkcji.
+        // The production surplus buffer.
         tag.put("Buffer", buffer.saveTo(registries));
     }
 
@@ -344,13 +346,13 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
                 }
             }
         } else if (tag.contains("EnabledItems")) {
-            // Migracja ze starego formatu (opt-in): wtedy wlaczone bylo tylko to,
-            // co na liscie, wiec wyjatkami maja byc WSZYSTKIE POZOSTALE
-            // craftowalne itemy.
+            // Migration from the old (opt-in) format: back then only what was on
+            // the list was enabled, so the exceptions must be ALL THE REMAINING
+            // craftable items.
             //
-            // Liczymy to dopiero pozniej - w loadAdditional `level` jest jeszcze
-            // null i lista craftowalnych jest pusta (patrz
-            // pendingOptInMigration). Tutaj tylko zapamietujemy, co bylo wlaczone.
+            // We compute this only later - in loadAdditional `level` is still
+            // null and the craftable list is empty (see
+            // pendingOptInMigration). Here we only remember what was enabled.
             Set<Item> wasEnabled = new HashSet<>();
             ListTag list = tag.getList("EnabledItems", Tag.TAG_STRING);
             for (int i = 0; i < list.size(); i++) {
@@ -378,7 +380,7 @@ public class VeloceCraftingTableBlockEntity extends BlockEntity {
             }
         }
 
-        // Bufor nadwyzki produkcji.
+        // The production surplus buffer.
         buffer.loadFrom(tag.getList("Buffer", Tag.TAG_COMPOUND), registries);
     }
 }

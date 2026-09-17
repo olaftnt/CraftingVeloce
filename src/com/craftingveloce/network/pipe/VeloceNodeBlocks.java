@@ -5,27 +5,28 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * JEDNO zrodlo prawdy o tym, co jest wezlem sieci rur.
+ * The ONE source of truth about what is a node of the pipe network.
  *
- * <p><b>Dlaczego ta klasa istnieje.</b> Ta wiedza byla rozsiana po dwoch
- * miejscach: {@code VelocePipeNetworkManager.nodeConnectsToPipe} (ktore pyta
- * "czy ten wezel laczy sie z rura z tej strony?") oraz
- * {@code collectNeighbours} (ktore zbiera wezly przy budowie sieci). Oba
- * miejsca wymienialy typy blokow RECZNIE - i sie rozjechaly.
+ * <p><b>Why this class exists.</b> This knowledge was scattered across two
+ * places: {@code VelocePipeNetworkManager.nodeConnectsToPipe} (which asks
+ * "does this node connect to a pipe on this side?") and
+ * {@code collectNeighbours} (which collects nodes while building the network).
+ * Both places listed block types BY HAND - and they drifted apart.
  *
- * <p>Skutek byl widoczny golym okiem: kontroler nie byl rozpoznawany przez
- * zadne z tych miejsc jako wezel, wiec
- * {@link VelocePipeNetworkManager#getNetworkForTerminal} zwracal dla niego
- * {@code null}. Kontroler dostawal wtedy PUSTY stock i PUSTY zbior itemow
- * z wlaczonym auto-craftingiem - wiec kazdy item (np. deski) pokazywal sie
- * jako "auto-crafting wylaczony", mimo ze crafter w sieci mial go wlaczonego.
+ * <p>The effect was visible to the naked eye: the controller was not recognized
+ * by either of those places as a node, so
+ * {@link VelocePipeNetworkManager#getNetworkForTerminal} returned {@code null}
+ * for it. The controller then received an EMPTY stock and an EMPTY set of items
+ * with auto-crafting enabled - so every item (e.g. planks) showed up as
+ * "auto-crafting disabled", even though the crafter in the network had it
+ * enabled.
  *
- * <p>Dodatkowo kontroler nie trafial do {@code network.getTerminals()}, wiec
- * jego chunk nie byl utrzymywany w pamieci.
+ * <p>Additionally the controller did not make it into {@code network.getTerminals()},
+ * so its chunk was not kept in memory.
  *
- * <p>Teraz oba miejsca pytaja TE KLASE, a ta pyta JEDEN interfejs
- * ({@link VeloceNetworkNode}). Dodanie nowego wezla to implementacja tego
- * interfejsu w jego bloku - bez dotykania rdzenia i bez importu obcego moda.
+ * <p>Now both places ask THIS CLASS, and this class asks ONE interface
+ * ({@link VeloceNetworkNode}). Adding a new node is implementing that interface
+ * in its block - without touching the core and without importing a foreign mod.
  */
 public final class VeloceNodeBlocks {
 
@@ -33,41 +34,42 @@ public final class VeloceNodeBlocks {
     }
 
     /**
-     * Czy ten blok jest wezlem sieci rur.
+     * Whether this block is a node of the pipe network.
      *
-     * <p>Wezel to blok z wlasnym block entity, ktory musi byc symulowany
-     * (dlatego jego chunk jest force-loadowany) albo ktory dostarcza sieci
-     * funkcji: terminal, kontroler, crafter, ekstraktor, sensor, piece.
+     * <p>A node is a block with its own block entity that must be simulated
+     * (which is why its chunk is force-loaded) or that provides functions to the
+     * network: terminal, controller, crafter, extractor, sensor, furnaces.
      */
     public static boolean isNode(Block block) {
         return block instanceof VeloceNetworkNode;
     }
 
     /**
-     * Czy wezel laczy sie z rura stojaca po stronie {@code towardPipe}.
+     * Whether the node connects to a pipe standing on the side {@code towardPipe}.
      *
-     * <p><b>Konwencja kierunku jest tu kluczowa</b> (i juz raz byla odwrocona,
-     * co dawalo objaw "rura widzi terminal, ale terminal nie widzi rury"):
-     * {@code towardPipe} to kierunek OD WEZLA DO RURY, a nie od rury do wezla.
-     * Wolajacy stojacy przy rurze musi wiec przekazac {@code d.getOpposite()}.
+     * <p><b>The direction convention is crucial here</b> (and it was already
+     * reversed once, which gave the symptom "the pipe sees the terminal, but the
+     * terminal does not see the pipe"): {@code towardPipe} is the direction FROM
+     * THE NODE TO THE PIPE, and not from the pipe to the node. A caller standing
+     * at the pipe must therefore pass {@code d.getOpposite()}.
      *
-     * @param state      stan bloku wezla
-     * @param block      blok wezla (ten sam co {@code state.getBlock()})
-     * @param towardPipe kierunek od wezla w strone rury
+     * @param state      the block state of the node
+     * @param block      the node block (the same as {@code state.getBlock()})
+     * @param towardPipe the direction from the node towards the pipe
      */
     public static boolean connectsFrom(BlockState state, Block block, Direction towardPipe) {
         return block instanceof VeloceNetworkNode node
                 && node.canConnectFrom(state, towardPipe);
     }
     /**
-     * Wspolny hook: wezel wlasnie stanal w swiecie.
+     * Shared hook: a node has just been placed in the world.
      *
-     * <p><b>Po co wydzielone.</b> Ta sama sekwencja (uniewaznij wezel w sieci
-     * Toma, potem zglos go naszemu menedzerowi) byla skopiowana w SIEDMIU
-     * klasach blokow-wezlow. To nie jest kosmetyka: gdy dodawalismy piece,
-     * jeden z nich nie dostal tego hooka i nie byl rozpoznawany przez siec,
-     * dopoki czegos innego nie ruszylo. Nowy wezel ma teraz JEDNO miejsce do
-     * wywolania, a nie piec linii do przepisania z pamieci.
+     * <p><b>Why it is factored out.</b> The same sequence (invalidate the node
+     * in Tom's network, then report it to our manager) was copy-pasted in SEVEN
+     * block-node classes. This is not cosmetics: when we were adding furnaces,
+     * one of them did not get this hook and was not recognized by the network
+     * until something else was touched. A new node now has ONE place to call,
+     * instead of five lines to retype from memory.
      */
 
     public static void onNodePlaced(net.minecraft.world.level.Level world, net.minecraft.core.BlockPos pos) {
@@ -77,16 +79,17 @@ public final class VeloceNodeBlocks {
         com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
         if (world instanceof net.minecraft.server.level.ServerLevel sl) {
             VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
-            // Nowy wezel = nowe mozliwosci: cache liczb przestaje byc aktualny.
+            // A new node = new possibilities: the number cache is no longer current.
             VelocePipeNetworkManager.get(sl).clearCraftableMemo(sl, pos);
         }
     }
 
     /**
-     * Wspolny hook: wezel zniknal ze swiata.
+     * Shared hook: a node has disappeared from the world.
      *
-     * <p>Bez tego siec trzymalaby wpis o wezle, ktorego juz nie ma (widmo
-     * w terminalu) - a przy ponownym postawieniu bloku powstalby drugi wpis.
+     * <p>Without it the network would keep an entry for a node that no longer
+     * exists (a ghost in the terminal) - and placing the block again would create
+     * a second entry.
      */
     public static void onNodeRemoved(net.minecraft.world.level.LevelAccessor world,
                                      net.minecraft.core.BlockPos pos) {

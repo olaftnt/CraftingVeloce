@@ -9,20 +9,21 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 
 /**
- * JEDNA komenda odpalajaca cale debugowanie chunkow i sieci.
+ * ONE command that turns on all chunk and network debugging.
  *
- * <p><b>Zasada: nic nie idzie na czat.</b> Caly raport trafia do konsoli
- * i do pliku {@code logs/latest.log} pod prefiksem {@code [Veloce][CHUNKTRACE]}.
- * Na czacie pojawia sie tylko krotkie potwierdzenie, ze sledzenie dziala -
- * bez tego nie byloby wiadomo, czy komenda w ogole sie wykonala.
+ * <p><b>Rule: nothing goes to the chat.</b> The whole report goes to the console
+ * and to the file {@code logs/latest.log} under the prefix
+ * {@code [Veloce][CHUNKTRACE]}. The chat only shows a short confirmation that
+ * tracing is working - without it there would be no way to tell whether the
+ * command ran at all.
  *
- * <p><b>Co obejmuje jedna komenda:</b>
+ * <p><b>What one command covers:</b>
  * <ul>
- *   <li>wlaczenie sledzenia z nowa sesja (identyfikator w kazdej linii),</li>
- *   <li>wlaczenie monitora rozladowan chunkow,</li>
- *   <li>wlaczenie raportu operacji na niezaladowanych chunkach,</li>
- *   <li>zrzut stanu WSZYSTKICH sieci: chunki, wezly, magazyny, wymuszenia,</li>
- *   <li>zrzut zawartosci sieci z rozbiciem na endpointy (cache vs swiezy skan).</li>
+ *   <li>enabling tracing with a new session (an identifier in every line),</li>
+ *   <li>enabling the chunk unload monitor,</li>
+ *   <li>enabling the report of operations on unloaded chunks,</li>
+ *   <li>a dump of the state of ALL networks: chunks, nodes, storage, force-loads,</li>
+ *   <li>a dump of network contents broken down by endpoint (cache vs fresh scan).</li>
  * </ul>
  */
 public final class CVTraceCommand {
@@ -34,42 +35,42 @@ public final class CVTraceCommand {
         dispatcher.register(
             CVCommandRoot.root()
                 .then(Commands.literal("trace")
-                    // Bez argumentu: przelacza. To ma byc jedna komenda.
+                    // Without an argument: it toggles. This is meant to be one command.
                     .executes(CVTraceCommand::toggle)
                     .then(Commands.literal("on")
                         .executes(ctx -> setTrace(ctx, true)))
                     .then(Commands.literal("off")
                         .executes(ctx -> setTrace(ctx, false)))
-                    // Zrzut na zadanie - bez zmieniania stanu sledzenia.
+                    // Dump on demand - without changing the tracing state.
                     .then(Commands.literal("dump")
                         .executes(CVTraceCommand::dump)))
         );
     }
 
-    /** Przelacza sledzenie (wlacza/wylacza). */
+    /** Toggles tracing (on/off). */
     private static int toggle(CommandContext<CommandSourceStack> context) {
         return setTrace(context, !ChunkTrace.isEnabled());
     }
 
     /**
-     * Wlacza lub wylacza sledzenie.
+     * Enables or disables tracing.
      *
-     * <p>Przy wlaczeniu robi OD RAZU pelny zrzut stanu - dzieki temu w logu
-     * jest punkt odniesienia ("jak bylo na starcie"), z ktorym mozna porownac
-     * pozniejsze wpisy.
+     * <p>When enabling, it does a full state dump RIGHT AWAY - thanks to that the
+     * log has a reference point ("how it was at the start") to compare later
+     * entries against.
      */
     private static int setTrace(CommandContext<CommandSourceStack> context, boolean on) {
         CommandSourceStack source = context.getSource();
         ServerLevel level = source.getLevel();
 
         if (!on) {
-            ChunkTrace.event("TRACE", "wylaczanie sledzenia na zadanie gracza");
+            ChunkTrace.event("TRACE", "disabling tracing at the player's request");
             ChunkTrace.stop();
             com.craftingveloce.debug.ChunkDebugNotifier.setEnabled(false);
             com.craftingveloce.debug.ChunkOpNotifier.setEnabled(false);
-            // Jedyne wyjscie na czat - potwierdzenie dla gracza.
+            // The only chat output - a confirmation for the player.
             source.sendSuccess(() -> Component.literal(
-                    "§8[§6Veloce§8] trace: §cOFF §7(szczegoly byly w konsoli)"), false);
+                    "§8[§6Veloce§8] trace: §cOFF §7(details were in the console)"), false);
             return 1;
         }
 
@@ -77,39 +78,39 @@ public final class CVTraceCommand {
         com.craftingveloce.debug.ChunkDebugNotifier.setEnabled(true);
         com.craftingveloce.debug.ChunkOpNotifier.setEnabled(true);
 
-        ChunkTrace.event("TRACE", "wlaczone przez %s", source.getTextName());
+        ChunkTrace.event("TRACE", "enabled by %s", source.getTextName());
         dumpAll(level, "START");
 
         source.sendSuccess(() -> Component.literal(
-                "§8[§6Veloce§8] trace: §aON §7sesja §f" + session), false);
+                "§8[§6Veloce§8] trace: §aON §7session §f" + session), false);
         source.sendSuccess(() -> Component.literal(
-                "§7Wszystko leci do konsoli: §flogs/latest.log§7, szukaj §f[CHUNKTRACE]"), false);
+                "§7Everything goes to the console: §flogs/latest.log§7, look for §f[CHUNKTRACE]"), false);
         return 1;
     }
 
-    /** Zrzut na zadanie, bez zmiany stanu. */
+    /** Dump on demand, without changing the state. */
     private static int dump(CommandContext<CommandSourceStack> context) {
         if (!ChunkTrace.isEnabled()) {
             context.getSource().sendFailure(Component.literal(
-                    "§cSledzenie wylaczone. Wlacz: §f/cv trace"));
+                    "§cTracing is off. Enable it: §f/cv trace"));
             return 0;
         }
         dumpAll(context.getSource().getLevel(), "DUMP");
         context.getSource().sendSuccess(() -> Component.literal(
-                "§7Zrzut zapisany w konsoli (§f[CHUNKTRACE]§7)."), false);
+                "§7Dump saved to the console (§f[CHUNKTRACE]§7)."), false);
         return 1;
     }
 
-    /** Zrzut wszystkich sieci w danym wymiarze. */
+    /** Dump of all networks in the given dimension. */
     private static void dumpAll(ServerLevel level, String label) {
         var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level);
         var networks = manager.getAllNetworks(level);
 
-        ChunkTrace.event("DUMP", "%s: sieci=%d wymiar=%s", label,
+        ChunkTrace.event("DUMP", "%s: networks=%d dimension=%s", label,
                 networks.size(), level.dimension().location());
 
         if (networks.isEmpty()) {
-            ChunkTrace.event("DUMP", "%s: brak sieci w tym wymiarze", label);
+            ChunkTrace.event("DUMP", "%s: no networks in this dimension", label);
             return;
         }
         for (var net : networks) {

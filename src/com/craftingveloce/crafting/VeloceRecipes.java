@@ -8,13 +8,13 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * Receptury wlasne Veloce (serializery).
+ * Veloce's own recipes (serializers).
  *
- * <p>Typ receptury to waniliowy {@code crafting} - nasza receptura rozklada
- * tylko obudowy, wiec nie potrzebuje wlasnej kategorii. Rejestrujemy sam
- * serializer, a sama recepture dostarczamy jako JSON w
- * {@code data/craftingveloce/recipe/} (dzieki temu dziala w kazdym swiecie bez
- * zadnego kodu przy ladowaniu).
+ * <p>The recipe type is the vanilla {@code crafting} - our recipe only
+ * disassembles casings, so it does not need a category of its own. We register
+ * only the serializer, and we deliver the recipe itself as JSON in
+ * {@code data/craftingveloce/recipe/} (thanks to that it works in every world
+ * with no loading-time code at all).
  */
 public final class VeloceRecipes {
 
@@ -24,7 +24,7 @@ public final class VeloceRecipes {
     public static final DeferredRegister<RecipeSerializer<?>> SERIALIZERS =
             DeferredRegister.create(BuiltInRegistries.RECIPE_SERIALIZER, CraftingVeloceMod.MODID);
 
-    /** Rozkladanie obudowy: maszyna -&gt; pusta obudowa + klocki bazowe. */
+    /** Casing disassembly: machine -&gt; empty casing + base blocks. */
     public static final DeferredHolder<RecipeSerializer<?>, VeloceCaseDisassemblySerializer>
             CASE_DISASSEMBLY = SERIALIZERS.register("case_disassembly",
             VeloceCaseDisassemblySerializer::new);

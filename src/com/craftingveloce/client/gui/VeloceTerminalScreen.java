@@ -31,19 +31,19 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     private Map<Item, Long> networkCounts = new HashMap<>();
 
     /**
-     * Ile sztuk da sie dorobic auto-craftingiem (zolta liczba "+N").
+     * How many units can still be made by auto-crafting (the yellow "+N" number).
      *
-     * <p>Logika zamawiania i sklejania odpowiedzi siedzi we wspolnej klasie,
-     * ktorej uzywa TAKZE kontroler - zeby oba ekrany pokazywaly te same
-     * liczby z tego samego kodu, a nie z dwoch kopii, ktore maja sie zgadzac.
+     * <p>The ordering logic and the merging of responses live in a shared class
+     * that the controller ALSO uses - so that both screens show the same
+     * numbers from the same code, and not from two copies that have to agree.
      */
     private final VeloceCraftableCounts craftable = new VeloceCraftableCounts();
 
     /**
-     * Powody nieudanych prob (serwer -> tooltip itemu).
+     * Reasons for failed attempts (server -> item tooltip).
      *
-     * <p>Pasek akcji jest w GUI terminala niewidoczny, wiec powod nieudanego
-     * craftu pokazujemy w tooltipie tego itemu, ktory gracz kliknal.
+     * <p>The action bar is not visible in the terminal GUI, so the reason for a
+     * failed craft is shown in the tooltip of the item the player clicked.
      */
     private final VeloceCraftErrorHints craftErrors = new VeloceCraftErrorHints();
 
@@ -69,8 +69,8 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                 }
             }
         } catch (Throwable t) {
-            // Refleksja nad vanilla - jesli pola/metody zmienia nazwy po
-            // aktualizacji, chcemy o tym wiedziec z LOGA, a nie z konsoli.
+            // Reflection over vanilla - if the fields/methods get renamed by an
+            // update, we want to learn about it from the LOG, not from the console.
             com.craftingveloce.util.VeloceLog.Gui.error(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT, t,
                     "could not resolve CreativeModeInventoryScreen fields (tab/page memory disabled)");
@@ -90,43 +90,44 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         Map<Item, Long> previous = this.networkCounts;
         this.networkCounts = new HashMap<>(counts);
 
-        // Pytamy ponownie TYLKO gdy stock naprawde sie zmienil.
+        // We ask again ONLY when the stock has really changed.
         //
-        // BUG, ktory tu byl: wolalismy requestVisibleCounts(true) bezwarunkowo.
-        // A serwer wysyla ten pakiet co sekunde (syncCountsToAllWatchers),
-        // wiec powstawala PETLA:
-        //     updateNetworkCounts -> requestVisibleCounts -> serwer liczy
-        //     -> SyncCraftableCounts -> (nastepna sekunda) updateNetworkCounts
-        // Klient wysylal wiec zadanie co sekunde bez konca, a gracz czul to
-        // jako "lag zanim pokaza sie liczby" - GUI czekalo na round-trip.
+        // The BUG that used to be here: we called requestVisibleCounts(true)
+        // unconditionally. And the server sends this packet once per second
+        // (syncCountsToAllWatchers), so a LOOP formed:
+        //     updateNetworkCounts -> requestVisibleCounts -> server computes
+        //     -> SyncCraftableCounts -> (next second) updateNetworkCounts
+        // The client therefore sent a request once per second forever, and the
+        // player felt it as "lag before the numbers show up" - the GUI was
+        // waiting for a round-trip.
         //
-        // Teraz porownujemy stock z poprzednim pakietem: jesli sie nie zmienil,
-        // nie ma po co pytac. Po skraftowaniu/wyciagnieciu rozni sie, wiec
-        // liczby "+N" odswiezaja sie tak, jak powinny.
+        // Now we compare the stock with the previous packet: if it has not
+        // changed, there is no point in asking. After crafting/withdrawing it
+        // differs, so the "+N" numbers refresh the way they should.
         if (previous != null && previous.equals(this.networkCounts)) {
             return;
         }
         requestVisibleCounts(true);
-        // NIE nadpisujemy calej mapy craftowalnosci.
+        // We do NOT overwrite the whole craftability map.
         //
-        // Tlo (cache) wysyla swoja migawke, ktora podczas ponownego skanu jest
-        // pusta albo niepelna. Nadpisanie kasowalo wtedy liczby dostarczone
-        // przez natychmiastowa odpowiedz - i nie wracaly. Dokladamy wiec tylko
-        // to, co przyszlo; precyzyjne czyszczenie robi natychmiastowa sciezka.
+        // The background (cache) sends its own snapshot, which during a rescan
+        // is empty or incomplete. Overwriting used to erase the numbers supplied
+        // by the immediate response - and they never came back. So we only merge
+        // in what arrived; precise clearing is done by the immediate path.
         this.craftable.putAll(craftable);
     }
 
     /**
-     * Odpowiedz serwera z liczbami dla widocznych itemow.
+     * The server's response with the numbers for the visible items.
      *
-     * <p>Aktualizujemy TYLKO te itemy, o ktore pytalismy. Gdybysmy
-     * nadpisali cala mape, tlo (cache) i natychmiastowa odpowiedz
-     * nadpisywalyby sie nawzajem i liczby by migotaly.
+     * <p>We update ONLY the items we asked about. If we overwrote the whole
+     * map, the background (cache) and the immediate response would overwrite
+     * each other and the numbers would flicker.
      *
-     * <p>Usuwamy tez wpisy dla pytanych itemow, ktorych nie ma w wyniku.
-     * Serwer od pewnego czasu przysyla takze ZERA (konkretna odpowiedz "nie da
-     * sie juz nic zrobic"), ale czyszczenie zostaje jako zabezpieczenie dla
-     * odpowiedzi z serwera bez tych zer.
+     * <p>We also remove entries for requested items that are missing from the
+     * result. For some time now the server has also been sending ZEROS (an
+     * explicit answer of "nothing more can be made"), but the clearing stays as
+     * a safeguard for responses from a server without those zeros.
      */
     public void updateCraftableCounts(Map<Item, Long> craftable, boolean complete) {
         com.craftingveloce.util.VeloceLog.Gui.detail(
@@ -137,10 +138,11 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Powod nieudanej proby z serwera - zapamietaj dla tooltipa itemu.
+     * Reason for a failed attempt from the server - remember it for the item tooltip.
      *
-     * <p>Pakiety z INNEGO terminala (gracz zdazyl przeskoczyc do drugiego)
-     * pomijamy: pokazanie powodu przy nie tym ekranie bylo by mylace.
+     * <p>Packets from ANOTHER terminal (the player managed to jump to a second
+     * one) are skipped: showing the reason on the wrong screen would be
+     * misleading.
      */
     public void setCraftError(BlockPos pos, ItemStack stack, String reason, String detail) {
         if (pos != null && pos.equals(this.terminalPos)) {
@@ -151,57 +153,59 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     @Override
     protected void init() {
         super.init();
-        // Natychmiast po otwarciu: zamow liczby dla tego, co widac.
+        // Immediately after opening: request the numbers for whatever is visible.
         craftable.resetRequestState();
         requestVisibleCounts(true);
     }
 
     @Override
     public void containerTick() {
-        // WAZNE: wolamy baze - inaczej nie dziala wykrywanie zakladek ani
-        // filtrowanie itemow z VeloceCreativeScreen.
+        // IMPORTANT: we call the base - otherwise tab detection and item
+        // filtering from VeloceCreativeScreen do not work.
         super.containerTick();
-        // Na zywo: gdy zmieni sie zawartosc ekranu (zakladka, przewiniecie),
-        // zamow liczby dla nowej strony.
+        // Live: when the screen contents change (tab, scroll), request the
+        // numbers for the new page.
         requestVisibleCounts(false);
     }
 
     /**
-     * Zamawia na serwerze liczby "ile da sie dorobic" dla widocznych itemow.
+     * Requests from the server the "how many can still be made" numbers for the
+     * visible items.
      *
-     * <p>To daje odpowiedz NATYCHMIAST: serwer liczy cala strone jednym
-     * wspoldzielonym budzetem czasowym i odsyla gotowe liczby. Tlo (cache)
-     * przelicza reszte sieci, ale gracz nie musi na to czekac, zeby zobaczyc
-     * aktualne wartosci tam, gdzie patrzy.
+     * <p>This gives an IMMEDIATE answer: the server computes the whole page
+     * with one shared time budget and sends the ready numbers back. The
+     * background (cache) recomputes the rest of the network, but the player
+     * does not have to wait for that to see current values where they are
+     * looking.
      *
-     * @param force true = wyslij nawet jesli sygnatura sie nie zmienila
+     * @param force true = send even if the signature has not changed
      */
     private void requestVisibleCounts(boolean force) {
         if (this.minecraft == null || this.minecraft.player == null || this.menu == null) {
             return;
         }
-        // Sloty moga byc puste, mimo ze itemy sa wyswietlone (patrz
-        // ensureGridItems) - wtedy nie ma czego zamowic i liczby nie pojawiaja
-        // sie, dopoki nie przelaczy sie zakladki albo frazy.
+        // The slots may be empty even though the items are displayed (see
+        // ensureGridItems) - then there is nothing to request and the numbers do
+        // not appear until a tab or a search phrase is switched.
         ensureGridItems();
         this.craftable.request(terminalPos, this.menu.slots, this::isPlayerSlot, force);
     }
 
     /**
-     * Rysuje strzalke na slocie odkladania.
+     * Draws an arrow on the deposit slot.
      *
-     * <p>Vanilla na tym miejscu nie rysuje zadnej ikonki - krzyzyk, ktory tam
-     * widac, jest wypalony w teksturze GUI creative. Skoro nasz slot nie
-     * niszczy itemu, tylko go ODKLADA, krzyzyk jest mylacy. Rysujemy wiec
-     * wlasna strzalke "do sieci" i zaslaniamy nia stara grafike.
+     * <p>Vanilla draws no icon at all in this spot - the cross that is visible
+     * there is burned into the creative GUI texture. Since our slot does not
+     * destroy the item, it only DEPOSITS it, the cross is misleading. So we draw
+     * our own "into the network" arrow and cover the old graphic with it.
      */
     private void drawStoreArrow(GuiGraphics graphics, Slot slot) {
-        // Zaslaniamy krzyzyk z tekstury tlem slotu.
+        // We cover the cross from the texture with the slot background.
         int x = this.leftPos + slot.x;
         int y = this.topPos + slot.y;
         graphics.fill(x, y, x + 16, y + 16, 0xFFC6C6C6);
 
-        // Strzalka w prawo: dwa skosy + trzon.
+        // Right arrow: two diagonals + a shaft.
         int cx = x + 3;
         int cy = y + 7;
         int color = 0xFF3B6E3B;
@@ -226,9 +230,9 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             if (count > 0) {
                 VeloceSlotOverlay.drawStock(graphics, this.font, count, slot.x, slot.y);
             }
-            // Liczba sztuk, ktore da sie dorobic auto-craftingiem.
-            // Pokazywana jako "+N" w lewym gornym rogu - zolta, zeby odroznic
-            // od zielonego stocku. Zero nie jest rysowane.
+            // The number of units that can still be made by auto-crafting.
+            // Shown as "+N" in the top left corner - yellow, to tell it apart
+            // from the green stock. Zero is not drawn.
             long craftable = this.craftable.get(stack.getItem());
             if (craftable > 0) {
                 VeloceSlotOverlay.drawCraftable(graphics, this.font, craftable, slot.x, slot.y);
@@ -236,20 +240,20 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         }
     }
 
-    /** Zgodnosc: skrocona liczba. Implementacja jest we {@link VeloceSlotOverlay}. */
+    /** Compatibility: abbreviated number. The implementation is in {@link VeloceSlotOverlay}. */
     public static String formatCount(long number) {
         return VeloceSlotOverlay.formatCount(number);
     }
 
     /**
-     * Tooltip slotu magazynu.
+     * Tooltip of the storage slot.
      *
-     * <p>Vanilla dla slotu na tym miejscu wypisuje "Destroy Item" - u nas ten
-     * slot NIE niszczy, tylko oddaje item do sieci. Podmieniamy wiec tekst na
-     * "usage" i dodajemy podpowiedz, jak dziala shift.
+     * <p>For a slot in this spot vanilla prints "Destroy Item" - in our case
+     * this slot does NOT destroy, it only hands the item over to the network.
+     * So we replace the text with "usage" and add a hint about how shift works.
      *
-     * <p>Dla zwyklych itemow zostawiamy czysty tooltip (bez linii kategorii
-     * i tagow, ktore creative inventory dokleja w zakladkach CATEGORY/SEARCH).
+     * <p>For ordinary items we leave a clean tooltip (without the category line
+     * and tags that the creative inventory appends in the CATEGORY/SEARCH tabs).
      */
     @Override
     public List<Component> getTooltipFromContainerItem(ItemStack stack) {
@@ -267,27 +271,27 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                     .withStyle(net.minecraft.ChatFormatting.GRAY));
             return lines;
         }
-        // Czysty tooltip itemu buduje klasa bazowa (bez kategorii i tagow
-        // creative) - jedno zrodlo dla wszystkich czterech ekranow. Dokladamy
-        // do niego powod nieudanego craftu, jesli ten item wlasnie sie nie udal
-        // (serwer nie moze juz uzyc paska akcji - pod GUI go nie widac).
+        // The clean item tooltip is built by the base class (without creative
+        // categories and tags) - a single source for all four screens. We append
+        // the reason for a failed craft if this item has just failed (the server
+        // can no longer use the action bar - it is not visible under the GUI).
         List<Component> tooltip = new ArrayList<>(super.getTooltipFromContainerItem(stack));
         craftErrors.appendTo(tooltip, stack);
         return tooltip;
     }
 
     /**
-     * Klucz stanu widoku - pozycja TEGO terminala.
+     * View state key - the position of THIS terminal.
      *
-     * <p>Dzieki temu kazdy terminal pamieta wlasna zakladke, fraze i
-     * przewiniecie, zamiast wspoldzielic je z creative inventory.
+     * <p>Thanks to this every terminal remembers its own tab, search phrase and
+     * scroll position, instead of sharing them with the creative inventory.
      */
     @Override
     protected Object viewStateKey() {
         return terminalPos;
     }
 
-    /** Terminal zostawia hotbar gracza dzialajacy - mozna z niego korzystac. */
+    /** The terminal leaves the player's hotbar working - it can be used from it. */
     @Override
     protected boolean keepPlayerHotbar() {
         return true;
@@ -312,25 +316,26 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     }
 
     /**
-     * Odklada itemy gracza do sieci.
+     * Deposits the player's items into the network.
      *
-     * <p>Trzy warianty, jak w vanilla creative inventory:
+     * <p>Three variants, as in the vanilla creative inventory:
      * <ul>
-     *   <li>zwykly klik - to, co trzymasz na kursorze,</li>
-     *   <li>shift + klik - caly ekwipunek OPROCZ hotbara,</li>
-     *   <li>shift + prawy klik - doslownie wszystko, hotbar tez.</li>
+     *   <li>ordinary click - whatever you hold on the cursor,</li>
+     *   <li>shift + click - the whole inventory EXCEPT the hotbar,</li>
+     *   <li>shift + right click - literally everything, the hotbar too.</li>
      * </ul>
      *
-     * <p><b>Klient wysyla tylko TRYB i nic nie rusza u siebie.</b> Poprzednia
-     * wersja wysylala kopie stosu i czyscila kursor lokalnie - a serwer nie
-     * zabieral niczego graczowi, wiec item powstawal i w beczce, i w ekwipunku
-     * (fizyczna duplikacja). Teraz serwer sam zabiera itemy i odsyla zmiany.
+     * <p><b>The client sends only the MODE and touches nothing locally.</b> The
+     * previous version sent a copy of the stack and cleared the cursor locally -
+     * but the server took nothing away from the player, so the item appeared
+     * both in the barrel and in the inventory (physical duplication). Now the
+     * server takes the items itself and sends the changes back.
      */
     private void handleStoreClick(int mouseButton, ClickType clickType) {
         if (this.minecraft == null || this.minecraft.player == null) {
             return;
         }
-        // Nic nie trzymamy na kursorze i nie ma czego odkladac.
+        // We are not holding anything on the cursor and there is nothing to deposit.
         boolean shift = clickType == ClickType.QUICK_MOVE;
         boolean rightClick = mouseButton == 1;
 
@@ -346,48 +351,52 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             mode = com.craftingveloce.network.TerminalStoreItemPKT.MODE_CURSOR;
         }
 
-        // NIE BLOKujemy akcji po stronie klienta.
+        // We do NOT block the action on the client side.
         //
-        // BUG, ktory tu byl (zrodlo trwalego falszywego "network full"):
-        // klient liczyl wolne sloty z OSTATNIEJ synchronizacji i gdy wyszlo 0,
-        // odmawial wyslania pakietu:
+        // The BUG that used to be here (the source of a persistent false
+        // "network full"):
+        // the client counted free slots from the LAST synchronization and when
+        // that came out as 0, it refused to send the packet:
         //
         //     String blocked = storeBlockedReason(mode);
         //     if (blocked != null) { storeFeedback(blocked); return; }
         //
-        // Tyle ze "0 wolnych slotow" NIE znaczy "siec pelna":
-        //   1. licznik pustych slotow ignoruje miejsce w NIEDOPELNIONYCH
-        //      stosach - skrzynia wypelniona stosami po 40 sztuk ma 0 pustych
-        //      slotow, a przyjmie jeszcze setki,
-        //   2. dane klienta moga byc NIEAKTUALNE (ktos dopelnil skrzynie,
-        //      hopper cos dosypal) - a wtedy klient blokuje NA ZAWSZE, bo
-        //      sam z siebie nigdy nie odswiezy tego zero.
+        // Except that "0 free slots" does NOT mean "network full":
+        //   1. the empty slot counter ignores room in NOT-FULL stacks - a chest
+        //      filled with stacks of 40 has 0 empty slots, yet it will still
+        //      accept hundreds,
+        //   2. the client's data may be STALE (someone topped up the chest, a
+        //      hopper added something) - and then the client blocks FOREVER,
+        //      because on its own it never refreshes that zero.
         //
-        // Klient nie ma dosc informacji, zeby rozstrzygnac to rzetelnie:
-        // nie zna zawartosci poszczegolnych slotow ani tego, czy dane sa
-        // swieze. Decyzja nalezy do SERWERA, ktory ma pelny obraz (i moze
-        // nawet doczytac chunk). Wysylamy wiec zadanie ZAWSZE, a serwer
-        // odpowiada prawda - komunikatem, gdy naprawde nic nie weszlo.
+        // The client does not have enough information to decide this reliably:
+        // it does not know the contents of individual slots or whether the data
+        // is fresh. The decision belongs to the SERVER, which has the full
+        // picture (and can even load the chunk). So we ALWAYS send the request,
+        // and the server answers with the truth - with a message when truly
+        // nothing got in.
         //
         PacketDistributor.sendToServer(
                 new com.craftingveloce.network.TerminalStoreItemPKT(terminalPos, mode));
 
-        // NIE ruszamy kursora lokalnie.
+        // We do NOT touch the cursor locally.
         //
-        // BUG, ktory tu byl (zrodlo "ghost itemow"): po wyslaniu pakietu
-        // czyscilismy kursor u siebie, "zeby GUI zareagowalo od razu":
+        // The BUG that used to be here (the source of "ghost items"): after
+        // sending the packet we cleared the cursor on our side "so that the GUI
+        // reacts right away":
         //
         //     this.menu.setCarried(ItemStack.EMPTY);
         //
-        // Gdy siec byla PELNA, serwer nie zabieral niczego (bo nie mial gdzie
-        // wlozyc), wiec item znikal TYLKO wizualnie u klienta - a po ponownym
-        // otwarciu ekwipunku wracal, bo na serwerze caly czas byl.
+        // When the network was FULL, the server took nothing (because it had
+        // nowhere to put it), so the item vanished ONLY visually on the client -
+        // and after reopening the inventory it came back, because on the server
+        // it had been there the whole time.
         //
-        // Teraz klient nie zmienia NICZEGO, dopoki serwer nie potwierdzi.
-        // Potwierdzeniem jest resync ekwipunku (TerminalPullItemPKT.
-        // resyncInventories), ktory serwer wysyla tylko gdy NAPRAWDE cos
-        // przeniosl. Dzieki temu item nigdy nie opuszcza swojego miejsca,
-        // jesli nie ma go gdzie wlozyc - i nie ma czego cofac.
+        // Now the client changes NOTHING until the server confirms. The
+        // confirmation is an inventory resync (TerminalPullItemPKT.
+        // resyncInventories), which the server sends only when it REALLY moved
+        // something. Thanks to this the item never leaves its place if there is
+        // nowhere to put it - and there is nothing to roll back.
     }
 
     private void clickViaInventoryMenu(Slot slot, int slotId, int mouseButton, ClickType clickType) {
@@ -476,13 +485,13 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             return;
         }
 
-        // 2) Slot "strzalki" - odkladanie do sieci (NIE kasowanie).
+        // 2) The "arrow" slot - depositing into the network (NOT deleting).
         //
-        // Zachowanie jak w vanilla creative inventory, ale zamiast niszczyc
-        // item oddajemy go do pierwszego magazynu sieci:
-        //   - zwykly klik          -> cala zawartosc kursora
-        //   - shift + klik         -> wszystko OPROCZ hotbara
-        //   - shift + prawy klik   -> doslownie wszystko (takze hotbar)
+        // Behaviour as in the vanilla creative inventory, but instead of
+        // destroying the item we hand it over to the network's first storage:
+        //   - ordinary click      -> the whole cursor contents
+        //   - shift + click       -> everything EXCEPT the hotbar
+        //   - shift + right click -> literally everything (the hotbar too)
         if (mouseButton >= 0 && isStoreSlot(slot)) {
             handleStoreClick(mouseButton, clickType);
             return;
@@ -518,15 +527,15 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
 
     @Override
     public void removed() {
-        // Mowimy serwerowi, ze przestalismy patrzec - inaczej wysylalby nam
-        // pelna mape sieci co sekunde przez caly czas przebywania w poblizu.
+        // We tell the server that we stopped looking - otherwise it would send
+        // us the full network map once per second the whole time we are nearby.
         if (terminalPos != null) {
             PacketDistributor.sendToServer(new com.craftingveloce.network.TerminalWatcherPKT(
                     terminalPos, false));
         }
-        // Powody nieudanych prob zyja tylko tak dlugo, jak ten ekran.
+        // The reasons for failed attempts live only as long as this screen.
         craftErrors.clear();
-        // Trzymany stos obsluguje klasa bazowa - jedno zrodlo prawdy.
+        // The held stack is handled by the base class - a single source of truth.
         super.removed();
 
     }

@@ -102,10 +102,10 @@ public class VeloceExtractorBlock extends BaseEntityBlock
     @Override
     public void onRemove(BlockState state, Level world, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!state.is(newState.getBlock())) {
-            // Tylko po stronie serwera. onRemove() leci na OBU stronach, a
-            // Containers.dropContents() nie ma wlasnego sprawdzenia - na
-            // kliencie tworzyloby to duchowe encje itemow.
-            // (VeloceCraftingTableBlock ma to dobrze; ekstraktor nie mial.)
+            // Server side only. onRemove() runs on BOTH sides, and
+            // Containers.dropContents() has no check of its own - on the
+            // client this would create ghost item entities.
+            // (VeloceCraftingTableBlock gets this right; the extractor did not.)
             if (!world.isClientSide
                     && world.getBlockEntity(pos) instanceof VeloceExtractorBlockEntity extractorBE) {
                 Containers.dropContents(world, pos, extractorBE.getOutputInventory());
@@ -154,7 +154,7 @@ public class VeloceExtractorBlock extends BaseEntityBlock
         return CODEC;
     }
 
-    /** Wlasciwosci zaslepek obudowy: po jednej na kazda strone swiata. */
+    /** Casing cap properties: one per each side of the world. */
     @Override
     protected void createBlockStateDefinition(
             net.minecraft.world.level.block.state.StateDefinition.Builder<
@@ -163,14 +163,14 @@ public class VeloceExtractorBlock extends BaseEntityBlock
         com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
     }
 
-    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    /** On placement we immediately close the sides a cable comes in from. */
     @Override
     public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
         return com.craftingveloce.block.VeloceIntegraleFrame.withPlacementClosures(
                 context.getLevel(), context.getClickedPos(), defaultBlockState());
     }
 
-    /** Domkniecie blachy na scianie, przy ktorej stoi rura Veloce. */
+    /** Closing the panel on the wall where a Veloce pipe stands. */
     @Override
     protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
                                      BlockState facingState, net.minecraft.world.level.LevelAccessor world,

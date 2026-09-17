@@ -5,37 +5,40 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 
 /**
- * Wspolny korzen komend {@code /cv} - JEDNO miejsce decydujace o uprawnieniach.
+ * The common root of the {@code /cv} commands - the ONE place that decides about
+ * permissions.
  *
- * <p><b>Dlaczego osobna klasa, a nie {@code Commands.literal("cv")} w kazdym
- * pliku.</b> Komendy {@code /cv} sa rejestrowane w TRZECH plikach
- * ({@code /cv debug}, {@code /cv testnet}, {@code /cv trace}) i Brigadier scala
- * je w jeden wezel o nazwie {@code cv}. Gdyby kazdy plik deklarowal wlasny
- * warunek dostepu, wezly moglyby sie nie zlaczyc albo (gorzej) jeden z nich
- * po cichu zdecydowalby o dostepie do wszystkich - a wykrylibysmy to dopiero
- * po tym, jak komenda przestalaby dzialac albo zaczela dzialac za szeroko.
- * To dokladnie ta klasa bledu, ktora w tym projekcie trafiala sie wielokrotnie:
- * ta sama regula zapisana recznie w kilku miejscach, ktora z czasem sie rozjezdza.
+ * <p><b>Why a separate class, and not {@code Commands.literal("cv")} in every
+ * file.</b> The {@code /cv} commands are registered in THREE files
+ * ({@code /cv debug}, {@code /cv testnet}, {@code /cv trace}) and Brigadier
+ * merges them into one node named {@code cv}. If each file declared its own
+ * access condition, the nodes might fail to merge or (worse) one of them would
+ * silently decide the access for all of them - and we would only find out after
+ * the command stopped working or started working too broadly. That is exactly
+ * the class of bug that has come up many times in this project: the same rule
+ * written by hand in several places, which drifts apart over time.
  *
- * <p><b>Dlaczego w ogole wymog uprawnien.</b> Wczesniej zadna z tych komend nie
- * miala {@code requires(...)}, czyli domyslnie mogli je wywolywac WSZYSCY gracze
- * na serwerze. A {@code /cv testnet} wymusza przebudowe sieci rur, {@code /cv
- * chunk cleanup} zmienia stan swiata, a {@code /cv trace} wlacza szczegolowe
- * logowanie - to sa operacje administracyjne, nie dla kazdego.
+ * <p><b>Why a permission requirement at all.</b> Previously none of these
+ * commands had {@code requires(...)}, which means that by default ALL players on
+ * the server could invoke them. And {@code /cv testnet} forces a rebuild of the
+ * pipe network, {@code /cv chunk cleanup} changes the state of the world, and
+ * {@code /cv trace} enables detailed logging - those are administrative
+ * operations, not for everyone.
  *
- * <p>Poziom 2 to standard wanilii dla komend administracyjnych (np. {@code
- * /gamemode}). W trybie singleplayer wlasciciel swiata ma go zawsze, gdy swiat
- * ma wlaczone cheaty - a bez tego nie mialby jak korzystac z wlasnej diagnostyki.
+ * <p>Level 2 is the vanilla standard for administrative commands (e.g.
+ * {@code /gamemode}). In singleplayer the world owner always has it when the
+ * world has cheats enabled - and without that he would have no way to use his
+ * own diagnostics.
  */
 public final class CVCommandRoot {
 
     private CVCommandRoot() {
     }
 
-    /** Poziom uprawnien wymagany do komend {@code /cv} (2 = operator/cheaty). */
+    /** Permission level required for the {@code /cv} commands (2 = operator/cheats). */
     public static final int REQUIRED_PERMISSION_LEVEL = 2;
 
-    /** Korzen {@code /cv} z wymogiem uprawnien. Uzywaj TEGO, nie wlasnego literal(). */
+    /** The {@code /cv} root with the permission requirement. Use THIS, not your own literal(). */
     public static LiteralArgumentBuilder<CommandSourceStack> root() {
         return Commands.literal("cv").requires(CVCommandRoot::mayUse);
     }

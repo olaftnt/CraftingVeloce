@@ -38,7 +38,7 @@ import net.minecraft.world.WorldlyContainer;
 public class VeloceExtractorBlockEntity extends BlockEntity
         implements MenuProvider, WorldlyContainer, VeloceFilterHost {
 
-    /** Ile filtrów ma ekstraktor (zgadza sie z ukladem w GUI i w menu). */
+    /** How many filters the extractor has (matches the layout in the GUI and in the menu). */
     public static final int FILTER_SLOTS = 9;
 
     private static final int[] OUTPUT_SLOTS = new int[]{0, 1, 2, 3, 4, 5, 6, 7, 8};
@@ -47,22 +47,23 @@ public class VeloceExtractorBlockEntity extends BlockEntity
     private final SimpleContainer outputInventory = new SimpleContainer(9);
 
     /**
-     * Tick ostatniego pobrania z sieci.
+     * Tick of the last pull from the network.
      *
-     * <p>Zastepuje dawny licznik z warunkiem {@code tickCounter % 10 == 0}.
-     * Tamten wzorzec mial dwa problemy: licznik startowal od zera u KAZDEGO
-     * ekstraktora (wiec wszystkie pobieraly w tym samym ticku - skok obciazenia
-     * zamiast pracy rozlozonej), a przy okazji byl slepy na faze ticku.
-     * Faza liczona z pozycji bloku rozklada te pobrania na kolejne ticki.
+     * <p>Replaces the old counter with the condition {@code tickCounter % 10 == 0}.
+     * That pattern had two problems: the counter started from zero at EVERY
+     * extractor (so they all pulled in the same tick - a load spike instead of
+     * spread work), and incidentally it was blind to the tick phase. A phase
+     * computed from the block position spreads those pulls across successive
+     * ticks.
      */
     private long lastPullTick = Long.MIN_VALUE;
 
     /**
-     * Czy dany slot filtra moze korzystac z auto-craftingu.
+     * Whether a given filter slot may use auto-crafting.
      *
-     * <p>Domyslnie true (extractor sam dorabia brakujacy item, jesli jakis
-     * crafter w sieci ma go wlaczonego). Prawy klik na zajetym slocie to
-     * przelacza: wylaczony slot dostaje TYLKO to, co juz jest w sieci.
+     * <p>Default true (the extractor produces the missing item itself, if some
+     * crafter in the network has it enabled). A right click on an occupied slot
+     * toggles this: a disabled slot gets ONLY what is already in the network.
      */
     private final boolean[] allowCrafting = new boolean[FILTER_SLOTS];
 
@@ -82,7 +83,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         }
     }
 
-    /** Przelacza auto-crafting dla slotu i zwraca nowy stan. */
+    /** Toggles auto-crafting for the slot and returns the new state. */
     public boolean toggleCraftingAllowed(int index) {
         boolean next = !isCraftingAllowed(index);
         setCraftingAllowed(index, next);
@@ -155,7 +156,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         }
     }
 
-    /** Filtry + flagi auto-craftingu w jednym pakiecie. */
+    /** Filters + auto-crafting flags in one packet. */
     private SyncExtractorFiltersPKT buildFilterPacket() {
         List<Boolean> flags = new ArrayList<>(9);
         for (int i = 0; i < 9; i++) {
@@ -165,14 +166,15 @@ public class VeloceExtractorBlockEntity extends BlockEntity
     }
 
     public void serverTick() {
-        // Osłona: odczytujemy teraz czas gry z poziomu, a ticker nie powinien
-        // trafic tu przed setLevel() - ale NPE w ticku zabilby serwer, wiec
-        // nie zakladamy tego na zapas.
+        // Guard: we now read the game time from the level, and the ticker should
+        // not reach here before setLevel() - but an NPE in a tick would kill the
+        // server, so we do not assume it away.
         if (level == null) {
             return;
         }
-        // Pobranie z sieci co 10 tickow (0.5 s), ale z faza zalezna od
-        // pozycji bloku - zeby kilka ekstraktorow nie uderzylo w siec naraz.
+        // A pull from the network every 10 ticks (0.5 s), but with a phase
+        // depending on the block position - so that several extractors do not
+        // hit the network at once.
         if (com.craftingveloce.util.VeloceTick.everySpread(
                 level.getGameTime(), lastPullTick, PULL_INTERVAL_TICKS, worldPosition)) {
             lastPullTick = level.getGameTime();
@@ -180,7 +182,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         }
     }
 
-    /** Co ile tickow ekstraktor probuje pobrac filtry z sieci. */
+    /** Every how many ticks the extractor tries to pull the filters from the network. */
     private static final int PULL_INTERVAL_TICKS = 10;
 
     private void pullFilteredItemsFromNetwork() {
@@ -190,12 +192,12 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
         if (net == null) return;
 
-        // FAZA 1: samo pobranie z sieci - tanie, dla wszystkich 9 slotow.
+        // PHASE 1: just the pull from the network - cheap, for all 9 slots.
         //
-        // Kolejnosc ma znaczenie. Wczesniej kazdy slot szedl od razu pelna
-        // sciezka "pobierz albo wycraftuj", a to znaczylo do 9 planowan drzewa
-        // receptur na jeden cykl (co 10 tickow, na kazdy extractor) plus 9
-        // wymuszonych skanow sieci. Serwer nie mial szans.
+        // The order matters. Previously every slot went straight through the full
+        // "pull or craft" path, and that meant up to 9 recipe-tree plans per cycle
+        // (every 10 ticks, per extractor) plus 9 forced network scans. The server
+        // had no chance.
         boolean[] needsCraft = new boolean[9];
         for (int i = 0; i < 9; i++) {
             ItemStack filter = filterSlots.get(i);
@@ -210,7 +212,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity
             } else if (ItemStack.isSameItemSameComponents(currentOutput, filter)) {
                 needed = maxStack - currentOutput.getCount();
             } else {
-                continue;   // slot zajety czyms innym
+                continue;   // slot occupied by something else
             }
             if (needed <= 0) continue;
 
@@ -222,23 +224,23 @@ public class VeloceExtractorBlockEntity extends BlockEntity
             }
         }
 
-        // FAZA 2: craftowanie tylko dla slotow, ktorym naprawde czegos braklo,
-        // i tylko w ramach JEDNEGO wspolnego budzetu na caly cykl. Jeden wolny
-        // craft nie moze zjesc czasu przeznaczonego na pozostale sloty.
+        // PHASE 2: crafting only for slots that really ran short of something,
+        // and only within ONE shared budget for the whole cycle. A single free
+        // craft must not eat the time allotted to the remaining slots.
         long deadline = System.nanoTime() + PULL_CRAFT_BUDGET_NS;
         for (int i = 0; i < 9; i++) {
             if (!needsCraft[i]) continue;
-            // Slot z wylaczonym auto-craftingiem dostaje wylacznie to, co juz
-            // jest w sieci - nigdy nie zamawiamy dla niego craftu.
+            // A slot with auto-crafting disabled gets only what is already in
+            // the network - we never order a craft for it.
             if (!allowCrafting[i]) continue;
             if (System.nanoTime() > deadline) {
-                break;   // reszta w nastepnym cyklu
+                break;   // the rest in the next cycle
             }
             ItemStack filter = filterSlots.get(i);
             ItemStack currentOutput = outputInventory.getItem(i);
             int maxStack = filter.getMaxStackSize();
-            // Ten sam warunek co w fazie 1: slot moze byc zajety innym itemem
-            // (nic innego go nie zapisuje, ale nie zakladamy tego na zapas).
+            // The same condition as in phase 1: the slot may be occupied by
+            // another item (nothing else writes to it, but we do not assume it away).
             int needed;
             if (currentOutput.isEmpty()) {
                 needed = maxStack;
@@ -256,7 +258,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         }
     }
 
-    /** Wklada pobrany stos do slotu wyjsciowego (nowy albo doglebia istniejacy). */
+    /** Inserts the pulled stack into the output slot (new, or topping up an existing one). */
     private void depositIntoSlot(int slot, ItemStack currentOutput, ItemStack pulled) {
         if (currentOutput.isEmpty()) {
             outputInventory.setItem(slot, pulled);
@@ -268,22 +270,22 @@ public class VeloceExtractorBlockEntity extends BlockEntity
     }
 
     /**
-     * Ile laczenie moze trwac auto-craftowanie w jednym cyklu extractora.
+     * How long auto-crafting may take in total in one extractor cycle.
      *
-     * <p>Cykl leci co 10 tickow na kazdy extractor, wiec 10 ms to juz 20%
-     * budzetu ticku przy jednym urzadzeniu. Reszta czeka na kolejny cykl.
+     * <p>The cycle runs every 10 ticks per extractor, so 10 ms is already 20% of
+     * the tick budget for a single device. The rest waits for the next cycle.
      */
     private static final long PULL_CRAFT_BUDGET_NS = 10_000_000L;
 
     /**
-     * Auto-wycraftowuje brakujacy item i wyjmuje go z bufora/sieci.
+     * Auto-crafts the missing item and takes it out of the buffer/network.
      *
-     * <p>Wolane TYLKO gdy bezposrednie pobranie sie nie powiodlo (patrz faza 2
-     * w {@link #pullFilteredItemsFromNetwork}) i tylko w ramach wspolnego
-     * budzetu cyklu. Wczesniej kazdy slot szedl ta sciezka bezwarunkowo.
+     * <p>Called ONLY when the direct pull failed (see phase 2 in
+     * {@link #pullFilteredItemsFromNetwork}) and only within the shared cycle
+     * budget. Previously every slot went down this path unconditionally.
      */
     private ItemStack craftFromNetwork(ServerLevel sl, VelocePipeNetwork net, Item item, int count) {
-        // Auto-crafting: tylko jesli jakis crafter ma wlaczona recepture dla itemu.
+        // Auto-crafting: only if some crafter has the recipe for the item enabled.
         var crafter = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .findEnabledCrafter(sl, net, item);
         if (crafter == null) {
@@ -296,25 +298,25 @@ public class VeloceExtractorBlockEntity extends BlockEntity
                 .getPreferredRecipes(sl, net);
         var buffers = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getBuffers(sl, net);
-        // Pozycja bloku = miejsce awaryjnego zrzutu, gdyby siec byla pelna.
+        // The block position = the emergency drop location, in case the network were full.
         var ctx = new com.craftingveloce.crafting.VeloceAutoCrafter.Context(
                 sl, net, enabled, preferred, null, buffers, this.getBlockPos());
-        // Maly budzet planowania: to tlo, nie zadanie gracza. Reszta poczeka
-        // na kolejny cykl, zamiast blokowac watek serwera.
+        // A small planning budget: this is background work, not a player request.
+        // The rest will wait for the next cycle, instead of blocking the server thread.
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
                 .ensureAvailable(sl, net, item, count, ctx, CRAFT_PLAN_BUDGET_NS);
         if (!result.success()) {
             return ItemStack.EMPTY;
         }
 
-        // Bierzemy DOKLADNIE tyle, ile realnie powstalo - nie tyle, o ile
-        // prosilismy. Gdy materialu starczylo na 12 z 64, ensureAvailable
-        // robi 12 i tyle ma trafic do slotu; zadanie 64 wyciagneloby przy
-        // okazji itemy, ktore lezaly w sieci z innych powodow.
+        // We take EXACTLY as much as actually came into being - not as much as we
+        // asked for. When the material sufficed for 12 out of 64, ensureAvailable
+        // makes 12 and that much should go to the slot; requesting 64 would
+        // incidentally pull items that lay in the network for other reasons.
         int got = Math.max(1, Math.min(count, result.produced()));
 
-        // Wynik trafia najpierw do bufora craftera, ktory nie jest endpointem
-        // sieci - dlatego najpierw wyciagamy z buforow, potem z sieci.
+        // The result goes first to the crafter's buffer, which is not a network
+        // endpoint - that is why we first pull from the buffers, then from the network.
         ItemStack fromBuffer = extractFromBuffers(buffers, item, got);
         if (!fromBuffer.isEmpty()) {
             return fromBuffer;
@@ -322,10 +324,10 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         return net.extractItem(sl, item, got);
     }
 
-    /** Budzet planowania dla jednego brakujacego itemu w cyklu extractora. */
+    /** The planning budget for one missing item in an extractor cycle. */
     private static final long CRAFT_PLAN_BUDGET_NS = 3_000_000L;
 
-    /** Wyciaga item z buforow auto-crafterow. */
+    /** Pulls the item from the auto-crafter buffers. */
     private static ItemStack extractFromBuffers(
             java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers,
             Item item, int count) {
@@ -357,34 +359,34 @@ public class VeloceExtractorBlockEntity extends BlockEntity
     }
 
     /**
-     * Buduje wpis NBT jednego stosu, razem z numerem slotu.
+     * Builds the NBT entry of one stack, together with the slot number.
      *
-     * <p><b>BUG, ktory to naprawia (filtry i ekwipunek sie nie zapisywaly).</b>
-     * W 1.21.1 {@code ItemStack.save} ma postac:
+     * <p><b>The BUG this fixes (filters and inventory were not being saved).</b>
+     * In 1.21.1 {@code ItemStack.save} has the form:
      * <pre>
      *   public Tag save(HolderLookup.Provider provider, Tag prefix)
      * </pre>
-     * czyli <b>ZWRACA nowy tag</b> (uzywajac przekazanego jako baze), a NIE
-     * mutuje go w miejscu. Poprzedni kod wolal:
+     * that is, it <b>RETURNS a new tag</b> (using the one passed in as a base),
+     * and does NOT mutate it in place. The previous code called:
      * <pre>
      *   itemTag.putByte("Slot", (byte) i);
-     *   stack.save(registries, itemTag);      // wynik WYRZUCONY
+     *   stack.save(registries, itemTag);      // result DISCARDED
      *   filterList.add(itemTag);
      * </pre>
-     * wiec do zapisu trafial SAM numer slotu, bez przedmiotu. W pliku swiata
-     * widac to bylo doslownie tak:
+     * so only the slot number reached the save, without the item. In the world
+     * file it looked literally like this:
      * <pre>
-     *   Filters: [{'Slot': 6}]      // brak "id" i "count"
-     *   Outputs: [{'Slot': 6}]      // brak "id" i "count"
+     *   Filters: [{'Slot': 6}]      // no "id" and no "count"
+     *   Outputs: [{'Slot': 6}]      // no "id" and no "count"
      * </pre>
-     * Efekt: po ponownym wejsciu filtry i ekwipunek extractora byly puste.
+     * Effect: after re-entering, the extractor's filters and inventory were empty.
      *
-     * <p>Teraz bierzemy ZWRACANY tag. Numer slotu dokladamy do wyniku, wiec
-     * dziala niezaleznie od tego, czy implementacja zachowuje przekazana baze.
+     * <p>Now we take the RETURNED tag. We add the slot number to the result, so
+     * it works regardless of whether the implementation keeps the passed-in base.
      */
     private static CompoundTag saveStackEntry(ItemStack stack, int slot,
                                               HolderLookup.Provider registries) {
-        // save() rzuca wyjatkiem dla pustego stosu - wolajacy musi to sprawdzic.
+        // save() throws for an empty stack - the caller must check for that.
         CompoundTag base = new CompoundTag();
         base.putByte("Slot", (byte) slot);
         net.minecraft.nbt.Tag saved = stack.save(registries, base);
@@ -394,10 +396,10 @@ public class VeloceExtractorBlockEntity extends BlockEntity
     }
 
     /**
-     * Odczytuje stos z wpisu NBT.
+     * Reads a stack from an NBT entry.
      *
-     * <p>Usuwamy z kopii wlasny klucz {@code Slot} przed parsowaniem, zeby
-     * kodek przedmiotu nie mial szans sie na nim potknac.
+     * <p>We remove our own {@code Slot} key from the copy before parsing, so that
+     * the item codec has no chance to stumble over it.
      */
     private static ItemStack loadStackEntry(CompoundTag entry,
                                             HolderLookup.Provider registries) {
@@ -417,8 +419,8 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         }
         tag.put("Filters", filterList);
 
-        // Flagi auto-craftingu per slot. Zapisujemy liste indeksow WYLACZONYCH,
-        // zeby stare swiaty (bez tego tagu) dostawaly domyslne "wlaczone".
+        // The per-slot auto-crafting flags. We save the list of DISABLED indices,
+        // so that old worlds (without this tag) get the default "enabled".
         ListTag noCraft = new ListTag();
         for (int i = 0; i < 9; i++) {
             if (!allowCrafting[i]) {

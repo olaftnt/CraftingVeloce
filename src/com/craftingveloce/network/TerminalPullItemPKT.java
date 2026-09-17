@@ -41,13 +41,14 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
     }
 
     /**
-     * Wysyla graczowi POWOD niepowodzenia - trafi do tooltipa tego itemu.
+     * Sends the player the REASON for the failure - it ends up in this item's tooltip.
      *
-     * <p>Do tej pory szedl tu {@code displayClientMessage(..., true)}, czyli
-     * pasek akcji. W GUI terminala paska akcji NIE WIDAC, wiec gracz klikal
-     * item, ktorego sie nie da zrobic, i nie dowiadywal sie dlaczego. Powod
-     * i detal (oba to KLUCZE tlumaczen) jedzie teraz pakietem razem z itemem,
-     * a klient sklada z nich komunikat w swoim jezyku.
+     * <p>Until now {@code displayClientMessage(..., true)} was used here, i.e.
+     * the action bar. In the terminal GUI the action bar is NOT VISIBLE, so the
+     * player clicked an item that could not be made and never learned why. The
+     * reason and the detail (both are TRANSLATION KEYS) now travel in the packet
+     * together with the item, and the client assembles the message from them in
+     * its own language.
      */
     private static void sendCraftError(ServerPlayer serverPlayer, TerminalPullItemPKT pkt,
                                        VeloceTomTerminalBlockEntity.PullResult pulled) {
@@ -82,10 +83,10 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             }
 
             int toPull = Math.min(pkt.count(), pkt.itemStack().getMaxStackSize());
-            // PELNY SLAD tej jednej proby (patrz VeloceCraftTrace): gracz kliknal
-            // "wyciagnij", wiec logujemy wszystko, co decyduje o wyniku.
+            // FULL TRACE of this one attempt (see VeloceCraftTrace): the player
+            // clicked "pull", so we log everything that decides the outcome.
             com.craftingveloce.crafting.VeloceCraftTrace.begin(
-                    "terminal " + pkt.terminalPos() + " gracz="
+                    "terminal " + pkt.terminalPos() + " player="
                             + serverPlayer.getGameProfile().getName()
                             + " item=" + pkt.itemStack().getHoverName().getString()
                             + " x" + toPull);
@@ -93,46 +94,48 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             try {
                 pulled = terminalBE.extractWithReason(pkt.itemStack(), toPull, true);
             } catch (Throwable t) {
-                // Wyjatek w sciezce craftu MUSI byc w sladzie - inaczej widac
-                // tylko przerwany ciag linii bez przyczyny.
+                // An exception in the craft path MUST be in the trace - otherwise
+                // all you see is an interrupted series of lines with no cause.
                 com.craftingveloce.crafting.VeloceCraftTrace.exception(
                         "terminal pull " + pkt.itemStack(), t);
-                com.craftingveloce.crafting.VeloceCraftTrace.end("WYJATEK: " + t);
+                com.craftingveloce.crafting.VeloceCraftTrace.end("EXCEPTION: " + t);
                 throw t;
             }
             com.craftingveloce.crafting.VeloceCraftTrace.end(pulled.stack().isEmpty()
-                    ? ("BRAK (" + pulled.reason() + " " + pulled.detail() + ")")
-                    : ("dostarczono " + pulled.stack().getCount() + "x "
+                    ? ("MISSING (" + pulled.reason() + " " + pulled.detail() + ")")
+                    : ("delivered " + pulled.stack().getCount() + "x "
                             + pulled.stack().getItem()));
 
             if (pulled.stack().isEmpty()) {
-                // POWOD, A NIE TYLKO "NIE MA", i to w miejscu, gdzie gracz go
-                // zobaczy: w TOOLTIPIE kliknietego itemu (pasek akcji jest
-                // schowany pod GUI terminala).
+                // A REASON, AND NOT JUST "THERE IS NONE", and in the place where
+                // the player will see it: in the TOOLTIP of the clicked item
+                // (the action bar is hidden under the terminal GUI).
                 //
-                // Wczesniej kazde niepowodzenie konczylo sie identycznym
-                // "Item not in network: X" - gracz nie mogl odroznic braku
-                // skladnika od braku receptury, maszyny bez pradu czy planu,
-                // ktory nie zmiescil sie w budzecie. Zgloszenie "GUI pokazuje,
-                // ze moge, a nie moge zrobic" bylo wtedy nierozwiazywalne.
+                // Previously every failure ended with an identical
+                // "Item not in network: X" - the player could not tell a missing
+                // ingredient from a missing recipe, a machine without power, or a
+                // plan that did not fit in the budget. The report "the GUI shows
+                // that I can, but I cannot make it" was then unsolvable.
                 sendCraftError(serverPlayer, pkt, pulled);
                 resyncInventories(serverPlayer);
                 return;
             }
 
             ItemStack extracted = pulled.stack();
-            // Liczba "ile moge jeszcze zrobic" maleje o to, co wlasnie zeszlo
-            // (-1 dla jednej sztuki, -64 dla stacka), a gracz dostaje swieza
-            // migawke od razu - inaczej cyferka w GUI zostawala stara.
+            // The "how many more can I make" number decreases by what just left
+            // (-1 for a single unit, -64 for a stack), and the player gets a
+            // fresh snapshot right away - otherwise the number in the GUI stayed
+            // stale.
             if (serverPlayer.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
                 var net = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
                         .getNetworkForTerminal(serverLevel, pkt.terminalPos());
                 if (net != null) {
-                    // TYLKO gdy naprawde CRAFTOWALISMY, a nie gdy item byl na
-                    // stanie. Gracz: "jak wyjmuje cos z inventory, to i tak
-                    // odejmujesz -1 od tego, ile moge scraftowac". Stan liczymy
-                    // PRZED wyciagnieciem: jesli siec miala dosc sztuk, to byl
-                    // to stock, a stock nie zmienia liczby "ile da sie dorobic".
+                    // ONLY when we really CRAFTED, and not when the item was in
+                    // stock. Player: "when I take something out of the inventory,
+                    // you still subtract -1 from how many I can craft". We count
+                    // the stock BEFORE the pull: if the network had enough units,
+                    // it was stock, and stock does not change the "how many more
+                    // can be made" number.
                     long stock = net.getAllItemCounts(serverLevel)
                             .getOrDefault(extracted.getItem(), 0L);
                     if (stock < extracted.getCount()) {

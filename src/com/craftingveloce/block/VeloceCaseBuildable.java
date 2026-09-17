@@ -1,26 +1,26 @@
 package com.craftingveloce.block;
 
 /**
- * Obudowa, ktora gracz BUDUJE element po elemencie.
+ * A casing that the player BUILDS element by element.
  *
- * <p><b>Jak to dziala w grze.</b> Gracz stawia pusta obudowe
- * ({@code veloce_integrale}), a potem doklada do niej klocki bazowe:
- * jedno kolo mlynskie na klik, jedno oczko mechanical craftera na klik.
- * Pierwszy klik ZAMIENIA obudowe na maszyne (patrz
- * {@code VeloceIntegraleConversions}), a kazdy nastepny doklada kolejny
- * element - dlatego maszyna jest pusta, dopoki gracz czegos nie wlozy.
+ * <p><b>How it works in the game.</b> The player places an empty casing
+ * ({@code veloce_integrale}), and then adds base blocks to it: one millstone per
+ * click, one mechanical crafter grid per click. The first click REPLACES the
+ * casing with the machine (see {@code VeloceIntegraleConversions}), and every
+ * next one adds another element - which is why the machine is empty until the
+ * player puts something in.
  *
- * <p>Bez tego interfejsu maszyna postawiona z zakladki kreatywnej pokazywalaby
- * gotowy klocek w srodku (a gracz: "jak postawie z creative'a, to po prostu
- * jest jeden render klocka, tak jak zwykly crafting - to jest blad").
+ * <p>Without this interface, a machine placed from the creative tab would show a
+ * finished block inside (and the player: "when I place it from creative, it is
+ * just one block render, like ordinary crafting - that is a bug").
  */
 public interface VeloceCaseBuildable {
 
     /**
-     * Dokłada jeden element do wnetrza obudowy.
+     * Adds one element to the interior of the casing.
      *
-     * @return {@code true} gdy element sie zmiescil (wtedy wolajacy zabiera
-     *         przedmiot z reki gracza)
+     * @return {@code true} when the element fit (then the caller takes the
+     *         item from the player's hand)
      */
     boolean addPart();
 }

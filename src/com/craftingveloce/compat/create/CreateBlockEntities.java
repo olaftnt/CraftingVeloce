@@ -8,11 +8,11 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * Typy block entity modulu Create - po jednym na maszyne.
+ * Create module block entity types - one per machine.
  *
- * <p>Klasa BE jest jedna ({@link VeloceKineticModuleBlockEntity}), a typ jest
- * potrzebny per blok (tak dziala rejestr). Mapowanie maszyna -> typ zyje
- * w JEDNYM miejscu ({@link #holderFor}).
+ * <p>The BE class is a single one ({@link VeloceKineticModuleBlockEntity}), and the type is
+ * needed per block (that is how the registry works). The machine -> type mapping lives
+ * in ONE place ({@link #holderFor}).
  */
 public final class CreateBlockEntities {
 
@@ -77,14 +77,14 @@ public final class CreateBlockEntities {
         TYPES.register(modEventBus);
     }
 
-    /** Tworzy block entity wlasciwego typu dla danej maszyny. */
+    /** Creates a block entity of the proper type for the given machine. */
     public static VeloceKineticModuleBlockEntity create(KineticModule module,
                                                         net.minecraft.core.BlockPos pos,
                                                         net.minecraft.world.level.block.state.BlockState state) {
         return new VeloceKineticModuleBlockEntity(module, holderFor(module).get(), pos, state);
     }
 
-    /** Typ block entity dla maszyny - do tworzenia BE i diagnostyki. */
+    /** Block entity type for a machine - for creating BEs and for diagnostics. */
     public static DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceKineticModuleBlockEntity>>
             holderFor(KineticModule module) {
         if (module == CreateKineticModules.MILLING) {
@@ -108,6 +108,6 @@ public final class CreateBlockEntities {
         if (module == CreateKineticModules.DEPLOYING) {
             return DEPLOYER_MODULE;
         }
-        throw new IllegalArgumentException("brak typu block entity dla maszyny " + module.id());
+        throw new IllegalArgumentException("no block entity type for machine " + module.id());
     }
 }

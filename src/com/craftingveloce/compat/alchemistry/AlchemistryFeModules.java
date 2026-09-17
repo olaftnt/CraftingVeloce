@@ -5,32 +5,32 @@ import com.craftingveloce.crafting.FeModule;
 import java.util.List;
 
 /**
- * Maszyny modulu Alchemistry - jeden wiersz danych na maszyne.
+ * Alchemistry module machines - one row of data per machine.
  *
- * <p>Cztery maszyny itemowe (compactor, combiner, fission, fusion) roznia sie
- * tylko typem receptury, kosztem FE i etykieta, wiec korzystaja z tej samej
- * maszyny rdzenia ({@code VeloceFeModuleBlock} + {@code VeloceFeModuleBlockEntity}).
+ * <p>Four item machines (compactor, combiner, fission, fusion) differ
+ * only in the recipe type, the FE cost and the label, so they use the same core
+ * machine ({@code VeloceFeModuleBlock} + {@code VeloceFeModuleBlockEntity}).
  *
- * <p><b>Koszty</b> sa przepisane z domyslnych wartosci Alchemistry
- * ({@code Config.COMMON.<maszyna>EnergyPerTick} x {@code TicksPerOperation}):
+ * <p>The <b>costs</b> are copied from the Alchemistry default values
+ * ({@code Config.COMMON.<machine>EnergyPerTick} x {@code TicksPerOperation}):
  * <ul>
  *   <li>compactor: 50 FE/t * 50 t = 2 500 FE,</li>
  *   <li>combiner: 200 FE/t * 50 t = 10 000 FE,</li>
- *   <li>fission i fusion: 300 FE/t * 50 t = 15 000 FE.</li>
+ *   <li>fission and fusion: 300 FE/t * 50 t = 15 000 FE.</li>
  * </ul>
- * Bufor 100 000 FE - tyle ma kazda maszyna Alchemistry.
+ * A buffer of 100 000 FE - that is what every Alchemistry machine has.
  *
- * <p><b>Typy receptur jako dostawca</b> - DeferredHoldery obcego moda sa
- * wiazane dopiero po zdarzeniach rejestracji, a te stale powstaja w
- * konstruktorze moda.
+ * <p><b>Recipe types as a supplier</b> - DeferredHolders of a foreign mod are
+ * bound only after the registration events, and these constants are created in the
+ * mod constructor.
  *
- * <p><b>Koszt jak w elektrycznym piecu.</b> 25 000 000 FE bufora i koszt
- * operacji przeskalowany x50 (punk odniesienia: piecyk 200 000 FE za
- * przepalenie) - compactor 125 000, combiner 500 000, fission/fusion 750 000 FE.
+ * <p><b>Cost as in an electric furnace.</b> A buffer of 25 000 000 FE and a per-operation
+ * cost scaled x50 (reference point: a small furnace 200 000 FE per
+ * smelting operation) - compactor 125 000, combiner 500 000, fission/fusion 750 000 FE.
  *
- * <p><b>Czego tu nie ma.</b> Dissolver jest probabilistyczny (ProbabilitySet),
- * a Liquifier/Atomizer pracuja na plynnym chemicznym - oba wymagaja osobnej
- * polityki i warstwy plynow (pozniejsze etapy).
+ * <p><b>What is not here.</b> The Dissolver is probabilistic (ProbabilitySet),
+ * and the Liquifier/Atomizer work on a liquid chemical - both require a separate
+ * policy and a fluid layer (later stages).
  */
 public final class AlchemistryFeModules {
 
@@ -42,12 +42,12 @@ public final class AlchemistryFeModules {
             "alchemistry:compactor", "Veloce Compactor Module",
             125_000, 25_000_000, AlchemistryRecipeFamily::compactor);
 
-    /** Combiner: N itemow (kazdy z wlasnym count) -> 1 item. */
+    /** Combiner: N items (each with its own count) -> 1 item. */
     public static final FeModule COMBINER = new FeModule(
             "alchemistry:combiner", "Veloce Alchemistry Combiner Module",
             500_000, 25_000_000, AlchemistryRecipeFamily::combiner);
 
-    /** Fission: 1 item -> 2 itemy. */
+    /** Fission: 1 item -> 2 items. */
     public static final FeModule FISSION = new FeModule(
             "alchemistry:fission", "Veloce Fission Module",
             750_000, 25_000_000, AlchemistryRecipeFamily::fission);
@@ -68,6 +68,6 @@ public final class AlchemistryFeModules {
             "alchemistry:atomizer", "Veloce Atomizer Module",
             250_000, 25_000_000, AlchemistryRecipeFamily::atomizer);
 
-    /** Wszystkie maszyny itemowe v1 - do rejestracji i zakladki kreatywnej. */
+    /** All v1 item machines - for registration and the creative tab. */
     public static final List<FeModule> ALL = List.of(COMPACTOR, COMBINER, FISSION, FUSION, DISSOLVER, LIQUIFIER, ATOMIZER);
 }

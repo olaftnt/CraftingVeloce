@@ -35,12 +35,12 @@ public class VeloceExtractorMenu extends AbstractContainerMenu {
         // 1. Left 3x3: Filter Slots (Fake/Ghost slots 0..8)
         // Position: x=26, y=18
         //
-        // JEDEN wspolny kontener-zastepnik, nie dziewiec osobnych.
-        // Wczesniej `new SimpleContainer(9)` bylo tworzone W PETLI, czyli
-        // powstawalo 9 kontenerow po 9 slotow (81 alokacji) dla dziewieciu
-        // slotow-widm. Same sloty sa nieinteraktywne (mayPlace/mayPickup
-        // zwracaja false), a ikony filtrow rysuje ekran z clientFilters -
-        // wiec kontener sluzy wylacznie jako "miejsce" dla Slot.
+        // ONE shared placeholder container, not nine separate ones.
+        // Previously `new SimpleContainer(9)` was created INSIDE THE LOOP, so
+        // 9 containers of 9 slots each were produced (81 allocations) for nine
+        // ghost slots. The slots themselves are non-interactive (mayPlace/mayPickup
+        // return false), and the filter icons are drawn by the screen from
+        // clientFilters - so the container serves purely as a "place" for the Slot.
         Container filterPlaceholders = new SimpleContainer(9);
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 3; col++) {
@@ -121,10 +121,10 @@ public class VeloceExtractorMenu extends AbstractContainerMenu {
                 // Clicking in player inventory: do nothing for quickMove (we don't deposit into extractor)
                 return ItemStack.EMPTY;
             } else {
-                // Sloty filtrów (0..8). Nie przenosimy ich nigdzie - i MUSIMY
-                // zwrocic EMPTY, bo kontrakt quickMoveStack mowi "zwroc to, co
-                // faktycznie przeniosles". Zwrocenie kopii bez przeniesienia
-                // kazaloby klientowi uwazac, ze item sie przesunął.
+                // Filter slots (0..8). We do not move them anywhere - and we MUST
+                // return EMPTY, because the quickMoveStack contract says "return what
+                // you actually moved". Returning a copy without moving anything
+                // would make the client believe the item had shifted.
                 return ItemStack.EMPTY;
             }
 

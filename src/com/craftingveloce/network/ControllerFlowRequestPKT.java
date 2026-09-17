@@ -11,19 +11,20 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * C→S: "odswiez mi tempo przeplywu w kontrolerze".
+ * C->S: "refresh the flow rate in the controller for me".
  *
- * <p>Klient wysyla to raz na sekunde, dopoki ma otwarte GUI kontrolera.
+ * <p>The client sends this once per second, as long as it has the controller GUI
+ * open.
  *
- * <p><b>Dlaczego zapytanie, a nie subskrypcja.</b> Serwer nie musi pamietac,
- * kto patrzy - a wiec nie ma czego zgubic, gdy klient padnie, wyjdzie z gry
- * albo teleportuje sie poza zasieg. Serwer robi dokladnie tyle pracy, o ile
- * ktos poprosil, i tylko w tym momencie.
+ * <p><b>Why a request and not a subscription.</b> The server does not have to
+ * remember who is watching - and therefore has nothing to lose when the client
+ * crashes, leaves the game or teleports out of range. The server does exactly as
+ * much work as someone asked for, and only at that moment.
  *
- * <p>Celowo OSOBNY pakiet od {@link OpenControllerScreenPKT}: tamten niesie
- * stock i trzy zbiory itemow (ciezkie, zmieniaja sie rzadko), a tutaj leci
- * tylko mapa temp. Wysylanie pelnego obrazu sieci co sekunde bylo by
- * marnowaniem pasma dokladnie po to, zeby odswiezyc kilka liczb.
+ * <p>Deliberately a SEPARATE packet from {@link OpenControllerScreenPKT}: that
+ * one carries the stock and three sets of items (heavy, they change rarely),
+ * while here only the map of rates travels. Sending a full picture of the network
+ * every second would be a waste of bandwidth just to refresh a few numbers.
  */
 public record ControllerFlowRequestPKT(BlockPos pos) implements CustomPacketPayload {
 
@@ -48,9 +49,9 @@ public record ControllerFlowRequestPKT(BlockPos pos) implements CustomPacketPayl
             if (!(player.level() instanceof ServerLevel sl)) {
                 return;
             }
-            // Zasieg: nie obslugujemy zapytan o kontroler, ktorego gracz nie ma
-            // nawet w zaladowanym chunku - inaczej kazdy moglby zamowic prace
-            // serwera dla dowolnej pozycji w swiecie.
+            // Range: we do not serve requests for a controller the player does not
+            // even have in a loaded chunk - otherwise anyone could order server
+            // work for any position in the world.
             if (!player.blockPosition().closerThan(pkt.pos(),
                     VeloceControllerBlockEntity.MAX_FLOW_REQUEST_DISTANCE)) {
                 return;

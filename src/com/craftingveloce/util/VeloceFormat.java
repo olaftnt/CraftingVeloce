@@ -3,34 +3,34 @@ package com.craftingveloce.util;
 import java.util.Locale;
 
 /**
- * Formatowanie liczb do GUI - jedno miejsce na caly mod.
+ * Number formatting for the GUI - one place for the whole mod.
  *
- * <p><b>Po co osobna klasa.</b> Energia w GUI byla pokazywana surowa:
- * "7807000 / 25000000 FE". Gracz nie liczy zer w locie - w modach przyjmuje
- * sie jednostki kFE / MFE, dokladnie tak jak K/M przy liczbach sztuk
+ * <p><b>Why a separate class.</b> Energy in the GUI used to be shown raw:
+ * "7807000 / 25000000 FE". A player does not count zeros on the fly - mods
+ * adopt the kFE / MFE units, exactly like K/M for item counts
  * ({@link com.craftingveloce.client.gui.VeloceSlotOverlay#formatCount}).
  *
- * <p>Skoro te same jednostki sa potrzebne i w ekranie pieca, i (w przyszlosci)
- * w kontrolerze, trzymamy je tutaj - a nie w dwoch kopiach, ktore zawsze
- * w koncu sie rozjada.
+ * <p>Since the same units are needed both in the furnace screen and (in the
+ * future) in the controller, we keep them here - and not in two copies that
+ * always end up drifting apart.
  */
 public final class VeloceFormat {
 
     private VeloceFormat() {
     }
 
-    /** Prog, od ktorego przechodzimy na kFE. */
+    /** The threshold from which we switch to kFE. */
     private static final long KILO = 1_000L;
 
-    /** Prog, od ktorego przechodzimy na MFE. */
+    /** The threshold from which we switch to MFE. */
     private static final long MEGA = 1_000_000L;
 
     /**
-     * Energia czytelnie: "512 FE", "200 kFE", "7.8 MFE", "25 MFE".
+     * Energy in a readable form: "512 FE", "200 kFE", "7.8 MFE", "25 MFE".
      *
-     * <p>Bez zbednego ".0" przy okraglych wartosciach - "25 MFE", nie
-     * "25.00 MFE". Zera na koncu obcinamy WYLACZNIE w czesci ulamkowej, zeby
-     * "100.00" nie zamienilo sie w "1".
+     * <p>Without a superfluous ".0" on round values - "25 MFE", not
+     * "25.00 MFE". We trim trailing zeros ONLY in the fractional part, so that
+     * "100.00" does not turn into "1".
      */
     public static String feCompact(long fe) {
         if (fe >= MEGA) {
@@ -38,8 +38,8 @@ public final class VeloceFormat {
         }
         if (fe >= KILO) {
             double kilo = fe / (double) KILO;
-            // "999 999 FE" zaokraglone do dwoch miejsc dawaloby "1000 kFE",
-            // a to juz jest 1 MFE - promujemy, zeby nie pokazywac 1000 kFE.
+            // "999 999 FE" rounded to two places would give "1000 kFE",
+            // and that is already 1 MFE - we promote it, so as not to show 1000 kFE.
             if (Math.round(kilo * 100.0) >= 100_000L) {
                 return trim(fe / (double) MEGA) + " MFE";
             }
@@ -62,16 +62,16 @@ public final class VeloceFormat {
     }
 
     /**
-     * Skrocona liczba sztuk: {@code 15}, {@code 1K}, {@code 1.2K}, {@code 1M},
+     * Abbreviated item count: {@code 15}, {@code 1K}, {@code 1.2K}, {@code 1M},
      * {@code 1.2B}.
      *
-     * <p><b>Zasady ustalone z graczem:</b>
+     * <p><b>Rules agreed with the player:</b>
      * <ul>
-     *   <li>ponizej 1000 - dokladna liczba, bez czesci ulamkowej,</li>
-     *   <li>1000 - {@code "1K"}, 1200 - {@code "1.2K"} (bez zbednego ".0"),</li>
-     *   <li>999999 - {@code "1M"}, a nie {@code "1000K"} - zaokraglenie musi
-     *       przeskoczyc prog,</li>
-     *   <li>tak samo dla M -&gt; B.</li>
+     *   <li>below 1000 - the exact number, no fractional part,</li>
+     *   <li>1000 - {@code "1K"}, 1200 - {@code "1.2K"} (no superfluous ".0"),</li>
+     *   <li>999999 - {@code "1M"}, not {@code "1000K"} - rounding must
+     *       jump the threshold,</li>
+     *   <li>the same for M -&gt; B.</li>
      * </ul>
      */
     public static String compact(long number) {
@@ -81,7 +81,7 @@ public final class VeloceFormat {
         if (number < 1000) {
             return Long.toString(number);
         }
-        // Progi sprawdzamy po ZAOKRAGLENIU, inaczej 999999 dawaloby "1000K".
+        // We check the thresholds AFTER ROUNDING, otherwise 999999 would give "1000K".
         if (number < 999_500L) {
             return oneDecimal(number / 1000.0) + "K";
         }
@@ -92,20 +92,20 @@ public final class VeloceFormat {
     }
 
     /**
-     * Tempo przeplywu do tooltipa: {@code 15}, {@code 15.5}, {@code .5},
+     * Flow rate for the tooltip: {@code 15}, {@code 15.5}, {@code .5},
      * {@code 1.2K}.
      *
-     * <p><b>Zasady ustalone z graczem:</b> nie pokazujemy zbednego ".0"
-     * ("15", nie "15.0"), a liczby mniejsze od jedynki nie maja wiodacego zera
-     * (".5", nie "0.5"). Powyzej tysiaca skracamy tak samo jak liczniki
-     * ({@link #compact}), bo inaczej dlugi rzad cyfr rozjezdzalby tooltip.
+     * <p><b>Rules agreed with the player:</b> we do not show a superfluous ".0"
+     * ("15", not "15.0"), and numbers smaller than one have no leading zero
+     * (".5", not "0.5"). Above a thousand we abbreviate the same way as counters
+     * ({@link #compact}), because otherwise a long row of digits would break the tooltip.
      *
-     * <p>Wartosc MUSI byc nieujemna - znak dokłada wolajacy ({@code signed}),
-     * zeby znak byl czescia napisu, a nie tylko kolorem.
+     * <p>The value MUST be non-negative - the caller adds the sign ({@code signed}),
+     * so that the sign is part of the text, not just of the colour.
      */
     public static String rate(float value) {
-        // Progi po ZAOKRAGLENIU: 999.96 wyswietlone jako "1000" bez K rozjechaloby
-        // sie z reszta (a 999_999 jako "1000K" to juz 1M).
+        // Thresholds AFTER ROUNDING: 999.96 displayed as "1000" without K would
+        // drift from the rest (and 999_999 as "1000K" is already 1M).
         if (value >= 999_500_000f) {
             return oneDecimal(value / 1_000_000_000.0) + "B";
         }
@@ -119,14 +119,14 @@ public final class VeloceFormat {
             return oneDecimal(value);
         }
         if (value < 0.005f) {
-            return "0";   // zaokraglenie do dwoch miejsc i tak daje zero
+            return "0";   // rounding to two places gives zero anyway
         }
-        // Ponizej jedynki: dwa miejsca (zeby ".05" nie zniknelo), bez
-        // wiodacego zera i bez zer na koncu (".50" -> ".5").
+        // Below one: two places (so that ".05" does not disappear), without a
+        // leading zero and without trailing zeros (".50" -> ".5").
         return leadingZeroLess(twoDecimals(value));
     }
 
-    /** Jedno miejsce po przecinku, ale bez zbednego ".0" przy okraglych. */
+    /** One decimal place, but without a superfluous ".0" on round values. */
     private static String oneDecimal(double value) {
         String s = String.format(Locale.ROOT, "%.1f", value);
         return s.endsWith(".0") ? s.substring(0, s.length() - 2) : s;
@@ -137,10 +137,10 @@ public final class VeloceFormat {
     }
 
     /**
-     * Usuwa wiodace zero i zera na koncu: "0.50" -&gt; ".5", "0.05" -&gt; ".05".
+     * Removes the leading zero and trailing zeros: "0.50" -&gt; ".5", "0.05" -&gt; ".05".
      *
-     * <p>Zera obcinamy WYLACZNIE w czesci ulamkowej - "0.00" musi dac "0",
-     * a nie pusty napis.
+     * <p>We trim zeros ONLY in the fractional part - "0.00" must give "0",
+     * not an empty string.
      */
     private static String leadingZeroLess(String s) {
         if (s.contains(".")) {

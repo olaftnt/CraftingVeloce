@@ -8,37 +8,38 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Roznica stocku dla klienta: co sie ZMIENILO, a nie caly stan sieci.
+ * Stock delta for the client: what CHANGED, not the whole network state.
  *
- * <p><b>Problem, ktory to rozwiazuje.</b> Kontroler odpytywal serwer raz na
- * sekunde, a odpowiedzia byl CALY stock sieci. Przy sieci z tysiacami roznych
- * itemow to tysiace wpisow na sekunde, mimo ze stock prawie nigdy sie nie
- * zmienia: gracz stojacy przy kontrolerze nie przenosi itemow, a mimo to
- * serwer za kazdym razem serializowal i wysylal ten sam obraz. Im wieksza
- * siec, tym wiekszy ruch - dokladnie w stylu "im dluzej gram, tym gorzej".
+ * <p><b>The problem this solves.</b> The controller polled the server once per
+ * second, and the response was the ENTIRE network stock. With a network holding
+ * thousands of different items that is thousands of entries per second, even
+ * though the stock almost never changes: a player standing at the controller is
+ * not moving items, and yet the server serialized and sent the same picture
+ * every time. The bigger the network, the more traffic - exactly in the style
+ * of "the longer I play, the worse it gets".
  *
- * <p><b>Rozwiazanie.</b> Wysylamy tylko wpisy, ktore roznia sie od poprzednio
- * wyslanych, plus liste itemow, ktore zniknely. Wartosci sa BEZWZGLEDNE
- * (a nie "o ile wzroslo"), wiec zastosowanie tej samej roznicy dwa razy nic
- * nie psuje - to wazne, bo kilku graczy moze patrzec w ten sam kontroler,
- * a kazdy z nich ma wlasna kopie stocku.
+ * <p><b>The solution.</b> We send only the entries that differ from the
+ * previously sent ones, plus the list of items that disappeared. The values are
+ * ABSOLUTE (and not "by how much it grew"), so applying the same delta twice
+ * breaks nothing - this matters, because several players may be looking at the
+ * same controller and each of them has their own copy of the stock.
  *
- * <p><b>Pelny zrzut co minute.</b> Gdyby cokolwiek kiedys rozjechalo klienta
- * z serwerem (blad w kodzie, przeladowanie), sama roznica nie pozwolilaby mu
- * wrocic do zgodnosci - dlatego co {@link #FULL_RESYNC_TICKS} tickow leci
- * pelny stock. To ubezpieczenie kosztuje jeden wiekszy pakiet na minute.
+ * <p><b>Full dump once a minute.</b> If anything ever desynchronized the client
+ * from the server (a bug in the code, a reload), the delta alone would not let
+ * it get back in sync - that is why every {@link #FULL_RESYNC_TICKS} ticks a
+ * full stock is sent. This insurance costs one larger packet per minute.
  */
 public final class VeloceStockDeltas {
 
-    /** Co tyle tickow pelny zrzut stocku (60 s) - zabezpieczenie przed rozjazdem. */
+    /** Every this many ticks a full stock dump (60 s) - protection against desync. */
     private static final long FULL_RESYNC_TICKS = 1200L;
 
     /**
-     * Roznica do wyslania.
+     * The delta to send.
      *
-     * @param changed wpisy nowe albo o zmienionej liczbie (wartosci bezwzgledne)
-     * @param removed itemy, ktorych w sieci juz nie ma
-     * @param full    czy to pelny zrzut (klient ma zastapic stock, a nie scalac)
+     * @param changed new entries or entries with a changed count (absolute values)
+     * @param removed items that are no longer in the network
+     * @param full    whether this is a full dump (the client should replace the stock, not merge)
      */
     public record Delta(Map<Item, Long> changed, Set<Item> removed, boolean full) {
     }
@@ -47,10 +48,10 @@ public final class VeloceStockDeltas {
     private long lastFullTick = Long.MIN_VALUE;
 
     /**
-     * Liczy roznice wobec poprzedniej wysylki i zapamietuje nowy stan.
+     * Computes the delta against the previous send and remembers the new state.
      *
-     * @param current  aktualny stock sieci
-     * @param gameTime czas gry (do okresowego pelnego zrzutu)
+     * @param current  the current network stock
+     * @param gameTime game time (for the periodic full dump)
      */
     public Delta diff(Map<Item, Long> current, long gameTime) {
         boolean full = lastFullTick == Long.MIN_VALUE
@@ -78,7 +79,7 @@ public final class VeloceStockDeltas {
         return new Delta(changed, removed, full);
     }
 
-    /** Zapomina zapamietany stan - nastepna roznica bedzie pelnym zrzutem. */
+    /** Forgets the remembered state - the next delta will be a full dump. */
     public void reset() {
         last.clear();
         lastFullTick = Long.MIN_VALUE;

@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Generuje tekstury 16x16 dla dwoch nowych piecow.
+"""Generates 16x16 textures for the two new furnaces.
 
-Tekstur nie ma kto narysowac, a bez nich bloki renderuja sie jako brakujacy
-model (rozowo-czarny / przezroczysty). Ten skrypt robi PORZADNE placeholdery
-w palecie moda, zeby piece od razu wygladaly jak czesc zestawu i zeby dalo sie
-je odroznic od siebie na pierwszy rzut oka:
+There is no one to draw the textures, and without them the blocks render as a
+missing model (pink-black / transparent). This script makes DECENT placeholders
+in the mod's palette, so that the furnaces immediately look like part of the
+set and can be told apart at first glance:
 
-    Velocity Furnace          - purpurowy akcent (cieplo / paliwo)
-    Velocity Electric Furnace - niebieski akcent (elektrycznosc)
+    Velocity Furnace          - purple accent (heat / fuel)
+    Velocity Electric Furnace - blue accent (electricity)
 
-Taki sam podzial kolorow jest juz w modzie: kontroler, ekstraktor i rura sa
-purpurowe, a stol craftingu niebieski. Czyli kolor mowi od razu, czym blok
-jest napedzany.
+The same colour split already exists in the mod: the controller, the extractor
+and the pipe are purple, and the crafting table is blue. So the colour says
+right away what powers the block.
 
-Podmiana na prawdziwa grafike: nadpisz PNG o tej samej nazwie i rozmiarze
-16x16 - nic wiecej nie trzeba zmieniac.
+Replacing them with real graphics: overwrite the PNG with the same name and
+size of 16x16 - nothing else needs to change.
 
-Uruchomienie:
+Usage:
     python3 scripts/gen_furnace_textures.py
 """
 
@@ -27,26 +27,26 @@ from PIL import Image
 
 OUT_DIR = os.path.join("assets", "craftingveloce", "textures", "block")
 
-# --- paleta moda ---------------------------------------------------------
-# Wyprobowane z istniejacych tekstur (kontroler / ekstraktor / stol), zeby
-# piece nie odstawaly stylistycznie.
-CASING = (0x3C, 0x2F, 0x3C)      # zasadnicza obudowa
-CASING_DARK = (0x23, 0x1A, 0x24)  # cien / zaglebienie
-CASING_LIGHT = (0x56, 0x48, 0x55)  # wypuklosc
+# --- the mod's palette ---------------------------------------------------
+# Sampled from the existing textures (controller / extractor / table) so that
+# the furnaces do not stick out stylistically.
+CASING = (0x3C, 0x2F, 0x3C)      # the main casing
+CASING_DARK = (0x23, 0x1A, 0x24)  # shadow / recess
+CASING_LIGHT = (0x56, 0x48, 0x55)  # highlight
 CASING_MID = (0x46, 0x38, 0x46)
 
-HEAT_GLOW = (0xC9, 0x2D, 0xEA)   # purpurowy blysk - cieplo
+HEAT_GLOW = (0xC9, 0x2D, 0xEA)   # purple glow - heat
 HEAT_DEEP = (0x8C, 0x1E, 0xA5)
-VOLT_GLOW = (0x3C, 0x46, 0xFF)   # niebieski blysk - prad
+VOLT_GLOW = (0x3C, 0x46, 0xFF)   # blue glow - power
 VOLT_DEEP = (0x21, 0x74, 0xAA)
 
-FIREBOX = (0x16, 0x12, 0x1A)     # wnetrze paleniska
+FIREBOX = (0x16, 0x12, 0x1A)     # the firebox interior
 
 SIZE = 16
 
 
 def shade(color, amount):
-    """Rozjasnia (amount > 0) albo przyciemnia (amount < 0) kolor."""
+    """Brightens (amount > 0) or darkens (amount < 0) a colour."""
     r, g, b = color[:3]
     if amount >= 0:
         return (
@@ -59,19 +59,19 @@ def shade(color, amount):
 
 
 def noisy(px, x, y, base, rng, spread=0.045):
-    """Szum - bez niego duze plaskie powierzchnie wygladaja jak plastik."""
+    """Noise - without it large flat surfaces look like plastic."""
     px[x, y] = shade(base, rng.uniform(-spread, spread))
 
 
 def fill_casing(px, rng):
-    """Wypelnia cala teksture obudowa z delikatnym szumem."""
+    """Fills the whole texture with the casing, with subtle noise."""
     for y in range(SIZE):
         for x in range(SIZE):
             noisy(px, x, y, CASING, rng)
 
 
 def bevel(px):
-    """Gorna krawedz jasniejsza, dolna ciemniejsza - czytelna bryla."""
+    """Top edge brighter, bottom edge darker - a readable solid form."""
     for x in range(SIZE):
         px[x, 0] = shade(CASING_LIGHT, 0.10)
         px[x, SIZE - 1] = shade(CASING_DARK, -0.25)
@@ -81,30 +81,30 @@ def bevel(px):
 
 
 def rivet(px, x, y):
-    """Nitro: jasny piksel z ciemnym cieniem pod spodem."""
+    """A rivet: a bright pixel with a dark shadow underneath."""
     px[x, y] = shade(CASING_LIGHT, 0.35)
     if y + 1 < SIZE:
         px[x, y + 1] = shade(CASING_DARK, -0.30)
 
 
 def side_texture(accent, seed):
-    """Bok: obudowa, dwa panele wentylacyjne, nity w narozach."""
+    """Side: casing, two ventilation panels, rivets in the corners."""
     rng = random.Random(seed)
     img = Image.new("RGBA", (SIZE, SIZE), CASING + (255,))
     px = img.load()
     fill_casing(px, rng)
 
-    # Dwa poziome panele wentylacyjne - szczeliny.
+    # Two horizontal ventilation panels - slits.
     for panel_y in (4, 9):
         for x in range(3, 13):
             px[x, panel_y] = shade(CASING_DARK, -0.30)
             px[x, panel_y + 1] = shade(CASING_DARK, -0.10)
 
-    # Nity w narozach - sugeruja skrecana obudowe.
+    # Rivets in the corners - they suggest a bolted casing.
     for (rx, ry) in ((2, 2), (13, 2), (2, 13), (13, 13)):
         rivet(px, rx, ry)
 
-    # Cienki pasek akcentu - odroznia piece od siebie z boku.
+    # A thin accent stripe - it tells the furnaces apart from the side.
     for y in range(6, 8):
         px[15, y] = accent
 
@@ -113,13 +113,13 @@ def side_texture(accent, seed):
 
 
 def top_texture(accent, seed):
-    """Gora: wpuszczona pokrywa z krzyzowym wzmocnieniem."""
+    """Top: an inset lid with cross bracing."""
     rng = random.Random(seed)
     img = Image.new("RGBA", (SIZE, SIZE), CASING + (255,))
     px = img.load()
     fill_casing(px, rng)
 
-    # Wpuszczony kwadrat.
+    # The inset square.
     for y in range(3, 13):
         for x in range(3, 13):
             px[x, y] = shade(CASING_MID, rng.uniform(-0.06, 0.06))
@@ -130,7 +130,7 @@ def top_texture(accent, seed):
         px[3, y] = shade(CASING_DARK, -0.35)
         px[12, y] = shade(CASING_DARK, -0.15)
 
-    # Wzmocnienie na krzyz.
+    # Cross bracing.
     for x in range(5, 11):
         px[x, 7] = shade(CASING_LIGHT, 0.08)
         px[x, 8] = shade(CASING_DARK, -0.20)
@@ -138,7 +138,7 @@ def top_texture(accent, seed):
         px[7, y] = shade(CASING_LIGHT, 0.08)
         px[8, y] = shade(CASING_DARK, -0.20)
 
-    # Srodek krzyza - akcent.
+    # The centre of the cross - the accent.
     px[7, 7] = shade(accent, 0.15)
     px[8, 8] = shade(accent, -0.25)
 
@@ -150,49 +150,49 @@ def top_texture(accent, seed):
 
 
 def front_texture(accent, deep, seed, bars):
-    """Przod: zaglebione palenisko z kratownica i kontrolka zasilania.
+    """Front: a recessed firebox with a grate and a power indicator.
 
-    {@code bars} to lista wierszy, w ktorych swieci kratownica - dzieki temu
-    piec na paliwo (pelny ogien) i elektryczny (rownomierne pole) roznia sie
-    nie tylko kolorem, ale i rysunkiem.
+    {@code bars} is the list of rows in which the grate glows - thanks to that
+    the fuel furnace (full fire) and the electric one (an even field) differ not
+    only in colour, but also in the drawing.
     """
     rng = random.Random(seed)
     img = Image.new("RGBA", (SIZE, SIZE), CASING + (255,))
     px = img.load()
     fill_casing(px, rng)
 
-    # Ramka paleniska.
+    # The firebox frame.
     for y in range(4, 13):
         for x in range(2, 14):
             px[x, y] = shade(CASING_DARK, -0.40)
 
-    # Wnetrze paleniska.
+    # The firebox interior.
     for y in range(5, 12):
         for x in range(3, 13):
             px[x, y] = FIREBOX
 
-    # Kratownica: naprzemiennie jasne i ciemne prety.
+    # The grate: alternating bright and dark rods.
     for i, y in enumerate(range(6, 11)):
         if y in bars:
             for x in range(3, 13):
                 px[x, y] = shade(accent, 0.05 if i % 2 == 0 else -0.05)
-            # Gorna krawedz preta mocniej swieci.
+            # The rod's top edge glows more strongly.
             for x in range(3, 13):
                 px[x, y] = shade(px[x, y], 0.18)
         else:
             for x in range(3, 13):
                 px[x, y] = shade(deep, -0.55)
 
-    # Poprzeczne zebra kratownicy.
+    # The grate's transverse ribs.
     for x in (5, 8, 11):
         for y in range(5, 12):
             px[x, y] = shade(px[x, y], -0.35)
 
-    # Kontrolka zasilania w prawym gornym narozu.
+    # The power indicator in the top-right corner.
     px[13, 2] = shade(accent, 0.35)
     px[12, 2] = shade(accent, -0.20)
 
-    # Szczelina wlotu paliwa / kabla na dole.
+    # The fuel / cable intake slit at the bottom.
     for x in range(4, 12):
         px[x, 13] = shade(CASING_DARK, -0.30)
 
@@ -204,7 +204,7 @@ def save(img, name):
     os.makedirs(OUT_DIR, exist_ok=True)
     path = os.path.join(OUT_DIR, name)
     img.save(path)
-    print("zapisano:", path)
+    print("saved:", path)
 
 
 def build_furnace(prefix, accent, deep, seed, bars):
@@ -214,11 +214,11 @@ def build_furnace(prefix, accent, deep, seed, bars):
 
 
 def main():
-    # Piec na paliwo: kratownica swieci mocno przy dole - jak rozpalone palenisko.
+    # Fuel furnace: the grate glows strongly at the bottom - like a lit firebox.
     build_furnace("velocity_furnace", HEAT_GLOW, HEAT_DEEP, seed=20260915,
                   bars={9, 10})
 
-    # Piec elektryczny: rownomierne pole grzewcze, bez ognia.
+    # Electric furnace: an even heating field, no fire.
     build_furnace("electric_furnace", VOLT_GLOW, VOLT_DEEP, seed=20260916,
                   bars={6, 8, 10})
 

@@ -31,19 +31,19 @@ public class ConnectedEndpointInfo {
         INVENTORY,
         REFINED_STORAGE,
     /**
-     * Bufor auto-craftera - pamiec podreczna bloku, nie zasobnik w swiecie.
-     * Rozpoznawany po typie, zeby po restarcie swiata odtworzyc wlasciwa
-     * implementacje endpointu (patrz {@link CraftingBufferEndpoint}).
+     * Auto-crafter buffer - a block's own cache, not a container in the world.
+     * Recognized by type, so that after a world restart the correct endpoint
+     * implementation is restored (see {@link CraftingBufferEndpoint}).
      */
         CRAFTING_BUFFER,
 
         /**
-         * Obcy blok z Forge Energy (Energy Cube, generator, bank energii).
+         * A foreign block with Forge Energy (Energy Cube, generator, energy bank).
          *
-         * <p>Nasze maszyny SAME z niego sciagaja prad (patrz VeloceEnergyPull):
-         * to jedyny kierunek, w jakim energia plynie przez nasze rury. Nasze
-         * rury nie sa przewodnikiem dla innych modow - nic nie moze z nich
-         * pobrac, a nasze maszyny sa wylacznie odbiornikami.
+         * <p>Our machines PULL power from it THEMSELVES (see VeloceEnergyPull):
+         * that is the only direction in which energy flows through our pipes.
+         * Our pipes are not a conductor for other mods - nothing can draw from
+         * them, and our machines are exclusively receivers.
          */
         ENERGY
     }
@@ -55,56 +55,57 @@ public class ConnectedEndpointInfo {
     private final Map<Item, Long> cachedCounts = new HashMap<>();
 
     /**
-     * Ile WOLNYCH slotow ma ten magazyn (z ostatniego skanu).
+     * How many FREE slots this storage has (from the last scan).
      *
-     * <p>{@code -1} = nie wiemy (np. Refined Storage, gdzie pojemnosc nie jest
-     * liczba slotow). Wartosc "nie wiem" jest wazna: klient NIE blokuje wtedy
-     * akcji, bo wolimy przepuscic operacje i pozwolic serwerowi zdecydowac,
-     * niz zablokowac cos, co mogloby sie udac.
+     * <p>{@code -1} = we do not know (e.g. Refined Storage, where capacity is
+     * not a number of slots). The "do not know" value is important: the client
+     * does NOT block the action then, because we prefer to let the operation
+     * through and let the server decide rather than block something that could
+     * succeed.
      *
-     * <p>Liczymy tylko sloty CALKOWICIE puste. Slot czesciowo zapelniony moze
-     * przyjac tylko ten sam item, wiec nie jest "wolnym slotem" dla dowolnego
-     * przedmiotu - klient sprawdza to osobno, patrzac, czy item juz jest
-     * w sieci.
+     * <p>We only count COMPLETELY empty slots. A partially filled slot can only
+     * accept the same item, so it is not a "free slot" for an arbitrary item -
+     * the client checks that separately, by looking at whether the item is
+     * already in the network.
      */
     private int cachedFreeSlots = -1;
 
     /**
-     * Wolne miejsce w NIEPELNYCH stosach, per typ itemu.
+     * Free space in INCOMPLETE stacks, per item type.
      *
-     * <p><b>Po co to jest.</b> Sam licznik pustych slotow KŁAMIE. Wyobraz sobie
-     * skrzynie 27 slotow, w ktorej kazdy slot trzyma po 40 kamienia. Pustych
-     * slotow jest ZERO, wiec {@link #cachedFreeSlots} mowi "0" i siec
-     * raportowala sie jako PELNA. A przeciez do kazdego z tych stosow wejdzie
-     * jeszcze po 24 kamienie - czyli 648 sztuk!
+     * <p><b>Why this exists.</b> The empty-slot counter alone LIES. Imagine a
+     * chest with 27 slots, where each slot holds 40 stone. The number of empty
+     * slots is ZERO, so {@link #cachedFreeSlots} says "0" and the network
+     * reported itself as FULL. Yet each of those stacks can still take 24 more
+     * stone - that is 648 items!
      *
-     * <p>Objaw byl dokladnie taki, jak zgłosił gracz: terminal krzyczy
-     * "network full", choc na koncu sieci stoi skrzynia z wolnym miejscem.
-     * I to na stale, bo dopoki stosy nie zostana dopelnione, pusty slot sie
-     * nie pojawi - wiec licznik nigdy nie drgnie z zera.
+     * <p>The symptom was exactly what the player reported: the terminal shouts
+     * "network full", even though at the end of the network there is a chest
+     * with free space. And permanently, because until the stacks are topped up
+     * an empty slot will not appear - so the counter never moves off zero.
      *
-     * <p>Dlatego pamietamy OSOBNO, ile sztuk kazdego typu jeszcze sie zmiesci,
-     * zanim jego stosy sie dopelnia. Dzieki temu pojemnosc liczymy DLA KONKRETNEGO
-     * ITEMU ({@link #capacityFor}), a nie "w ogole" - bo miejsce po kamieniu
-     * nie pomoze, gdy chcemy wlozyc ziemie.
+     * <p>That is why we remember SEPARATELY how many items of each type still
+     * fit before its stacks are topped up. Thanks to this we compute capacity
+     * FOR A SPECIFIC ITEM ({@link #capacityFor}), and not "in general" - because
+     * the space left by stone does not help when we want to insert dirt.
      */
     private final Map<Item, Integer> cachedPartialSpace = new HashMap<>();
 
     /**
-     * Tick, w ktorym ostatnio przeskanowalismy ten inwentarz.
+     * The tick in which we last scanned this inventory.
      *
-     * <p>Skanowanie polega na przejsciu WSZYSTKICH slotow i wywolaniu
-     * {@code getStackInSlot} na kazdym. Dla moddowanych magazynow to potrafi
-     * kopiowac stosy razem z NBT, wiec jest to operacja droga. Wczesniej
-     * odswiezalismy sie przy KAZDYM zapytaniu o stan sieci (a to leci
-     * kilka razy na sekunde), co zamulalo watek serwera.
+     * <p>Scanning means walking over ALL slots and calling
+     * {@code getStackInSlot} on each. For modded storages that can copy stacks
+     * together with their NBT, so it is an expensive operation. Previously we
+     * refreshed on EVERY query about the network state (and that happens
+     * several times per second), which choked the server thread.
      */
     private long lastScanTick = Long.MIN_VALUE;
 
-    /** Minimalny odstep miedzy skanami tego samego inwentarza, w tickach. */
+    /** Minimum spacing between scans of the same inventory, in ticks. */
     public static final int SCAN_INTERVAL_TICKS = 10;
 
-    /** Czy blad skanu zostal juz zaraportowany (zeby nie spamowac logu). */
+    /** Has the scan error already been reported (so as not to spam the log). */
     private boolean scanFailureLogged;
 
     public ConnectedEndpointInfo(BlockPos pos, Direction accessSide, Type type) {
@@ -131,44 +132,44 @@ public class ConnectedEndpointInfo {
     }
 
     /**
-     * Czy wolno do tego magazynu WSTAWIAĆ przedmioty.
+     * Is it allowed to INSERT items into this storage.
      *
-     * <p><b>Po co to jest.</b> Wrench ustawia strone rury w jeden z trzech
-     * trybow: Push/Pull, Pull, Disconnected. W trybie <b>Pull</b> magazyn ma
-     * byc WYLACZNIE zrodlem - siec ma z niego tylko zabierac (np. z pieca,
-     * ktory sam produkuje, albo ze skrzyni, do ktorej nie chcemy, zeby cokolwiek
-     * wpadalo). Wczesniej tryb ten byl ignorowany przy wstawianiu: rura
-     * wiedziala o nim tylko po to, zeby narysowac dysze, a siec i tak
-     * wrzucala do tego magazynu wszystko, co chciala odlozyc.
+     * <p><b>Why this exists.</b> The wrench sets a pipe side to one of three
+     * modes: Push/Pull, Pull, Disconnected. In <b>Pull</b> mode the storage is
+     * to be EXCLUSIVELY a source - the network is only to take from it (e.g.
+     * from a furnace that produces on its own, or from a chest into which we do
+     * not want anything to fall). Previously this mode was ignored when
+     * inserting: the pipe knew about it only in order to draw the nozzle, and
+     * the network still threw everything it wanted to deposit into that storage.
      *
-     * <p>Domyslnie {@code true}, zeby magazyn bez zadnej rury w trybie Pull
-     * zachowywal sie dokladnie jak dotad.
+     * <p>Defaults to {@code true}, so that a storage without any pipe in Pull
+     * mode behaves exactly as before.
      */
     public boolean acceptsInsert() {
         return acceptsInsert;
     }
 
-    /** Ustawia, czy ten magazyn przyjmuje wstawiane przedmioty. */
+    /** Sets whether this storage accepts inserted items. */
     public void setAcceptsInsert(boolean accepts) {
         this.acceptsInsert = accepts;
     }
 
     /**
-     * Dolacza informacje z KOLEJNEJ rury dotykajacej tego samego magazynu.
+     * Merges in information from ANOTHER pipe touching the same storage.
      *
-     * <p>Jeden magazyn moze miec kilka rur, kazda w innym trybie. Siec ma
-     * do niego wstawiac wtedy, gdy <b>choc jedna</b> strona na to pozwala -
-     * wiec tryb Pull wygrywa tylko wtedy, gdy obejmuje wszystkie polaczenia.
-     * Bez tego ostatnia rura w kolejnosci budowy decydowalaby o calym
-     * magazynie i wynik zalezalby od kolejnosci przechodzenia sieci.
+     * <p>One storage can have several pipes, each in a different mode. The
+     * network is to insert into it when <b>at least one</b> side permits it -
+     * so Pull mode wins only when it covers all connections. Without this the
+     * last pipe in construction order would decide about the whole storage and
+     * the result would depend on the order of traversal of the network.
      */
     public void mergeAcceptsInsert(boolean accepts) {
         this.acceptsInsert = this.acceptsInsert || accepts;
     }
 
     /**
-     * Oznacza, ze to pierwsza rura rejestrujaca ten magazyn w tym przebiegu -
-     * czyli flage trzeba ustawic, a nie dolaczyc.
+     * Marks that this is the first pipe registering this storage in this pass -
+     * that is, the flag has to be set rather than merged.
      */
     public void resetAcceptsInsert(boolean accepts) {
         this.acceptsInsert = accepts;
@@ -181,17 +182,18 @@ public class ConnectedEndpointInfo {
     }
 
     /**
-     * Odswieza liczniki, ale nie czesciej niz raz na
-     * {@link #SCAN_INTERVAL_TICKS} tickow.
+     * Refreshes the counters, but no more often than once every
+     * {@link #SCAN_INTERVAL_TICKS} ticks.
      *
-     * <p>To wariant dla WSZYSTKICH odczytow tla (cache, GUI, wyswietlacze).
-     * Stan starszy o pol sekundy jest dla nich w zupelnosci wystarczajacy,
-     * a oszczedza skanowanie calej sieci kilka razy na sekunde.
+     * <p>This is the variant for ALL background reads (cache, GUI, displays).
+     * A state half a second old is entirely sufficient for them, and it saves
+     * scanning the whole network several times per second.
      */
     public void refreshIfLoadedThrottled(ServerLevel level, long gameTime) {
-        // `gameTime >= lastScanTick` nie jest zbedne: gdyby czas swiata cofnal sie
-        // (wczytanie starszego save'a), roznica bylaby UJEMNA, a wiec mniejsza
-        // od interwalu - i skan bylby pomijany bez konca.
+        // `gameTime >= lastScanTick` is not redundant: if the world time were
+        // rewound (loading an older save), the difference would be NEGATIVE,
+        // and therefore smaller than the interval - and the scan would be
+        // skipped endlessly.
         if (lastScanTick != Long.MIN_VALUE
                 && gameTime >= lastScanTick
                 && gameTime - lastScanTick < SCAN_INTERVAL_TICKS) {
@@ -201,74 +203,78 @@ public class ConnectedEndpointInfo {
         refreshIfLoaded(level);
     }
 
-    /** Wymusza skan teraz (do operacji, ktore musza widziec stan na zywo). */
+    /** Forces a scan right now (for operations that must see the live state). */
     public void forceRefresh(ServerLevel level, long gameTime) {
         lastScanTick = gameTime;
         refreshIfLoaded(level);
     }
 
     /**
-     * Uniewaznia zapamietane liczniki I pozwala na natychmiastowy ponowny skan.
+     * Invalidates the remembered counters AND allows an immediate rescan.
      *
-     * <p><b>UWAGA: to NIE moze czyscic liczb dla rozladowanego chunku.</b>
+     * <p><b>NOTE: this must NOT clear the numbers for an unloaded chunk.</b>
      *
-     * <p>BUG, ktory tu byl i ktory dawal glowny zglaszany objaw ("w
-     * niezaladowanym chunku nie mam itemow, ktore tam sa"): metoda czyscila
-     * {@code cachedCounts}, a {@link #refreshIfLoaded} dla rozladowanego
-     * chunku <b>nie robi nic</b> - nie ma z czego odtworzyc zawartosci.
+     * <p>The BUG that was here and that produced the main reported symptom
+     * ("in an unloaded chunk I do not have the items that are there"): the
+     * method cleared {@code cachedCounts}, and {@link #refreshIfLoaded} for an
+     * unloaded chunk <b>does nothing</b> - there is nothing to rebuild the
+     * contents from.
      *
-     * <p>Czyli: cache zostawal wyzerowany i nie mial jak sie odbudowac, bo
-     * chunk jest poza symulacja. A ze uniewaznienie leci przy kazdej zmianie
-     * sasiedztwa sieci i przy kazdej przebudowie, starczylo cokolwiek
-     * przestawic w bazie albo oddalic sie od skrzyni - i jej zawartosc
-     * znikala z GUI na stale.
+     * <p>So: the cache was left zeroed and had no way to recover, because the
+     * chunk is outside simulation. And since invalidation happens on every
+     * change of network adjacency and on every rebuild, it was enough to move
+     * anything in the base or walk away from the chest - and its contents
+     * vanished from the GUI permanently.
      *
-     * <p>Teraz rozrozniamy dwa przypadki:
+     * <p>Now we distinguish two cases:
      * <ul>
-     *   <li><b>chunk zaladowany</b> - czyscimy, bo za chwile odczytamy
-     *       prawdziwy stan ze swiata,</li>
-     *   <li><b>chunk rozladowany</b> - zostawiamy ostatnia znana zawartosc.
-     *       Jest nadal prawdziwa: skoro chunk nie jest symulowany, nikt tych
-     *       itemow nie ruszyl. To jest wlasnie zalozenie calego mechanizmu.</li>
+     *   <li><b>chunk loaded</b> - we clear, because in a moment we will read
+     *       the real state from the world,</li>
+     *   <li><b>chunk unloaded</b> - we keep the last known contents.
+     *       It is still true: since the chunk is not simulated, nobody has
+     *       touched those items. That is exactly the assumption of the whole
+     *       mechanism.</li>
      * </ul>
      *
-     * <p>Zerowanie {@code lastScanTick} zostaje w obu przypadkach - mowi
-     * "ten wpis jest niewazny, zeskanuj go przy nastepnym pytaniu".
+     * <p>Zeroing {@code lastScanTick} stays in both cases - it says
+     * "this entry is invalid, scan it on the next question".
      */
     public void invalidateCache(ServerLevel level) {
         if (level == null || level.isLoaded(pos)) {
             cachedCounts.clear();
-            // Liczniki czyscimy RAZEM - inaczej wolne miejsce liczyloby sie
-            // wzgledem stosow, ktorych juz nie pamietamy.
+            // We clear the counters TOGETHER - otherwise free space would be
+            // computed against stacks we no longer remember.
             cachedPartialSpace.clear();
         }
         lastScanTick = Long.MIN_VALUE;
     }
 
     /**
-     * Ile sztuk KONKRETNIE TEGO itemu ten magazyn jeszcze przyjmie.
+     * How many units of EXACTLY THIS item this storage will still accept.
      *
-     * <p>Liczymy dwie rzeczy, bo kazda osobno jest bledna:
+     * <p>We count two things, because each alone is wrong:
      * <ul>
-     *   <li>puste sloty - kazdy z nich przyjmie pelny stos (szacujemy
-     *       {@link Item#getDefaultMaxStackSize()}; nadmiarowy szacunek jest
-     *       bezpieczny, bo wtedy tylko nie zablokujemy za wczesnie),</li>
-     *   <li>wolne miejsce w NIEPELNYCH stosach TEGO SAMEGO itemu - to jest
-     *       wlasnie przypadek "skrzynia niby pelna, a jednak wejdzie".</li>
+     *   <li>empty slots - each of them will accept a full stack (we estimate
+     *       with {@link Item#getDefaultMaxStackSize()}; an overestimate is safe,
+     *       because then we merely do not block too early),</li>
+     *   <li>free space in INCOMPLETE stacks OF THE SAME item - that is exactly
+     *       the case of "the chest looks full, yet it will fit".</li>
      * </ul>
      *
-     * <p>Miejsce po innym itemu swiadomie POMIJAMY: 10 wolnych sztuk w stosie
-     * kamienia nie pomoze, gdy wkladamy ziemie.
+     * <p>Space left by another item is deliberately IGNORED: 10 free units in a
+     * stone stack do not help when we are inserting dirt.
      *
-     * @return liczba sztuk (moze byc 0 = naprawde pelny) albo {@code -1} gdy
-     *         nie wiemy (chunk niezaladowany, Refined Storage, brak odczytu).
-     *         Wolajacy MUSI odroznic 0 od -1: 0 to dowod, -1 to brak wiedzy.
+     * @return the number of units (can be 0 = genuinely full) or {@code -1} when
+     *         we do not know (chunk unloaded, Refined Storage, no read).
+     *         The caller MUST distinguish 0 from -1: 0 is proof, -1 is lack of
+     *         knowledge.
      */
     public long capacityFor(Item item) {
-        // Magazyn w trybie Pull nie przyjmie NICZEGO, wiec nie wnosci zadnej
-        // pojemnosci. Bez tego licznik miejsca w sieci pokazywalby wolne sloty
-        // magazynu, do ktorego wstawianie jest zabronione - i gracz dostawalby
-        // "jest miejsce", a potem cicho nic by sie nie odlozylo.
+        // A storage in Pull mode will accept NOTHING, so it contributes no
+        // capacity. Without this the network's free-space counter would show the
+        // free slots of a storage into which inserting is forbidden - and the
+        // player would get "there is space", and then nothing would be silently
+        // deposited.
         if (!acceptsInsert) {
             return 0;
         }
@@ -281,10 +287,10 @@ public class ConnectedEndpointInfo {
     }
 
     /**
-     * Odnotowuje, ze endpointu nie da sie teraz odczytac.
+     * Records that the endpoint cannot be read right now.
      *
-     * <p>Logujemy RAZ na endpoint, zeby nie zasmiecac loga przy kazdym
-     * ladowaniu chunku, ale zeby dalo sie to w ogole zobaczyc.
+     * <p>We log ONCE per endpoint, so as not to clutter the log on every chunk
+     * load, but so that it can be seen at all.
      */
     private void noteNotReadable() {
         if (!notReadableLogged) {
@@ -295,50 +301,51 @@ public class ConnectedEndpointInfo {
         }
     }
 
-    /** Czy juz logowalismy, ze endpointu nie da sie odczytac. */
+    /** Have we already logged that the endpoint cannot be read. */
     private boolean notReadableLogged = false;
 
     /**
-     * Do kiedy NIE wczytujemy chunku dla tego magazynu po nieudanej operacji.
+     * Until when we do NOT load the chunk for this storage after a failed
+     * operation.
      *
-     * <p><b>BUG, ktory to naprawia (petla load/unload).</b> Gdy magazyn lezy
-     * w niezaladowanym chunku, operacja wczytuje go na chwile
-     * ({@code getChunk(..., true)} - bez force). Jesli cache tego magazynu byl
-     * NIEAKTUALNY (mowil "mam ten item", a w srodku go nie bylo), to po
-     * wczytaniu nic nie udawalo sie zabrac - a cache NIE byl poprawiany, bo
-     * odswiezanie robilo sie tylko przy sukcesie. Wolajacy (ekstraktory,
-     * piec, crafter) pytal wiec dalej, a KAZDE pytanie wczytywalo chunk
-     * jeszcze raz: prawdziwa petla load/unload, w praktyce 10 razy na sekunde
-     * przez cale minuty.
+     * <p><b>The BUG this fixes (a load/unload loop).</b> When the storage lies
+     * in an unloaded chunk, the operation loads it briefly
+     * ({@code getChunk(..., true)} - without force). If the cache of that
+     * storage was STALE (it said "I have this item", but it was not inside),
+     * then after loading nothing could be taken - and the cache was NOT
+     * corrected, because refreshing was only done on success. The caller
+     * (extractors, furnace, crafter) therefore kept asking, and EVERY question
+     * loaded the chunk once more: a real load/unload loop, in practice 10 times
+     * per second for whole minutes.
      *
-     * <p>Nasz licznik petli tego nie widzial, bo pilnowal wylacznie
-     * {@code setChunkForced} - a to sa zwykle wczytania bez wymuszenia.
+     * <p>Our loop counter did not see this, because it only watched
+     * {@code setChunkForced} - and these are ordinary loads without forcing.
      *
-     * <p>Po nieudanej probie odczekujemy wiec pelny czas i dopiero wtedy
-     * probujemy znowu. Nieudana proba znaczy "cache klamal", a nie "sprobuj
-     * jeszcze raz za dwie sekundy".
+     * <p>So after a failed attempt we wait the full time and only then try
+     * again. A failed attempt means "the cache lied", not "try again in two
+     * seconds".
      */
     private long opLoadBlockedUntilTick = Long.MIN_VALUE;
 
-    /** Jak dlugo nie wczytujemy chunku po nieudanej operacji (tickow). */
+    /** How long we do not load the chunk after a failed operation (ticks). */
     private static final long FAILED_OP_LOAD_COOLDOWN_TICKS = 200L;
 
-    /** Wynik odczytu jednego pojemnika: liczby, wolne sloty, miejsce w czesciowych stosach. */
+    /** Result of reading one container: counts, free slots, space in partial stacks. */
     private record SlotScan(Map<Item, Long> counts, int freeSlots, Map<Item, Integer> partialSpace) {
     }
 
     /**
-     * JEDNA regula czytania pojemnika - dla kazdego rodzaju magazynu.
+     * ONE rule for reading a container - for every kind of storage.
      *
-     * <p><b>Po co wydzielone.</b> Ta sama petla byla skopiowana w dwoch galeziach
-     * (NeoForge ItemHandler i waniliowy Container) linia w linie. To dokladnie
-     * ten wzorzec, ktory w tym projekcie juz kilka razy sie rozjechal: poprawka
-     * "pojemnosc liczymy per item, a nie po pustych slotach" musiala trafic do
-     * OBU kopii, a przy trzecim rodzaju magazynu trzeba by ja bylo powtorzyc
-     * jeszcze raz. Teraz regula jest w jednym miejscu.
+     * <p><b>Why it is extracted.</b> The same loop was copied in two branches
+     * (NeoForge ItemHandler and the vanilla Container) line for line. That is
+     * exactly the pattern that has drifted apart several times in this project:
+     * the fix "we compute capacity per item, not from empty slots" had to reach
+     * BOTH copies, and with a third kind of storage it would have had to be
+     * repeated once more. Now the rule is in one place.
      *
-     * @param slots   ile slotow ma pojemnik
-     * @param getSlot skad wziac stos z danego slotu
+     * @param slots   how many slots the container has
+     * @param getSlot where to get the stack from a given slot
      */
     private static SlotScan scanSlots(int slots, java.util.function.IntFunction<ItemStack> getSlot) {
         Map<Item, Long> counts = new HashMap<>();
@@ -365,9 +372,9 @@ public class ConnectedEndpointInfo {
         }
 
         if (type == Type.REFINED_STORAGE) {
-            // To samo zabezpieczenie co dla INVENTORY: gdy block entity jeszcze
-            // nie istnieje (chunk w trakcie ladowania), licznik RS jest chwilowo
-            // niedostepny - nie nadpisujemy znanych liczb zerem.
+            // The same safeguard as for INVENTORY: when the block entity does
+            // not exist yet (chunk still loading), the RS counter is temporarily
+            // unavailable - we do not overwrite the known numbers with zero.
             if (level.getBlockEntity(pos) == null) {
                 noteNotReadable();
                 return;
@@ -375,7 +382,7 @@ public class ConnectedEndpointInfo {
             Map<Item, Long> rsCounts = RefinedStorageHelper.getRSItemCounts(level, pos, accessSide);
             cachedCounts.clear();
             cachedCounts.putAll(rsCounts);
-            // RS nie ma pojemnosci wyrazonej w slotach - nie udajemy, ze wiemy.
+            // RS has no capacity expressed in slots - we do not pretend to know.
             cachedFreeSlots = -1;
             return;
         }
@@ -387,19 +394,18 @@ public class ConnectedEndpointInfo {
             BlockEntity be = level.getBlockEntity(pos);
             IItemHandler handler = Capabilities.ItemHandler.BLOCK.getCapability(level, pos, state, be, accessSide);
 
-            // CZY WIDZIELISMY POJEMNIK?
+            // DID WE SEE A CONTAINER?
             //
-            // BUG, ktory tu byl: ponizsze `cachedCounts.clear()` wykonywalo sie
-            // ZAWSZE, takze gdy NIE udalo sie odczytac zadnego pojemnika.
-            // Wtedy `newCounts` bylo puste i znane liczby zostawaly WYMAZANE
-            // ZEREM.
+            // The BUG that was here: the `cachedCounts.clear()` below ran
+            // ALWAYS, also when NO container could be read. Then `newCounts` was
+            // empty and the known numbers were WIPED TO ZERO.
             //
-            // Kiedy to zachodzi w praktyce: gracz teleportuje sie obok skrzyni,
-            // jej chunk zaczyna sie ladowac, ale block entity jeszcze nie
-            // powstalo (`getBlockEntity` zwraca null). Nasz skan czyta wtedy
-            // pustke i zapisuje zero - a ze chunk zaraz znowu sie rozladowuje,
-            // nie ma jak tego poprawic. Objaw: "terminal zgubil siec", bo
-            // magazyn raportuje 0 typow.
+            // When this happens in practice: the player teleports next to a
+            // chest, its chunk starts loading, but the block entity has not been
+            // created yet (`getBlockEntity` returns null). Our scan then reads
+            // emptiness and writes zero - and since the chunk unloads again right
+            // away, there is no way to correct it. Symptom: "the terminal lost
+            // the network", because the storage reports 0 types.
             boolean sawContainer = false;
             int freeSlots = 0;
             Map<Item, Integer> partialSpace = new HashMap<>();
@@ -418,9 +424,9 @@ public class ConnectedEndpointInfo {
             }
 
             if (!sawContainer) {
-                // Nie ma czego czytac - chunk sie jeszcze laduje albo blok
-                // zniknal. ZOSTAWIAMY ostatnie znane liczby zamiast ich
-                // kasowac: lepsza nieaktualna liczba niz falszywe zero.
+                // There is nothing to read - the chunk is still loading or the
+                // block disappeared. We KEEP the last known numbers instead of
+                // clearing them: a stale number is better than a false zero.
                 noteNotReadable();
                 return;
             }
@@ -433,13 +439,13 @@ public class ConnectedEndpointInfo {
             scanFailureLogged = false;
             notReadableLogged = false;
         } catch (Throwable t) {
-            // NIE polykamy tego po cichu.
+            // We do NOT swallow this silently.
             //
-            // Wczesniej byl tu `catch (Throwable ignored) {}`. Gdy skanowanie
-            // inwentarza rzucalo (np. zepsuty magazyn z innego moda),
-            // cachedCounts zostawalo ze STARYMI wartosciami - gracz widzial
-            // nieaktualne liczby i nie mial jak zgadnac dlaczego. Teraz
-            // przynajmniej raz na endpoint mowimy o tym w logu.
+            // There used to be `catch (Throwable ignored) {}` here. When the
+            // inventory scan threw (e.g. a broken storage from another mod),
+            // cachedCounts was left with the OLD values - the player saw stale
+            // numbers and had no way to guess why. Now we at least mention it in
+            // the log once per endpoint.
             if (!scanFailureLogged) {
                 scanFailureLogged = true;
                 VeloceLog.Network.failure(VeloceLog.Side.SERVER,
@@ -450,10 +456,10 @@ public class ConnectedEndpointInfo {
     }
 
     /**
-     * Fizyczne zabranie itemu - BEZ sprawdzania i ladowania chunku.
+     * Physically takes the item - WITHOUT checking or loading the chunk.
      *
-     * <p>Wydzielone z {@link #extractItem} jako sciezka "chunk jest juz
-     * zaladowany" - nie sprawdza i nie wczytuje chunku samodzielnie.
+     * <p>Extracted from {@link #extractItem} as the "chunk is already loaded"
+     * path - it does not check or load the chunk by itself.
      */
     public ItemStack extractNow(ServerLevel level, Item item, int maxCount) {
         if (type == Type.REFINED_STORAGE) {
@@ -503,7 +509,7 @@ public class ConnectedEndpointInfo {
         return ItemStack.EMPTY;
     }
 
-    /** Dokłada zawartosc do stosu wynikowego. */
+    /** Adds the contents to the result stack. */
     private static ItemStack grow(ItemStack into, ItemStack from) {
         into.grow(from.getCount());
         return into;
@@ -514,9 +520,9 @@ public class ConnectedEndpointInfo {
             return ItemStack.EMPTY;
         }
 
-        // JEDNO miejsce, ktore fizycznie zabiera itemy - {@link #extractNow}.
-        // Wczesniej ta metoda miala wlasna, przeklejona kopie tej samej petli,
-        // wiec poprawka w jednej z nich nie docierala do drugiej.
+        // The ONE place that physically takes items - {@link #extractNow}.
+        // Previously this method had its own copy-pasted version of the same
+        // loop, so a fix in one of them never reached the other.
         if (type == Type.REFINED_STORAGE) {
             ItemStack extracted = extractNow(level, item, maxCount);
             if (!extracted.isEmpty()) {
@@ -529,39 +535,41 @@ public class ConnectedEndpointInfo {
         boolean wasLoaded = level.isLoaded(pos);
         long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
-            // WYCIAGANIE MUSI BYC SYNCHRONICZNE - i to jest krytyczne.
+            // EXTRACTION MUST BE SYNCHRONOUS - and that is critical.
             //
             // ============================================================
-            // BUG, ktory tu byl (DUPLIKACJA): wersja z kolejka zwracala
-            // wolajacemu STOS OD RAZU, "na kredyt":
+            // The BUG that was here (DUPLICATION): the queued version returned
+            // the STACK TO THE CALLER IMMEDIATELY, "on credit":
             //
-            //     scheduleExtract(...);                  // zrob to pozniej
-            //     return new ItemStack(item, cached);    // a tu wez teraz
+            //     scheduleExtract(...);                  // do it later
+            //     return new ItemStack(item, cached);    // and take it now
             //
-            // a kolejka, gdy juz fizycznie zabrala itemy, WYRZUCALA wynik
-            // (byl tylko logowany). Dopoki wszystko szlo zgodnie z zalozeniem,
-            // suma sie zgadzala. Wystarczylo jednak, ze obietnica nie zostala
-            // dotrzymana, i itemy mnozyly sie z niczego:
-            //   - kolejka byla pelna (MAX_QUEUE) i zadanie zostalo ODRZUCONE,
-            //   - chunku nie dalo sie wczytac,
-            //   - w skrzyni bylo mniej, niz mowil cache (hopper, inny gracz,
-            //     maszyna z innego moda) - obietnica wieksza od stanu,
-            //   - kontener zniknal.
-            // W kazdym z tych przypadkow gracz, crafter albo piec dostawal
-            // itemy, ktore NIE zostaly nikomu zabrane.
+            // while the queue, once it had physically taken the items, DISCARDED
+            // the result (it was only logged). As long as everything went
+            // according to assumption, the sum added up. But it was enough for
+            // the promise not to be kept, and items multiplied out of nothing:
+            //   - the queue was full (MAX_QUEUE) and the task was REJECTED,
+            //   - the chunk could not be loaded,
+            //   - the chest held less than the cache said (hopper, another
+            //     player, a machine from another mod) - a promise bigger than the
+            //     state,
+            //   - the container disappeared.
+            // In each of those cases the player, the crafter or the furnace got
+            // items that had NOT been taken from anyone.
             //
-            // Wolajacy MUSI znac prawdziwy wynik - inaczej nie da sie zachowac
-            // zasady "zabierz dokladnie tyle, ile wydales". Dlatego chunk
-            // wczytujemy tu i teraz, dokladnie tak samo jak przy wkladaniu.
+            // The caller MUST know the true result - otherwise the rule "take
+            // exactly as much as you gave out" cannot be kept. That is why we
+            // load the chunk here and now, exactly as when inserting.
             // ============================================================
             //
-            // Bez force-loadu: getChunk(..., true) wczytuje chunk na czas tego
-            // wywolania, a operacja konczy sie w tym samym ticku, wiec chunk
-            // wypada pozniej NORMALNYM mechanizmem gry. Budzet na tick chroni
-            // przed zamuleniem, gdy wolajacy idzie w petli (crafter, extractor).
-            // Blokada po nieudanej probie - patrz opLoadBlockedUntilTick.
-            // Bez tego ten sam magazyn z nieaktualnym cache wczytywalby chunk
-            // w kolko (load/unload co kilkadziesiat tickow).
+            // Without a force-load: getChunk(..., true) loads the chunk for the
+            // duration of this call, and the operation finishes in the same tick,
+            // so the chunk drops out later through the NORMAL game mechanism.
+            // The per-tick budget protects against choking when the caller loops
+            // (crafter, extractor).
+            // Blocking after a failed attempt - see opLoadBlockedUntilTick.
+            // Without it the same storage with a stale cache would load the
+            // chunk in a loop (load/unload every few dozen ticks).
             if (level.getGameTime() < opLoadBlockedUntilTick) {
                 return ItemStack.EMPTY;
             }
@@ -570,25 +578,25 @@ public class ConnectedEndpointInfo {
             }
             if (!VeloceChunkLoader.tryReserveOpLoad(level)) {
                 com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
-                        "budzet loadow wyczerpany (%d/tick) -> nic nie zabrano",
+                        "load budget exhausted (%d/tick) -> nothing was taken",
                         VeloceChunkLoader.MAX_OP_LOADS_PER_TICK);
                 return ItemStack.EMPTY;
             }
             com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
                     com.craftingveloce.debug.ChunkOpNotifier.Op.EXTRACT);
-            VeloceChunkLoader.noteOpLoad(level, chunkKey, pos, "wyciagniecie");
+            VeloceChunkLoader.noteOpLoad(level, chunkKey, pos, "extraction");
             com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
-                    "chunk UNLOADED -> wczytuje na czas operacji (bez force); item=%s zadane=%d",
+                    "chunk UNLOADED -> loading for the operation (no force); item=%s requested=%d",
                     item, maxCount);
             level.getChunkSource().getChunk(
                     chunkPos.x, chunkPos.z,
                     net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true);
         } else {
-            // Chunk byl juz zaladowany - liczymy to jako uzycie, zeby czesto
-            // odwiedzane chunki zostawaly w pamieci dluzej.
+            // The chunk was already loaded - we count this as a use, so that
+            // frequently visited chunks stay in memory longer.
             VeloceChunkLoader.noteUse(level, chunkKey);
             com.craftingveloce.debug.ChunkTrace.at("EXTRACT", level, pos,
-                    "chunk LOADED -> zabranie natychmiast; item=%s zadane=%d w cache=%d",
+                    "chunk LOADED -> taking immediately; item=%s requested=%d cached=%d",
                     item, maxCount, cachedCounts.getOrDefault(item, 0L));
         }
 
@@ -596,11 +604,12 @@ public class ConnectedEndpointInfo {
         if (!result.isEmpty()) {
             refreshIfLoaded(level);
         } else if (!wasLoaded) {
-            // Cache klamal: wczytalismy chunk, a itemu nie bylo. Poprawiamy
-            // prawde (chunk jest juz zaladowany, wiec to tani odczyt) ORAZ
-            // odstawiamy ten magazyn na chwile. Bez tego wolajacy pytalby
-            // dalej, a kazde pytanie wczytywalo chunk od nowa - petla
-            // load/unload dokladnie taka, jaka widac bylo w logu.
+            // The cache lied: we loaded the chunk and the item was not there.
+            // We correct the truth (the chunk is already loaded, so it is a
+            // cheap read) AND we set this storage aside for a while. Without
+            // this the caller would keep asking, and every question loaded the
+            // chunk again - a load/unload loop exactly like the one visible in
+            // the log.
             refreshIfLoaded(level);
             opLoadBlockedUntilTick = level.getGameTime() + FAILED_OP_LOAD_COOLDOWN_TICKS;
         }
@@ -609,9 +618,9 @@ public class ConnectedEndpointInfo {
 
 
     /**
-     * Fizyczne wlozenie stosu - BEZ sprawdzania i ladowania chunku.
+     * Physically inserts the stack - WITHOUT checking or loading the chunk.
      *
-     * @return to, czego NIE udalo sie wlozyc
+     * @return what could NOT be inserted
      */
     public ItemStack insertNow(ServerLevel level, ItemStack stack) {
         if (stack.isEmpty()) {
@@ -659,34 +668,34 @@ public class ConnectedEndpointInfo {
     }
 
     /**
-     * Wklada ile sie da i zwraca RESZTE.
+     * Inserts as much as possible and returns the LEFTOVER.
      *
-     * <p><b>Po co zostaw pozostaly stos, a nie sam boolean.</b> Poprzednia
-     * wersja zwracala {@code remaining.isEmpty()}, wiec przy CZESCIOWYM
-     * przyjeciu (np. beczka prawie pelna) mowila "nie udalo sie" - mimo ze
-     * czesc itemow juz fizycznie weszla. Wolajacy nie zabieral wtedy niczego
-     * graczowi, a itemy byly juz w magazynie: DUPLIKACJA.
+     * <p><b>Why return the remaining stack instead of a plain boolean.</b> The
+     * previous version returned {@code remaining.isEmpty()}, so on a PARTIAL
+     * acceptance (e.g. a nearly full barrel) it said "failed" - even though part
+     * of the items had already physically gone in. The caller then took nothing
+     * from the player, while the items were already in the storage:
+     * DUPLICATION.
      *
-     * @return to, czego NIE udalo sie wlozyc (EMPTY gdy wszystko przyjete)
+     * @return what could NOT be inserted (EMPTY when everything was accepted)
      */
     public ItemStack insertItemLeftover(ServerLevel level, ItemStack stack) {
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;
         }
 
-        // TRYB PULL: strona rury ustawiona na "Pull" oznacza, ze z tego
-        // magazynu wolno TYLKO zabierac. Sprawdzamy to jako PIERWSZA rzecz,
-        // zanim cokolwiek wczytamy czy dotkniemy - i zwracamy CALY stos, wiec
-        // wolajacy zatrzymuje przedmioty u siebie (nic nie ginie i nic sie
-        // nie duplikuje).
+        // PULL MODE: a pipe side set to "Pull" means that this storage may ONLY
+        // be taken from. We check this as the FIRST thing, before loading or
+        // touching anything - and we return the WHOLE stack, so the caller keeps
+        // the items on its side (nothing is lost and nothing is duplicated).
         //
-        // Jedno miejsce na cala regule: te sciezke przechodzi terminal,
-        // crafter (odkladanie wyniku) i piec (oddawanie nadwyzki paliwa).
-        // Sprawdzanie tego w kazdym z nich osobno gwarantowaloby, ze kiedys
-        // jedno z nich zostanie pominięte.
+        // One place for the whole rule: this path is taken by the terminal,
+        // the crafter (depositing the output) and the furnace (returning the
+        // fuel surplus). Checking it separately in each of them would guarantee
+        // that one day one of them gets skipped.
         if (!acceptsInsert) {
             ChunkTrace.at("INSERT", level, pos,
-                    "tryb PULL - wstawianie zabronione; stos=%dx %s",
+                    "PULL mode - inserting forbidden; stack=%dx %s",
                     stack.getCount(), stack.getItem());
             return stack;
         }
@@ -702,75 +711,80 @@ public class ConnectedEndpointInfo {
         boolean wasLoaded = level.isLoaded(pos);
         long chunkKey = ChunkPos.asLong(chunkPos.x, chunkPos.z);
         if (!wasLoaded) {
-            // Bez wczytywania przy zapisie swiata - patrz extractItem.
+            // No loading during a world save - see extractItem.
             if (VeloceChunkLoader.isFrozen()) {
                 return stack;
             }
             com.craftingveloce.debug.ChunkOpNotifier.reportLoad(level, chunkKey, pos,
                     com.craftingveloce.debug.ChunkOpNotifier.Op.INSERT);
-            // WKLADANIE MUSI BYC SYNCHRONICZNE - i to jest krytyczne.
+            // INSERTING MUST BE SYNCHRONOUS - and that is critical.
             //
-            // BUG, ktory tu byl (DUPLIKACJA + falszywe "network full"):
-            // wersja z kolejka robila tak:
-            //     scheduleInsert(stack.copy());   // kolejka WSTAWIA caly stos
-            //     return stack;                   // a wolajacemu mowimy "nie przyjete"
-            // Wolajacy (storeFromPlayer) widzial wiec "nic nie weszlo", NIE
-            // zabieral itemow graczowi - a kolejka w swoim ticku wstawiala je
-            // do sieci. Efekt: itemy byly JEDNOCZESNIE w sieci i u gracza.
+            // The BUG that was here (DUPLICATION + a false "network full"):
+            // the queued version did this:
+            //     scheduleInsert(stack.copy());   // the queue INSERTS the whole stack
+            //     return stack;                   // and we tell the caller "not accepted"
+            // The caller (storeFromPlayer) therefore saw "nothing went in", did
+            // NOT take the items from the player - while the queue inserted them
+            // into the network on its tick. Effect: the items were SIMULTANEOUSLY
+            // in the network and with the player.
             //
-            // Dodatkowo, gdy magazyn stal w niezaladowanym chunku (a tylko
-            // WEZLY sa force-loadowane, nie magazyny), wkladanie ZAWSZE szlo
-            // ta sciezka - wiec terminal na stale krzyczal "network full",
-            // mimo ze miejsca bylo duzo.
+            // In addition, when the storage stood in an unloaded chunk (and only
+            // NODES are force-loaded, not storages), inserting ALWAYS went down
+            // this path - so the terminal permanently shouted "network full",
+            // even though there was plenty of space.
             //
-            // Wniosek: wolajacy MUSI znac prawdziwy wynik, zeby zabrac graczowi
-            // DOKLADNIE tyle, ile weszlo. Dlatego chunk wczytujemy tu i teraz.
+            // Conclusion: the caller MUST know the true result, in order to take
+            // from the player EXACTLY as much as went in. That is why we load
+            // the chunk here and now.
             //
             // ============================================================
-            // NIE WOLNO TU UZYWAC retain()/release() - i to jest osobny blad,
-            // ktory tu byl. retain() robi setChunkForced(true), a release()
-            // setChunkForced(false), czyli w JEDNYM ticku przelaczamy znacznik
-            // wymuszenia w OBIE strony.
+            // retain()/release() MUST NOT BE USED HERE - and that is a separate
+            // bug that was here. retain() does setChunkForced(true), and
+            // release() does setChunkForced(false), that is, in ONE tick we flip
+            // the forcing flag in BOTH directions.
             //
-            // Skutek widac bylo w grze jako petle: loaded -> unloaded ->
-            // loaded -> ... przy KAZDYM wkladaniu. A ze wkladanie bywa
-            // powtarzalne (crafter odklada wynik, piec oddaje nadwyzke
-            // paliwa, gracz klika), petla nie konczyla sie nigdy. Do tego
-            // setChunkForced jest zapisywany TRWALE w danych swiata, wiec
-            // kazde przelaczenie to takze zapis.
+            // The effect was visible in game as a loop: loaded -> unloaded ->
+            // loaded -> ... on EVERY insert. And since inserting is often
+            // repeated (the crafter deposits its output, the furnace returns the
+            // fuel surplus, the player clicks), the loop never ended. On top of
+            // that, setChunkForced is saved PERSISTENTLY in the world data, so
+            // every flip is also a save.
             //
-            // To wymuszanie bylo zupelnie zbedne. getChunk(..., true) sam
-            // wczytuje chunk synchronicznie na czas tego wywolania, a cala
-            // operacja konczy sie w TYM SAMYM ticku - nie ma okna, w ktorym
-            // chunk moglby zostac rozladowany pod naszymi rekoma. Po powrocie
-            // chunk nie ma zadnego biletu wymuszenia, wiec wypada NORMALNIE,
-            // zwyklym mechanizmem gry - dokladnie tak, jak powinno byc.
+            // That forcing was entirely unnecessary. getChunk(..., true) loads
+            // the chunk synchronously by itself for the duration of this call,
+            // and the whole operation finishes in the SAME tick - there is no
+            // window in which the chunk could be unloaded under our hands. After
+            // returning, the chunk has no forcing ticket, so it drops out
+            // NORMALLY, through the ordinary game mechanism - exactly as it
+            // should be.
             // ============================================================
-            // Blokada po nieudanej probie - patrz opLoadBlockedUntilTick.
-            // Ta sama petla load/unload co przy wyciaganiu: magazyn z
-            // nieaktualnym cache przyjmowalby (albo odrzucal) stos w kolko.
+            // Blocking after a failed attempt - see opLoadBlockedUntilTick.
+            // The same load/unload loop as with extraction: a storage with a
+            // stale cache would accept (or reject) the stack over and over.
             if (level.getGameTime() < opLoadBlockedUntilTick) {
                 return stack;
             }
             ChunkTrace.at("INSERT", level, pos,
-                    "chunk UNLOADED -> wczytuje na czas operacji (bez force); stos=%dx %s",
+                    "chunk UNLOADED -> loading for the operation (no force); stack=%dx %s",
                     stack.getCount(), stack.getItem());
             if (!VeloceChunkLoader.tryReserveOpLoad(level)) {
-                // Budzet blokujacych wczytan na ten tick wyczerpany. Odmawiamy
-                // CALEGO stosu - wolajacy zatrzyma itemy u gracza. To jest
-                // bezpieczne (zero duplikacji), a kolejny tick znowu ma budzet.
+                // The blocking-load budget for this tick is exhausted. We
+                // refuse the WHOLE stack - the caller keeps the items with the
+                // player. That is safe (zero duplication), and the next tick has
+                // a budget again.
                 ChunkTrace.at("INSERT", level, pos,
-                        "budzet loadow wyczerpany (%d/tick) -> odmowa, stos zostaje u gracza",
+                        "load budget exhausted (%d/tick) -> refusing, stack stays with the player",
                         VeloceChunkLoader.MAX_OP_LOADS_PER_TICK);
-                // Zwykly log (bez /cv trace), bo to JEDYNA sytuacja, w ktorej
-                // wkladanie odmawia mimo wolnego miejsca. Bez tego sladu
-                // wygladaloby to dokladnie jak stary bug "network full".
+                // A regular log (without /cv trace), because this is the ONLY
+                // situation in which inserting refuses despite free space.
+                // Without this trace it would look exactly like the old
+                // "network full" bug.
                 VeloceLog.Network.detail(VeloceLog.Side.SERVER,
                         "insert at %s deferred: blocking-load budget used (%d/tick), stack kept by caller",
                         pos, VeloceChunkLoader.MAX_OP_LOADS_PER_TICK);
                 return stack;
             }
-            VeloceChunkLoader.noteOpLoad(level, chunkKey, pos, "wlozenie");
+            VeloceChunkLoader.noteOpLoad(level, chunkKey, pos, "insertion");
             level.getChunkSource().getChunk(
                     chunkPos.x, chunkPos.z,
                     net.minecraft.world.level.chunk.status.ChunkStatus.FULL, true);
@@ -799,17 +813,16 @@ public class ConnectedEndpointInfo {
                         int space = max - inSlot.getCount();
                         if (space > 0) {
                             int move = Math.min(space, remaining.getCount());
-                            // BUG, ktory tu byl: modyfikowalismy stos ZWRÓCONY
-                            // przez getItem(i) i tylko zmniejszalismy `remaining`.
-                            // Kontener, ktory zwraca KOPIE (a to jest wlasnie ten
-                            // przypadek awaryjny - nie ma tu capability, wiec
-                            // trafilismy na zwykly Container), nigdy nie
-                            // zapisywal tej zmiany. Efekt: `remaining` sie
-                            // zmniejszalo, a przedmiot NIE byl wkladany - czyli
-                            // ciche gubienie itemow.
+                            // The BUG that was here: we modified the stack
+                            // RETURNED by getItem(i) and only shrank `remaining`.
+                            // A container that returns a COPY (and that is exactly
+                            // this fallback case - there is no capability here, so
+                            // we hit a plain Container) never saved that change.
+                            // Effect: `remaining` shrank while the item was NOT
+                            // inserted - that is, silent item loss.
                             //
-                            // Dlatego budujemy NOWY stos i zapisujemy go przez
-                            // setItem, zamiast modyfikowac to, co przyszlo.
+                            // That is why we build a NEW stack and save it via
+                            // setItem, instead of modifying whatever came back.
                             ItemStack merged = inSlot.copy();
                             merged.grow(move);
                             container.setItem(i, merged);
@@ -822,18 +835,18 @@ public class ConnectedEndpointInfo {
 
             refreshIfLoaded(level);
         } catch (Throwable t) {
-            // Wyjatek trafia do loga moda RAZEM ze stosem - wczesniej lecial
-            // na stderr, obok systemu logow (bez kategorii i bez mozliwosci
-            // wylaczenia go configiem).
+            // The exception goes into the mod's log TOGETHER with the stack -
+            // previously it went to stderr, outside the logging system (without
+            // a category and without the ability to disable it via config).
             VeloceLog.Network.error(VeloceLog.Side.SERVER, t,
                     "insert at %s failed", pos);
         }
-        // ZADNEGO release() - patrz komentarz wyzej. Chunk nie ma biletu
-        // wymuszenia, wiec wypada normalnie, kiedy gra uzna to za stosowne.
+        // NO release() - see the comment above. The chunk has no forcing
+        // ticket, so it drops out normally whenever the game sees fit.
         return remaining;
     }
 
-    /** Zgodnosc: true gdy wszystko przyjete. */
+    /** Compatibility: true when everything was accepted. */
     public boolean insertItem(ServerLevel level, ItemStack stack) {
         return insertItemLeftover(level, stack).isEmpty();
     }
@@ -857,20 +870,20 @@ public class ConnectedEndpointInfo {
     }
 
     /**
-     * Odtwarza endpoint z NBT.
+     * Restores an endpoint from NBT.
      *
-     * <p><b>Nigdy nie rzuca.</b> Ten kod chodzi w trakcie wczytywania zapisanych
-     * danych, a {@code VelocePipeNetworkManager.load} deserializuje WSZYSTKIE
-     * sieci jednym przejsciem. Wyjatek tutaj przerywal wiec caly load - czyli
-     * swiat nie wczytywal sie w ogole z powodu jednego popsutego wpisu.
+     * <p><b>Never throws.</b> This code runs while loading saved data, and
+     * {@code VelocePipeNetworkManager.load} deserializes ALL networks in one
+     * pass. An exception here therefore aborted the whole load - that is, the
+     * world would not load at all because of one broken entry.
      *
-     * <p>Bylo to realne: {@code Direction.values()[side]} rzucalo
-     * ArrayIndexOutOfBoundsException dla strony spoza zakresu (starszy zapis,
-     * inny uklad enumow), a {@code Type.valueOf} rzucalo
-     * IllegalArgumentException dla nieznanej nazwy typu.
+     * <p>This was real: {@code Direction.values()[side]} threw
+     * ArrayIndexOutOfBoundsException for an out-of-range side (an older save, a
+     * different enum order), and {@code Type.valueOf} threw
+     * IllegalArgumentException for an unknown type name.
      *
-     * @return odtworzony endpoint albo {@code null}, gdy wpisu nie da sie
-     *         zrozumiec (wolajacy ma go po prostu pominac)
+     * @return the restored endpoint, or {@code null} when the entry cannot be
+     *         understood (the caller is simply to skip it)
      */
     @Nullable
     public static ConnectedEndpointInfo fromNbt(CompoundTag tag) {
@@ -895,8 +908,9 @@ public class ConnectedEndpointInfo {
             return null;
         }
 
-        // Bufor craftera ma wlasna implementacje (czyta z bufora bloku,
-        // a nie z zasobnika w swiecie) - trzeba ją odtworzyc po restarcie.
+        // The crafter buffer has its own implementation (it reads from the
+        // block's buffer, not from a container in the world) - it has to be
+        // restored after a restart.
         ConnectedEndpointInfo info = type == Type.CRAFTING_BUFFER
                 ? new CraftingBufferEndpoint(pos, side)
                 : new ConnectedEndpointInfo(pos, side, type);

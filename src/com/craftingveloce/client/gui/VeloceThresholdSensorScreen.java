@@ -23,25 +23,25 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.List;
 
 /**
- * GUI Veloce Threshold Sensor.
+ * Veloce Threshold Sensor GUI.
  *
- * <p><b>Jeden wiersz, wysrodkowany:</b> slot itemu, pole liczby, "+", "-"
- * i guzik trybu. Wszystkie wspolrzedne pochodza z
- * {@link VeloceThresholdSensorMenu} - ekran nie ma wlasnej kopii ukladu.
+ * <p><b>One row, centred:</b> the item slot, the number field, "+", "-"
+ * and the mode button. All coordinates come from
+ * {@link VeloceThresholdSensorMenu} - the screen has no copy of the layout of its own.
  *
- * <p><b>Zero napisow w GUI.</b> Gracz nie chcial tekstow ("Inventory",
- * "In network", "Output: ON") ani kwadratu w teksturze, ktory byl dla nich
- * miejscem. Nie ma ich - stan wyjscia widac po diodzie na bloku, a tryb po
- * ikonie guzika.
+ * <p><b>Zero text in the GUI.</b> The player did not want texts ("Inventory",
+ * "In network", "Output: ON") or a square in the texture that served as space for
+ * them. They are gone - the output state is visible from the diode on the block,
+ * and the mode from the button icon.
  *
- * <p><b>Guzik trybu to pochodnia redstone.</b> Zapalona = "co najmniej tyle"
- * (sygnal wprost), zgaszona = "ponizej" (odwrotka). Klik przelacza tryb, czyli
- * odwraca sygnal - standardowa odwrotka redstone.
+ * <p><b>The mode button is a redstone torch.</b> Lit = "at least this much"
+ * (a direct signal), unlit = "below" (the inverse). A click toggles the mode, that is,
+ * it inverts the signal - the standard redstone inversion.
  *
- * <p><b>Pole tekstowe</b> przyjmuje tylko cyfry. Zapisujemy je po zatwierdzeniu
- * (Enter) albo po wyjsciu z pola - a nie przy kazdym wcisnietym klawiszu, bo
- * inaczej "6" z "64" zostaloby wyslane jako prog 6 i sensor przez chwile
- * dzialalby na zlej wartosci.
+ * <p><b>The text field</b> accepts digits only. We save it on confirmation
+ * (Enter) or when leaving the field - not on every key press, because otherwise
+ * the "6" of "64" would be sent as threshold 6 and the sensor would briefly
+ * run on the wrong value.
  */
 public class VeloceThresholdSensorScreen
         extends AbstractContainerScreen<VeloceThresholdSensorMenu> {
@@ -49,7 +49,7 @@ public class VeloceThresholdSensorScreen
     private static final ResourceLocation GUI_TEXTURE = ResourceLocation.fromNamespaceAndPath(
             CraftingVeloceMod.MODID, "textures/gui/threshold_sensor.png");
 
-    /** Ikony trybu: waniliowe tekstury bloku pochodni (16x16). */
+    /** Mode icons: vanilla torch block textures (16x16). */
     private static final ResourceLocation TORCH_LIT =
             ResourceLocation.withDefaultNamespace("textures/block/redstone_torch.png");
     private static final ResourceLocation TORCH_OFF =
@@ -59,19 +59,20 @@ public class VeloceThresholdSensorScreen
     private ModeButton modeButton;
 
     /**
-     * Tryb wybrany w GUI - to, co widzi gracz i co dopiero poleci na serwer.
+     * The mode selected in the GUI - what the player sees and what is about to be
+     * sent to the server.
      *
-     * <p>MUSI byc osobny od {@link #sentHighMode}. Poprzednia wersja uzywala
-     * jednego pola i do porownania "czy sie zmienilo", i jako nowej wartosci -
-     * wiec porownanie bylo tautologia (patrz {@link #sendConfig}).
+     * <p>It MUST be separate from {@link #sentHighMode}. The previous version used
+     * one field both for the "did it change" comparison and as the new value -
+     * so the comparison was a tautology (see {@link #sendConfig}).
      */
     private boolean uiHighMode;
 
-    /** Co FAKTYCZNIE poszlo na serwer - zeby nie spamowac pakietami. */
+    /** What ACTUALLY went to the server - so we do not spam packets. */
     private long sentThreshold = Long.MIN_VALUE;
     private boolean sentHighMode;
 
-    /** Lustro filtra po stronie klienta (blok entity jest zrodlem prawdy). */
+    /** The client-side mirror of the filter (the block entity is the source of truth). */
     private ItemStack clientFilter = ItemStack.EMPTY;
 
     public VeloceThresholdSensorScreen(VeloceThresholdSensorMenu menu,
@@ -97,10 +98,10 @@ public class VeloceThresholdSensorScreen
                 Component.translatable("gui.craftingveloce.sensor.threshold"));
         this.thresholdField.setValue(Long.toString(threshold));
         this.thresholdField.setMaxLength(10);
-        // Tylko cyfry - pole jest liczbowe, wiec nie ma po co wpuszczac liter.
+        // Digits only - the field is numeric, so there is no point letting letters in.
         this.thresholdField.setFilter(s -> s.isEmpty() || s.chars().allMatch(Character::isDigit));
-        // Podpowiedz pola: samo "Amount". Gracz kazal usunac zdanie
-        // "Network count to compare against" - etykieta wystarcza.
+        // Field hint: just "Amount". The player asked for the sentence
+        // "Network count to compare against" to be removed - the label is enough.
         this.thresholdField.setTooltip(Tooltip.create(
                 Component.translatable("gui.craftingveloce.sensor.threshold")));
         addRenderableWidget(this.thresholdField);
@@ -118,18 +119,18 @@ public class VeloceThresholdSensorScreen
                 .tooltip(stepTip("gui.craftingveloce.sensor.step.minus"))
                 .build());
 
-        // Guzik trybu na koncu wiersza - ikona zamiast napisu.
+        // The mode button at the end of the row - an icon instead of a label.
         this.modeButton = addRenderableWidget(new ModeButton(
                 this.leftPos + VeloceThresholdSensorMenu.MODE_X,
                 this.topPos + VeloceThresholdSensorMenu.ROW_Y));
     }
 
     /**
-     * Guzik trybu: pochodnia zamiast napisu "When below".
+     * Mode button: a torch instead of the label "When below".
      *
-     * <p>Kolor ikony NIE zmienia sie przy kliknieciu "na chwile" - pochodnia
-     * pokazuje TRYB, a nie chwilowy stan wyjscia. Inaczej gracz nie wiedzialby,
-     * jaki tryb jest ustawiony, gdy warunek akurat nie jest spelniony.
+     * <p>The icon colour does NOT change on a "momentary" click - the torch shows
+     * the MODE, not the momentary output state. Otherwise the player would not know
+     * which mode is set when the condition happens not to be met.
      */
     private final class ModeButton extends Button {
 
@@ -142,7 +143,7 @@ public class VeloceThresholdSensorScreen
         @Override
         protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             super.renderWidget(graphics, mouseX, mouseY, partialTick);
-            // Ikona 16x16 wysrodkowana w guziku 20x20 (po 2 px z kazdej strony).
+            // A 16x16 icon centred in a 20x20 button (2 px on each side).
             graphics.blit(torchTexture(), getX() + 2, getY() + 2, 0f, 0f, 16, 16, 16, 16);
         }
     }
@@ -161,11 +162,11 @@ public class VeloceThresholdSensorScreen
     }
 
     /**
-     * Podpowiedz guzika "+" / "-".
+     * Tooltip of the "+" / "-" button.
      *
-     * <p>Krotko - sam znak i jedynka. Dlugie zdanie ("Change the amount by one,
-     * type a bigger value") gracz kazal usunac: guzik jest maly, a tooltip ma
-     * dopowiedziec, a nie tlumaczyc obsluge.
+     * <p>Short - just the sign and one. The long sentence ("Change the amount by one,
+     * type a bigger value") was removed at the player's request: the button is small,
+     * and a tooltip should add a word, not explain how to operate it.
      */
     private Tooltip stepTip(String key) {
         return Tooltip.create(Component.translatable(key));
@@ -179,7 +180,7 @@ public class VeloceThresholdSensorScreen
         sendConfig();
     }
 
-    /** Progu o jeden - liczone od tego, co gracz WIDZI w polu. */
+    /** The threshold by one - counted from what the player SEES in the field. */
     private void step(int delta) {
         long next = Math.max(VeloceThresholdSensorBlockEntity.MIN_THRESHOLD,
                 currentFieldValue() + delta);
@@ -188,20 +189,20 @@ public class VeloceThresholdSensorScreen
     }
 
     /**
-     * Wysyla prog i tryb, ale TYLKO gdy ktorys naprawde sie zmienil.
+     * Sends the threshold and the mode, but ONLY when one of them really changed.
      *
-     * <p><b>BUG, ktory to naprawia.</b> Poprzednia wersja brala "nowy tryb"
-     * z tego samego pola, z ktorym sie porownywala:
+     * <p><b>The BUG this fixes.</b> The previous version took the "new mode"
+     * from the same field it compared itself against:
      * <pre>
      *   if (threshold == sentThreshold &amp;&amp; sentHighMode == currentHighMode()) return;
-     *   // a currentHighMode() zwracalo po prostu sentHighMode
+     *   // and currentHighMode() simply returned sentHighMode
      * </pre>
-     * czyli drugi warunek byl ZAWSZE prawdziwy. Przy niezmienionym progu
-     * funkcja wychodzila wiec wczesniej i NIC nie wysylala - a ze przycisk
-     * trybu zmienial tylko swoja etykiete, wygladalo to na dzialajace.
-     * Tryb odwrotny nie docieral do serwera ani razu.
+     * so the second condition was ALWAYS true. With an unchanged threshold the
+     * function therefore returned early and sent NOTHING - and since the mode
+     * button only changed its own label, it looked like it worked.
+     * The inverted mode never reached the server, not even once.
      *
-     * <p>Teraz porownujemy stan GUI z tym, co NAPRAWDE poszlo.
+     * <p>Now we compare the GUI state with what REALLY went out.
      */
     private void sendConfig() {
         long threshold = currentFieldValue();
@@ -216,12 +217,12 @@ public class VeloceThresholdSensorScreen
     }
 
     /**
-     * Prog, ktory gracz ma teraz przed oczami.
+     * The threshold the player has before their eyes right now.
      *
-     * <p>Bierzemy pole, a nie wartosc z serwera - inaczej wpisanie 500 i
-     * wcisniecie "+" daloby (stara wartosc z serwera)+1, czyli cicho zgubilo
-     * to, co gracz wlasnie wpisal. Puste albo bzdurne pole schodzi do wartosci
-     * z serwera.
+     * <p>We take the field, not the value from the server - otherwise typing 500 and
+     * pressing "+" would give (the old value from the server)+1, which would silently
+     * lose what the player had just typed. An empty or nonsense field falls back to
+     * the value from the server.
      */
     private long currentFieldValue() {
         String text = this.thresholdField == null ? "" : this.thresholdField.getValue().trim();
@@ -230,7 +231,7 @@ public class VeloceThresholdSensorScreen
                 return Math.max(VeloceThresholdSensorBlockEntity.MIN_THRESHOLD,
                         Long.parseLong(text));
             } catch (NumberFormatException ignored) {
-                // pole przyjmuje tylko cyfry, wiec to praktycznie nie wystapi
+                // the field accepts digits only, so this practically cannot happen
             }
         }
         return this.menu.getThreshold();
@@ -239,9 +240,9 @@ public class VeloceThresholdSensorScreen
     @Override
     public void containerTick() {
         super.containerTick();
-        // Serwer dosyla swoje wartosci (np. po zapisie swiata albo zmianie
-        // z innego miejsca). Pole tekstowe aktualizujemy TYLKO gdy gracz w nim
-        // nie pisze - inaczej nadpisywalibysmy to, co wlasnie wpisuje.
+        // The server sends its own values late (e.g. after a world save or a change
+        // from somewhere else). We update the text field ONLY when the player is not
+        // typing in it - otherwise we would overwrite what they are typing right now.
         if (this.thresholdField != null && !this.thresholdField.isFocused()) {
             String current = Long.toString(this.menu.getThreshold());
             if (!current.equals(this.thresholdField.getValue())) {
@@ -249,20 +250,20 @@ public class VeloceThresholdSensorScreen
                 this.sentThreshold = this.menu.getThreshold();
             }
         }
-        // Tryb z serwera przyjmujemy TYLKO gdy nie mamy wlasnej, jeszcze
-        // niepotwierdzonej zmiany - inaczej nadpisanie cofneloby klik gracza
-        // (serwer odpowiada z opoznieniem jednego ticku).
+        // We accept the mode from the server ONLY when we have no own, not yet
+        // confirmed change - otherwise the overwrite would undo the player's click
+        // (the server answers with a one-tick delay).
         boolean serverHigh = this.menu.getMode() == VeloceThresholdSensorBlockEntity.Mode.HIGH;
         if (this.sentHighMode == this.uiHighMode && serverHigh != this.uiHighMode) {
             this.uiHighMode = serverHigh;
             this.sentHighMode = serverHigh;
-            // Ikona czyta tryb przy rysowaniu, ale podpowiedz jest budowana
-            // raz - trzeba ja odswiezyc, bo inaczej opisywalaby stary tryb.
+            // The icon reads the mode while drawing, but the tooltip is built
+            // once - it has to be refreshed, otherwise it would describe the old mode.
             if (this.modeButton != null) {
                 this.modeButton.setTooltip(modeTooltip());
             }
         }
-        // Filtr mogl zostac zmieniony wspolnym pakietem - odswiezamy lustro.
+        // The filter may have been changed by a shared packet - we refresh the mirror.
         this.clientFilter = this.menu.getFilter();
     }
 
@@ -270,7 +271,7 @@ public class VeloceThresholdSensorScreen
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         graphics.blit(GUI_TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight);
 
-        // Ikona filtra - slot jest widmem, wiec rysujemy go sami.
+        // The filter icon - the slot is a ghost slot, so we draw it ourselves.
         if (!clientFilter.isEmpty()) {
             graphics.renderFakeItem(clientFilter,
                     this.leftPos + VeloceThresholdSensorMenu.FILTER_SLOT_X,
@@ -279,10 +280,10 @@ public class VeloceThresholdSensorScreen
     }
 
     /**
-     * Bez napisu "Inventory".
+     * Without the "Inventory" label.
      *
-     * <p>Gracz nie chcial zadnych tekstow w tym GUI - zostaje sam tytul
-     * (nazwa bloku), zeby bylo wiadomo, co sie otworzylo.
+     * <p>The player did not want any texts in this GUI - only the title remains
+     * (the block name), so it is clear what was opened.
      */
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
@@ -298,9 +299,9 @@ public class VeloceThresholdSensorScreen
     }
 
     /**
-     * Podpowiedz slotu itemu - dwa stany, bez instrukcji-obrazka.
+     * Tooltip of the item slot - two states, without a picture-instruction.
      *
-     * <p>Tak samo jak w ekstraktorze: pusty slot to samo "Empty filter".
+     * <p>Just as in the extractor: an empty slot is simply "Empty filter".
      */
     private void renderFilterTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         if (!isHovering(VeloceThresholdSensorMenu.FILTER_SLOT_X,
@@ -318,7 +319,7 @@ public class VeloceThresholdSensorScreen
         graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
     }
 
-    /** Klik w filtr: kursor z itemem ustawia filtr, pusty kursor otwiera wybor. */
+    /** Click on the filter: a cursor with an item sets the filter, an empty cursor opens the picker. */
     @Override
     protected void slotClicked(Slot slot, int slotId, int mouseButton, ClickType clickType) {
         if (slot != null && slot.index == 0
@@ -346,7 +347,7 @@ public class VeloceThresholdSensorScreen
         super.slotClicked(slot, slotId, mouseButton, clickType);
     }
 
-    /** Zapisuje prog takze wtedy, gdy gracz wyjdzie z pola bez Entera. */
+    /** Saves the threshold also when the player leaves the field without Enter. */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         boolean wasFocused = this.thresholdField != null && this.thresholdField.isFocused();
@@ -361,7 +362,7 @@ public class VeloceThresholdSensorScreen
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         boolean fieldFocused = this.thresholdField != null && this.thresholdField.isFocused();
 
-        // Enter zatwierdza prog.
+        // Enter confirms the threshold.
         if (fieldFocused && (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER
                     || keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER)) {
             sendConfig();
@@ -369,26 +370,26 @@ public class VeloceThresholdSensorScreen
             return true;
         }
 
-        // POLE AKTYWNE: klawisze naleza do POLA, a nie do ekranu.
+        // FIELD ACTIVE: the keys belong to the FIELD, not to the screen.
         //
-        // Bez tego "E" (klawisz ekwipunku) zamykalo GUI w trakcie wpisywania
-        // liczby - dokladnie ten sam blad, ktory gracz zglosil dla
-        // wyszukiwarek w ekranach creative. Pole obsluguje to, co chce
-        // (cyfry, backspace, strzalki), a reszta jest pochlaniana.
+        // Without this, "E" (the inventory key) closed the GUI while a number was
+        // being typed - exactly the same bug the player reported for the search
+        // boxes in the creative screens. The field handles what it wants
+        // (digits, backspace, arrows), and the rest is swallowed.
         if (fieldFocused) {
-            // E (klawisz ekwipunku) zostawiony w kolejce klawisza i tak otworzylby
-            // ekwipunek: Minecraft.handleKeybinds() sprawdza go co tick bez
-            // patrzenia na ekran. Czyscimy wiec ten klik (patrz komentarz
-            // w VeloceCreativeScreen.keyPressed).
+            // E (the inventory key) left in the key queue would open the inventory
+            // anyway: Minecraft.handleKeybinds() checks it every tick without
+            // looking at the screen. So we clear that click (see the comment
+            // in VeloceCreativeScreen.keyPressed).
             if (this.minecraft != null && this.minecraft.options != null
                     && this.minecraft.options.keyInventory != null
                     && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
                 com.craftingveloce.util.VeloceLog.Gui.detail(
                         com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                        "pole progu aktywne: E zostaje w polu (okno sie nie zamyka)");
+                        "threshold field active: E stays in the field (the window does not close)");
                 this.minecraft.options.keyInventory.consumeClick();
             }
-            // Esc ZAWSZE zamyka - takze gdy pole jest aktywne (tak dziala gra).
+            // Esc ALWAYS closes - even when the field is active (that is how the game works).
             if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
                 this.onClose();
                 return true;
@@ -396,7 +397,7 @@ public class VeloceThresholdSensorScreen
             if (this.thresholdField.keyPressed(keyCode, scanCode, modifiers)) {
                 return true;
             }
-            return true;   // w tym E - nie zamyka okna
+            return true;   // including E - it does not close the window
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }

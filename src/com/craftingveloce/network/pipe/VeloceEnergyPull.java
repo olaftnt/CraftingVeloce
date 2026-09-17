@@ -6,22 +6,23 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 
 /**
- * Sciaganie pradu z OBCYCH zrodel podpietych do sieci rur.
+ * Pulling power from FOREIGN sources attached to the pipe network.
  *
- * <p>Gracz: "nasz modul moze sciagnac prad z energy cuba ... ale tylko w te
- * strone; inne moduly nie moga uzywac naszych kabli; jesli jest pelny, to nie
- * probuje sciagac; i chcemy limity, bo energy cube ma maksymalny transfer
- * FE/tick".
+ * <p>Player: "our module can pull power from an energy cube ... but only in
+ * that direction; other mods cannot use our cables; if it is full, it does not
+ * try to pull; and we want limits, because an energy cube has a maximum
+ * transfer of FE/tick".
  *
- * <p>Zasady, wszystkie w tym jednym miejscu:
+ * <p>The rules, all in this one place:
  * <ol>
- *   <li>pelny akumulator = ZERO prob (nie pytamy nawet zrodel),</li>
- *   <li>budzet = min(wolne miejsce, limit odbioru maszyny),</li>
- *   <li>o transfer pyta sie ZRODLO ({@code extractEnergy}) - ono samo ogranicza
- *       sie do swojego FE/tick, wiec nie da sie "nagle sciagnac zajebiscie duzo",</li>
- *   <li>jesli odbiornik przyjmie mniej, nadwyzke oddajemy z powrotem do zrodla
- *       (zadna energia nie ginie),</li>
- *   <li>nie wciagamy chunkow: niezaladowane zrodlo jest pomijane.</li>
+ *   <li>a full battery = ZERO attempts (we do not even ask the sources),</li>
+ *   <li>budget = min(free space, the machine's intake limit),</li>
+ *   <li>the transfer is requested from the SOURCE ({@code extractEnergy}) - it
+ *       limits itself to its own FE/tick, so it is impossible to "suddenly pull
+ *       a ridiculous amount",</li>
+ *   <li>if the receiver accepts less, we give the surplus back to the source
+ *       (no energy is lost),</li>
+ *   <li>we do not pull in chunks: an unloaded source is skipped.</li>
  * </ol>
  */
 public final class VeloceEnergyPull {
@@ -35,38 +36,42 @@ public final class VeloceEnergyPull {
     private static long lastSourceLog;
     private static long lastSummaryLog;
 
-    /** Ile FE na tick najwyzej probujemy wziac z jednego zrodla. */
+    /** How much FE per tick we try to take from a single source at most. */
     public static final int MAX_PER_SOURCE_PER_TICK = 1_000_000;
 
     private VeloceEnergyPull() {
     }
 
     /**
-     * Sciaga prad z obcych zrodel sieci do {@code receiver}.
+     * Pulls power from the network's foreign sources into {@code receiver}.
      *
-     * @param maxRate limit odbioru maszyny na tick (wlasny, obok limitu zrodla)
-     * @return ile FE NAPRAWDE weszlo do odbiornika (0 = nic nie trzeba/nie ma)
+     * @param maxRate the machine's intake limit per tick (its own, alongside the
+     *                source's limit)
+     * @return how much FE REALLY went into the receiver (0 = nothing needed or
+     *         nothing available)
      */
 
     /**
-     * Doszukuje obce zrodla energii w sieci na zadanie.
+     * Finds foreign energy sources in the network on demand.
      *
-     * <p>Endpointy powstaja w skanie sieci, a skan chodzi po zmianach topologii -
-     * Energy Cube postawiony obok istniejacej rury nie zmienia topologii, wiec
-     * lista zostawala pusta i maszyny nie mialy z czego sciagac. Ten przebieg
-     * sprawdza sasiadow wszystkich rur sieci i dopisuje znalezione zrodla.
+     * <p>Endpoints are created during the network scan, and the scan runs on
+     * topology changes - an Energy Cube placed next to an existing pipe does not
+     * change the topology, so the list stayed empty and the machines had nothing
+     * to pull from. This pass checks the neighbours of all pipes of the network
+     * and adds the sources it finds.
      *
-     * <p>Nasze bloki sa pomijane - maszyny sa tylko odbiornikami i nie moga byc
-     * dla siebie zrodlem.
+     * <p>Our own blocks are skipped - machines are only receivers and cannot be a
+     * source for each other.
      */
     private static void discover(ServerLevel level, VelocePipeNetwork network) {
         if (!network.getEnergyEndpoints().isEmpty()) {
             return;
         }
-        // Przejscie po RURACH polaczonych z siecia (BFS), a nie tylko po liscie
-        // z sieci: log gracza pokazal "rur=1", mimo ze piec JEST na sieci
-        // z Energy Cubem - lista rur byla niepelna, wiec szukanie sasiadow
-        // konczylo sie na jednej rurze i nigdy nie dochodzilo do cube'a.
+        // A traversal over the PIPES connected to the network (BFS), not just
+        // over the list from the network: the player's log showed "pipes=1",
+        // even though the furnace IS on a network with an Energy Cube - the pipe
+        // list was incomplete, so the neighbour search ended at one pipe and
+        // never reached the cube.
         java.util.ArrayDeque<BlockPos> queue = new java.util.ArrayDeque<>(network.getPipes());
         java.util.Set<BlockPos> visited = new java.util.LinkedHashSet<>();
         java.util.Set<String> seen = new java.util.LinkedHashSet<>();
@@ -90,7 +95,7 @@ public final class VeloceEnergyPull {
                     continue;
                 }
                 if (state.getBlock() instanceof VeloceNetworkNode) {
-                    continue;   // nasze maszyny sa tylko odbiornikami
+                    continue;   // our machines are only receivers
                 }
                 neighbours++;
                 if (seen.size() < 6) {
@@ -104,30 +109,30 @@ public final class VeloceEnergyPull {
             }
         }
         if (found > 0) {
-            LOG.info("[Veloce][ENERGY] znalezione zrodla: {} (przejrzane rury={}, zrodla={})",
+            LOG.info("[Veloce][ENERGY] sources found: {} (pipes scanned={}, sources={})",
                     found, visited.size(), network.getEnergyEndpoints());
         } else if (System.currentTimeMillis() - lastDiscoverLog > 30_000L) {
             lastDiscoverLog = System.currentTimeMillis();
-            LOG.info("[Veloce][ENERGY] brak zrodel: przejrzane rury={}, sasiadow={}, "
-                            + "sasiedzi={} - jesli Energy Cube jest na liscie, to nie wystawia "
-                            + "Forge Energy z tej strony",
+            LOG.info("[Veloce][ENERGY] no sources: pipes scanned={}, neighbours={}, "
+                            + "neighbour blocks={} - if an Energy Cube is in the list, it does not expose "
+                            + "Forge Energy from that side",
                     visited.size(), neighbours, seen);
         }
     }
 
 
     /**
-     * Strona, ktora ostatnio oddala prad - jak cache polaczenia w Pipezie.
+     * The side that last gave power - like the connection cache in Pipez.
      *
-     * <p>Pipez nie szuka handlera co tick: rozwiazuje go raz przy polaczeniu
-     * i pamieta. U nas robi to ta mapa: najpierw probujemy strone, ktora juz
-     * zadzialala (bo Energy Cube Mekanismu czesto oddaje prad tylko jedną),
-     * a dopiero potem obchodzimy pozostale.
+     * <p>Pipez does not look for a handler every tick: it resolves it once on
+     * connection and remembers it. Here that map does the job: first we try the
+     * side that already worked (because Mekanism's Energy Cube often gives power
+     * from only one), and only then do we walk the remaining ones.
      */
     private static final java.util.Map<BlockPos, net.minecraft.core.Direction> KNOWN_SIDE =
             new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** Strona bloku, ktora oddaje energie (najpierw zapamietana, potem reszta). */
+    /** The block's side that gives energy (the remembered one first, then the rest). */
     private static IEnergyStorage findExtracting(ServerLevel level, BlockPos pos) {
         net.minecraft.core.Direction known = KNOWN_SIDE.get(pos);
         if (known != null) {
@@ -155,14 +160,15 @@ public final class VeloceEnergyPull {
         }
         int free = receiver.getMaxEnergyStored() - receiver.getEnergyStored();
         if (free <= 0) {
-            return 0;   // pelny akumulator - zero prob sciagania
+            return 0;   // a full battery - zero pull attempts
         }
-        // DIAGNOSTYKA (gracz: "nie dziala"): jesli maszyna ma wolne miejsce,
-        // a siec nie zna ZADNEGO obcego zrodla energii, to problem jest
-        // w wykrywaniu, a nie w poborze. Log max raz na 5 s, zeby nie spamowac.
-        // Jesli siec nie zna zrodel (np. Energy Cube postawiony PO skanie sieci
-        // albo siec byla odbudowana z zapisu), znajdz je teraz - inaczej pobor
-        // nigdy nie ruszy i wyglada to jak "nie dziala".
+        // DIAGNOSTICS (player: "it does not work"): if the machine has free space
+        // while the network knows NO foreign energy source, then the problem is
+        // in detection, not in the draw. Log at most once every 5 s, to avoid
+        // spamming. If the network does not know any sources (e.g. an Energy Cube
+        // placed AFTER the network scan, or a network rebuilt from a save), find
+        // them now - otherwise the draw will never start and it looks like "it
+        // does not work".
 int budget = Math.min(free, maxRate);
         int total = 0;
         for (BlockPos pos : network.getEnergyEndpoints()) {
@@ -170,10 +176,10 @@ int budget = Math.min(free, maxRate);
                 break;
             }
             if (!level.isLoaded(pos)) {
-                continue;   // nie wciagamy chunkow dla pradu
+                continue;   // we do not pull in chunks just for power
             }
-            // Zrodlo szukamy na KAZDEJ stronie bloku: Energy Cube Mekanismu
-            // potrafi nie oddawac energii z tej strony, od ktorej patrzymy.
+            // We look for the source on EVERY side of the block: Mekanism's
+            // Energy Cube may not give energy from the side we are looking from.
             IEnergyStorage source = findExtracting(level, pos);
             if (source == null) {
                 if (System.currentTimeMillis() - lastSourceLog > 30_000L) {
@@ -185,14 +191,14 @@ int budget = Math.min(free, maxRate);
                         IEnergyStorage st = level.getCapability(
                                 Capabilities.EnergyStorage.BLOCK, pos, d);
                         sides.append(d).append(':')
-                                .append(st == null ? "brak"
+                                .append(st == null ? "none"
                                         : (st.canExtract()
                                                 ? ("extract=" + st.extractEnergy(MAX_PER_SOURCE_PER_TICK, true))
-                                                : "nie-moze-oddac"))
+                                                : "cannot-give"))
                                 .append(' ');
                     }
-                    LOG.info("[Veloce][ENERGY] zrodlo {} nie oddaje energii: stan={}/{}, "
-                                    + "strony: {}",
+                    LOG.info("[Veloce][ENERGY] source {} gives no energy: state={}/{}, "
+                                    + "sides: {}",
                             pos.toShortString(),
                             any == null ? -1 : any.getEnergyStored(),
                             any == null ? -1 : any.getMaxEnergyStored(), sides.toString().trim());
@@ -211,13 +217,13 @@ int budget = Math.min(free, maxRate);
             budget -= accepted;
             if (accepted > 0 && System.currentTimeMillis() - lastPullLog2 > 30_000L) {
                 lastPullLog2 = System.currentTimeMillis();
-                LOG.info("[Veloce][ENERGY] wzielo {} FE ze {} (razem {} FE w tym ticku)",
+                LOG.info("[Veloce][ENERGY] took {} FE from {} ({} FE total this tick)",
                         accepted, pos.toShortString(), total);
             }
         }
         if (System.currentTimeMillis() - lastSummaryLog > 30_000L) {
             lastSummaryLog = System.currentTimeMillis();
-            LOG.info("[Veloce][ENERGY] pobor: wzielo {} FE, zrodel={}, wolne={} FE",
+            LOG.info("[Veloce][ENERGY] draw: took {} FE, sources={}, free={} FE",
                     total, network.getEnergyEndpoints().size(),
                     receiver.getMaxEnergyStored() - receiver.getEnergyStored());
         }

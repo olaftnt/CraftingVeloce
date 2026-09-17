@@ -8,18 +8,19 @@ import snownee.jade.api.BlockAccessor;
 import snownee.jade.api.IServerDataProvider;
 
 /**
- * Dane serwera dla Jade: opis naszej maszyny.
+ * Server data for Jade: a description of our machine.
  *
- * <p><b>Dlaczego dane serwera, a nie odczyt po stronie klienta.</b> Liczby
- * (predkosc wymagana, pobor SU, ile operacji wyjdzie z akumulatora, stan sieci
- * rur) zna tylko serwer - i to on je liczy dla okna po prawym kliku. Klient
- * dostaje je NBT-em przez Jade, tak samo jak dostaje je pakietem dla okna,
- * wiec oba miejsca pokazuja dokladnie te same wartosci, a klient nic nie zgaduje.
+ * <p><b>Why server data and not a client-side read.</b> The numbers (required
+ * speed, SU draw, how many operations will come out of the accumulator, the state
+ * of the pipe network) are known only to the server - and it is the server that
+ * computes them for the window on right click. The client receives them as NBT
+ * through Jade, exactly as it receives them in the packet for the window, so both
+ * places show exactly the same values and the client guesses nothing.
  *
- * <p>Rejestrujemy sie dla WSZYSTKICH block entity i filtrujemy po rdzeniowym
- * interfejsie {@link VeloceModuleInfoSource} - dzieki temu ta klasa nie musi
- * znac ani jednego typu z Create/Mekanism/Alchemistry (a musi dzialac, gdy
- * ktoregokolwiek z nich nie ma).
+ * <p>We register for ALL block entities and filter by the core interface
+ * {@link VeloceModuleInfoSource} - thanks to that this class does not have to
+ * know a single type from Create/Mekanism/Alchemistry (and it must work when any
+ * of them is absent).
  */
 public enum VeloceModuleDataProvider implements IServerDataProvider<BlockAccessor> {
 
@@ -31,10 +32,11 @@ public enum VeloceModuleDataProvider implements IServerDataProvider<BlockAccesso
     }
 
     /**
-     * Pytamy o dane TYLKO nasze maszyny.
+     * We ask for data ONLY about our machines.
      *
-     * <p>Bez tego Jade wysylalby (i liczyl) opis dla kazdego block entity
-     * w swiecie, na ktory gracz spojrzy - a liczenie planu sieci nie jest darmowe.
+     * <p>Without this Jade would send (and compute) a description for every block
+     * entity in the world that the player looks at - and computing a network plan
+     * is not free.
      */
     @Override
     public boolean shouldRequestData(BlockAccessor accessor) {

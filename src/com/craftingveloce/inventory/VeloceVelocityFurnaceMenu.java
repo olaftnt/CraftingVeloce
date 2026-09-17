@@ -11,41 +11,41 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
- * Menu Velocity Furnace.
+ * Velocity Furnace menu.
  *
- * <p><b>Uklad.</b> Szesc slotow FILTRA paliwa (tak jak w ekstraktorze - to
- * sloty-widma, ikony rysuje ekran), jeden slot na paliwo, ktore piec realnie
- * spala, oraz ekwipunek gracza.
+ * <p><b>Layout.</b> Six FUEL filter slots (just like in the extractor - these are
+ * phantom slots, the icons are drawn by the screen), one slot for the fuel that the furnace
+ * actually burns, and the player's inventory.
  *
- * <p>Filtry sa placeholderami, bo nie trzymaja przedmiotow - sluza tylko do
- * wyboru, JAKIE paliwo piec ma zaciagac z sieci. Wartosci trzyma block entity,
- * a ekran je wyswietla.
+ * <p>The filters are placeholders, because they do not hold items - they only serve
+ * to choose WHICH fuel the furnace should pull from the network. The values are held
+ * by the block entity, and the screen displays them.
  */
 public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
 
-    /** Ile slotow filtra (musi zgadzac sie z BE). */
+    /** How many filter slots (must match the BE). */
     public static final int FILTER_SLOTS = VeloceVelocityFurnaceBlockEntity.FUEL_FILTERS;
 
-    // Uklad (wycentrowany w panelu 212 px):
+    // Layout (centred in a 212 px panel):
     //
-    //     [ filtry 3x2 ]   [ plomien ]
-    //                      [ paliwo  ]
+    //     [ filters 3x2 ]   [ flame ]
+    //                       [ fuel  ]
     //
-    // Czyli po prawej od filtrow jest KOLUMNA dwoch kratek: u gory plomien
-    // (rysowany przez ekran sprite'ami wanilii), pod nim slot paliwa z tym,
-    // co piec aktualnie spala. Odstep miedzy filtrami a kolumna to jeden
-    // skok slotu (17 px), wiec odstepy sa rowne, a nie "na oko".
+    // So to the right of the filters there is a COLUMN of two cells: the flame at the top
+    // (drawn by the screen with vanilla sprites), and below it the fuel slot with what
+    // the furnace is currently burning. The gap between the filters and the column is one
+    // slot step (17 px), so the spacings are even, not "by eye".
     private static final int FILTER_X = 63;
     private static final int FILTER_Y = 18;
-    /** Kolumna plomien+paliwo - dokladnie jeden skok slotu za filtrami. */
+    /** The flame+fuel column - exactly one slot step behind the filters. */
     private static final int FUEL_X = 134;
     private static final int FUEL_Y = 36;
     /**
-     * Ekwipunek gracza w x=26 - TAK SAMO jak w ekstraktorze.
+     * Player inventory at x=26 - the SAME as in the extractor.
      *
-     * <p>Bylo tu 8 (domyslna wartosc vanilli), przez co ekwipunek kleil sie do
-     * lewej krawedzi panelu, a etykieta "Inventory" (rysowana od x=26) nie
-     * pasowala do slotow pod nia. Cala reszta moda ustawia to na 26.
+     * <p>It used to be 8 here (the vanilla default), which made the inventory stick to
+     * the left edge of the panel, and the "Inventory" label (drawn from x=26) did not
+     * match the slots beneath it. The rest of the mod sets this to 26.
      */
     private static final int PLAYER_X = 26;
     private static final int PLAYER_Y = 84;
@@ -53,13 +53,13 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
     private final VeloceVelocityFurnaceBlockEntity furnace;
 
     /**
-     * Pozycja bloku. Trzymamy ja OSOBNO, bo po stronie klienta block entity
-     * moze byc chwilowo niedostepne - a ekran i tak musi wiedziec, ktorego
-     * pieca dotyczy (np. zeby wrocic tu z wyboru filtra).
+     * Block position. We keep it SEPARATELY, because on the client side the block entity
+     * may be temporarily unavailable - and the screen still has to know which
+     * furnace it concerns (e.g. to return here from the filter selection).
      */
     private final net.minecraft.core.BlockPos pos;
 
-    /** Konstruktor uzywany przez typ menu - pozycja przychodzi z pakietu. */
+    /** Constructor used by the menu type - the position comes from the packet. */
     public VeloceVelocityFurnaceMenu(int id, Inventory playerInv, net.minecraft.core.BlockPos pos) {
         this(id, playerInv, pos, playerInv.player.level().getBlockEntity(pos));
     }
@@ -76,19 +76,19 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
         this.furnace = furnace;
         this.pos = pos;
 
-        // 1. Filtry paliwa - widma, 3 kolumny x 2 rzedy.
+        // 1. Fuel filters - phantoms, 3 columns x 2 rows.
         //
-        // UWAGA: slot MUSI pozostac AKTYWNY (nie nadpisujemy isActive).
+        // NOTE: the slot MUST stay ACTIVE (we do not override isActive).
         //
-        // BUG, ktory tu byl: ustawialem isActive() na false "bo ikony rysuje
-        // ekran". Ale AbstractContainerScreen.getSlotUnderMouse() pomija
-        // sloty nieaktywne - wiec taki slot nigdy nie trafial do slotClicked
-        // i KLIKNIECIE W FILTR NIE ROBILO NIC. Ekran rysowal filtry pieknie,
-        // a wybor itemu byl martwy.
+        // The BUG that was here: I set isActive() to false "because the screen draws
+        // the icons". But AbstractContainerScreen.getSlotUnderMouse() skips
+        // inactive slots - so such a slot never reached slotClicked
+        // and CLICKING A FILTER DID NOTHING. The screen drew the filters beautifully,
+        // but item selection was dead.
         //
-        // Ekstraktor robi to dobrze: zostawia slot aktywnym, a blokuje tylko
-        // mayPlace/mayPickup. Wtedy slot da sie najechac i kliknac, ale nic
-        // nie da sie do niego przelozyc - i o to chodzi.
+        // The extractor does this right: it leaves the slot active and blocks only
+        // mayPlace/mayPickup. Then the slot can be hovered and clicked, but nothing
+        // can be put into it - and that is the point.
         Container placeholders = new SimpleContainer(FILTER_SLOTS);
         for (int i = 0; i < FILTER_SLOTS; i++) {
             int col = i % 3;
@@ -97,21 +97,21 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
                     FILTER_X + col * 18, FILTER_Y + row * 18) {
                 @Override
                 public boolean mayPlace(ItemStack stack) {
-                    return false;   // filtrow nie wypelniamy przedmiotami
+                    return false;   // we do not fill filters with items
                 }
 
                 @Override
                 public boolean mayPickup(Player player) {
-                    return false;   // i nie zabieramy z nich przedmiotow
+                    return false;   // and we do not take items out of them
                 }
             });
         }
 
-        // 2. Realny slot paliwa.
+        // 2. The real fuel slot.
         this.addSlot(new Slot(furnace != null ? furnace.getFuelSlot() : new SimpleContainer(1),
                 0, FUEL_X, FUEL_Y));
 
-        // 3. Ekwipunek gracza.
+        // 3. Player inventory.
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
                 this.addSlot(new Slot(playerInv, col + row * 9 + 9,
@@ -127,12 +127,12 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
         return furnace;
     }
 
-    /** Pozycja pieca - potrzebna ekranowi i powrotowi z wyboru filtra. */
+    /** Furnace position - needed by the screen and by the return from filter selection. */
     public net.minecraft.core.BlockPos getPos() {
         return furnace != null ? furnace.getBlockPos() : pos;
     }
 
-    /** Aktualna pozycja filtra (do rysowania ikon i obslugi klikniec). */
+    /** Current filter position (for drawing icons and handling clicks). */
     public ItemStack getFilter(int index) {
         return furnace == null ? ItemStack.EMPTY : furnace.getFuelFilter(index);
     }
@@ -147,12 +147,12 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
             int playerStart = FILTER_SLOTS + 1;
 
             if (index < playerStart) {
-                // Z pieca do gracza.
+                // From the furnace to the player.
                 if (!this.moveItemStackTo(inSlot, playerStart, this.slots.size(), true)) {
                     return ItemStack.EMPTY;
                 }
             } else {
-                // Z gracza do slotu paliwa - tylko jesli to paliwo.
+                // From the player to the fuel slot - only if it is fuel.
                 int fuelIndex = FILTER_SLOTS;
                 if (!this.moveItemStackTo(inSlot, fuelIndex, fuelIndex + 1, false)) {
                     return ItemStack.EMPTY;

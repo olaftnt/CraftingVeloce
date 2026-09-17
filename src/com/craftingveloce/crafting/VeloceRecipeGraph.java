@@ -19,54 +19,53 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Odwrotny indeks receptur: item skladnik -> itemy, ktore mozna z niego zrobic.
+ * Reverse recipe index: ingredient item -> items that can be made from it.
  *
- * <p>To fundament przyrostowego przeliczania. Bez niego, zeby odpowiedziec
- * "co sie zmienilo po skraftowaniu desek", trzeba by przejrzec wszystkie 15k
- * receptur. Z indeksem wystarczy zajrzec do jednego wpisu i przejsc w gore
- * po chainie.
+ * <p>This is the foundation of incremental recomputation. Without it, answering
+ * "what changed after crafting planks" would require scanning all 15k recipes.
+ * With the index it is enough to look at a single entry and walk up the chain.
  *
- * <p>Indeks jest budowany raz na {@link net.minecraft.world.item.crafting.RecipeManager}
- * i cache'owany. Przebudowa nastepuje po przeladowaniu danych (nowy manager).
+ * <p>The index is built once per {@link net.minecraft.world.item.crafting.RecipeManager}
+ * and cached. It is rebuilt after a data reload (a new manager).
  *
- * <p>Pamiec: dla 15k receptur i 3k itemow to kilka map - zaniedbywalne
- * w porownaniu z oszczednoscia czasu CPU.
+ * <p>Memory: for 15k recipes and 3k items this is a few maps - negligible
+ * compared with the CPU time saved.
  */
 public final class VeloceRecipeGraph {
 
     /**
      * Cache per RecipeManager.
      *
-     * <p>Slabe klucze - patrz komentarz w {@link VeloceRecipeRegistry}. Ta
-     * mapa miala dokladnie ten sam wyciek: trzymala RecipeManager na sztywno,
-     * wiec kazde wejscie do swiata zostawialo po sobie caly graf receptur.
+     * <p>Weak keys - see the comment in {@link VeloceRecipeRegistry}. This map
+     * had exactly the same leak: it held the RecipeManager strongly, so every
+     * entry into a world left the whole recipe graph behind.
      */
     private static final Map<Object, VeloceRecipeGraph> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    /** item skladnik -> id receptur, ktore go uzywaja. */
+    /** ingredient item -> ids of the recipes that use it. */
     private final Map<Item, Set<ResourceLocation>> usedBy = new HashMap<>();
 
-    /** id receptury -> wynik (item + ilosc). */
+    /** recipe id -> result (item + count). */
     private final Map<ResourceLocation, ItemStack> results = new HashMap<>();
 
-    /** id receptury -> lista skladnikow (kazdy jako zbior akceptowanych itemow). */
+    /** recipe id -> list of ingredients (each as a set of accepted items). */
     private final Map<ResourceLocation, List<Set<Item>>> ingredients = new HashMap<>();
 
-    /** Typy receptur, ktore nas interesuja - te bez infrastruktury. */
-    /** Jedno zrodlo prawdy o rodzinach - patrz {@link VeloceRecipeFamilies}. */
+    /** Recipe types that interest us - the ones without infrastructure. */
+    /** The single source of truth about families - see {@link VeloceRecipeFamilies}. */
     private static final java.util.Set<RecipeType<?>> FREE_TYPES = VeloceRecipeFamilies.FREE;
 
     private VeloceRecipeGraph() {
     }
 
-    /** Zwraca (budujac w razie potrzeby) graf dla danego swiata. */
+    /** Returns (building if necessary) the graph for the given world. */
     public static VeloceRecipeGraph get(ServerLevel level) {
         Object key = level.getRecipeManager();
         VeloceRecipeGraph g = CACHE.get(key);
         if (g == null) {
-            // Jak w VeloceRecipeRegistry - jednorazowy, ale realny koszt na
-            // watku serwera. Logujemy, zeby byl widoczny, a nie zgadywany.
+            // As in VeloceRecipeRegistry - a one-off but real cost on the
+            // server thread. We log it, so that it is visible rather than guessed.
             long start = System.nanoTime();
             g = build(level);
             CACHE.put(key, g);
@@ -79,13 +78,13 @@ public final class VeloceRecipeGraph {
         return g;
     }
 
-    /** Czysci cache - przy zmianie swiata lub przeladowaniu danych. */
+    /** Clears the cache - on a world change or a data reload. */
     public static void invalidate() {
         CACHE.clear();
     }
 
     // ------------------------------------------------------------------
-    // Budowa
+    // Building
     // ------------------------------------------------------------------
 
     private static VeloceRecipeGraph build(ServerLevel level) {
@@ -93,10 +92,10 @@ public final class VeloceRecipeGraph {
         var registries = level.registryAccess();
         var manager = level.getRecipeManager();
 
-        // JEDNO przejscie po recepturach, nie jedno na typ. Poprzednia wersja
-        // wolala collect() trzy razy, a kazde collect() przechodzilo CALA liste
-        // receptur i odsiewalo reszte po getType() - czyli 3x wiecej pracy niz
-        // trzeba, na watku serwera, przy pierwszej zmianie stocku.
+        // ONE pass over the recipes, not one per type. The previous version
+        // called collect() three times, and each collect() walked the WHOLE
+        // recipe list and filtered out the rest by getType() - that is 3x more
+        // work than needed, on the server thread, on the first stock change.
         g.collect(manager, registries);
 
         return g;
@@ -106,8 +105,8 @@ public final class VeloceRecipeGraph {
                          net.minecraft.core.HolderLookup.Provider registries) {
         for (RecipeHolder<?> holder : manager.getRecipes()) {
             var recipe = holder.value();
-            // `isSpecial()` sam NIE wystarcza: receptury modow tez tak sie
-            // oznaczaja (Mekanism wszystkie) i byly wycinane z grafu.
+            // `isSpecial()` alone is NOT enough: mod recipes are marked that way
+            // too (all of Mekanism) and were being cut out of the graph.
             if (!FREE_TYPES.contains(recipe.getType())
                     || VeloceRecipeRegistry.isVanillaSpecial(recipe)) {
                 continue;
@@ -136,7 +135,7 @@ public final class VeloceRecipeGraph {
                     set.add(st.getItem());
                 }
                 ing.add(set);
-                // Odwrotny indeks: kazdy akceptowany item wskazuje na te recepture.
+                // Reverse index: every accepted item points at this recipe.
                 for (Item it : set) {
                     usedBy.computeIfAbsent(it, k -> new HashSet<>()).add(id);
                 }
@@ -148,35 +147,35 @@ public final class VeloceRecipeGraph {
     }
 
     // ------------------------------------------------------------------
-    // Zapytania
+    // Queries
     // ------------------------------------------------------------------
 
-    /** Receptury, ktore zuzywaja dany item. */
+    /** Recipes that consume the given item. */
     public Set<ResourceLocation> recipesUsing(Item item) {
         return usedBy.getOrDefault(item, Set.of());
     }
 
-    /** Wynik receptury. */
+    /** The result of a recipe. */
     public ItemStack resultOf(ResourceLocation id) {
         ItemStack s = results.get(id);
         return s == null ? ItemStack.EMPTY : s;
     }
 
-    /** Skladniki receptury (kazdy jako zbior akceptowanych itemow). */
+    /** The ingredients of a recipe (each as a set of accepted items). */
     public List<Set<Item>> ingredientsOf(ResourceLocation id) {
         return ingredients.getOrDefault(id, List.of());
     }
 
     /**
-     * Chain "w gore": wszystkie itemy, ktorych craftowalnosc moze sie zmienic,
-     * gdy zmieni sie dostepnosc {@code changed}.
+     * The "upward" chain: all items whose craftability may change when the
+     * availability of {@code changed} changes.
      *
-     * <p>Kluczowe dla wydajnosci: przy skraftowaniu desek nie przeliczamy 3k
-     * itemow, tylko deski i to, co z nich powstaje (plotki, drzwi, ...)
-     * az do wyczerpania lancucha.
+     * <p>Key for performance: after crafting planks we do not recompute 3k
+     * items, only the planks and what is made from them (sticks, doors, ...)
+     * until the chain is exhausted.
      *
-     * @param changed     itemy, ktorych stock sie zmienil
-     * @param maxResults  bezpiecznik, zeby patologiczny graf nie zamknal serwera
+     * @param changed     the items whose stock has changed
+     * @param maxResults  a fuse, so that a pathological graph does not take the server down
      */
     public Set<Item> affectedBy(Set<Item> changed, int maxResults) {
         Set<Item> affected = new HashSet<>(changed);
@@ -201,12 +200,12 @@ public final class VeloceRecipeGraph {
         return affected;
     }
 
-    /** Liczba receptur w indeksie (diagnostyka). */
+    /** The number of recipes in the index (diagnostics). */
     public int recipeCount() {
         return results.size();
     }
 
-    /** Liczba itemow majacych jakiekolwiek uzycie jako skladnik (diagnostyka). */
+    /** The number of items that have any use as an ingredient (diagnostics). */
     public int ingredientItemCount() {
         return usedBy.size();
     }

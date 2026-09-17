@@ -8,159 +8,170 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Mierzy, ile sztuk kazdego itemu na sekunde PRZYBYWA i UBYWA w sieci.
+ * Measures how many units of each item ARRIVE and LEAVE the network per second.
  *
- * <p><b>Po co to jest.</b> Sam stan magazynu nie odpowiada na pytanie "czy to
- * ucieka?". Przy dzialajacej fabryce stock ciagle sie zmienia, a gracz widzi
- * tylko jedna liczbe i nie wie, czy to zapas, ktory rosnie, czy tasma, ktora
- * go zaraz oprozni. Ten tracker zamienia kolejne migawki w TEMPO.
+ * <p><b>Why this exists.</b> Storage state alone does not answer the question
+ * "is this running away?". With a working factory the stock changes constantly,
+ * and the player sees only one number and does not know whether it is a supply
+ * that is growing or a line that is about to drain it. This tracker turns
+ * successive snapshots into a RATE.
  *
- * <p><b>Jak czesto probkuje.</b> Co {@link #SAMPLE_INTERVAL_TICKS} tickow
- * (5 s) zapisujemy jedna migawke stocku calej sieci. Z tych migawek powstaja
- * DWA okna: minuta (13 probek co 5 s) i godzina (61 probek co 60 s). Okno
- * minuty mowi "co sie dzieje TERAZ", okno godziny - "jaki jest dlugofalowy
- * bilans".
+ * <p><b>How often it samples.</b> Every {@link #SAMPLE_INTERVAL_TICKS} ticks
+ * (5 s) we store one snapshot of the whole network's stock. From those
+ * snapshots come TWO windows: a minute (13 samples every 5 s) and an hour
+ * (61 samples every 60 s). The minute window says "what is happening NOW", the
+ * hour window - "what is the long-term balance".
  *
- * <p><b>Kiedy okno godzinowe ma dane.</b> Nie czeka godzine. Kotwica jest
- * NAJSTARSZA zapamietana probka godzinowa (na starcie ta z t=0, po godzinie
- * ta sprzed godziny), a koncem okna jest BIEZACY stock - dlatego liczba jest
- * od drugiej migawki (5 s), a nie od 60. Item, ktory pojawil sie w sieci po
- * ostatniej probce godzinowej, kotwiczy sie na swojej pierwszej probce
- * minutowej, wiec nie milczy przez minute. Wczesniejsza wersja wymagala dwoch
- * probek godzinowych i przez pierwsza minute pokazywala "zbieram dane";
- * gracz zglosil to jako blad ("dane sie nie pokazywaly"), i mial racje.
+ * <p><b>When the hourly window has data.</b> It does not wait an hour. The
+ * anchor is the OLDEST remembered hourly sample (at startup the one from t=0,
+ * after an hour the one from an hour ago), and the end of the window is the
+ * CURRENT stock - which is why the number appears from the second snapshot
+ * (5 s), and not from 60. An item that appeared in the network after the last
+ * hourly sample anchors on its first minute sample, so it does not stay silent
+ * for a minute. An earlier version required two hourly samples and showed
+ * "collecting data" for the first minute; a player reported it as a bug ("the
+ * data was not showing"), and he was right.
  *
- * <p><b>Netto i brutto.</b> Sama roznica koncow daje NETTO, ktore przy
- * wkładaniu i wyciaganiu tych samych itemow wychodzi zero - i gracz widzi
- * "bez zmian", mimo ze tasma pracuje. Dlatego liczymy takze BRUTTO: ile
- * sztuk doszlo i ile ubyło, z osobna. Netto odpowiada "czy zapas rosnie",
- * brutto - "ile przez to przeplywa".
+ * <p><b>Net and gross.</b> The difference of the endpoints alone gives the NET,
+ * which comes out as zero when the same items are inserted and extracted - and
+ * the player sees "no change", even though the line is working. That is why we
+ * also count the GROSS: how many units arrived and how many left, separately.
+ * The net answers "is the supply growing", the gross - "how much flows through
+ * it".
  *
- * <p><b>Dlaczego pierscien ma {@code odstepy + 1} slotow.</b> To nie jest
- * przeoczenie. Zeby objac pelne 60 s probkami co 5 s, potrzebujemy 13 probek -
- * bo 13 punktow wyznacza 12 odstepow. Wersja z 12 slotami obejmowala tylko
- * 55 s i cicho zanizala kazde tempo o 1/12.
+ * <p><b>Why the ring has {@code intervals + 1} slots.</b> This is not an
+ * oversight. To cover a full 60 s with samples every 5 s we need 13 samples -
+ * because 13 points define 12 intervals. The version with 12 slots covered only
+ * 55 s and silently understated every rate by 1/12.
  *
- * <p><b>Licznik zapisow jest PER ITEM, nie globalny.</b> To tez nie jest
- * szczegol: item, ktory wlasnie pojawil sie w sieci, ma jedna probke, a
- * tracker ma ich za soba setki. Globalny licznik kazalby mu policzyc tempo
- * z jednej probki i zer wypelniajacych pierscien - czyli pokazac liczbe
- * z sufitu. Per item rozwiazuje to uczciwie: mniej niz dwie probki to
- * "nie wiem" ({@code null}), a nie zero i nie zgadywanie.
+ * <p><b>The write counter is PER ITEM, not global.</b> That is not a detail
+ * either: an item that has just appeared in the network has one sample, while
+ * the tracker has hundreds behind it. A global counter would make it compute
+ * the rate from one sample and the zeros filling the ring - that is, show a
+ * number pulled out of thin air. Per item solves this honestly: fewer than two
+ * samples means "I do not know" ({@code null}), not zero and not a guess.
  *
- * <p><b>Pamiec.</b> Jedna mapa {@code Item -> Series} zamiast czterech
- * rownoleglych map, i usuwanie itemow, ktore zniknely z sieci na cale okno.
+ * <p><b>Memory.</b> One {@code Item -> Series} map instead of four parallel
+ * maps, and removal of items that disappeared from the network for a whole
+ * window.
  */
 public final class VeloceFlowTracker {
 
-    /** Co ile tickow robimy migawke. 100 tickow = 5 sekund. */
+    /** How often we take a snapshot, in ticks. 100 ticks = 5 seconds. */
     public static final int SAMPLE_INTERVAL_TICKS = 100;
 
     /**
-     * Przerwa dluzsza niz tyle tickow kasuje historie.
+     * A break longer than this many ticks wipes the history.
      *
-     * <p>Kontroler tyka tylko wtedy, gdy jego chunk jest zaladowany. Gdy gracz
-     * odejdzie, probek nie ma - a po powrocie pierscien nadal trzyma wartosci
-     * sprzed przerwy. Bez tego resetu tempo liczone byloby z roznicy, ktora
-     * obejmuje czas, gdy nikt nie patrzyl (a czesc tego czasu mogl zjesc
-     * dowolny proces), czyli z liczby wyssanej z palca. 20 s tolerancji
-     * zostawiamy na zwykle zacięcie serwera.
+     * <p>The controller only ticks when its chunk is loaded. When the player
+     * walks away there are no samples - and after returning, the ring still
+     * holds the values from before the break. Without this reset the rate would
+     * be computed from a difference that covers the time when nobody was
+     * watching (and any process could have eaten part of that time), that is,
+     * from a made-up number. We leave 20 s of tolerance for an ordinary server
+     * hiccup.
      */
     private static final int GAP_RESET_TICKS = SAMPLE_INTERVAL_TICKS * 4;
 
-    /** Sekund na probke w oknie minuty (100 tickow / 20). */
+    /** Seconds per sample in the minute window (100 ticks / 20). */
     private static final int SHORT_SECONDS = SAMPLE_INTERVAL_TICKS / 20;
 
-    /** Ile ODSTEPOW miesci sie w oknie minuty (60 s / 5 s). */
+    /** How many INTERVALS fit in the minute window (60 s / 5 s). */
     private static final int MINUTE_INTERVALS = 60 / SHORT_SECONDS;
 
-    /** Ile probek tworzy okno minuty: odstepy + 1 (patrz opis klasy). */
+    /** How many samples make up the minute window: intervals + 1 (see the class description). */
     private static final int SHORT_SLOTS = MINUTE_INTERVALS + 1;
 
-    /** Ile ODSTEPOW miesci sie w oknie godziny (3600 s / 60 s). */
+    /** How many INTERVALS fit in the hour window (3600 s / 60 s). */
     private static final int HOUR_INTERVALS = 60;
 
-    /** Ile probek tworzy okno godziny: odstepy + 1. */
+    /** How many samples make up the hour window: intervals + 1. */
     private static final int HOUR_SLOTS = HOUR_INTERVALS + 1;
 
-    /** Sekund na probke w oknie godziny. */
+    /** Seconds per sample in the hour window. */
     private static final int HOUR_SECONDS = 60;
 
-    /** Tickow na sekunde - do zamiany roznicy tickow na sekundy. */
+    /** Ticks per second - for converting a tick difference into seconds. */
     private static final float TICKS_PER_SECOND = 20f;
 
     /**
-     * Minimalny udzial netto w calym ruchu, zeby uznac trend za JEDNOKIERUNKOWY.
+     * Minimum net share of the whole movement for a trend to count as
+     * ONE-DIRECTIONAL.
      *
-     * <p>0.8 = "co najmniej 80% ruchu idzie w jedna strone". Dzieki temu item
-     * wkladany i wyciagany na przemian (netto zero, brutto duze) NIE jest
-     * pokazywany jako trend - gracz nie chce widziec szarpania, tylko produkcje.
+     * <p>0.8 = "at least 80% of the movement goes one way". Thanks to that an
+     * item inserted and extracted alternately (net zero, gross large) is NOT
+     * shown as a trend - the player does not want to see jitter, only
+     * production.
      */
     private static final float STEADY_SHARE = 0.8f;
 
     /**
-     * Ile odstepow musialo sie ruszyc, zeby to byl TREND, a nie jednorazowy skok.
+     * How many intervals had to move for this to be a TREND and not a one-off
+     * jump.
      *
-     * <p>Dwa, bo jedno wlozenie itemu do skrzynki to nie "staly przyrost".
+     * <p>Two, because a single insertion of an item into a chest is not a
+     * "steady increase".
      */
     private static final int STEADY_MIN_STEPS = 2;
 
-    /** Tempo ponizej tej wartosci uznajemy za zero - nie pokazujemy szumu. */
+    /** A rate below this value counts as zero - we do not show noise. */
     private static final float EPSILON = 0.01f;
 
-    /** Historia jednego itemu: oba pierscienie i liczniki wlasnych zapisow. */
+    /** History of one item: both rings and the counters of its own writes. */
     private static final class Series {
         final long[] minute = new long[SHORT_SLOTS];
-        /** Ile razy TEN item trafil do okna minuty. */
+        /** How many times THIS item entered the minute window. */
         int minuteWrites;
         final long[] hour = new long[HOUR_SLOTS];
-        /** Ile razy TEN item trafil do okna godziny. */
+        /** How many times THIS item entered the hour window. */
         int hourWrites;
     }
 
     private final Map<Item, Series> series = new HashMap<>();
 
     /**
-     * Tick gry kazdej probki - wspolny dla wszystkich itemow.
+     * Game tick of each sample - shared by all items.
      *
-     * <p>Trzymamy je OSOBNO od wartosci, bo czas okna liczymy z rzeczywistych
-     * tickow, a nie z liczby probek: gdy serwer stoi albo chunk sie rozladuje,
-     * probek ubywa i "13 probek" nie znaczy juz 60 sekund.
+     * <p>We keep them SEPARATELY from the values, because the window time is
+     * computed from real ticks and not from the number of samples: when the
+     * server stalls or the chunk unloads, samples are missing and "13 samples"
+     * no longer means 60 seconds.
      */
     private final long[] minuteTicks = new long[SHORT_SLOTS];
     private final long[] hourTicks = new long[HOUR_SLOTS];
 
     private int minuteCursor;
     private int hourCursor;
-    /** Ile migawek zrobiono w sumie (globalnie). */
+    /** How many snapshots have been taken in total (globally). */
     private int totalSamples;
 
     private long lastSampleTick = Long.MIN_VALUE;
 
-    /** Czy wypada zrobic kolejna migawke. */
+    /** Whether the next snapshot is due. */
     public boolean due(long gameTime) {
         return lastSampleTick == Long.MIN_VALUE
                 || gameTime - lastSampleTick >= SAMPLE_INTERVAL_TICKS;
     }
 
     /**
-     * Zapisuje migawke stocku.
+     * Stores a stock snapshot.
      *
-     * <p>Iterujemy po UNII: wszystko, co juz pamietamy, plus wszystko, co jest
-     * teraz. Dzieki temu item, ktory wlasnie zniknal z sieci, dostaje zero
-     * (a nie zostaje z ostatnia znana wartoscia i nie udaje, ze stoi), a kursory
-     * pierscieni pozostaja zsynchronizowane dla wszystkich itemow.
+     * <p>We iterate over the UNION: everything we already remember plus
+     * everything that exists now. Thanks to that an item that has just
+     * disappeared from the network gets a zero (instead of keeping its last
+     * known value and pretending to be idle), and the ring cursors stay
+     * synchronized for all items.
      */
     public void sample(long gameTime, Map<Item, Long> stock) {
         if (lastSampleTick != Long.MIN_VALUE
                 && gameTime - lastSampleTick > GAP_RESET_TICKS) {
-            reset();   // przerwa w tykaniu - stara historia klamie, zaczynamy od nowa
+            reset();   // a break in ticking - the old history lies, we start over
         }
         lastSampleTick = gameTime;
         totalSamples++;
 
-        // Probka godzinowa wypada przy 1., 13., 25. migawce - czyli co
-        // MINUTE_INTERVALS krotkich probek, licząc od pierwszej.
+        // The hourly sample falls on the 1st, 13th, 25th snapshot - that is,
+        // every MINUTE_INTERVALS short samples, counting from the first.
         boolean hourTick = (totalSamples - 1) % MINUTE_INTERVALS == 0;
         minuteTicks[minuteCursor] = gameTime;
         if (hourTick) {
@@ -189,10 +200,11 @@ public final class VeloceFlowTracker {
     }
 
     /**
-     * Usuwa itemy, ktore maja zera w CALYCH obu oknach.
+     * Removes items that have zeros in the WHOLE of both windows.
      *
-     * <p>Bez tego serwer, na ktorym itemy kraza (pojawiaja sie i znikaja),
-     * trzymalby tablice po kazdym itemie, jaki kiedykolwiek przez niego przeszedl.
+     * <p>Without this, a server where items circulate (appearing and
+     * disappearing) would keep arrays for every item that ever passed through
+     * it.
      */
     private void pruneEmpty() {
         series.values().removeIf(s -> allZero(s.minute) && allZero(s.hour));
@@ -208,11 +220,12 @@ public final class VeloceFlowTracker {
     }
 
     /**
-     * Tempo itemow o STAŁYM trendzie - w sztukach na SEKUNDE.
+     * Rates of items with a STEADY trend - in units per SECOND.
      *
-     * <p>Jedna liczba: klient przelicza ja na minute i godzine i pokazuje
-     * w jednej linii ("+2.0/min, +120/h"). Item, ktory stoi albo sie szarpie,
-     * NIE trafia do mapy - i wtedy w tooltipie nie ma o nim zadnej linii.
+     * <p>One number: the client converts it to a minute and an hour and shows
+     * it in one line ("+2.0/min, +120/h"). An item that is idle or jitters does
+     * NOT make it into the map - and then there is no line about it in the
+     * tooltip.
      */
     public Map<Item, Float> steadyRates() {
         Map<Item, Float> out = new HashMap<>();
@@ -225,17 +238,18 @@ public final class VeloceFlowTracker {
         return out;
     }
 
-    /** @return netto (szt./s) gdy trend jest jednokierunkowy, inaczej {@code NaN} */
+    /** @return net (units/s) when the trend is one-directional, otherwise {@code NaN} */
     private float steadyRate(Item item) {
         Series s = series.get(item);
         if (s == null) {
             return Float.NaN;
         }
-        // TRYB WCZESNY: dopoki okno godzinowe ma mniej niz 3 probki (pierwsze
-        // ~2 minuty po zaladowaniu kontrolera), trend oceniamy na oknie MINUTY -
-        // probki co 5 s, wiec linia pojawia sie po kilkunastu sekundach, a nie
-        // po dwoch minutach. Potem ocene przejmuje okno godzinowe, odporne na
-        // chwilowe szarpniecia.
+        // EARLY MODE: as long as the hour window has fewer than 3 samples (the
+        // first ~2 minutes after the controller loads), we judge the trend on
+        // the MINUTE window - samples every 5 s, so the line appears after
+        // a dozen or so seconds instead of after two minutes. After that the
+        // hour window takes over the assessment, as it is resistant to
+        // momentary jitter.
         long now = currentValue(s);
         if (s.hourWrites < 3) {
             int valid = Math.min(s.minuteWrites, SHORT_SLOTS);
@@ -247,13 +261,14 @@ public final class VeloceFlowTracker {
     }
 
     /**
-     * Trend z pierscienia probek: tempo netto albo {@code NaN}.
+     * Trend from the ring of samples: the net rate or {@code NaN}.
      *
-     * <p>Kolejnosc jest istotna dla WYDAJNOSCI: najpierw tani test (roznica
-     * skrajnych probek), a spacer po probkach tylko dla itemow, ktore sie
-     * ruszaja - bo on sluzy juz tylko do rozbicia ruchu na kierunki. W sieci ze
-     * 100 tys. typow itemow to roznica miedzy "przejdz liste" a "przejdz liste
-     * i dodatkowo 61 probek dla kazdego itemu".
+     * <p>The order matters for PERFORMANCE: first the cheap test (difference of
+     * the extreme samples), and the walk over the samples only for items that
+     * are moving - because it now serves only to split the movement into
+     * directions. In a network with 100 thousand item types that is the
+     * difference between "walk the list" and "walk the list and additionally 61
+     * samples for every item".
      */
     private float steadyRate(long[] values, long[] ticks, int cursor, int valid, long now) {
         int oldestIdx = Math.floorMod(cursor - valid, values.length);
@@ -263,13 +278,13 @@ public final class VeloceFlowTracker {
         }
         long oldest = values[oldestIdx];
 
-        // 1) TANI TEST: czy w oknie jest w ogole ruch netto.
+        // 1) CHEAP TEST: whether there is any net movement in the window at all.
         float net = (now - oldest) / seconds;
         if (Math.abs(net) < EPSILON) {
             return Float.NaN;
         }
 
-        // 2) Spacer po probkach - tylko dla ruchomych itemow.
+        // 2) A walk over the samples - only for items that move.
         long prev = oldest;
         long gain = 0;
         long loss = 0;
@@ -297,21 +312,21 @@ public final class VeloceFlowTracker {
         }
 
         if ((net > 0 ? up : down) < STEADY_MIN_STEPS) {
-            return Float.NaN;   // jednorazowy skok to nie trend
+            return Float.NaN;   // a one-off jump is not a trend
         }
         float gross = (gain + loss) / seconds;
         if (gross <= 0f || Math.abs(net) < STEADY_SHARE * gross) {
-            return Float.NaN;   // za duzo ruchu w druga strone - to nie trend
+            return Float.NaN;   // too much movement the other way - this is not a trend
         }
         return net;
     }
 
-    /** Biezacy stock itemu: ostatnia zapisana probka minutowa. */
+    /** Current stock of an item: the last stored minute sample. */
     private long currentValue(Series s) {
         return s.minute[Math.floorMod(minuteCursor - 1, SHORT_SLOTS)];
     }
 
-    /** Wszystko do kosza - np. gdy kontroler zostal przestawiony na inna siec. */
+    /** Everything to the bin - e.g. when the controller was moved to a different network. */
     public void reset() {
         series.clear();
         java.util.Arrays.fill(minuteTicks, 0L);

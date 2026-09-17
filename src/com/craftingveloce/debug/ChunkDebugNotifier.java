@@ -12,28 +12,29 @@ import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import java.util.List;
 
 /**
- * Debug na czacie: powiadamia o zaladowaniu i rozladowaniu chunkow
- * zawierajacych elementy sieci Veloce.
+ * Chat debug: notifies about the loading and unloading of chunks
+ * containing Veloce network elements.
  *
- * <p>Cel: testowanie zachowania sieci w chunkach bez ich ciaglego ladowania.
- * Gdy chunk ze skrzynia, crafterem, extractorem czy terminalem wypada
- * z symulacji, gracz widzi na czacie co dokladnie zniknelo - i to samo
- * przy powrocie.
+ * <p>Goal: testing network behaviour in chunks without keeping them loaded.
+ * When a chunk with a chest, crafter, extractor or terminal drops out of the
+ * simulation, the player sees on chat exactly what disappeared - and the same
+ * on its return.
  *
- * <p>Domyslnie WYLACZONE i niezalezne od glownego debugowania w configu.
- * Wlacz komenda {@code /velocedebug chunk}.
+ * <p>DISABLED by default and independent of the main debug setting in the config.
+ * Enable it with the {@code /velocedebug chunk} command.
  */
 public final class ChunkDebugNotifier {
 
-    /** Czy wysylac komunikaty o chunkach. */
+    /** Whether to send messages about chunks. */
     private static boolean enabled = false;
 
     /**
-     * Czy dopisywac liste blokow sieci lezacych w chunku.
+     * Whether to append the list of network blocks lying in the chunk.
      *
-     * <p>Stala, a nie przelacznik: monitor ma byc JEDNA komenda bez podkomend,
-     * wiec nie ma czym tego przelaczac - a bez tej listy raport jest malo
-     * przydatny (nie wiadomo, czy rozladowany chunk nas w ogole obchodzi).
+     * <p>A constant, not a toggle: the monitor is meant to be ONE command with
+     * no subcommands, so there is nothing to toggle this with - and without
+     * this list the report is of little use (you cannot tell whether the
+     * unloaded chunk concerns us at all).
      */
     private static final boolean verbose = true;
 
@@ -49,10 +50,10 @@ public final class ChunkDebugNotifier {
     }
 
     /**
-     * Wysyla graczom komunikat o zmianie chunku.
+     * Sends the players a message about a chunk change.
      *
-     * @param loaded         true = zaladowany, false = rozladowany
-     * @param affectedThings opisy blokow znajdujacych sie w tym chunku
+     * @param loaded         true = loaded, false = unloaded
+     * @param affectedThings descriptions of the blocks located in this chunk
      */
     public static void notifyChunkChange(ServerLevel level, ChunkPos pos, boolean loaded,
                                          List<String> affectedThings) {
@@ -78,23 +79,24 @@ public final class ChunkDebugNotifier {
         }
     }
 
-    /** Komunikat ogolny (np. przy wlaczaniu debugu). */
+    /** A general message (e.g. when the debug is enabled). */
     public static void announce(ServerPlayer player, String message) {
         player.displayClientMessage(
                 Component.literal("§8[§6Veloce§8] §7" + message), false);
     }
 
     /**
-     * Natychmiastowy komunikat o FAKTYCZNYM rozladowaniu chunka.
+     * An immediate message about an ACTUAL chunk unload.
      *
-     * <p>Wolane wprost ze zdarzenia {@code ChunkEvent.Unload}, wiec pokazuje
-     * rozladowania, ktore naprawde nastapily - a nie teoretyczne, wyliczone
-     * z odleglosci gracza. To jest caly sens tego komunikatu: bez niego nie da
-     * sie ustalic, czy testowany obszar w ogole sie rozladowuje.
+     * <p>Called directly from the {@code ChunkEvent.Unload} event, so it shows
+     * the unloads that really happened - and not the theoretical ones computed
+     * from the player's distance. That is the whole point of this message:
+     * without it there is no way to establish whether the tested area unloads at
+     * all.
      *
-     * <p>Dodatkowo mowi, czy ten chunk byl naszym force-loadem. Jesli byl, to
-     * znaczy, ze rozladowanie nastapilo mimo ze go trzymalismy - czyli test
-     * i tak nie jest miarodajny i warto o tym wiedziec od razu.
+     * <p>It additionally says whether this chunk was our force-load. If it was,
+     * it means the unload happened even though we were holding it - that is, the
+     * test is not meaningful anyway and it is worth knowing that right away.
      */
     public static void notifyUnload(ServerLevel level, ChunkPos pos,
                                     VelocePipeNetworkManager manager) {
@@ -106,19 +108,20 @@ public final class ChunkDebugNotifier {
         boolean wasHeld = com.craftingveloce.network.pipe.VeloceChunkLoader
                 .isHeld(level, chunkKey);
 
-        // Co dokladnie lezalo w tym chunku - po to, zeby wiedziec, czy testujemy
-        // obszar, ktory nas w ogole obchodzi.
+        // What exactly lay in this chunk - so that we know whether we are testing
+        // an area that concerns us at all.
         List<String> things = verbose ? describeContents(level, pos, manager) : List.of();
 
-        // Zapis do konsoli - ZAWSZE, niezaleznie od tego, czy ktos patrzy
-        // na czat. To jest wlasnie dowod, ktorego szukamy w logu.
+        // A write to the console - ALWAYS, regardless of whether anyone is
+        // watching the chat. This is exactly the proof we are looking for in the
+        // log.
         com.craftingveloce.debug.ChunkTrace.event("CHUNK",
                 "%s chunk[%d,%d] %s", "UNLOAD", pos.x, pos.z,
-                wasHeld ? "byl naszym force-loadem (!)" : "nie byl przez nas trzymany");
+                wasHeld ? "was our force-load (!)" : "was not held by us");
 
         MutableComponent header = Component.literal(
                 "§8[§6Veloce§8] §cUNLOAD §7chunk §f" + pos.x + ", " + pos.z
-                        + (wasHeld ? " §8(§e! byl naszym force-loadem§8)" : ""));
+                        + (wasHeld ? " §8(§e! was our force-load§8)" : ""));
 
         for (ServerPlayer player : level.players()) {
             player.displayClientMessage(header, false);
@@ -131,20 +134,20 @@ public final class ChunkDebugNotifier {
         }
     }
 
-    /** Opisy blokow sieci lezacych w danym chunku. */
+    /** Descriptions of the network blocks lying in the given chunk. */
     private static List<String> describeContents(ServerLevel level, ChunkPos pos,
                                                  VelocePipeNetworkManager manager) {
         List<String> out = new java.util.ArrayList<>();
         for (VelocePipeNetwork net : manager.getAllNetworks(level)) {
             for (BlockPos p : net.getTerminals()) {
                 if ((p.getX() >> 4) == pos.x && (p.getZ() >> 4) == pos.z) {
-                    out.add("wezel [" + p.getX() + ", " + p.getY() + ", " + p.getZ()
-                            + "] siec " + net.getId().toString().substring(0, 8));
+                    out.add("node [" + p.getX() + ", " + p.getY() + ", " + p.getZ()
+                            + "] network " + net.getId().toString().substring(0, 8));
                 }
             }
             for (BlockPos p : net.getEndpoints().keySet()) {
                 if ((p.getX() >> 4) == pos.x && (p.getZ() >> 4) == pos.z) {
-                    out.add("magazyn [" + p.getX() + ", " + p.getY() + ", " + p.getZ() + "]");
+                    out.add("storage [" + p.getX() + ", " + p.getY() + ", " + p.getZ() + "]");
                 }
             }
         }

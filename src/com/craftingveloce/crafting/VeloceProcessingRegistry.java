@@ -14,19 +14,19 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Rejestr modulow przetwarzania - jedyne miejsce, ktore wie, CO siec potrafi.
+ * Registry of processing modules - the only place that knows WHAT the network can do.
  *
- * <p><b>Zasada.</b> Kto pyta "czy da sie zrobic item X i ile", pyta ten rejestr
- * (patrz {@link VeloceCraftingRegistry#getAllEnabledItems}). Dzieki temu:
+ * <p><b>Rule.</b> Whoever asks "can item X be made and how much of it" asks this
+ * registry (see {@link VeloceCraftingRegistry#getAllEnabledItems}). Thanks to that:
  * <ul>
- *   <li>siec z samym piecem umie przepalac (i nie potrzebuje do tego craftera),</li>
- *   <li>siec z samym crafterem umie craftowac,</li>
- *   <li>nowy modul (takze z innego moda) wystarczy zarejestrowac - reszta rdzenia
- *       nie wymaga zadnej zmiany.</li>
+ *   <li>a network with only a furnace can smelt (and does not need a crafter for it),</li>
+ *   <li>a network with only a crafter can craft,</li>
+ *   <li>a new module (also from another mod) just needs to be registered - the rest
+ *       of the core requires no change.</li>
  * </ul>
  *
- * <p><b>Kolejnosc ma znaczenie tylko dla logow</b> - moduly nie konkuruja ze
- * soba o wynik, bo kazdy doklada swoje itemy do wspolnej sumy.
+ * <p><b>Order matters only for the logs</b> - modules do not compete with each
+ * other for the result, because each one adds its own items to a common sum.
  */
 public final class VeloceProcessingRegistry {
 
@@ -36,7 +36,7 @@ public final class VeloceProcessingRegistry {
     private static final Map<String, VeloceProcessingModule> MODULES = new LinkedHashMap<>();
     private static boolean builtinsRegistered;
 
-    /** Rejestruje modul. Powtorna rejestracja tego samego id jest ignorowana. */
+    /** Registers a module. A repeated registration of the same id is ignored. */
     public static synchronized void register(VeloceProcessingModule module) {
         if (module == null || module.id() == null) {
             return;
@@ -44,7 +44,7 @@ public final class VeloceProcessingRegistry {
         MODULES.putIfAbsent(module.id(), module);
     }
 
-    /** Wbudowane moduly rdzenia: crafter i piec. */
+    /** Built-in core modules: crafter and furnace. */
     private static synchronized void registerBuiltins() {
         if (builtinsRegistered) {
             return;
@@ -54,13 +54,13 @@ public final class VeloceProcessingRegistry {
         register(new FurnaceModule());
     }
 
-    /** Wszystkie moduly (wbudowane + zarejestrowane przez integracje). */
+    /** All modules (built-in + those registered by integrations). */
     public static synchronized List<VeloceProcessingModule> all() {
         registerBuiltins();
         return new ArrayList<>(MODULES.values());
     }
 
-    /** Ktory modul obsluguje dany typ receptury - do diagnostyki i gatingu. */
+    /** Which module handles a given recipe type - for diagnostics and gating. */
     public static VeloceProcessingModule moduleFor(RecipeType<?> type) {
         for (VeloceProcessingModule module : all()) {
             if (module.recipeTypes().contains(type)) {
@@ -70,7 +70,7 @@ public final class VeloceProcessingRegistry {
         return null;
     }
 
-    /** Id wszystkich zarejestrowanych modulow - do logu przy starcie. */
+    /** The ids of all registered modules - for the startup log. */
     public static List<String> ids() {
         List<String> out = new ArrayList<>();
         for (VeloceProcessingModule module : all()) {
@@ -80,11 +80,11 @@ public final class VeloceProcessingRegistry {
     }
 
     /**
-     * Czysci pamiec WSZYSTKICH modulow (indeksy receptur).
+     * Clears the cache of ALL modules (recipe indexes).
      *
-     * <p>Moduly trzymaja wlasne indeksy receptur, wiec po przeladowaniu danych
-     * trzeba je wyczyscic - ale rdzen nie moze znac ich typow. Dlatego kazdy
-     * modul czysci sie sam, a rdzen tylko o to prosi.
+     * <p>Modules keep their own recipe indexes, so after a data reload they must
+     * be cleared - but the core cannot know their types. That is why each module
+     * clears itself, and the core only asks for it.
      */
     public static void invalidateAll() {
         for (VeloceProcessingModule module : all()) {
@@ -93,13 +93,13 @@ public final class VeloceProcessingRegistry {
     }
 
     // ------------------------------------------------------------------
-    // Wbudowane moduly
+    // Built-in modules
     // ------------------------------------------------------------------
 
     /**
-     * Crafter: receptury bez infrastruktury (crafting table, stonecutter,
-     * smithing). Wymaga co najmniej jednego craftera w sieci, a jego lista
-     * wylaczen dziala TYLKO na te receptury.
+     * Crafter: recipes without infrastructure (crafting table, stonecutter,
+     * smithing). Requires at least one crafter in the network, and its disable
+     * list applies ONLY to those recipes.
      */
     private static final class CraftingModule implements VeloceProcessingModule {
 
@@ -121,8 +121,9 @@ public final class VeloceProcessingRegistry {
                 return Set.of();
             }
             Set<Item> items = new HashSet<>(VeloceRecipeRegistry.getAllCraftableItems(level));
-            // Wylaczenia gracza (model opt-out) dotycza wylacznie tych receptur -
-            // wlasnie dlatego ten filtr jest TU, a nie we wspolnej sumie modulow.
+            // The player's disables (opt-out model) concern only these recipes -
+            // which is exactly why this filter is HERE and not in the common sum
+            // of modules.
             items.removeAll(crafters.get(0).getDisabledItems());
             return items;
         }
@@ -134,18 +135,18 @@ public final class VeloceProcessingRegistry {
 
         @Override
         public boolean powered(ServerLevel level, VelocePipeNetwork network) {
-            // Crafter nie potrzebuje paliwa ani pradu - jak stoi, to dziala.
+            // The crafter needs neither fuel nor power - if it is there, it works.
             return available(level, network);
         }
     }
 
     /**
-     * Piec: przepalanie (smelting, blasting, smoking).
+     * Furnace: smelting (smelting, blasting, smoking).
      *
-     * <p><b>BUG, ktory to naprawia.</b> Wczesniej brak craftera w sieci zerowal
-     * CALA liste mozliwosci, wiec siec z samym piecem nie umiala zrobic szkla
-     * z piasku - choc to receptura WYLACZNIE piecowa. Teraz piec jest osobnym
-     * modulem i wystarcza sam.
+     * <p><b>The BUG this fixes.</b> Previously a missing crafter in the network
+     * zeroed the WHOLE list of possibilities, so a network with only a furnace
+     * could not make glass from sand - even though that is an EXCLUSIVELY
+     * furnace recipe. Now the furnace is a separate module and is enough on its own.
      */
     private static final class FurnaceModule implements VeloceProcessingModule {
 

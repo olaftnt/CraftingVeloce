@@ -24,30 +24,31 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * Tlumaczenie receptur Alchemistry na wspolny model Veloce.
+ * Translation of Alchemistry recipes into the shared Veloce model.
  *
- * <p><b>Po co.</b> Rdzen zna tylko {@link ProcessingEntry}, a Alchemistry ma
- * wlasne modele: skladniki to {@link IngredientStack} (ingredient + liczba
- * sztuk), fission ma DWA wyniki, combiner ma liste skladnikow. Ta klasa czyta
- * receptury przez publiczne API Alchemistry ({@link RecipeRegistry}) i buduje
- * z nich wspolny model, wiec planer nie wie nic o Alchemistry.
+ * <p><b>Why.</b> The core knows only {@link ProcessingEntry}, while Alchemistry
+ * has its own models: ingredients are {@link IngredientStack} (ingredient + a
+ * count), fission has TWO outputs, combiner has a list of ingredients. This
+ * class reads recipes through Alchemistry's public API ({@link RecipeRegistry})
+ * and builds the shared model out of them, so the planner knows nothing about
+ * Alchemistry.
  *
- * <p><b>Cztery ksztalty, cztery konwersje:</b>
+ * <p><b>Four shapes, four conversions:</b>
  * <ul>
- *   <li>compactor: {@code IngredientStack} -> 1 wynik,</li>
- *   <li>combiner: lista {@code IngredientStack} -> 1 wynik,</li>
- *   <li>fission: 1 item -> 2 wyniki (deterministyczne),</li>
- *   <li>fusion: 2 itemy -> 1 wynik.</li>
+ *   <li>compactor: {@code IngredientStack} -> 1 output,</li>
+ *   <li>combiner: a list of {@code IngredientStack} -> 1 output,</li>
+ *   <li>fission: 1 item -> 2 outputs (deterministic),</li>
+ *   <li>fusion: 2 items -> 1 output.</li>
  * </ul>
  *
- * <p><b>Czego tu nie ma.</b> Dissolver (probabilistyczny {@code ProbabilitySet})
- * oraz liquifier/atomizer (plyny) - pozniejsze etapy. Planowanie widzi wylacznie
- * wyniki gwarantowane, wiec nawet przypadkowe grupy dissolvera nie moglyby
- * obiecywac itemu, ktory moze nie wypasc.
+ * <p><b>What is not here.</b> Dissolver (probabilistic {@code ProbabilitySet})
+ * and liquifier/atomizer (fluids) - later stages. Planning sees only guaranteed
+ * outputs, so even the dissolver's chance groups could not promise an item that
+ * might not drop.
  *
- * <p><b>Pamiec.</b> Alchemistry sam cache'uje swoje listy receptur, ale my
- * budujemy z nich indeks "wynik -> receptury". Liczymy go raz na menedzer
- * receptur, tak jak indeks waniliowy.
+ * <p><b>Memory.</b> Alchemistry caches its own recipe lists, but we build a
+ * "output -> recipes" index out of them. We compute it once per recipe manager,
+ * just like the vanilla index.
  */
 public final class AlchemistryRecipeHarvest {
 
@@ -57,7 +58,7 @@ public final class AlchemistryRecipeHarvest {
     private static final Map<RecipeManager, Map<RecipeType<?>, Map<Item, List<ProcessingEntry>>>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
-    /** Indeks "wynik -> receptury" dla danego typu receptury Alchemistry. */
+    /** The "output -> recipes" index for a given Alchemistry recipe type. */
     public static Map<Item, List<ProcessingEntry>> index(ServerLevel level, RecipeType<?> type) {
         RecipeManager manager = level.getRecipeManager();
         Map<RecipeType<?>, Map<Item, List<ProcessingEntry>>> byType =
@@ -65,12 +66,12 @@ public final class AlchemistryRecipeHarvest {
         return byType.computeIfAbsent(type, t -> build(level, t));
     }
 
-    /** Receptury Alchemistry wytwarzajace dany item (dla jednego typu). */
+    /** Alchemistry recipes producing the given item (for one type). */
     public static List<ProcessingEntry> forItem(ServerLevel level, RecipeType<?> type, Item item) {
         return index(level, type).getOrDefault(item, List.of());
     }
 
-    /** Czysci pamiec - wolane przy zmianie swiata, razem z innymi cache'ami. */
+    /** Clears the memory - called on world change, together with the other caches. */
     public static void invalidate() {
         CACHE.clear();
     }
@@ -108,13 +109,13 @@ public final class AlchemistryRecipeHarvest {
         }
     }
 
-    /** Compactor: jeden skladnik z liczba sztuk -> jeden wynik. */
+    /** Compactor: one ingredient with a count -> one output. */
     private static ProcessingEntry compactor(CompactorRecipe recipe) {
         return fromIngredientStack(recipe.getId(), recipe.getInput(),
                 List.of(recipe.getOutput()), recipe.getType());
     }
 
-    /** Combiner: lista skladnikow (kazdy z liczba sztuk) -> jeden wynik. */
+    /** Combiner: a list of ingredients (each with a count) -> one output. */
     private static ProcessingEntry combiner(CombinerRecipe recipe) {
         List<IngredientStack> inputs = recipe.getInput();
         if (inputs == null || inputs.isEmpty()) {
@@ -136,7 +137,7 @@ public final class AlchemistryRecipeHarvest {
                 List.of(1.0f), ingredients, counts, recipe.getType());
     }
 
-    /** Fission: jeden item -> DWA wyniki (oba gwarantowane). */
+    /** Fission: one item -> TWO outputs (both guaranteed). */
     private static ProcessingEntry fission(FissionRecipe recipe) {
         ItemStack input = recipe.getInput();
         if (input.isEmpty()) {
@@ -159,7 +160,7 @@ public final class AlchemistryRecipeHarvest {
                 List.of(Math.max(1, input.getCount())), recipe.getType());
     }
 
-    /** Fusion: DWA itemy -> jeden wynik (kolejnosc dowolna). */
+    /** Fusion: TWO items -> one output (order does not matter). */
     private static ProcessingEntry fusion(FusionRecipe recipe) {
         ItemStack first = recipe.getInput1();
         ItemStack second = recipe.getInput2();
@@ -175,7 +176,7 @@ public final class AlchemistryRecipeHarvest {
                 recipe.getType());
     }
 
-    /** Wspolna konwersja dla receptur z jednym {@link IngredientStack}. */
+    /** Shared conversion for recipes with a single {@link IngredientStack}. */
     private static ProcessingEntry fromIngredientStack(ResourceLocation id, IngredientStack input,
                                                        List<ItemStack> results,
                                                        RecipeType<?> type) {

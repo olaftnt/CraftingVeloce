@@ -15,11 +15,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Spojny widok na wszystkie auto-craftery w sieci.
+ * A coherent view of all auto-crafters in the network.
  *
- * <p>Zbiera informacje z blokow Veloce Crafting Table podlaczonych do sieci:
- * ktore itemy maja wlaczone auto-craftowanie oraz ktora receptura ma priorytet
- * (dla itemow z wieloma recepturami gracz moze wybrac recepture shift+scrollem).
+ * <p>Collects information from the Veloce Crafting Table blocks connected to
+ * the network: which items have auto-crafting enabled and which recipe has
+ * priority (for items with multiple recipes the player can choose a recipe with
+ * shift+scroll).
  */
 public final class VeloceCraftingRegistry {
 
@@ -27,12 +28,12 @@ public final class VeloceCraftingRegistry {
     }
 
     /**
-     * Craftery w sieci, w DETERMINISTYCZNEJ kolejnosci.
+     * Crafters in the network, in DETERMINISTIC order.
      *
-     * <p>{@code network.getTerminals()} to zbior bez okreslonej kolejnosci, wiec
-     * wybor "pierwszego craftera" byl przypadkowy i mogl sie zmieniac miedzy
-     * uruchomieniami. Sortujemy po pozycji, zeby zachowanie bylo powtarzalne:
-     * przy kilku crafterach w sieci zawsze wygrywa ten sam.
+     * <p>{@code network.getTerminals()} is a set with no defined order, so
+     * picking the "first crafter" was random and could change between runs. We
+     * sort by position so that the behaviour is repeatable: with several
+     * crafters in the network the same one always wins.
      */
     static java.util.List<VeloceCraftingTableBlockEntity> crafters(
             ServerLevel level, VelocePipeNetwork network) {
@@ -44,28 +45,28 @@ public final class VeloceCraftingRegistry {
         java.util.List<VeloceCraftingTableBlockEntity> out = new java.util.ArrayList<>();
         int unreadable = 0;
         for (BlockPos pos : sorted) {
-            // blockEntityIfLoaded, a NIE getBlockEntity: na serwerze ten drugi
-            // WCZYTALBY chunk wezla, ktory stoi daleko i jest rozladowany -
-            // czyli kazde zadanie liczb z GUI wczytywaloby go w kolle.
+            // blockEntityIfLoaded, and NOT getBlockEntity: on the server the latter
+            // WOULD LOAD the chunk of a node that stands far away and is unloaded -
+            // meaning every request for numbers from the GUI would load it in a loop.
             BlockEntity be = com.craftingveloce.network.pipe.VeloceChunkLoader
                     .blockEntityIfLoaded(level, pos);
             if (be instanceof VeloceCraftingTableBlockEntity crafter) {
-                // Klatka dzieli block entity ze stolem - pusta nie jest crafterem.
+                // The frame shares the block entity with the table - an empty one is not a crafter.
                 if (crafter.isActiveCrafter()) {
                     out.add(crafter);
                 } else {
                     continue;
                 }
             } else if (be == null) {
-                // Wezel, ktorego NIE DA SIE ODCZYTAC (chunk nie jest zaladowany).
+                // A node that CANNOT BE READ (the chunk is not loaded).
                 //
-                // Liczymy to i raportujemy, bo inaczej awaria jest CICHA:
-                // crafter wypada z listy, `getAllEnabledItems` zwraca pusty
-                // zbior i cale auto-craftowanie wylacza sie bez jednego sladu
-                // w logu - a objaw ("auto-crafting OFF na wszystkim") jest
-                // identyczny z bledem, ktory juz raz tu byl. Gdyby ktokolwiek
-                // to widzial w logu, szukalby przyczyny w force-loadach,
-                // a nie w recepturach.
+                // We count it and report it, because otherwise the failure is SILENT:
+                // the crafter drops off the list, `getAllEnabledItems` returns an empty
+                // set and all auto-crafting switches off without a single trace
+                // in the log - and the symptom ("auto-crafting OFF on everything") is
+                // identical to a bug that was already here once. If anyone had seen
+                // this in the log, they would look for the cause in force-loads,
+                // and not in recipes.
                 unreadable++;
             }
         }
@@ -80,9 +81,9 @@ public final class VeloceCraftingRegistry {
     }
 
     /**
-     * Znajduje crafter w sieci, ktory ma wlaczone auto-craftowanie dla danego itemu.
+     * Finds a crafter in the network that has auto-crafting enabled for the given item.
      *
-     * @return pierwszy taki block entity albo {@code null}
+     * @return the first such block entity, or {@code null}
      */
     @Nullable
     public static VeloceCraftingTableBlockEntity findEnabledCrafter(ServerLevel level,
@@ -97,16 +98,16 @@ public final class VeloceCraftingRegistry {
     }
 
     /**
-     * DLACZEGO tego itemu nie ma w zbiorze craftowalnych - konkretny powod.
+     * WHY this item is not in the set of craftable ones - the concrete reason.
      *
-     * <p>Uzywane przez terminal (komunikat dla gracza i slad diagnostyczny).
-     * Pytamy w kolejnosci, ktora wskazuje NAPRAWE:
+     * <p>Used by the terminal (a message for the player and a diagnostic trace).
+     * We ask in an order that points to the FIX:
      * <ol>
-     *   <li>brak craftera (dla receptur bez infrastruktury),</li>
-     *   <li>item wylaczony w crafterze,</li>
-     *   <li>brak pieca / piec bez paliwa,</li>
-     *   <li>maszyna modulu nie stoi / nie ma pradu,</li>
-     *   <li>w ostatecznosci: brak receptury.</li>
+     *   <li>no crafter (for recipes without infrastructure),</li>
+     *   <li>item disabled in the crafter,</li>
+     *   <li>no furnace / furnace without fuel,</li>
+     *   <li>the module's machine is not standing / has no power,</li>
+     *   <li>as a last resort: no recipe.</li>
      * </ol>
      */
     public static DisabledReason whyNotCraftable(ServerLevel level, VelocePipeNetwork network,
@@ -151,19 +152,19 @@ public final class VeloceCraftingRegistry {
         return new DisabledReason("craftingveloce.craft.error.disabled", "");
     }
 
-    /** Powod, dla ktorego item nie jest craftowalny: klucz jezykowy + szczegol. */
+    /** The reason why an item is not craftable: language key + detail. */
     public record DisabledReason(String reasonKey, String detail) {
     }
 
-    /** Czy w sieci istnieje jakikolwiek crafter z wlaczona receptura dla itemu. */
+    /** Whether any crafter in the network exists with a recipe enabled for the item. */
     public static boolean isCraftingEnabled(ServerLevel level, VelocePipeNetwork network, Item item) {
         return findEnabledCrafter(level, network, item) != null;
     }
 
     /**
-     * Buduje mape preferowanych receptur na podstawie ustawien wszystkich
-     * crafterow w sieci. Przy konflikcie wygrywa crafter blizej poczatku
-     * zbioru terminali (kolejnosc stabilna).
+     * Builds the map of preferred recipes from the settings of all crafters in
+     * the network. On a conflict the crafter closer to the beginning of the
+     * terminal set wins (stable order).
      */
     public static Map<Item, ResourceLocation> getPreferredRecipes(ServerLevel level,
                                                                   VelocePipeNetwork network) {
@@ -177,30 +178,31 @@ public final class VeloceCraftingRegistry {
     }
 
     /**
-     * Itemy, ktore auto-craftery w tej sieci faktycznie potrafia zrobic.
+     * The items the auto-crafters in this network can actually make.
      *
-     * <p>UWAGA na semantyke: crafter dziala w modelu opt-out (domyslnie wszystko
-     * wlaczone, gracz zapisuje tylko wyjatki). Ta metoda musi wiec zwrocic
-     * roznice: wszystkie craftowalne itemy MINUS te, ktore gracz wylaczyl
-     * w ktorymkolwiek crafterze.
+     * <p>MIND the semantics: the crafter works in an opt-out model (everything
+     * enabled by default, the player saves only the exceptions). This method must
+     * therefore return the difference: all craftable items MINUS those the player
+     * disabled in any crafter.
      *
-     * <p>Zwracanie samych wyjatkow byloby bledem - silnik dostalby liste
-     * itemow, ktore wolno craftowac, a zamiast tego dostalby liste
-     * wylaczonych, czyli dokladna odwrotnosc.
+     * <p>Returning only the exceptions would be a bug - the engine would get a
+     * list of items that are allowed to be crafted, and instead it would get a
+     * list of disabled ones, that is the exact opposite.
      */
     public static java.util.Set<Item> getAllEnabledItems(ServerLevel level, VelocePipeNetwork network) {
-        // SUMA MODULOW: kazdy modul przetwarzania mowi, co potrafi - i tylko
-        // wtedy, gdy jego maszyna stoi w sieci i jest zdolna do pracy.
+        // SUM OF MODULES: each processing module says what it can do - and only
+        // when its machine stands in the network and is able to work.
         //
-        // BUG, ktory to naprawia (zgloszenie gracza): wczesniej ta metoda
-        // wymagala CRAFTERA dla WSZYSTKIEGO - brak craftera zerowal cala liste.
-        // Siec z samym piecem nie umiala wiec zrobic szkla z piasku, choc to
-        // receptura wylacznie piecowa. Teraz modul pieca wystarcza sam, a
-        // crafter jest potrzebny tylko swoim (craftingowym) recepturom.
+        // The BUG this fixes (a player report): previously this method required a
+        // CRAFTER for EVERYTHING - no crafter zeroed the whole list. A network
+        // with only a furnace therefore could not make glass from sand, even
+        // though that is a purely furnace recipe. Now the furnace module is
+        // enough on its own, and a crafter is needed only for its own (crafting)
+        // recipes.
         java.util.Set<Item> out = new java.util.HashSet<>();
         for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
             if (!module.available(level, network) || !module.powered(level, network)) {
-                continue;   // brak maszyny albo maszyna stoi
+                continue;   // no machine, or the machine is stopped
             }
             out.addAll(module.producible(level, network));
         }
@@ -208,8 +210,8 @@ public final class VeloceCraftingRegistry {
     }
 
     /**
-     * Bufory wszystkich crafterow w sieci - pamiec podreczna na nadwyzke produkcji.
-     * Kolejnosc stabilna (kolejnosc terminali), zeby wyniki byly przewidywalne.
+     * Buffers of all crafters in the network - a cache for surplus production.
+     * Stable order (terminal order) so that the results are predictable.
      */
     public static java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> getBuffers(
             ServerLevel level, VelocePipeNetwork network) {

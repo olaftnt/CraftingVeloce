@@ -28,24 +28,24 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code /cv getitems <item>} - wklada do skrzynki, na ktora patrzysz, WSZYSTKIE
- * skladniki potrzebne do wytworzenia podanego itemu.
+ * {@code /cv getitems <item>} - puts into the chest you are looking at ALL the
+ * ingredients needed to craft the given item.
  *
- * <p><b>Po co.</b> Zeby sprawdzic recepture w grze, trzeba ja najpierw znac
- * (JEI, wiki) i wyklikac skladniki recznie. Przy testowaniu automatyzacji to
- * dziesiatki powtorzen: patrzysz na skrzynke, mowisz "zrob mi z tego chest"
- * i masz komplet materialow w jednym miejscu.
+ * <p><b>Why.</b> To check a recipe in game you first have to know it (JEI, wiki)
+ * and click the ingredients together by hand. When testing automation that is
+ * dozens of repetitions: you look at a chest, say "make me a chest out of this"
+ * and you have the full set of materials in one place.
  *
- * <p><b>Skad skladniki.</b> Z tego samego indeksu receptur, ktorego uzywa
- * auto-crafter ({@link VeloceRecipeRegistry}) - czyli dokladnie ta receptura,
- * ktora automat naprawde wykona. Gdy item powstaje WYLACZNIE w piecu, bierzemy
- * recepture pieca (i mowimy o tym wprost, bo w skrzyni wyladuje surowiec, a nie
- * gotowy item).
+ * <p><b>Where the ingredients come from.</b> From the same recipe index that the
+ * auto-crafter uses ({@link VeloceRecipeRegistry}) - that is, exactly the recipe
+ * the machine will really execute. When an item is made ONLY in a furnace, we take
+ * the furnace recipe (and we say so plainly, because what lands in the chest is
+ * the raw material, not the finished item).
  *
- * <p><b>Czego komenda NIE robi.</b> Nie liczy calego drzewa receptur
- * (deski -> klody) i nie dropuje niczego na ziemie. Daje jeden poziom
- * skladnikow, a to, co sie nie zmiescilo, zglasza w czacie - cicha zguba
- * itemow bylaby gorsza niz brak komendy.
+ * <p><b>What the command does NOT do.</b> It does not compute the whole recipe
+ * tree (planks -> logs) and it does not drop anything on the ground. It gives one
+ * level of ingredients, and whatever did not fit it reports in the chat - a silent
+ * loss of items would be worse than not having the command at all.
  */
 public final class CVGetItemsCommand {
 
@@ -53,9 +53,9 @@ public final class CVGetItemsCommand {
     }
 
     /**
-     * Zasieg patrzenia. Wiekszy niz zasieg gracza (4.5-5.5 klocka), bo to
-     * komenda diagnostyczna - gracz stoi przy skrzyni, a nie musi w nia
-     * "celowac" z dokladnoscia do pol klocka.
+     * Look reach. Larger than the player's reach (4.5-5.5 blocks), because this is
+     * a diagnostic command - the player stands next to the chest and does not have
+     * to "aim" at it to within half a block.
      */
     private static final double LOOK_REACH = 16.0D;
 
@@ -64,12 +64,12 @@ public final class CVGetItemsCommand {
         dispatcher.register(
             CVCommandRoot.root()
                 .then(Commands.literal("getitems")
-                    // ItemArgument daje podpowiadanie id itemow (jak /give),
-                    // wiec nie trzeba ich znac na pamiec.
+                    // ItemArgument gives item id suggestions (like /give), so you do
+                    // not have to know them by heart.
                     .then(Commands.argument("item", ItemArgument.item(buildContext))
                         .executes(context -> run(context, 1))
-                        // Item moze miec kilka receptur (np. deski z kazdego
-                        // gatunku klody) - numer wybiera, ktora wziac.
+                        // An item may have several recipes (e.g. planks from every
+                        // kind of log) - the number picks which one to take.
                         .then(Commands.argument("recipe",
                                         com.mojang.brigadier.arguments.IntegerArgumentType.integer(1))
                                 .executes(context -> run(context,
@@ -82,7 +82,7 @@ public final class CVGetItemsCommand {
         CommandSourceStack source = context.getSource();
         if (!(source.getEntity() instanceof ServerPlayer player)) {
             source.sendFailure(Component.literal(
-                    "§c[CraftingVeloce] Ta komenda dziala tylko dla gracza - trzeba na cos patrzec."));
+                    "§c[CraftingVeloce] This command only works for a player - you have to be looking at something."));
             return 0;
         }
         Item item = ItemArgument.getItem(context, "item").getItem();
@@ -91,27 +91,27 @@ public final class CVGetItemsCommand {
         BlockPos target = lookedAtBlock(player);
         if (target == null) {
             source.sendFailure(Component.literal(
-                    "§c[CraftingVeloce] Nie patrzysz na zaden blok - wyceluj w skrzynke."));
+                    "§c[CraftingVeloce] You are not looking at any block - aim at a chest."));
             return 0;
         }
         IItemHandler handler = itemHandlerAt(level, target);
         if (handler == null) {
             source.sendFailure(Component.literal(
-                    "§c[CraftingVeloce] Blok, na ktory patrzysz, nie jest magazynem "
-                            + "(brak ItemHandler)."));
+                    "§c[CraftingVeloce] The block you are looking at is not storage "
+                            + "(no ItemHandler)."));
             return 0;
         }
 
         List<ProcessingEntry> recipes = recipesFor(level, item);
         if (recipes.isEmpty()) {
-            source.sendFailure(Component.literal("§c[CraftingVeloce] Nie ma receptury na "
+            source.sendFailure(Component.literal("§c[CraftingVeloce] There is no recipe for "
                     + new ItemStack(item).getHoverName().getString()
                     + " (§7" + itemId(item) + "§c)."));
             return 0;
         }
         if (recipeNumber > recipes.size()) {
-            source.sendFailure(Component.literal("§c[CraftingVeloce] Ten item ma tylko §f"
-                    + recipes.size() + "§c receptur(y) - wybierz numer od 1 do "
+            source.sendFailure(Component.literal("§c[CraftingVeloce] This item has only §f"
+                    + recipes.size() + "§c recipe(s) - choose a number from 1 to "
                     + recipes.size() + "."));
             return 0;
         }
@@ -120,56 +120,56 @@ public final class CVGetItemsCommand {
         Map<Item, Integer> needed = kit.items();
         if (needed.isEmpty()) {
             source.sendFailure(Component.literal(
-                    "§c[CraftingVeloce] Ta receptura nie ma zadnych skladnikow."));
+                    "§c[CraftingVeloce] This recipe has no ingredients."));
             return 0;
         }
         if (kit.emptyIngredients() > 0) {
-            source.sendSuccess(() -> Component.literal("§cUwaga: §e"
-                    + kit.emptyIngredients() + " skladnik(ow) nie ma zadnego itemu "
-                    + "(pusty tag) - zestaw bedzie niepelny."), false);
+            source.sendSuccess(() -> Component.literal("§cNote: §e"
+                    + kit.emptyIngredients() + " ingredient(s) have no item at all "
+                    + "(empty tag) - the set will be incomplete."), false);
         }
 
         report(source, player, item, recipe, recipes.size());
         Map<Item, Integer> leftovers = insertAll(handler, needed);
         reportResult(source, target, needed, leftovers);
 
-        // Zmiana zawartosci skrzyni musi byc widoczna dla gry i sieci.
+        // The change of chest contents has to be visible to the game and the network.
         level.updateNeighborsAt(target, level.getBlockState(target).getBlock());
         return 1;
     }
 
     /**
-     * Receptury, z ktorych liczymy skladniki.
+     * The recipes we compute the ingredients from.
      *
-     * <p>Bierzemy je ze WSZYSTKICH zrodel ({@link VeloceRecipeFinder}):
-     * crafting table, rodziny modulow (Create/Alchemistry/Mekanism) i piec.
+     * <p>We take them from ALL sources ({@link VeloceRecipeFinder}): crafting
+     * table, module families (Create/Alchemistry/Mekanism) and furnace.
      *
-     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> Wczesniej komenda
-     * pytala tylko indeks waniliowy, wiec dla itemu powstajacego w maszynie
-     * modulu (np. crushing wheel z Create, robiony wylacznie mechanical
-     * craftingiem) mowila "nie ma receptury" - mimo ze receptura istnieje.
-     * Brak informacji udawal informacje, a to najgorszy rodzaj bledu.
+     * <p><b>The BUG this fixes (player report).</b> Previously the command only
+     * asked the vanilla index, so for an item made in a module machine (e.g. a
+     * crushing wheel from Create, made only by mechanical crafting) it said "there
+     * is no recipe" - even though the recipe exists. A lack of information
+     * pretended to be information, and that is the worst kind of bug.
      *
-     * <p>To CELOWO nie patrzy na maszyny i prad: gracz pyta "jak sie to robi",
-     * a nie "czy moge to zrobic w tej sieci".
+     * <p>This DELIBERATELY does not look at machines and power: the player asks
+     * "how is this made", not "can I make this in this network".
      */
     private static List<ProcessingEntry> recipesFor(ServerLevel level, Item item) {
         return VeloceRecipeFinder.all(level, item);
     }
 
     /**
-     * Skladniki receptury: "item -> ile sztuk" plus liczba skladnikow, ktore
-     * nie maja ZADNEJ opcji (pusty tag).
+     * Recipe ingredients: "item -> how many pieces" plus the number of ingredients
+     * that have NO option at all (empty tag).
      *
-     * <p>Z kazdego skladnika bierzemy PIERWSZA dostepna opcje (receptura moze
-     * akceptowac kilka itemow, np. kazdy gatunek desek), a liczbe sztuk
-     * przemnazamy przez liczbe wymaganych sztuk danego skladnika - tak samo
-     * liczy to planer auto-craftera.
+     * <p>From each ingredient we take the FIRST available option (a recipe may
+     * accept several items, e.g. every kind of planks), and we multiply the piece
+     * count by the number of pieces required of that ingredient - exactly how the
+     * auto-crafter planner counts it.
      *
-     * <p>Pusty tag to nie "pusty slot": slot siatki bez skladnika pomijamy
-     * cicho (tak dziala receptura), ale skladnik, ktory NIE MA zadnego itemu,
-     * musi byc zgloszony - inaczej gracz dostalby niepelny zestaw i nie
-     * wiedzialby dlaczego.
+     * <p>An empty tag is not an "empty slot": a grid slot with no ingredient we
+     * skip silently (that is how the recipe works), but an ingredient that has NO
+     * item at all must be reported - otherwise the player would get an incomplete
+     * set and would not know why.
      */
     private record Kit(Map<Item, Integer> items, int emptyIngredients) {
     }
@@ -181,9 +181,9 @@ public final class CVGetItemsCommand {
         for (int i = 0; i < ingredients.size(); i++) {
             ItemStack[] options = ingredients.get(i).getItems();
             if (options.length == 0) {
-                // Slot siatki bez skladnika ma "pusta" liste opcji i to jest
-                // normalne; odrozniamy go od skladnika bez opcji po tym, ze
-                // receptura wymienia go jako skladnik niepusty.
+                // A grid slot with no ingredient has an "empty" option list and that
+                // is normal; we tell it apart from an ingredient with no options by
+                // the fact that the recipe lists it as a non-empty ingredient.
                 if (isRealIngredient(recipe, i)) {
                     empty++;
                 }
@@ -197,32 +197,33 @@ public final class CVGetItemsCommand {
     }
 
     /**
-     * Czy skladnik na tej pozycji jest "prawdziwy" (nie pusty slot siatki).
+     * Whether the ingredient at this position is "real" (not an empty grid slot).
      *
-     * <p>Vanilla reprezentuje pusty slot siatki jako {@code Ingredient.EMPTY}
-     * - nie ma on zadnych itemow i tyle samo zwraca dla pustego tagu. Rozrozniamy
-     * je po tozsamosci z {@code Ingredient.EMPTY}, bo tylko ten drugi przypadek
-     * jest bledem danych.
+     * <p>Vanilla represents an empty grid slot as {@code Ingredient.EMPTY} - it has
+     * no items and returns just as many for an empty tag. We tell them apart by
+     * identity with {@code Ingredient.EMPTY}, because only the second case is a
+     * data error.
      */
     private static boolean isRealIngredient(ProcessingEntry recipe, int index) {
         return recipe.ingredients().get(index) != Ingredient.EMPTY;
     }
 
     /**
-     * Wklada wszystko do magazynu. Zwraca liczbe pozycji, ktore sie NIE zmiescily.
+     * Inserts everything into the storage. Returns the number of positions that did
+     * NOT fit.
      *
-     * <p>Nic nie jest dropowane: gracz dostaje w czacie liste brakow, a nie
-     * przedmioty na ziemi (komenda ma przygotowac skrzynke, a nie zasmiecac
-     * swiat).
+     * <p>Nothing is dropped: the player gets a list of the shortfalls in the chat,
+     * not items on the ground (the command is meant to prepare a chest, not to
+     * litter the world).
      */
     private static Map<Item, Integer> insertAll(IItemHandler handler,
                                                 Map<Item, Integer> needed) {
         Map<Item, Integer> left = new LinkedHashMap<>();
         for (Map.Entry<Item, Integer> entry : needed.entrySet()) {
-            // Wkladamy POJEDYNCZYMI stosami (max stack size), a nie jedna
-            // wielka liczba: receptury mechaniczne Create maja po kilkadziesiat
-            // sztuk jednego skladnika, a ItemStack wiekszy niz stack size bywa
-            // odrzucany albo obcinany przez magazyny.
+            // We insert in SINGLE stacks (max stack size), not one big number:
+            // Create mechanical recipes have a few dozen pieces of one ingredient,
+            // and an ItemStack larger than the stack size is often rejected or
+            // truncated by storage.
             int maxStack = Math.max(1, new ItemStack(entry.getKey()).getMaxStackSize());
             int remainingCount = entry.getValue();
             while (remainingCount > 0) {
@@ -233,7 +234,7 @@ public final class CVGetItemsCommand {
                 }
                 int inserted = chunk - remaining.getCount();
                 if (inserted <= 0) {
-                    break;   // magazyn pelny - nie krecimy sie w kolko
+                    break;   // storage full - we do not spin in circles
                 }
                 remainingCount -= inserted;
             }
@@ -249,35 +250,35 @@ public final class CVGetItemsCommand {
         String name = new ItemStack(item).getHoverName().getString();
         String kind;
         if (recipe.isFurnace()) {
-            kind = "pieca";
+            kind = "furnace";
         } else if (VeloceRecipeFinder.isModuleRecipe(recipe)) {
-            // Rodzina z innego moda - mowimy WPROST, ze potrzebna jest maszyna
-            // modulu, a nie crafting table.
-            kind = "maszyny: §f" + VeloceRecipeFinder.typeName(recipe.type()) + "§7";
+            // A family from another mod - we say PLAINLY that a module machine is
+            // needed, not a crafting table.
+            kind = "machine: §f" + VeloceRecipeFinder.typeName(recipe.type()) + "§7";
         } else {
-            kind = "craftingu";
+            kind = "crafting";
         }
         source.sendSuccess(() -> Component.literal(
-                "§6[CraftingVeloce] Skladniki na §f" + name + " §7(" + itemId(item) + ")"), false);
+                "§6[CraftingVeloce] Ingredients for §f" + name + " §7(" + itemId(item) + ")"), false);
         int perCraft = Math.max(1, recipe.primaryResult().getCount());
         source.sendSuccess(() -> Component.literal(
-                "§7Receptura " + kind + ": §f" + recipe.id()
-                        + (recipeCount > 1 ? " §7(1 z " + recipeCount + ")" : "")
-                        + " §7- jedno wykonanie daje §f" + perCraft + "x "
+                "§7Recipe " + kind + ": §f" + recipe.id()
+                        + (recipeCount > 1 ? " §7(1 of " + recipeCount + ")" : "")
+                        + " §7- one execution yields §f" + perCraft + "x "
                         + nameOf(item)), false);
         if (recipe.isFurnace()) {
             source.sendSuccess(() -> Component.literal(
-                    "§eTo receptura PIECA - w skrzyni laduje surowiec, nie gotowy item."), false);
+                    "§eThis is a FURNACE recipe - the raw material goes into the chest, not the finished item."), false);
         }
     }
 
     /**
-     * Podsumowanie: co dokladnie weszlo (z liczbami i nazwami) i co sie nie
-     * zmiescilo.
+     * Summary: what exactly went in (with numbers and names) and what did not fit.
      *
-     * <p>Nazwy sa wazne przy skladnikach z tagiem (np. "dowolne deski"): gracz
-     * musi widziec, ktora opcje komenda wybrala, bo tylko ta trafila do skrzyni.
-     * Dlatego mowimy to WPROST, a nie "wlozylem 3 rodzaje skladnikow".
+     * <p>Names matter for ingredients with a tag (e.g. "any planks"): the player has
+     * to see which option the command chose, because only that one ended up in the
+     * chest. That is why we say it PLAINLY instead of "I inserted 3 kinds of
+     * ingredients".
      */
     private static void reportResult(CommandSourceStack source, BlockPos pos,
                                      Map<Item, Integer> needed,
@@ -294,11 +295,11 @@ public final class CVGetItemsCommand {
                 missed.add("§c" + left + "x " + nameOf(entry.getKey()));
             }
         }
-        source.sendSuccess(() -> Component.literal("§aWlozylem do §f["
+        source.sendSuccess(() -> Component.literal("§aInserted into §f["
                 + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + "]§a: "
                 + String.join("§7, §r", inserted)), false);
         if (!missed.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("§cNie zmiescilo sie: §r"
+            source.sendSuccess(() -> Component.literal("§cDid not fit: §r"
                     + String.join("§7, §r", missed)), false);
         }
     }
@@ -307,7 +308,7 @@ public final class CVGetItemsCommand {
         return new ItemStack(item).getHoverName().getString();
     }
 
-    /** Blok, na ktory patrzy gracz (albo {@code null}, gdy patrzy w powietrze). */
+    /** The block the player is looking at (or {@code null} when looking at air). */
     private static BlockPos lookedAtBlock(ServerPlayer player) {
         HitResult hit = player.pick(LOOK_REACH, 1.0F, false);
         if (hit.getType() != HitResult.Type.BLOCK) {
@@ -316,7 +317,7 @@ public final class CVGetItemsCommand {
         return ((BlockHitResult) hit).getBlockPos();
     }
 
-    /** Magazyn (ItemHandler) w danym bloku - z kazdej strony, jaka wystawia. */
+    /** Storage (ItemHandler) in the given block - from every side it exposes. */
     private static IItemHandler itemHandlerAt(ServerLevel level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
         return Capabilities.ItemHandler.BLOCK.getCapability(level, pos, state,

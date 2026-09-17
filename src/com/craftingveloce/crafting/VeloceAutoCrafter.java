@@ -19,85 +19,84 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Silnik auto-craftowania Veloce.
+ * The Veloce auto-crafting engine.
  *
- * <p><b>Zasada nadrzedna:</b> craftujemy TYLKO to, co gracz swiadomie wlaczyl
- * (auto-crafting ON dla danego itemu). Rekursja schodzi w dol wylacznie po
- * itemach z wlaczonym auto-craftingiem. Skladnik bez wlaczonego auto-craftingu
- * musi po prostu byc na stocku - inaczej cala operacja konczy sie
- * niepowodzeniem i <b>nic</b> nie jest craftowane.
+ * <p><b>Overriding principle:</b> we craft ONLY what the player has consciously
+ * enabled (auto-crafting ON for the given item). The recursion descends only
+ * into items with auto-crafting enabled. An ingredient without auto-crafting
+ * enabled must simply be in stock - otherwise the whole operation fails and
+ * <b>nothing</b> is crafted.
  *
- * <p>Dzieki temu nie powstaja "itemy nie wiadomo skad" (np. patyczki przy
- * wylaczonym craftowaniu patyczkow).
+ * <p>Thanks to this there are no "items out of nowhere" (e.g. sticks when
+ * stick crafting is disabled).
  *
- * <p>Algorytm jest dwufazowy:
+ * <p>The algorithm has two phases:
  * <ol>
- *   <li><b>Planowanie</b> - czysta symulacja na liczbach, bez ruszania itemow.</li>
- *   <li><b>Wykonanie</b> - dopiero gdy plan sie zgadza, fizycznie pobiera
- *       skladniki i wklada wyniki.</li>
+ *   <li><b>Planning</b> - a pure simulation on numbers, without touching items.</li>
+ *   <li><b>Execution</b> - only once the plan checks out, does it physically take
+ *       the ingredients and insert the results.</li>
  * </ol>
- * Dzieki rozdzieleniu faz nie ma sytuacji, w ktorej czesc skladnikow zostala
- * juz zuzyta, a craftowanie sie nie udalo.
+ * Thanks to the phase split there is no situation where some ingredients have
+ * already been consumed and the crafting still failed.
  */
 public final class VeloceAutoCrafter {
 
     /**
-     * Glebokosc rekurencji przy PRAWDZIWYM craftowaniu.
+     * Recursion depth for REAL crafting.
      *
-     * <p>12 to i tak absurdalnie dlugi lancuch dla gracza, a kazdy poziom
-     * mnozy liczbe galezi. Przy 24 drzewo receptur rozrastalo sie wykładniczo
-     * i pojedyncze zadanie potrafilo zamrozic watek serwera na dziesiatki
-     * sekund. Glebsze lancze i tak przegrywaja na budzecie czasowym.
+     * <p>12 is already an absurdly long chain for a player, and every level
+     * multiplies the number of branches. At 24 the recipe tree grew exponentially
+     * and a single task could freeze the server thread for tens of seconds.
+     * Deeper chains lose on the time budget anyway.
      */
     private static final int CRAFT_MAX_DEPTH = 12;
 
     /**
-     * Budzet czasu na planowanie PRAWDZIWEGO craftu (50 ms).
+     * Time budget for planning a REAL craft (50 ms).
      *
-     * <p>Wczesniej byl tu 0, czyli brak limitu czasu - jedynym bezpiecznikiem
-     * byl licznik operacji, a ten jest o wiele za pozny, zeby uchronic tick.
+     * <p>It used to be 0 here, i.e. no time limit - the only safety valve was an
+     * operation counter, and that is far too late to save a tick.
      */
     private static final long CRAFT_PLAN_BUDGET_NS = 50_000_000L;
 
-    /** Limit krokow planowania przy prawdziwym craftowaniu. */
+    /** Limit of planning steps for real crafting. */
     private static final int CRAFT_MAX_STEPS = 8192;
 
     /**
-     * Awaryjny limit operacji w jednym szacowaniu.
+     * Emergency operation limit in a single estimation.
      *
-     * <p>To NIE jest glowne ograniczenie - throttling robi budzet czasowy
-     * ({@link #ESTIMATE_DEADLINE}). Ten licznik istnieje tylko po to, zeby
-     * szalony graf receptur nie krecil sie w nieskonczonosc, gdyby pomiar
-     * czasu zawiodl.
+     * <p>This is NOT the main constraint - throttling is done by the time budget
+     * ({@link #ESTIMATE_DEADLINE}). This counter exists only so that a crazy recipe
+     * graph does not spin forever if the time measurement ever failed.
      *
-     * <p>Poprzednia wartosc (2000) byla glownym ograniczeniem i byla
-     * <b>drastycznie za mala</b>: przy 5033 recepturach licznik konczyl sie
-     * w polowie przeliczania i zwracal 0. Dlatego plotek z 2 klod pokazywal
-     * sie jako niewykonalny - szacowanie nie dobiegalo konca.
+     * <p>The previous value (2000) was the main constraint and was
+     * <b>drastically too small</b>: with 5033 recipes the counter ran out halfway
+     * through the computation and returned 0. That is why an oak fence made from
+     * 2 logs showed up as impossible - the estimation never ran to completion.
      */
     private static final int MAX_ESTIMATE_OPS = 200_000;
 
     /**
-     * Wynik "nie udalo sie policzyc" (budzet czasowy sie skonczyl).
+     * The "could not compute" result (the time budget ran out).
      *
-     * <p>Rozroznienie wazne: 0 znaczy "na pewno nie da sie zrobic", a
-     * {@code UNKNOWN_COUNT} znaczy "nie wiem, sprobuj pozniej". Bez tego
-     * przerwane planowanie kasowalo licznik w GUI.
+     * <p>The distinction matters: 0 means "it definitely cannot be made", while
+     * {@code UNKNOWN_COUNT} means "I do not know, try again later". Without it an
+     * aborted planning run cleared the counter in the GUI.
      */
     public static final long UNKNOWN_COUNT = -1L;
 
     /**
-     * Budzet na przeliczenie widocznej strony terminala.
+     * Budget for recomputing the visible terminal page.
      *
-     * <p>To leci na watku serwera, wiec musi zostawiac zapas na reszte ticku.
+     * <p>This runs on the server thread, so it must leave headroom for the rest of
+     * the tick.
      *
-     * <p><b>Dlaczego 25 ms, a nie 8.</b> Przy 8 ms budzet pekal w polowie
-     * strony (w logu: "instant craftable count for 45 item(s) -> 17 result(s)
-     * in 8 ms (complete=false)"). A przy incomplete odpowiedzi klient CELOWO
-     * zachowuje stare liczby dla niedokonczonych itemow - wiec uzytkownik
-     * widzial nieaktualne "ile da sie zrobic" i to jest wlasnie zglaszany
-     * blad. 25 ms zdarza sie tylko przy otwarciu/przewinieciu strony, nie co
-     * tick, wiec jest bezpieczne.
+     * <p><b>Why 25 ms and not 8.</b> At 8 ms the budget broke halfway through a page
+     * (in the log: "instant craftable count for 45 item(s) -> 17 result(s)
+     * in 8 ms (complete=false)"). And with an incomplete response the client
+     * DELIBERATELY keeps the old numbers for the unfinished items - so the user saw
+     * a stale "how many can be made" and that is exactly the reported bug. 25 ms
+     * happens only on opening/scrolling a page, not every tick, so it is safe.
      */
     public static final long DEFAULT_ESTIMATE_BUDGET_NS = 25_000_000L;
 
@@ -105,12 +104,12 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Wynik operacji.
+     * The result of an operation.
      *
-     * <p>{@code reason} to klucz jezykowy komunikatu, a {@code detail} jego
-     * dopelnienie (np. nazwa brakujacego itemu). Wczesniej powod byl tylko
-     * kluczem, ktorego NIKT nie pokazywal - gracz widzial ogolne "nie ma itemu
-     * w sieci", a w logu trzeba bylo szukac, o co chodzilo.
+     * <p>{@code reason} is the language key of the message, and {@code detail} is
+     * its complement (e.g. the name of the missing item). Previously the reason was
+     * only a key that NOBODY displayed - the player saw a generic "no such item in
+     * the network", and one had to dig through the log to find out what was going on.
      */
     public record CraftResult(boolean success, int produced, String reason, String detail) {
         static CraftResult ok(int produced) {
@@ -127,36 +126,36 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Kontekst operacji: co gracz wlaczyl, jakie receptury preferuje,
-     * oraz co jest dostepne.
+     * Operation context: what the player enabled, which recipes are preferred,
+     * and what is available.
      */
     public static final class Context {
         final ServerLevel level;
         final VelocePipeNetwork network;
-        /** Itemy z wlaczonym auto-craftingiem (tylko te wolno craftowac). */
+        /** Items with auto-crafting enabled (only these may be crafted). */
         final Set<Item> enabledItems;
-        /** Preferowane receptury (item -> recipe id). */
+        /** Preferred recipes (item -> recipe id). */
         final Map<Item, ResourceLocation> preferred;
         /**
-         * Ekwipunek gracza. <b>Zawsze {@code null} w obecnym kodzie</b> - patrz
-         * dokumentacja {@link ItemInventory}. Galezie, ktore go sprawdzaja, sa
-         * przygotowane, ale nieosiagalne.
+         * Player inventory. <b>Always {@code null} in the current code</b> - see
+         * the {@link ItemInventory} documentation. The branches that check it are
+         * in place, but unreachable.
          */
         @Nullable
         final ItemInventory inventory;
 
         /**
-         * Bufory crafterow (pamiec podreczna). Nadwyzka produkcji trafia tutaj
-         * i jest normalnie dostepna dla sieci.
+         * Crafter buffers (scratch storage). Surplus production goes here and is
+         * normally available to the network.
          */
         @Nullable
         final List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers;
 
         /**
-         * Gdzie wypuscic to, czego siec nie przyjela.
+         * Where to drop what the network did not accept.
          *
-         * <p>Bez tego przy pelnej sieci wycraftowane itemy (i skladniki
-         * zwracane przy nieudanym wykonaniu) po prostu ginely.
+         * <p>Without this, with a full network the crafted items (and the
+         * ingredients returned on a failed execution) simply vanished.
          */
         @Nullable
         final net.minecraft.core.BlockPos dropPos;
@@ -193,15 +192,16 @@ public final class VeloceAutoCrafter {
         }
 
         /**
-         * Ile przepalen siec ugnie TERAZ - budzet ciepla dla planera.
+         * How much smelting the network can bend RIGHT NOW - the heat budget for
+         * the planner.
          *
-         * <p>Liczony raz i zapamietany, bo pytanie jest zadawane przy KAZDYM
-         * itemie rozpatrywanym przez planer, a odpowiedz wymaga przejscia po
-         * wezlach sieci i odczytu ich block entity. Bez pamieci byloby to
-         * setki takich przejsc na jedno klikniecie.
+         * <p>Computed once and remembered, because the question is asked for EVERY
+         * item considered by the planner, and the answer requires walking the
+         * network's nodes and reading their block entities. Without the memo that
+         * would be hundreds of such walks per single click.
          *
-         * <p>Zero oznacza "brak pieca" - i to jest JEDYNE zrodlo tej
-         * informacji. Planer nie sprawdza typow blokow samodzielnie.
+         * <p>Zero means "no furnace" - and that is the ONLY source of this
+         * information. The planner does not check block types on its own.
          */
         long heatOps() {
             if (heatOpsCache < 0) {
@@ -210,18 +210,18 @@ public final class VeloceAutoCrafter {
             return heatOpsCache;
         }
 
-        /** Receptury dla itemu, z piecem tylko gdy jest czym palic. */
+        /** Recipes for the item, with the furnace only when there is something to burn. */
         List<ProcessingEntry> recipesFor(Item item) {
             return allRecipesFor(level, network, item, heatOps() > 0);
         }
 
         /**
-         * Maszyny modulow dla danego typu receptury - pobrane RAZ na wykonanie.
+         * Module machines for a given recipe type - fetched ONCE per execution.
          *
-         * <p>Ta sama lekcja co przy zrodlach ciepla: pobieranie listy maszyn
-         * przy KAZDEJ sztuce oznaczaloby pelne przejscie po wezlach sieci
-         * z sortowaniem setki razy w jednym ticku. W obrebie jednego zlecenia
-         * zbior maszyn sie nie zmienia.
+         * <p>The same lesson as with heat sources: fetching the machine list for
+         * EVERY single unit would mean a full walk of the network's nodes with
+         * sorting hundreds of times in one tick. Within a single order the set of
+         * machines does not change.
          */
         java.util.List<com.craftingveloce.block.entity.VeloceProcessingSource> moduleSourcesFor(
                 RecipeType<?> type) {
@@ -233,9 +233,9 @@ public final class VeloceAutoCrafter {
         }
 
         /**
-         * Czego nie udalo sie pobrac przy wykonaniu - do komunikatu dla gracza.
+         * What could not be taken during execution - for the player-facing message.
          *
-         * <p>Ustawiane w {@code runOnce}; czytane raz, przy budowie wyniku.
+         * <p>Set in {@code runOnce}; read once, when building the result.
          */
         @Nullable
         String lastMissingIngredient;
@@ -246,11 +246,11 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Receptury waniliowe PLUS receptury modulow z innych modow.
+     * Vanilla recipes PLUS module recipes from other mods.
      *
-     * <p>Kazdy modul, ktory stoi w sieci i jest zasilony, doklada swoje
-     * receptury na ten item - w innym wypadku automat nigdy nie uzylby
-     * kruszarki czy compaktora, mimo ze stoja podlaczone do rur.
+     * <p>Every module that stands in the network and is powered contributes its
+     * recipes for this item - otherwise the automation would never use a crusher
+     * or a compactor, even though they stand connected to the pipes.
      */
     private static List<ProcessingEntry> allRecipesFor(ServerLevel level, VelocePipeNetwork network,
                                                        Item item, boolean heatAvailable) {
@@ -266,8 +266,9 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Zapewnia, ze w sieci bedzie co najmniej {@code count} sztuk {@code item}.
-     * Craftuje brakujaca ilosc, jesli item ma wlaczony auto-crafting.
+     * Ensures that the network will contain at least {@code count} units of
+     * {@code item}. Crafts the missing amount if the item has auto-crafting
+     * enabled.
      */
     public static CraftResult ensureAvailable(ServerLevel level, VelocePipeNetwork network,
                                               Item item, int count, Context ctx) {
@@ -275,10 +276,10 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Jak wyzej, ale z jawnym budzetem planowania.
+     * As above, but with an explicit planning budget.
      *
-     * <p>Wolane z tla (extractor), gdzie nie mozemy pozwolic sobie na pelny
-     * budzet zadania gracza - inaczej jedno urzadzenie zjada tick.
+     * <p>Called from the background (extractor), where we cannot afford a full
+     * player-task budget - otherwise one device eats the tick.
      */
     public static CraftResult ensureAvailable(ServerLevel level, VelocePipeNetwork network,
                                               Item item, int count, Context ctx,
@@ -290,15 +291,15 @@ public final class VeloceAutoCrafter {
         VeloceLog.Craft.attempt(VeloceLog.Side.SERVER,
                 "ensure %sx %s (enabled=%s)", count, item, ctx.isEnabled(item));
 
-        // 1. Ekwipunek gracza ma priorytet.
+        // 1. The player inventory has priority.
         int inInventory = ctx.inventory == null ? 0 : ctx.inventory.count(item);
         if (inInventory >= count) {
             return CraftResult.ok(count);
         }
 
-        // 2. Siec. JEDEN wymuszony skan - za chwile podejmujemy decyzje
-        //    o pobraniu itemow, wiec nie mozemy pracowac na nieaktualnym
-        //    stanie. Te sama migawke przekazujemy potem do planowania.
+        // 2. The network. ONE forced scan - in a moment we make a decision
+        //    about taking items, so we cannot work on stale state. The same
+        //    snapshot is then passed to planning.
         Map<Item, Long> netStock = network.getAllItemCounts(level, true);
         long inNetwork = netStock.getOrDefault(item, 0L);
         long available = inInventory + inNetwork;
@@ -310,43 +311,43 @@ public final class VeloceAutoCrafter {
             return CraftResult.ok(count);
         }
 
-        // 3. Brakuje - trzeba wycraftowac. Wolno tylko gdy wlaczone.
+        // 3. Something is missing - we have to craft. Only allowed when enabled.
         int missing = (int) Math.min(Integer.MAX_VALUE, count - available);
         if (!ctx.isEnabled(item)) {
-            // KONKRETNY powod, nie samo "disabled": brak craftera, item
-            // wylaczony w crafterze, brak pieca, maszyna modulu bez pradu...
+            // A CONCRETE reason, not just "disabled": no crafter, item
+            // disabled in the crafter, no furnace, module machine without power...
             VeloceCraftingRegistry.DisabledReason reason =
                     VeloceCraftingRegistry.whyNotCraftable(level, network, item);
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                     "%s is not craftable in this network: %s %s",
                     item, reason.reasonKey(), reason.detail());
-            VeloceCraftTrace.log("item nie jest craftowalny: %s %s",
+            VeloceCraftTrace.log("item is not craftable: %s %s",
                     reason.reasonKey(), reason.detail());
             return CraftResult.fail(reason.reasonKey(), reason.detail());
         }
 
-        // SLAD (tylko dla akcji gracza - patrz VeloceCraftTrace.begin):
-        // zrzucamy WSZYSTKO, co decyduje o wyniku, zanim cokolwiek policzymy.
+        // TRACE (only for player actions - see VeloceCraftTrace.begin):
+        // we dump EVERYTHING that decides the outcome before we compute anything.
         if (VeloceCraftTrace.active()) {
-            // Srodowisko i receptury zrzuca juz terminal (przed bramka
-            // "czy w ogole wolno"), wiec tutaj dokladamy liczby.
-            VeloceCraftTrace.log("zadanie: %sx %s (%s), w sieci=%d, w ekwipunku=%d, brakuje=%d",
+            // The terminal already dumps the environment and recipes (before the
+            // "is it even allowed" gate), so here we only add the numbers.
+            VeloceCraftTrace.log("task: %sx %s (%s), in network=%d, in inventory=%d, missing=%d",
                     count, VeloceCraftTrace.name(item), VeloceCraftTrace.id(item),
                     inNetwork, inInventory, missing);
             VeloceCraftTrace.dumpStock(netStock, item,
                     VeloceRecipeFinder.all(level, item));
         }
 
-        // Faza 1: planowanie (symulacja na liczbach).
-        // Ustawiamy twardy budzet czasu - planowanie drzewa receptur nie moze
-        // zamrozic watku serwera, nawet gdy gracz poprosi o cos absurdalnie
-        // zlozonego. Przy przekroczeniu mowimy "za zlozone", a nie "brak
-        // skladnikow" - to dwie rozne sytuacje.
+        // Phase 1: planning (simulation on numbers).
+        // We set a hard time budget - planning a recipe tree must not freeze the
+        // server thread, even when the player asks for something absurdly complex.
+        // On exceeding it we say "too complex", not "missing ingredients" - those
+        // are two different situations.
         startEstimate(planBudgetNanos);
         Map<Item, Long> stock = snapshotStock(ctx, netStock);
         Plan plan = new Plan(ctx.heatOps());
 
-        // Ile UDALO sie zaplanowac (moze byc mniej niz missing).
+        // How much we MANAGED to plan (may be less than missing).
         long planned = missing;
 
         if (!plan(level, ctx.network, ctx.enabledItems, ctx.preferred, item, missing, stock, plan, new HashSet<>(), 0)) {
@@ -357,18 +358,18 @@ public final class VeloceAutoCrafter {
                 return CraftResult.fail("craftingveloce.craft.error.tooComplex");
             }
 
-            // NIE MA DOść NA PELNA ILOSC - sprobuj zrobic MNIEJ.
+            // THERE IS NOT ENOUGH FOR THE FULL AMOUNT - try to make LESS.
             //
-            // BUG, ktory tu byl: planowanie szlo na dokladnie `missing` sztuk,
-            // a jesli sie nie udalo, cala operacja przepadala. Ekstraktor, ktory
-            // chcial pelny stack (np. 64), nie dostawal NIC, nawet gdy w sieci
-            // bylo dość materialu na 12 sztuk. Teraz schodzimy w dol, az
-            // znajdziemy ilosc wykonalna.
+            // The BUG that used to be here: planning went for exactly `missing`
+            // units, and if that failed, the whole operation was lost. An extractor
+            // that wanted a full stack (e.g. 64) got NOTHING, even when the network
+            // had enough material for 12 units. Now we step down until we find a
+            // feasible amount.
             planned = planAsMuchAsPossible(level, ctx, item, missing, stock, plan, planBudgetNanos);
             if (planned <= 0) {
-                // Rozroznienie wazne dla gracza: "nie zdazylem policzyc" to nie
-                // to samo co "nie masz z czego". Wczesniej oba konczyly sie
-                // komunikatem o braku skladnikow.
+                // A distinction that matters to the player: "I did not have time to
+                // compute" is not the same as "you have nothing to make it from".
+                // Previously both ended with a missing-ingredients message.
                 if (estimateAborted()) {
                     VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                             "planning for %s x%d ran out of the %d ms budget",
@@ -376,18 +377,18 @@ public final class VeloceAutoCrafter {
                     return CraftResult.fail("craftingveloce.craft.error.tooComplex");
                 }
                 logPlanFailure(level, ctx, item, missing, stock);
-                // MOWIMY, CZEGO BRAKUJE - inaczej gracz dostaje tylko "nie ma
-                // itemu w sieci" i nie wie, czy brakuje materialu, maszyny,
-                // czy receptury.
+                // WE SAY WHAT IS MISSING - otherwise the player only gets "no such
+                // item in the network" and does not know whether the material, the
+                // machine or the recipe is missing.
                 return diagnosePlanFailure(level, ctx, item, stock);
             }
         }
 
-        // Faza 2: wykonanie dokladnie tego, co zaplanowano.
+        // Phase 2: execution of exactly what was planned.
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
                 "plan for %s x%d: %d recipe run(s) to execute",
                 item, planned, plan.runs.size());
-        VeloceCraftTrace.log("start wykonania planu: %s x%d (krokow=%d)",
+        VeloceCraftTrace.log("starting plan execution: %s x%d (steps=%d)",
                 VeloceCraftTrace.id(item), planned, plan.runs.size());
         if (!execute(level, ctx, plan)) {
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
@@ -396,11 +397,12 @@ public final class VeloceAutoCrafter {
             return CraftResult.fail("craftingveloce.craft.error.extract",
                     ingredient == null ? "" : ingredient);
         }
-        // Zwracamy ilosc, ktora REALNIE powstała - moze byc mniejsza od
-        // zamowionej, gdy nie bylo dość materialu (patrz planAsMuchAsPossible).
-        // Wczesniej log i wynik klamaly pelna iloscia, mimo ze wykonano mniej.
-        // Ile realnie przybylo w sieci. to jest liczba, ktora wolajacy moze
-        // bezpiecznie wyciagnac - nie zamowiona ilosc.
+        // We return the amount that ACTUALLY came into being - it may be smaller
+        // than requested, when there was not enough material (see
+        // planAsMuchAsPossible). Previously the log and the result lied with the
+        // full amount, even though less was executed.
+        // How much actually arrived in the network. this is the number the caller
+        // can safely extract - not the requested amount.
         long actuallyCrafted = Math.max(0L, planned);
         Map<Item, Long> after = network.getAllItemCounts(level, true);
         long gained = after.getOrDefault(item, 0L) - onStockBefore;
@@ -413,34 +415,34 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Licznik operacji biezacego szacowania.
+     * Operation counter of the current estimation.
      *
-     * <p>ThreadLocal, bo szacowanie moze byc wolane z roznych watkow (choc
-     * normalnie tylko z watku serwera), a nie chcemy zmieniac sygnatur
-     * wszystkich metod rekurencyjnych.
+     * <p>ThreadLocal, because estimation may be called from different threads
+     * (although normally only from the server thread), and we do not want to change
+     * the signatures of all recursive methods.
      */
     private static final ThreadLocal<int[]> ESTIMATE_OPS =
             ThreadLocal.withInitial(() -> new int[]{0});
 
     /**
-     * Termin zakonczenia biezacego szacowania (System.nanoTime).
+     * Deadline of the current estimation (System.nanoTime).
      *
-     * <p>0 = brak budzetu czasowego (tylko awaryjny limit operacji).
+     * <p>0 = no time budget (emergency operation limit only).
      */
     private static final ThreadLocal<long[]> ESTIMATE_DEADLINE =
             ThreadLocal.withInitial(() -> new long[]{0L});
 
     /**
-     * Czy biezace szacowanie zostalo przerwane z braku budzetu.
+     * Whether the current estimation was aborted for lack of budget.
      *
-     * <p>Bez tego rozroznienia przerwane planowanie wygladalo identycznie jak
-     * "nie da sie tego zrobic" - item dostawal 0 i znikalo mu licznik w GUI,
-     * mimo ze tak naprawde po prostu nie zdazylismy policzyc.
+     * <p>Without this distinction an aborted planning run looked identical to
+     * "this cannot be made" - the item got 0 and its counter disappeared from the
+     * GUI, even though in reality we simply ran out of time to compute it.
      */
     private static final ThreadLocal<boolean[]> ESTIMATE_ABORTED =
             ThreadLocal.withInitial(() -> new boolean[]{false});
 
-    /** Ustawia budzet czasowy dla biezacego szacowania. */
+    /** Sets the time budget for the current estimation. */
     private static void startEstimate(long budgetNanos) {
         ESTIMATE_OPS.get()[0] = 0;
         ESTIMATE_ABORTED.get()[0] = false;
@@ -449,28 +451,28 @@ public final class VeloceAutoCrafter {
                 : 0L;
     }
 
-    /** Czy biezace szacowanie zostalo przerwane (wynik nieznany). */
+    /** Whether the current estimation was aborted (result unknown). */
     private static boolean estimateAborted() {
         return ESTIMATE_ABORTED.get()[0];
     }
 
     /**
-     * Czy szacowanie powinno sie przerwac.
+     * Whether the estimation should abort.
      *
-     * <p><b>Historia tego buga.</b> Sprawdzanie czasu bylo probkowane co 64
-     * wywolania ({@code (ops & 63) == 0}). Brzmi jak sensowna optymalizacja,
-     * ale jest bledne: jesli cale planowanie jednego itemu robi MNIEJ niz 64
-     * wywolania {@code plan}, kontrola wypada tylko raz - przy pierwszym
-     * wywolaniu, kiedy czas jeszcze nie minal - i juz nigdy wiecej. Budzet
-     * czasu byl wtedy calkowicie martwy, a jedynym ograniczeniem zostawal
-     * awaryjny licznik operacji. Dokladnie to widac bylo w logu:
+     * <p><b>The history of this bug.</b> The time check was sampled every 64 calls
+     * ({@code (ops & 63) == 0}). That sounds like a sensible optimization, but it
+     * is wrong: if the whole planning of one item makes FEWER than 64 calls to
+     * {@code plan}, the check happens only once - on the first call, when the time
+     * has not yet run out - and never again. The time budget was then completely
+     * dead, and the only remaining constraint was the emergency operation counter.
+     * That is exactly what was visible in the log:
      *
      * <pre>
      *   TICK OVERRUN: 4520 ms total = scan 0 ms + chunks 0 ms + items 4520 ms
      * </pre>
      *
-     * <p>Dlatego czas sprawdzamy teraz przy KAZDYM wejsciu. {@code nanoTime}
-     * kosztuje kilkadziesiat nanosekund, a chroni przed zamrozeniem serwera.
+     * <p>That is why we now check the time on EVERY entry. {@code nanoTime} costs
+     * a few dozen nanoseconds and protects against freezing the server.
      */
     private static boolean estimateBudgetExceeded() {
         int ops = ESTIMATE_OPS.get()[0]++;
@@ -487,15 +489,16 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Ile sztuk danego itemu da sie <b>dorobic</b> auto-craftingiem ponad to,
-     * co juz jest w sieci.
+     * How many units of the given item can be <b>additionally produced</b> by
+     * auto-crafting beyond what is already in the network.
      *
-     * <p>To jest liczba dla zoltego wskaznika "+N" w terminalu, wiec musi byc
-     * <b>nadwyzka</b>, a nie suma. Wczesniej zwracala lacznie dostepne sztuki,
-     * przez co po wycraftowaniu 4 desek (1 zabrana, 3 w buforze) pokazywalo
-     * "+3" mimo braku jakiegokolwiek loga - bo licznik zeral wlasny stock.
+     * <p>This is the number for the yellow "+N" indicator in the terminal, so it
+     * must be the <b>surplus</b>, not the total. Previously it returned the total
+     * available units, which is why after crafting 4 planks (1 taken, 3 in the
+     * buffer) it showed "+3" despite no log line at all - the counter was eating
+     * its own stock.
      *
-     * @return ile sztuk da sie jeszcze dorobic (0 gdy brak bazowych skladnikow)
+     * @return how many more units can be produced (0 when base ingredients are missing)
      */
     public static long countCraftableNow(ServerLevel level, VelocePipeNetwork network,
                                          Item item, Set<Item> enabledItems,
@@ -505,10 +508,10 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Jak wyzej, ale z jawnym budzetem czasowym.
+     * As above, but with an explicit time budget.
      *
-     * @param budgetNanos maksymalny czas w nanosekundach; 0 = bez limitu czasu
-     *                    (tylko awaryjny limit operacji)
+     * @param budgetNanos maximum time in nanoseconds; 0 = no time limit
+     *                    (emergency operation limit only)
      */
     public static long countCraftableNow(ServerLevel level, VelocePipeNetwork network,
                                          Item item, Set<Item> enabledItems,
@@ -523,37 +526,38 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Ile sztuk da sie <b>dorobic z surowcow</b> - bez tego, co juz gotowe.
+     * How many units can be <b>additionally produced from raw materials</b> -
+     * without counting what is already finished.
      *
-     * <p><b>BUG, ktory to naprawia.</b> Poprzednia wersja liczyla tak:
+     * <p><b>The BUG this fixes.</b> The previous version computed it like this:
      * <pre>
      *   total = maxCraftable(stock)      // = fromStock + lo
      *   craftable = total - onStock      // = lo
      * </pre>
-     * i wydawalo sie, ze zapas jest odjety. Ale <b>nie jest</b>: funkcja
-     * {@code plan} (uzywana w bisekcji wewnatrz {@code maxCraftable}) NAJPIERW
-     * ZUZYWA to, co juz lezy na stanie, i dopiero reszte craftuje. Wiec
-     * {@code lo} = maksimum "ile mozna MIEĆ", a nie "ile mozna DOROBIC" -
-     * czyli zawiera zapas. Odjecie zapasu nic nie dawalo, bo ten sam zapas
-     * byl juz wliczony w {@code lo}.
+     * and it seemed that the stock was being subtracted. But it <b>is not</b>: the
+     * function {@code plan} (used in the bisection inside {@code maxCraftable})
+     * FIRST CONSUMES what is already in stock, and only crafts the rest. So
+     * {@code lo} = the maximum "how many one can HAVE", not "how many one can
+     * ADDITIONALLY PRODUCE" - that is, it includes the stock. Subtracting the stock
+     * achieved nothing, because that same stock was already included in {@code lo}.
      *
-     * <p><b>Objaw.</b> Terminal pokazywal licznik, ktory zmienial sie od
-     * przelozenia gotowego itemu:
+     * <p><b>The symptom.</b> The terminal showed a counter that changed when a
+     * finished item was moved around:
      * <pre>
-     *   356  (0 na stanie)
-     *   355  po scraftowaniu 1 logu: +3 do bufora, -1 log  (-4 z surowcow +3 zapas)
-     *   354  po wyjeciu 1 sztuki z bufora                 (-1 zapas)
-     *   353  po wyjeciu kolejnej                          (-1 zapas)
+     *   356  (0 in stock)
+     *   355  after crafting 1 log: +3 to the buffer, -1 log  (-4 from raw +3 stock)
+     *   354  after taking 1 unit out of the buffer            (-1 stock)
+     *   353  after taking another one                         (-1 stock)
      * </pre>
-     * Gotowe itemy w buforze pomniejszaly wiec liczbe "ile moge jeszcze
-     * zrobic", choc te dwie rzeczy mialy byc rozdzielone.
+     * Finished items in the buffer therefore reduced the "how many more can I make"
+     * number, even though those two things were supposed to be kept separate.
      *
-     * <p><b>Rozwiazanie.</b> Liczymy z zapasem tego itemu WYZEROWANYM.
-     * Wtedy plan nie ma czego zuzyc na poczatek, wiec bisekcja znajduje
-     * dokladnie to, ile da sie wyprodukowac z surowcow. Wynik nie zalezy od
-     * tego, ile gotowych sztuk lezy w buforze, w skrzyni czy gdziekolwiek.
+     * <p><b>The solution.</b> We compute with this item's stock ZEROED OUT.
+     * The plan then has nothing to consume at the start, so the bisection finds
+     * exactly how much can be produced from raw materials. The result does not
+     * depend on how many finished units lie in the buffer, a chest or anywhere else.
      *
-     * @return ile da sie dorobic z surowcow (UNKNOWN_COUNT gdy brak budzetu)
+     * @return how many can be produced from raw materials (UNKNOWN_COUNT when out of budget)
      */
     private static long craftableFromRaw(ServerLevel level, VelocePipeNetwork network,
                                          Item item, Map<Item, Long> stock,
@@ -562,8 +566,8 @@ public final class VeloceAutoCrafter {
                                          long heatOps) {
         Map<Item, Long> rawStock = new HashMap<>(stock);
         rawStock.put(item, 0L);
-        // maxCraftable przy zerowym zapasie zwraca samo "lo" (bo fromStock = 0),
-        // czyli dokladnie ilosc wykonalna z surowcow.
+        // With zero stock, maxCraftable returns just "lo" (because fromStock = 0),
+        // i.e. exactly the amount makeable from raw materials.
         return maxCraftable(level, network, item, rawStock, enabled, preferred, heatOps);
     }
 
@@ -583,30 +587,31 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Wynik obliczenia partii.
+     * The result of a batch computation.
      *
-     * @param counts   ile da sie dorobic (tylko wartosci > 0)
-     * @param complete czy przeliczono WSZYSTKIE zadane itemy
-     * @param heatAvailable czy w sieci stoi JAKIEKOLWIEK zrodlo ciepla (piec).
-     *        Do logu: bez tego nie da sie odroznic "nie ma pieca" od "piec
-     *        wlasnie dopala paliwo" - a to dwa zupelnie rozne stany.
+     * @param counts   how many can be additionally produced (only values > 0)
+     * @param complete whether ALL requested items were computed
+     * @param heatAvailable whether ANY heat source (furnace) stands in the network.
+     *        For the log: without this one cannot distinguish "there is no furnace"
+     *        from "the furnace is just refuelling" - and those are two completely
+     *        different states.
      */
     public record BatchResult(Map<Item, Long> counts, boolean complete,
                               boolean heatAvailable) {
-        /** Wariant bez informacji o cieple - dla wczesnych wyjsc (brak sieci itp.). */
+        /** Variant without heat information - for early exits (no network etc.). */
         public BatchResult(Map<Item, Long> counts, boolean complete) {
             this(counts, complete, false);
         }
     }
 
 /**
-     * Liczy wiele itemow naraz, wspoldzielac jeden budzet czasowy.
+     * Computes many items at once, sharing a single time budget.
      *
-     * <p>Uzywane do NATYCHMIASTOWEGO przeliczenia widocznej strony terminala.
-     * Zamiast placic za odczyt stocku przy kazdym itemie, robimy go raz.
-     * Dzieki temu 45 itemow liczy sie w kilka milisekund.
+     * <p>Used for the INSTANT recomputation of the visible terminal page.
+     * Instead of paying for a stock read per item, we do it once. Thanks to that
+     * 45 items are computed in a few milliseconds.
      *
-     * @return mapa item -> ile da sie dorobic (tylko wartosci > 0)
+     * @return map item -> how many can be additionally produced (only values > 0)
      */
     public static Map<Item, Long> countCraftableBatch(
             ServerLevel level, VelocePipeNetwork network,
@@ -617,12 +622,12 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Jak {@link #countCraftableBatch}, ale mowi tez czy partia zostala
-     * przeliczona w calosci.
+     * Like {@link #countCraftableBatch}, but it also says whether the batch was
+     * computed in full.
      *
-     * <p>To wazne dla GUI: gdy budzet sie skonczyl i czesc itemow zostala
-     * pominięta, klient NIE moze uznac braku wpisu za "nie da sie zrobic" -
-     * inaczej liczby znikaly i nie wracaly.
+     * <p>This matters for the GUI: when the budget ran out and some items were
+     * skipped, the client must NOT treat a missing entry as "cannot be made" -
+     * otherwise the numbers disappeared and never came back.
      */
     public static BatchResult countCraftableBatchResult(
             ServerLevel level, VelocePipeNetwork network,
@@ -633,27 +638,27 @@ public final class VeloceAutoCrafter {
             return new BatchResult(out, true, false);
         }
 
-        // Jednorazowy odczyt stocku dla calej partii.
+        // A single stock read for the whole batch.
         Map<Item, Long> stockSnapshot = network.getAllItemCounts(level);
 
-        // Cieplo dla LICZB: "czy w sieci stoi piec", a nie "ile ma TERAZ
-        // w buforze".
+        // Heat for the NUMBERS: "is there a furnace in the network", not "how much
+        // is in its buffer RIGHT NOW".
         //
-        // BUG, ktory to naprawia (zgloszenie gracza: "liczby sie nie laduja"):
-        // bralismy totalOperations(), czyli biezacy bufor paliwa. Piec paliwowy
-        // dopala paliwo i DOKLADA je sobie z sieci, wiec bufor cyklicznie
-        // spada do zera - w tym oknie receptury pieca byly wylaczone, liczba
-        // dla szkla wychodzila 0 i taka zostawala w GUI (zero sie nie rysuje),
-        // a po skasowaniu tekstu w wyszukiwarce nowe zadanie trafialo na
-        // moment z paliwem i liczba sie pojawiala. Liczba ma odpowiadac na
-        // pytanie "ile moge miec z tego, co jest w sieci", a nie "na ile
-        // starczy paliwa w tej sekundzie" (patrz estimateHeatOps).
+        // The BUG this fixes (player report: "the numbers do not load"): we took
+        // totalOperations(), i.e. the current fuel buffer. A fuel furnace burns fuel
+        // and REFILLS it from the network, so the buffer cyclically drops to zero -
+        // in that window the furnace recipes were disabled, the number for glass came
+        // out 0 and stayed that way in the GUI (zero is not drawn), and after
+        // clearing the text in the search box a new task hit a moment with fuel and
+        // the number appeared. The number should answer the question "how many can I
+        // have from what is in the network", not "how long will the fuel in this
+        // second last" (see estimateHeatOps).
         boolean heatAnywhere = VeloceHeatSources.hasAnyHeatSource(level, network);
         long heatOps = heatAnywhere ? ESTIMATE_HEAT_OPS : 0L;
 
-        // Skoro liczymy "ile MOGE miec", to przy postawionym piecu itemy
-        // z receptura pieca sa liczalne nawet w oknie bez paliwa - inaczej
-        // wypadaly z `enabled` i dostawaly zero (patrz komentarz wyzej).
+        // Since we compute "how many I CAN have", with a furnace placed the items
+        // with a furnace recipe are countable even in a window without fuel -
+        // otherwise they dropped out of `enabled` and got zero (see the comment above).
         Set<Item> countable = enabledItems;
         if (heatAnywhere && !VeloceRecipeRegistry.getAllFurnaceCraftableItems(level).isEmpty()) {
             Set<Item> merged = new HashSet<>(enabledItems);
@@ -663,15 +668,16 @@ public final class VeloceAutoCrafter {
         long deadline = budgetNanos > 0 ? System.nanoTime() + budgetNanos : 0L;
         boolean complete = true;
 
-        // KOLEJNOSC: taka, jaka przyszla z klienta.
+        // ORDER: exactly as it came from the client.
         //
-        // Bylo tu przesuniecie startu ("rotacja"), zeby ogon listy tez kiedys
-        // doczekal sie liczenia. Okazalo sie jednak gorsze od problemu: partia
-        // startowala w losowym miejscu, konczyl sie budzet i POCZATEK listy
-        // (np. glass w wyszukiwarce) nie mial liczb, a dol je mial - dokladnie
-        // to zglosil gracz. Klient sam ustawia teraz itemy bez wartosci na
-        // poczatku zadania (patrz VeloceCraftableCounts), wiec serwer ma po
-        // prostu liczyc w podanej kolejnosci.
+        // There used to be a start offset ("rotation") so that the tail of the list
+        // would also get its turn at being computed. It turned out to be worse than
+        // the problem: the batch started at a random place, the budget ran out, and
+        // the BEGINNING of the list (e.g. glass in the search box) had no numbers
+        // while the bottom did - that is exactly what the player reported. The client
+        // now puts items without a value at the front of the task itself (see
+        // VeloceCraftableCounts), so the server should simply compute in the given
+        // order.
         List<Item> queue = items instanceof List<Item> list ? list : new ArrayList<>(items);
         int size = queue.size();
         int aborted = 0;
@@ -679,26 +685,27 @@ public final class VeloceAutoCrafter {
         for (int i = 0; i < size; i++) {
             Item item = queue.get(i);
             if (!countable.contains(item)) {
-                // Wpis "nie da sie zrobic" jest POPRAWNY i musi trafic do
-                // wyniku - inaczej GUI zachowaloby stara, zawyzona liczbe.
+                // The "cannot be made" entry is CORRECT and must reach the result -
+                // otherwise the GUI would keep the old, inflated number.
                 out.put(item, 0L);
                 continue;
             }
-            // Przerwij, gdy minie budzet - reszta przy nastepnym zadaniu.
+            // Break when the budget is exceeded - the rest comes in the next task.
             if (deadline != 0L && System.nanoTime() > deadline) {
                 complete = false;
                 break;
             }
             Map<Item, Long> stock = new HashMap<>(stockSnapshot);
-            // Budzet na TEN item = rowny udzial z reszty czasu, a nie cale okno.
+            // Budget for THIS item = an equal share of the remaining time, not the
+            // whole window.
             //
-            // BUG, ktory to naprawia: kazdy item dostawal CALE pozostale okno,
-            // wiec jeden zbyt zlozony (albo drogi) zjadal budzet calej partii
-            // i reszta itemow nie dostawala liczb - w logu gracza widac bylo
-            // "45 item(s) -> 0 result(s) (complete=false)". Rowny udzial
-            // gwarantuje, ze kazdy item ma swoja szanse, a te, ktore nie
-            // zdaza, wracaja w kolejnym zadaniu - na przodzie listy, bo klient
-            // ustawia itemy bez wartosci pierwsze (VeloceCraftableCounts).
+            // The BUG this fixes: every item got the WHOLE remaining window, so one
+            // overly complex (or expensive) item ate the budget of the entire batch
+            // and the remaining items got no numbers - in the player's log you could
+            // see "45 item(s) -> 0 result(s) (complete=false)". An equal share
+            // guarantees that every item gets its chance, and those that do not fit
+            // come back in the next task - at the front of the list, because the
+            // client puts items without a value first (VeloceCraftableCounts).
             long slice = 0L;
             if (deadline != 0L) {
                 long left = Math.max(0L, deadline - System.nanoTime());
@@ -706,59 +713,59 @@ public final class VeloceAutoCrafter {
             }
             startEstimate(slice);
             long total = craftableFromRaw(level, network, item, stock, countable, preferred, heatOps);
-            // (indeks `i` sluzy tylko do rownego podzialu budzetu wyzej)
+            // (the index `i` is used only for the equal budget split above)
             if (total == UNKNOWN_COUNT) {
-                // TEN item nie zmiescil sie w budzecie - pomijamy GO, ale NIE
-                // przerywamy calej partii.
+                // THIS item did not fit in the budget - we skip IT, but do NOT
+                // abort the whole batch.
                 //
-                // BUG, ktory to naprawia: `break` konczyl partie po pierwszym
-                // trudnym itemie. W logu gracza bylo to widac jako
+                // The BUG this fixes: `break` ended the batch after the first
+                // difficult item. In the player's log this was visible as
                 // "instant craftable count for 45 item(s) -> 0 result(s)
-                // (complete=false)" - JEDEN zbyt zlozony item (albo chwilowy
-                // brak czasu) odbieral liczby WSZYSTKIM pozostalym, a gracz
-                // widzial to jako "kontroler nie umie policzyc pieca".
+                // (complete=false)" - ONE overly complex item (or a momentary lack
+                // of time) took the numbers away from ALL the remaining ones, and
+                // the player saw this as "the controller cannot compute the furnace".
                 //
-                // Kolejny item dostaje swiezy budzet (startEstimate nizej),
-                // a gdy skonczy sie CZAS, petla przerwie sie na sprawdzeniu
-                // deadline'u na gorze - wiec nie ma ryzyka zapetlenia.
+                // The next item gets a fresh budget (startEstimate below), and once
+                // the TIME runs out, the loop breaks on the deadline check at the
+                // top - so there is no risk of an infinite loop.
                 complete = false;
                 aborted++;
                 continue;
             }
-            // Zapisujemy TAKZE zera. Wczesniej wpis pojawial sie tylko dla
-            // surplus > 0, wiec "nie da sie juz nic zrobic" bylo nieodroznialne
-            // od "nie policzono tego itemu" i klient zachowywal stara, zawyzona
-            // liczbe. Zero to konkretna, poprawna odpowiedz.
+            // We store ZEROS as well. Previously the entry appeared only for
+            // surplus > 0, so "nothing more can be made" was indistinguishable from
+            // "this item was not computed" and the client kept the old, inflated
+            // number. Zero is a concrete, correct answer.
             out.put(item, Math.max(0L, total));
         }
         if (aborted > 0) {
-            // Ile itemow nie zmiescilo sie w swoim udziale - to ta liczba
-            // tlumaczy "GUI nie pokazuje liczb dla czesci itemow".
+            // How many items did not fit in their share - that is the number that
+            // explains "the GUI does not show numbers for some items".
             VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                    "craftable count: %d z %d itemow przerwalo szacowanie "
-                            + "(za ciezki item na swoj udzial czasu)", aborted, size);
+                    "craftable count: %d of %d item(s) aborted the estimation "
+                            + "(item too heavy for its share of time)", aborted, size);
         }
         return new BatchResult(out, complete, heatAnywhere);
     }
 
     /**
-     * Znajduje NAJWIEKSZA ilosc itemu, ktora da sie zaplanowac z tego stocku.
+     * Finds the LARGEST amount of the item that can be planned from this stock.
      *
-     * <p>Uzywane, gdy nie udalo sie zaplanowac pelnej zamowionej ilosci. Bisekcja
-     * po ilosci: zamiast oddawac "nie da sie" i zostawiac gracza z niczym,
-     * dostarczamy tyle, ile realnie jestesmy w stanie zrobic (np. 12 z 64).
+     * <p>Used when it was not possible to plan the full requested amount. Bisection
+     * on the amount: instead of returning "cannot be done" and leaving the player
+     * with nothing, we deliver as much as we are really able to make (e.g. 12 of 64).
      *
-     * @return ilosc wpisana do {@code plan}, albo 0 gdy nie da sie zrobic nic
+     * @return the amount stored into {@code plan}, or 0 when nothing can be made
      */
     private static long planAsMuchAsPossible(ServerLevel level, Context ctx, Item item,
                                              long wanted, Map<Item, Long> stock, Plan plan,
                                              long planBudgetNanos) {
-        // Ten SAM algorytm co przy liczeniu liczb (findMaxPlannable): najpierw
-        // TANIE proby (1, 2, 4, ...), potem bisekcja. Wczesniej ta metoda
-        // zaczynala od `wanted / 2`, wiec pierwsza proba byla najdrozsza -
-        // przy recepturze z 21 skladnikami (mechanical crafting Create)
-        // i zamowieniu 64 sztuk plan nie powstawal w budzecie i gracz dostawal
-        // "nie ma itemow", mimo ze GUI pokazywalo wykonalna liczbe.
+        // The SAME algorithm as when computing numbers (findMaxPlannable): first
+        // CHEAP attempts (1, 2, 4, ...), then bisection. Previously this method
+        // started from `wanted / 2`, so the first attempt was the most expensive -
+        // with a recipe of 21 ingredients (Create mechanical crafting) and an order
+        // of 64 units the plan was never built within the budget and the player got
+        // "no items", even though the GUI showed a feasible number.
         Plan best = new Plan(ctx.heatOps());
         long planned = findMaxPlannable(level, ctx.network, item, Math.max(1, wanted), stock,
                 ctx.enabledItems, ctx.preferred, ctx.heatOps(), planBudgetNanos, best);
@@ -767,39 +774,39 @@ public final class VeloceAutoCrafter {
         }
         plan.runs.clear();
         plan.runs.addAll(best.runs);
-        VeloceCraftTrace.log("plan: zamowione %d, wykonalne %d, krokow w planie %d, cieplo=%d",
+        VeloceCraftTrace.log("plan: requested %d, feasible %d, steps in plan %d, heat=%d",
                 wanted, planned, plan.runs.size(), plan.heatRemaining);
         for (var run : plan.runs) {
-            VeloceCraftTrace.log("  krok planu: %s x%d", run.recipe().id(), run.times());
+            VeloceCraftTrace.log("  plan step: %s x%d", run.recipe().id(), run.times());
         }
         if (planned < wanted) {
             VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                    "%s: zamowione %d, wykonalne %d (plan w budzecie %d ms)",
+                    "%s: requested %d, feasible %d (plan within the %d ms budget)",
                     item, wanted, planned, planBudgetNanos / 1_000_000L);
         }
         return planned;
     }
 
     /**
-     * Loguje, dlaczego planowanie sie nie udalo.
+     * Logs why planning failed.
      *
-     * <p>Idzie przez {@link VeloceLog}, a nie prosto do LOGGERa.
+     * <p>It goes through {@link VeloceLog}, not straight to the LOGGER.
      *
-     * <p><b>Bylo tu zrodlo smieci w logu.</b> Poprzednia wersja pisala przez
-     * {@code CraftingVeloceMod.LOGGER.info(...)} z wlasnym prefiksem "[Veloce]",
-     * wiec omijala i poziom debugowania, i przelaczniki kategorii z configu -
-     * leciala ZAWSZE, przy kazdej nieudanej probie. A ze kazde klikniecie
-     * itemu, ktorego nie da sie zrobic, konczy sie nieudanym planem, log
-     * zapychal sie przy normalnym klikaniu po GUI.
+     * <p><b>There used to be a source of log spam here.</b> The previous version
+     * wrote through {@code CraftingVeloceMod.LOGGER.info(...)} with its own "[Veloce]"
+     * prefix, so it bypassed both the debug level and the category switches from the
+     * config - it fired ALWAYS, on every failed attempt. And since every click on an
+     * item that cannot be made ends in a failed plan, the log clogged up during
+     * normal clicking around the GUI.
      *
-     * <p>Dodatkowo pierwszy skladnik kazdej receptury jest niczym wiecej jak
-     * PRZYKLADEM (Ingredient.getItems() zwraca wszystkie akceptowane stosy),
-     * wiec "ma=0" dla niego nie znaczy, ze brakuje wlasnie tego itemu.
+     * <p>In addition, the first ingredient of every recipe is nothing more than an
+     * EXAMPLE (Ingredient.getItems() returns all accepted stacks), so "have=0" for
+     * it does not mean that exactly that item is missing.
      */
     private static void logPlanFailure(ServerLevel level, Context ctx, Item item,
                                        int missing, Map<Item, Long> stock) {
         if (!VeloceLog.Craft.isDetailEnabled(VeloceLog.Side.SERVER)) {
-            return;   // tanie sprawdzenie - nie budujemy stringow na darmo
+            return;   // cheap check - we do not build strings for nothing
         }
         VeloceLog.Craft.why(VeloceLog.Side.SERVER,
                 "craft %s x%d failed: no base ingredients (enabled=%d, %d item type(s) in stock)",
@@ -814,8 +821,8 @@ public final class VeloceAutoCrafter {
                 if (opts.length == 0) {
                     continue;
                 }
-                // Podajemy liczbe AKCEPTOWANYCH opcji, a nie jeden przyklad -
-                // pojedynczy "ma=0" mylil, bo brakowalo innej opcji.
+                // We give the number of ACCEPTED options, not one example - a single
+                // "have=0" was misleading, because a different option was missing.
                 int have = 0;
                 for (var opt : opts) {
                     if (stock.getOrDefault(opt.getItem(), 0L) > 0) {
@@ -830,20 +837,20 @@ public final class VeloceAutoCrafter {
     }
 
     // ------------------------------------------------------------------
-    // Faza planowania - czysta arytmetyka na liczbach
+    // Planning phase - pure arithmetic on numbers
     // ------------------------------------------------------------------
 
-    /** Plan: ile razy wykonac ktora recepture, w kolejnosci wykonania. */
+    /** Plan: how many times to run which recipe, in execution order. */
     static final class Plan {
         final List<PlannedRun> runs = new ArrayList<>();
 
         /**
-         * Ile przepalen jeszcze wolno zaplanowac.
+         * How many smelting operations may still be planned.
          *
-         * <p>Receptura pieca zjada jedno przepalenie za KAZDA sztuke, wiec
-         * plan nie moze obiecac wiecej itemow, niz piec ugnie. Zero oznacza
-         * takze "brak pieca" - i dlatego gasi receptury piecowe w trakcie
-         * planowania, gdy budzet sie skonczy.
+         * <p>A furnace recipe consumes one smelting operation per EVERY unit, so the
+         * plan cannot promise more items than the furnace can bend. Zero also means
+         * "no furnace" - and that is why it extinguishes furnace recipes during
+         * planning when the budget runs out.
          */
         long heatRemaining;
 
@@ -856,13 +863,13 @@ public final class VeloceAutoCrafter {
         }
 
         /**
-         * Wycofuje plan do znacznika - <b>razem z cieplem</b>.
+         * Rolls the plan back to the mark - <b>together with the heat</b>.
          *
-         * <p>To nie jest kosmetyka. Planowanie probuje kolejne receptury i
-         * cofa nieudane proby, a kazda nieudana proba mogla juz zjesc cieplo.
-         * Bez oddania go budzet topnialby przy samych niepowodzeniach i po
-         * kilku probach planer uznalby, ze piec jest pusty - mimo ze nie
-         * wykonano ani jednego przepalenia.
+         * <p>This is not cosmetic. Planning tries successive recipes and undoes failed
+         * attempts, and every failed attempt may already have consumed heat. Without
+         * giving it back, the budget would melt away on failures alone, and after a
+         * few attempts the planner would conclude that the furnace is empty - even
+         * though not a single smelting operation was performed.
          */
         void rollbackTo(int mark) {
             while (runs.size() > mark) {
@@ -878,8 +885,8 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Planuje uzyskanie {@code amount} sztuk {@code item}.
-     * Modyfikuje {@code stock} (symulacja zuzycia). Nie rusza swiata.
+     * Plans obtaining {@code amount} units of {@code item}.
+     * Modifies {@code stock} (a simulation of consumption). Does not touch the world.
      */
     private static boolean plan(ServerLevel level, VelocePipeNetwork network,
                                 Set<Item> enabled,
@@ -889,13 +896,13 @@ public final class VeloceAutoCrafter {
         if (amount <= 0) {
             return true;
         }
-        // Budzet czasowy sprawdzamy ZAWSZE, na samym wejsciu.
+        // We check the time budget ALWAYS, right on entry.
         //
-        // BUG, ktory wisial tu wczesniej: ten warunek byl wciagniety do
-        // srodka bloku "depth/step przekroczony". Czyli wykonywal sie tylko
-        // wtedy, gdy limit juz i tak byl przekroczony - a wtedy zwracalo i
-        // tak false. Efekt: plan() nie mial ZADNEGO throttlingu czasowego i
-        // drzewo receptur rozrastalo sie wykładniczo na watku serwera.
+        // The BUG that hung here before: this condition was pulled inside the
+        // "depth/step exceeded" block. So it only executed when the limit had
+        // already been exceeded anyway - and then it returned false regardless.
+        // The effect: plan() had NO time throttling at all and the recipe tree grew
+        // exponentially on the server thread.
         if (estimateBudgetExceeded()) {
             return false;
         }
@@ -903,10 +910,10 @@ public final class VeloceAutoCrafter {
             return false;
         }
         if (!visiting.add(item)) {
-            return false;   // cykl receptur
+            return false;   // recipe cycle
         }
         try {
-            // Najpierw zuzyj to, co juz jest na stanie.
+            // First consume what is already in stock.
             long have = stock.getOrDefault(item, 0L);
             long fromStock = Math.min(have, amount);
             stock.put(item, have - fromStock);
@@ -915,14 +922,14 @@ public final class VeloceAutoCrafter {
                 return true;
             }
 
-            // Rekursja tylko dla wlaczonych itemow.
+            // Recursion only for enabled items.
             if (!enabled.contains(item)) {
                 return false;
             }
 
-            // Receptury pieca tylko dopoki jest czym zaplacic. Gdy budzet
-            // ciepla sie skonczy, piec przestaje byc opcja - tak samo, jak
-            // przestalby nia byc, gdyby brakowalo skladnikow.
+            // Furnace recipes only as long as there is something to pay with. When
+            // the heat budget runs out, the furnace stops being an option - just as
+            // it would stop being one if ingredients were missing.
             List<ProcessingEntry> recipes =
                     orderRecipes(level, network, item, preferred, plan.heatRemaining > 0,
                             network.prefersFurnace(item));
@@ -930,14 +937,14 @@ public final class VeloceAutoCrafter {
                 return false;
             }
 
-            // Probuj kolejne receptury - pierwsza wykonalna wygrywa.
+            // Try successive recipes - the first feasible one wins.
             for (ProcessingEntry recipe : recipes) {
                 Map<Item, Long> snapshot = new HashMap<>(stock);
                 int planMark = plan.runs.size();
                 if (planRecipe(level, network, enabled, preferred, recipe, remaining, stock, plan, visiting, depth)) {
                     return true;
                 }
-                // Receptura nie wyszla - cofnij symulacje.
+                // The recipe did not work out - undo the simulation.
                 stock.clear();
                 stock.putAll(snapshot);
                 plan.rollbackTo(planMark);
@@ -949,8 +956,8 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Planuje wykonanie jednej receptury tyle razy, by uzyskac {@code amount}.
-     * Dla kazdego skladnika wybiera JEDNA opcje i zapewnia jej pelna ilosc.
+     * Plans running a single recipe enough times to obtain {@code amount}.
+     * For every ingredient it picks ONE option and ensures its full quantity.
      */
     private static boolean planRecipe(ServerLevel level, VelocePipeNetwork network,
                                       Set<Item> enabled,
@@ -958,11 +965,11 @@ public final class VeloceAutoCrafter {
                                       ProcessingEntry recipe, long amount,
                                       Map<Item, Long> stock, Plan plan,
                                       Set<Item> visiting, int depth) {
-        // Ile sztuk daje JEDNO wykonanie: wynik glowny razy jego liczba.
+        // How many units ONE run yields: the primary result times its count.
         //
-        // Liczymy z wyniku GLOWNEGO (pierwszy gwarantowany), a nie z sumy
-        // wszystkich - planowanie widzi tylko wyniki gwarantowane, zeby nigdy
-        // nie obiecac itemu, ktory moze nie wypasc (patrz ProcessingEntry).
+        // We compute from the PRIMARY result (the first guaranteed one), not from
+        // the sum of all of them - planning only sees guaranteed results, so that it
+        // never promises an item that may not drop (see ProcessingEntry).
         ItemStack primary = recipe.primaryResult();
         long perCraft = Math.max(1, primary.getCount());
         long times = (amount + perCraft - 1) / perCraft;
@@ -970,11 +977,11 @@ public final class VeloceAutoCrafter {
             return false;
         }
 
-        // RECEPTURA PIECA PLACI CIEPLEM - jedno przepalenie na sztuke.
+        // A FURNACE RECIPE PAYS WITH HEAT - one smelting operation per unit.
         //
-        // Sprawdzamy PRZED planowaniem skladnikow, bo gdy ciepla nie ma,
-        // planowanie ich nie ma sensu. Gdy reszta planu sie nie powiedzie,
-        // wolajacy wycofa plan przez rollbackTo, ktore odda cieplo z powrotem.
+        // We check BEFORE planning the ingredients, because when there is no heat
+        // there is no point in planning them. If the rest of the plan fails, the
+        // caller will undo the plan through rollbackTo, which gives the heat back.
         if (recipe.isFurnace()) {
             if (times > plan.heatRemaining) {
                 return false;
@@ -982,19 +989,19 @@ public final class VeloceAutoCrafter {
             plan.heatRemaining -= times;
         }
 
-        // Najpierw zaplanuj skladniki (rekurencja), potem zapisz siebie.
+        // First plan the ingredients (recursion), then record ourselves.
         //
-        // LICZBY SZTUK: skladnik moze wymagac wiecej niz jednej sztuki na
-        // wykonanie (Alchemistry IngredientStack, Mekanism SizedIngredient).
-        // Wczesniej planer zakladal `need = times`, wiec taka receptura
-        // zuzywalaby w planie mniej, niz naprawde potrzebuje - liczby w GUI
-        // bylyby zawyzone, a wykonanie gubilo itemy.
+        // ITEM COUNTS: an ingredient may require more than one unit per run
+        // (Alchemistry IngredientStack, Mekanism SizedIngredient). Previously the
+        // planner assumed `need = times`, so such a recipe would consume less in the
+        // plan than it really needs - the numbers in the GUI would be inflated, and
+        // execution would lose items.
         List<Ingredient> ingredientList = recipe.ingredients();
         for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
             Ingredient ing = ingredientList.get(ingIndex);
             long perIngredient = recipe.ingredientCount(ingIndex);
             if (!hasOptions(ing)) {
-                continue;   // pusty slot siatki albo skladnik bez zadnej opcji
+                continue;   // an empty grid slot or an ingredient with no option at all
             }
             List<ItemStack> options = nonEmpty(ing);
             Map<Item, Long> snapshot = new HashMap<>(stock);
@@ -1010,24 +1017,24 @@ public final class VeloceAutoCrafter {
                     supplied = true;
                     break;
                 }
-                // Sprobuj dotworzyc brakujaca czesc.
+                // Try to make up the missing part.
                 long lacking = need - avail;
                 Map<Item, Long> snap2 = new HashMap<>(stock);
                 int mark2 = plan.runs.size();
                 stock.put(optItem, 0L);
                 if (plan(level, network, enabled, preferred, optItem, lacking, stock, plan, visiting, depth + 1)) {
-                    // ZUZYJ TO, CO WLASNIE ZAPLANOWANO.
+                    // CONSUME WHAT WAS JUST PLANNED.
                     //
-                    // BUG, ktory tu byl: po udanym planowaniu zostawialismy
-                    // w stocku WSZYSTKO, co powstalo, nie odejmujac `need`.
-                    // Wczesniej ustawilismy stock[optItem] = 0, wiec plan()
-                    // wyprodukowal `lacking` sztuk - ale nikt ich nie zuzywal.
-                    // Zostawaly wiec jako darmowy nadmiar i kolejne skladniki
-                    // (oraz kolejne iteracje bisekcji) widzialy itemy, ktorych
-                    // w rzeczywistosci nie ma.
+                    // The BUG that used to be here: after successful planning we
+                    // left EVERYTHING that was produced in the stock, without
+                    // subtracting `need`. Earlier we had set stock[optItem] = 0, so
+                    // plan() produced `lacking` units - but nobody consumed them.
+                    // They therefore remained as free surplus, and further
+                    // ingredients (and further bisection iterations) saw items that
+                    // do not really exist.
                     //
-                    // Objaw: z 2 klod terminal pokazywal 6 plotkow (naprawde 1),
-                    // a po skraftowaniu liczby "same sie zmienialy".
+                    // Symptom: from 2 logs the terminal showed 6 fences (really 1),
+                    // and after crafting the numbers "changed by themselves".
                     long produced = stock.getOrDefault(optItem, 0L);
                     stock.put(optItem, Math.max(0L, produced - need));
                     supplied = true;
@@ -1047,18 +1054,19 @@ public final class VeloceAutoCrafter {
 
         plan.add(recipe, times);
 
-        // KLUCZOWE: zalicz wyprodukowane itemy do symulowanego stocku.
+        // CRUCIAL: credit the produced items to the simulated stock.
         //
-        // Bez tego planowanie nie widzialo wlasnych wynikow posrednich.
-        // Przyklad: plotek potrzebuje 4 desek i 2 patykow. Deski zostaja
-        // zaplanowane z klod (4 sztuki), ale stock[deski] dalej wynosil 0,
-        // wiec kolejne sloty desek w recepturze nie mogly ich znalezc i plan
-        // padal z "brak bazowych skladnikow" - mimo ze klody byly w sieci.
-        // To bylo zrodlo bledu "nie moge zrobic fence a mam logi w skrzynce".
+        // Without this, planning did not see its own intermediate results.
+        // Example: a fence needs 4 planks and 2 sticks. The planks do get planned
+        // from logs (4 units), but stock[planks] still stood at 0, so the later
+        // plank slots in the recipe could not find them and the plan fell over with
+        // "no base ingredients" - even though the logs were in the network.
+        // That was the source of the error "I cannot make a fence but I have logs in
+        // the chest".
         //
-        // Zaliczamy WSZYSTKIE wyniki gwarantowane (Fission ma dwa), a nie
-        // tylko glowny - inaczej receptura wielowyjsciowa tworzylaby w planie
-        // mniej, niz daje w rzeczywistosci.
+        // We credit ALL guaranteed results (Fission has two), not just the primary
+        // one - otherwise a multi-output recipe would create less in the plan than
+        // it gives in reality.
         for (ItemStack guaranteed : recipe.guaranteedResults()) {
             if (!guaranteed.isEmpty()) {
                 stock.merge(guaranteed.getItem(), times * guaranteed.getCount(), Long::sum);
@@ -1068,32 +1076,32 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Ile sztuk danego itemu mozna realnie uzyskac z tego stocku.
+     * How many units of the given item can really be obtained from this stock.
      *
-     * <p><b>Dlaczego nie wzorem.</b> Poprzednia wersja liczyla limit osobno dla
-     * kazdego skladnika, biorac dla kazdego PELNY zapas bazowy. Przy plotku
-     * (4 deski + 2 patyki) deski liczylo z 7 klod i patyki tez z tych samych
-     * 7 klod - mimo ze patyki robi sie Z desek, wiec oba ciagnely z jednego
-     * zrodla. Wynik byl zawyzony i nie zgadzal sie z rzeczywistoscia.
+     * <p><b>Why not a formula.</b> The previous version computed the limit for every
+     * ingredient separately, taking the FULL base stock for each. For a fence
+     * (4 planks + 2 sticks) it computed the planks from 7 logs and the sticks from
+     * those same 7 logs - even though sticks are made FROM planks, so both drew from
+     * a single source. The result was inflated and did not match reality.
      *
-     * <p>Teraz sprawdzamy wykonalnosc PRAWDZIWYM planowaniem (ktore poprawnie
-     * zuzywa skladniki i zalicza wyniki posrednie) i szukamy najwiekszej
-     * mozliwej liczby bisekcja. Liczba jest prawdziwa, bo pochodzi z tego
-     * samego kodu, ktory potem faktycznie craftuje.
+     * <p>Now we check feasibility with REAL planning (which correctly consumes
+     * ingredients and credits intermediate results) and look for the largest
+     * possible number by bisection. The number is real, because it comes from the
+     * very same code that then actually crafts.
      *
-     * <p>Koszt: log2(N) planowan na jeden item. Planowanie jest tanie, bo
-     * operuje na liczbach, bez ruszania swiata.
+     * <p>Cost: log2(N) planning runs per item. Planning is cheap, because it operates
+     * on numbers, without touching the world.
      *
-     * @return laczna liczba sztuk dostepnych (stock + to, co da sie dorobic)
+     * @return the total number of available units (stock + what can be additionally produced)
      */
     private static long maxCraftable(ServerLevel level, VelocePipeNetwork network,
                                      Item item, Map<Item, Long> stock,
                                      Set<Item> enabled,
                                      Map<Item, ResourceLocation> preferred,
                                      long realHeatOps) {
-        // SZACOWANIE liczy "ile moge MIEC", a nie "ile piec ugnie w tej
-        // sekundzie" - patrz estimateHeatOps(). Plan WYKONANIA nadal dostaje
-        // prawdziwy budzet (Context.heatOps() -> consumeFrom).
+        // The ESTIMATION computes "how many I can HAVE", not "how much the furnace
+        // can bend in this second" - see estimateHeatOps(). The EXECUTION plan still
+        // gets the real budget (Context.heatOps() -> consumeFrom).
         long heatOps = estimateHeatOps(realHeatOps);
         long fromStock = stock.getOrDefault(item, 0L);
         if (!enabled.contains(item)) {
@@ -1104,70 +1112,71 @@ public final class VeloceAutoCrafter {
             return fromStock;
         }
 
-        // SZYBKA SCIEZKA dla itemow powstajacych WYLACZNIE w piecu z surowcow,
-        // ktore same nie maja receptury (np. szklo z piasku).
+        // FAST PATH for items produced EXCLUSIVELY in a furnace from raw materials
+        // that themselves have no recipe (e.g. glass from sand).
         //
-        // Po co: odpowiedz jest wtedy zwykla arytmetyka na stocku, a nie
-        // bisekcja z pelnym planowaniem. Dzieki temu takie itemy (a jest ich
-        // kilkadziesiat - patrz "furnace=74" w logu) nie zjadaja budzetu
-        // partii i nie znikaja z GUI, gdy budzet sie skonczy.
+        // Why: the answer is then plain arithmetic on the stock, rather than a
+        // bisection with full planning. Thanks to that such items (and there are
+        // several dozen of them - see "furnace=74" in the log) do not eat the batch
+        // budget and do not disappear from the GUI when the budget runs out.
         long furnaceOnly = countFurnaceOnly(level, item, stock, heatOps, recipes);
         if (furnaceOnly >= 0) {
             return fromStock + furnaceOnly;
         }
 
-        // Gorna granica bisekcji.
+        // Upper bound of the bisection.
         //
-        // BUG, ktory tu byl: bralismy sume WSZYSTKICH sztuk w sieci i twierdzilismy,
-        // ze "kazdy craft zuzywa co najmniej jeden item, wiec nie da sie zrobic
-        // wiecej". To nieprawda dla receptur dajacych wiele sztuk: 1 kloda ->
-        // 4 deski -> 16 patykow. Przy 64 klodach granica wychodzila 64, wiec
-        // bisekcja NIGDY nie sprawdzila wiecej - i terminal pokazywal "64 plotki"
-        // tam, gdzie naprawde mozna zrobic kilkaset.
+        // The BUG that used to be here: we took the sum of ALL units in the network
+        // and claimed that "every craft consumes at least one item, so more cannot be
+        // made". That is not true for recipes yielding multiple units: 1 log ->
+        // 4 planks -> 16 sticks. With 64 logs the bound came out as 64, so the
+        // bisection NEVER checked more - and the terminal showed "64 fences" where
+        // several hundred can really be made.
         //
-        // Teraz liczymy REALNA gorna granice: dla kazdego surowca mnozymy jego
-        // ilosc przez to, ile sztuk danego itemu da sie z niego uzyskac w jednym
-        // ciagu receptur. To wciaz tylko ograniczenie bisekcji (bezpieczne
-        // zawyzenie), a prawdziwa wartosc i tak znajduje planer.
+        // Now we compute the REAL upper bound: for every raw material we multiply
+        // its amount by how many units of the given item can be obtained from it in
+        // one chain of recipes. This is still only a bisection constraint (a safe
+        // overestimate), and the planner finds the true value anyway.
         long hi = Math.min(estimateUpperBound(level, network, item, stock, recipes, heatOps > 0),
                 MAX_ESTIMATE_RESULT);
         if (hi <= 0) {
             return fromStock;
         }
 
-        // Ile REALNIE da sie zrobic z tego stocku - wspolnym algorytmem
-        // (rosnace, TANIE proby, potem bisekcja). Bez tego liczenie zaczynalo
-        // od polowy gornej granicy, wiec pierwsza proba byla najdrozsza
-        // i budzet konczyl sie, zanim cokolwiek policzono.
+        // How much can REALLY be made from this stock - with the shared algorithm
+        // (growing, CHEAP attempts, then bisection). Without it the computation began
+        // at half the upper bound, so the first attempt was the most expensive and
+        // the budget ran out before anything was computed.
         long lo = findMaxPlannable(level, network, item, hi, stock, enabled, preferred,
                 heatOps, DEFAULT_ESTIMATE_BUDGET_NS, null);
         if (lo <= 0 && estimateAborted()) {
-            // Budzet sie skonczyl i nie udalo sie nawet jednej sztuki - wynik
-            // jest niemiarodajny. Zwracamy UNKNOWN, zeby GUI zachowalo
-            // poprzednia liczbe zamiast pokazywac zero.
+            // The budget ran out and not even one unit worked out - the result is
+            // unreliable. We return UNKNOWN so that the GUI keeps the previous number
+            // instead of showing zero.
             return UNKNOWN_COUNT;
         }
         return fromStock + lo;
     }
 
     /**
-     * Najwieksza ilosc itemu, ktora planer potrafi wykonac - JEDEN algorytm dla
-     * liczenia liczb i dla wykonania.
+     * The largest amount of the item the planner can produce - ONE algorithm for
+     * both computing numbers and executing.
      *
-     * <p><b>Rosnace proby, nie schodzenie od gory.</b> Poprzednia wersja
-     * zaczynala od polowy zamowienia, wiec PIERWSZA proba byla najdrozsza:
-     * receptura z 21 skladnikami (mechanical crafting Create) razy 32 sztuki to
-     * setki operacji planowania i budzet konczyl sie, zanim cokolwiek policzono.
-     * Skutek widoczny u gracza: GUI pokazywalo liczbe (z wczesniejszego, taniego
-     * policzenia), a proba craftowania konczyla sie komunikatem o braku itemow,
-     * bo plan nie powstal w budzecie.
+     * <p><b>Growing attempts, not descending from the top.</b> The previous version
+     * started from half the order, so the FIRST attempt was the most expensive:
+     * a recipe with 21 ingredients (Create mechanical crafting) times 32 units means
+     * hundreds of planning operations and the budget ran out before anything was
+     * computed. The effect seen by the player: the GUI showed a number (from an
+     * earlier, cheap computation), while the crafting attempt ended with a
+     * missing-items message, because the plan was not built within the budget.
      *
-     * <p>Teraz proby rosna od 1 (1, 2, 4, ...), wiec nawet maly budzet daje
-     * POPRAWNY plan na tyle sztuk, ile zdazylismy sprawdzic - a nie zero.
-     * Potem bisekcja domyka wynik miedzy ostatnim sukcesem a pierwsza porazka.
+     * <p>Now attempts grow from 1 (1, 2, 4, ...), so even a small budget yields a
+     * CORRECT plan for as many units as we managed to check - and not zero. Then the
+     * bisection closes in on the result between the last success and the first
+     * failure.
      *
-     * @param resultPlan gdy nie {@code null}, zostaje wypelniony najlepszym planem
-     * @return najwieksza wykonalna ilosc (0, gdy nawet jedna sztuka sie nie udala)
+     * @param resultPlan when not {@code null}, it is filled with the best plan
+     * @return the largest feasible amount (0 when not even one unit succeeded)
      */
     private static long findMaxPlannable(ServerLevel level, VelocePipeNetwork network, Item item,
                                          long upperBound, Map<Item, Long> stock,
@@ -1182,7 +1191,7 @@ public final class VeloceAutoCrafter {
         long failed = 0;
         Plan best = null;
 
-        // Krok 1: rosnace proby (1, 2, 4, ...) - tanie najpierw.
+        // Step 1: growing attempts (1, 2, 4, ...) - cheap ones first.
         long amount = 1;
         while (amount <= upperBound && !estimateAborted()) {
             startEstimate(budgetNanos);
@@ -1191,8 +1200,8 @@ public final class VeloceAutoCrafter {
             long startNanos = System.nanoTime();
             boolean ok = plan(level, network, enabled, preferred, item, amount, copy, candidate,
                     new HashSet<>(), 0);
-            VeloceCraftTrace.log("plan: proba %d szt -> %s (runow=%d, %d ms, cieplo=%d, abort=%s)",
-                    amount, ok ? "OK" : "NIE", candidate.runs.size(),
+            VeloceCraftTrace.log("plan: attempt %d units -> %s (runs=%d, %d ms, heat=%d, abort=%s)",
+                    amount, ok ? "OK" : "NO", candidate.runs.size(),
                     (System.nanoTime() - startNanos) / 1_000_000L,
                     candidate.heatRemaining, estimateAborted());
             if (ok) {
@@ -1201,7 +1210,7 @@ public final class VeloceAutoCrafter {
             } else {
                 failed = amount;
                 if (estimateAborted()) {
-                    break;   // dalsze proby tylko zjadalyby budzet
+                    break;   // further attempts would only eat the budget
                 }
             }
             if (amount == upperBound) {
@@ -1210,7 +1219,7 @@ public final class VeloceAutoCrafter {
             amount = Math.min(upperBound, amount * 2);
         }
 
-        // Krok 2: bisekcja miedzy ostatnim sukcesem a pierwsza porazka.
+        // Step 2: bisection between the last success and the first failure.
         long hi = failed > 0 ? failed - 1 : upperBound;
         while (found < hi && !estimateAborted()) {
             long mid = found + (hi - found + 1) / 2;
@@ -1237,19 +1246,19 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Ile sztuk itemu da sie zrobic w piecu - bez planera.
+     * How many units of the item can be made in a furnace - without the planner.
      *
-     * <p>Stosuje sie TYLKO wtedy, gdy item powstaje wylacznie w piecach i z
-     * surowcow, ktore same nie maja zadnej receptury. Wtedy limitem jest
-     * wyłącznie stock surowca, wiec wynik to
-     * {@code min(stock_surowca / ile_potrzeba) * ile_wychodzi} - dokladnie to,
-     * co policzylby planer, tylko bez bisekcji.
+     * <p>It applies ONLY when the item is produced exclusively in furnaces and from
+     * raw materials that themselves have no recipe at all. Then the only limit is the
+     * raw material stock, so the result is
+     * {@code min(stock_of_raw / how_many_needed) * how_many_come_out} - exactly what
+     * the planner would compute, only without bisection.
      *
-     * <p>Jesli item ma tez recepture craftingowa, albo ktorys surowiec da sie
-     * dorobic (ma wlasna recepture), szybka sciezka sie wycofuje: wtedy wynik
-     * zalezy od calego lancucha i musi go policzyc planer.
+     * <p>If the item also has a crafting recipe, or any of its raw materials can be
+     * additionally produced (has its own recipe), the fast path backs out: the result
+     * then depends on the whole chain and the planner has to compute it.
      *
-     * @return policzona liczba sztuk albo {@code -1} = "uzyj planera"
+     * @return the computed number of units or {@code -1} = "use the planner"
      */
     private static long countFurnaceOnly(ServerLevel level, Item item,
                                          Map<Item, Long> stock, long heatOps,
@@ -1260,21 +1269,21 @@ public final class VeloceAutoCrafter {
         long best = 0;
         for (ProcessingEntry recipe : recipes) {
             if (!recipe.isFurnace()) {
-                return -1L;   // jest tez crafting - to robota dla planera
+                return -1L;   // there is also crafting - that is a job for the planner
             }
             long runs = Long.MAX_VALUE;
             List<Ingredient> ingredientList = recipe.ingredients();
             for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
                 Ingredient ingredient = ingredientList.get(ingIndex);
-                // Skladnik moze wymagac kilku sztuk (Alchemistry, Mekanism) -
-                // wtedy limit to stock podzielony przez te liczbe, a nie przez 1.
+                // An ingredient may require several units (Alchemistry, Mekanism) -
+                // then the limit is the stock divided by that number, not by 1.
                 long perIngredient = recipe.ingredientCount(ingIndex);
                 long bestOption = 0;
                 for (ItemStack option : ingredient.getItems()) {
                     Item raw = option.getItem();
                     if (!VeloceRecipeRegistry.getRecipesFor(level, raw, true).isEmpty()) {
-                        // Surowiec sam jest craftowalny - sam stock nie jest
-                        // prawdziwym limitem, planer policzy to lepiej.
+                        // The raw material is itself craftable - the stock alone is
+                        // not the real limit, the planner will compute this better.
                         return -1L;
                     }
                     long needed = Math.max(1, option.getCount()) * perIngredient;
@@ -1283,9 +1292,9 @@ public final class VeloceAutoCrafter {
                 runs = Math.min(runs, bestOption);
             }
             if (runs == Long.MAX_VALUE) {
-                return -1L;   // receptura bez sensownych skladnikow
+                return -1L;   // a recipe with no sensible ingredients
             }
-            // Bez ciepla piec nie zrobi nic - ale to juz wiemy po heatOps.
+            // Without heat the furnace will do nothing - but we already know that from heatOps.
             if (heatOps <= 0) {
                 return 0L;
             }
@@ -1295,68 +1304,69 @@ public final class VeloceAutoCrafter {
         return best;
     }
 
-    /** Limit wyniku szacowania - chroni przed absurdalna bisekcja. */
+    /** Limit of the estimation result - protects against an absurd bisection. */
     private static final long MAX_ESTIMATE_RESULT = 100_000L;
 
     /**
-     * Cieplo dla SZACOWANIA - czyli dla liczby, ktora widzi gracz.
+     * Heat for the ESTIMATION - that is, for the number the player sees.
      *
-     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> Szacowanie dostawalo
-     * ten sam budzet ciepla, co plan wykonania, wiec liczba przy itemie z
-     * receptura pieca byla obcinana do tego, ILE PIEC MA TERAZ W BUFORZE.
-     * Przy piecu z 25 przepaleniami bufora terminal pokazywal 25 szkla
-     * niezaleznie od tego, czy w skrzynce lezy 32 czy 64 piasku ("wyjme
-     * polowe, dalej pokazuje 25"). Liczba ma odpowiadac na pytanie "ile moge
-     * miec z tego, co jest w sieci", a nie "ile piec ugnie w tej sekundzie".
+     * <p><b>The BUG this fixes (player report).</b> The estimation got the same heat
+     * budget as the execution plan, so the number next to an item with a furnace
+     * recipe was clipped to HOW MUCH THE FURNACE HAS IN ITS BUFFER RIGHT NOW. With a
+     * furnace holding 25 smelting operations in the buffer, the terminal showed
+     * 25 glass regardless of whether the chest held 32 or 64 sand ("I take out half
+     * and it still shows 25"). The number should answer the question "how many can I
+     * have from what is in the network", not "how much the furnace can bend in this
+     * second".
      *
-     * <p>Rozroznienie jest takie samo jak przy {@code isPowered()}: zero
-     * ciepla = receptury pieca wylaczone (nie ma czym palic), jakakolwiek
-     * ilosc = receptury dzialaja, a liczba idzie za surowcem. Piec paliwowy
-     * dociaga paliwo z sieci sam, wiec jego bufor nie jest limitem tego, ile
-     * da sie zrobic - limitem jest surowiec (i paliwo w sieci). Piec
-     * elektryczny ma zasob, ktory trzeba uzupelniac, ale i tak odpowiada na
-     * inne pytanie: liczba mowi "ile MOGE miec z tego, co lezy w sieci", a
-     * nie "na ile starczy jednego ladowania".
+     * <p>The distinction is the same as with {@code isPowered()}: zero heat = furnace
+     * recipes disabled (nothing to burn), any amount = recipes work, and the number
+     * follows the raw material. A fuel furnace pulls fuel from the network by itself,
+     * so its buffer is not the limit of what can be made - the raw material (and the
+     * fuel in the network) is. An electric furnace has a resource that must be
+     * replenished, but it still answers a different question: the number says "how
+     * many I CAN have from what lies in the network", not "how long one charge will
+     * last".
      *
-     * <p>Wartosc jest wieksza od {@link #MAX_ESTIMATE_RESULT}, wiec nigdy nie
-     * obetnie wyniku; jest zas malenka, zeby nie kusilo liczenia "w
-     * nieskonczonosc" i nie ryzykowac przepelnienia.
+     * <p>The value is larger than {@link #MAX_ESTIMATE_RESULT}, so it will never clip
+     * the result; and it is tiny, so that nobody is tempted to compute "to infinity"
+     * and risk an overflow.
      */
     /**
-     * Najkrotszy budzet, jaki dostaje pojedynczy item w partii (2 ms).
+     * The shortest budget a single item gets in a batch (2 ms).
      *
-     * <p>Bez dolnej granicy rowny udzial przy dlugiej liscie spadlby do zera
-     * i zadnego itemu nie daloby sie policzyc.
+     * <p>Without a lower bound, an equal share on a long list would drop to zero and
+     * no item could be computed.
      *
-     * <p><b>Dlaczego 2 ms, a nie 0.2 ms.</b> W logu gracza widac bylo partie
-     * "45 item(s) -> 9 result(s) in 25 ms (complete=false)" powtarzane w kolko:
-     * przy udziale 0.2 ms ciezkie itemy (szklo i jego warianty) PRZERYWALY
-     * szacowanie przy kazdym zadaniu, wiec nigdy nie dostawaly liczby, a ich
-     * miejsce w budzecie przepadalo. Wiekszy udzial sprawia, ze item dostaje
-     * PRAWDZIWA odpowiedz albo w ogole nie jest ruszany - a wtedy kolejne
-     * zadanie (klient ustawia braki pierwsze) bierze nastepne pozycje.
+     * <p><b>Why 2 ms and not 0.2 ms.</b> In the player's log the batch
+     * "45 item(s) -> 9 result(s) in 25 ms (complete=false)" was visible over and
+     * over: with a share of 0.2 ms the heavy items (glass and its variants) ABORTED
+     * the estimation on every task, so they never got a number and their place in
+     * the budget was wasted. A larger share means an item either gets a TRUE answer
+     * or is not touched at all - and then the next task (the client puts the missing
+     * ones first) takes the next positions.
      */
     private static final long MIN_ITEM_BUDGET_NS = 2_000_000L;
 
     private static final long ESTIMATE_HEAT_OPS = 1_000_000L;
 
-    /** Budzet ciepla dla szacowania: "jest czym palic" albo "nie ma". */
+    /** Heat budget for the estimation: "there is something to burn" or "there is not". */
     private static long estimateHeatOps(long realHeatOps) {
         return realHeatOps > 0 ? ESTIMATE_HEAT_OPS : 0L;
     }
 
     /**
-     * Bezpieczne ZAWYZENIE liczby sztuk, ktore mozna zrobic z danego stocku.
+     * A safe OVERESTIMATE of the number of units that can be made from a given stock.
      *
-     * <p>Dla kazdego surowca obecnego w sieci mnozymy jego ilosc przez najwiekszy
-     * mozliwy uzysk w jednym ciagu receptur. Przyklad: 64 klody, a receptura
-     * "1 kloda -> 4 deski" i "1 deska -> 4 patyki" daje uzysk 16, wiec gorna
-     * granica to 1024 - i bisekcja ma miejsce, zeby znalezc prawdziwy wynik
-     * (np. 170 plotkow), zamiast zatrzymywac sie na 64.
+     * <p>For every raw material present in the network we multiply its amount by the
+     * largest possible yield in one chain of recipes. Example: 64 logs, and the
+     * recipes "1 log -> 4 planks" and "1 plank -> 4 sticks" give a yield of 16, so
+     * the upper bound is 1024 - and the bisection has room to find the true result
+     * (e.g. 170 fences) instead of stopping at 64.
      *
-     * <p>To jest wylacznie ograniczenie bisekcji. Wynik nie musi byc osiagalny -
-     * o tym decyduje planer. Wazne, zeby nie byl ZA MALY, bo wtedy obcinalibysmy
-     * poprawne odpowiedzi.
+     * <p>This is purely a bisection constraint. The result does not have to be
+     * reachable - the planner decides that. What matters is that it is not TOO SMALL,
+     * because then we would clip correct answers.
      */
     private static long estimateUpperBound(ServerLevel level, VelocePipeNetwork network,
                                            Item item, Map<Item, Long> stock,
@@ -1373,15 +1383,15 @@ public final class VeloceAutoCrafter {
             return total;
         }
 
-        // Ile sztuk naszego itemu da sie wycisnac z JEDNEJ sztuki surowca.
+        // How many units of our item can be squeezed out of ONE unit of raw material.
         //
-        // BUG, ktory tu byl: zamiast prawdziwego lancucha liczylismy
-        // najwiekszy uzysk JEDNEJ receptury i mnozylismy go przez wszystko
-        // w sieci (z dolnym progiem 4). Dla itemu o dlugim lancuchu limit
-        // wychodzil ZA MALY, wiec bisekcja nigdy nie sprawdzala wiekszych
-        // wartosci - np. przy 64 klodach patyczki pokazywaly sie jako 256,
-        // choc realnie wychodzi 512. Za maly limit obcina poprawna odpowiedz,
-        // wiec musi to byc prawdziwe (a nie zgrubne) zawyzenie.
+        // The BUG that used to be here: instead of the true chain we computed the
+        // largest yield of a SINGLE recipe and multiplied it by everything in the
+        // network (with a lower threshold of 4). For an item with a long chain the
+        // limit came out TOO SMALL, so the bisection never checked larger values -
+        // e.g. with 64 logs sticks showed up as 256, although in reality 512 come out.
+        // A too-small limit clips the correct answer, so it must be a true (not a
+        // rough) overestimate.
         double perRawUnit = maxYieldPerRawUnit(level, network, item,
                 new HashMap<>(), new HashSet<>(), 0, heatAvailable);
         double bound = total * Math.max(1.0, perRawUnit);
@@ -1391,20 +1401,20 @@ public final class VeloceAutoCrafter {
         return Math.max(total, (long) Math.ceil(bound));
     }
 
-    /** Maksymalna glebokosc lancucha przy liczeniu gornej granicy. */
+    /** Maximum chain depth when computing the upper bound. */
     private static final int UPPER_BOUND_MAX_DEPTH = 16;
 
     /**
-     * Ile sztuk {@code item} da sie uzyskac z JEDNEJ sztuki surowca.
+     * How many units of {@code item} can be obtained from ONE unit of raw material.
      *
-     * <p>Schodzi rekurencyjnie po recepturach, wiec widzi cale lancuchy
-     * (kloda -> deski -> patyczki), a nie tylko pierwszy krok. Wynik jest
-     * celowo ZAWYZONY - to wylacznie ograniczenie bisekcji, a nie odpowiedz
-     * dla gracza: gdy receptura pozwala wziac ten sam surowiec na kilka
-     * sposobow, zakladamy, ze starczy go na wszystkie naraz.
+     * <p>It descends recursively through recipes, so it sees whole chains
+     * (log -> planks -> sticks), not just the first step. The result is deliberately
+     * an OVERESTIMATE - it is purely a bisection constraint, not an answer for the
+     * player: when a recipe allows taking the same raw material in several ways, we
+     * assume there is enough of it for all of them at once.
      *
-     * <p>Cykl receptur i zbyt gleboki lancuch traktujemy jak surowiec
-     * (uzysk 1.0), zeby rekurencja byla skonczona.
+     * <p>A recipe cycle and a too-deep chain are treated as a raw material
+     * (yield 1.0), so that the recursion is finite.
      */
     private static double maxYieldPerRawUnit(ServerLevel level, VelocePipeNetwork network,
                                              Item item,
@@ -1423,7 +1433,7 @@ public final class VeloceAutoCrafter {
                 double cost = rawCostOfRecipe(level, network, recipe, memo, visiting,
                         depth, heatAvailable);
                 if (cost <= 0.0) {
-                    continue;   // receptura bez zadnej dostepnej opcji skladnika
+                    continue;   // a recipe with no available ingredient option at all
                 }
                 double yield = Math.max(1, recipe.primaryResult().getCount()) / cost;
                 if (yield > best) {
@@ -1438,10 +1448,10 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Koszt receptury w jednostkach "sztuk surowca" (mniejszy = taniej).
+     * The cost of a recipe in units of "raw material pieces" (smaller = cheaper).
      *
-     * <p>Zwraca 0, gdy receptury nie da sie uzyc (skladnik nie ma zadnej
-     * opcji), bo wtedy nie wnosimy jej do maksimum.
+     * <p>Returns 0 when the recipe cannot be used (an ingredient has no option at
+     * all), because then we do not include it in the maximum.
      */
     private static double rawCostOfRecipe(ServerLevel level, VelocePipeNetwork network,
                                           ProcessingEntry recipe,
@@ -1462,36 +1472,36 @@ public final class VeloceAutoCrafter {
             if (cheapest == Double.MAX_VALUE) {
                 return 0.0;
             }
-            // Skladnik zuzywa `ingredientCount` sztuk na wykonanie, wiec
-            // kosztuje tyle razy wiecej surowca.
+            // An ingredient consumes `ingredientCount` units per run, so it costs that
+            // many times more raw material.
             cost += recipe.ingredientCount(ingIndex) / cheapest;
         }
         return cost;
     }
 
     // ------------------------------------------------------------------
-    // Faza wykonania - fizyczne ruszanie itemow
+    // Execution phase - physically moving items
     // ------------------------------------------------------------------
 
     private static boolean execute(ServerLevel level, Context ctx, Plan plan) {
-        // Zrodla ciepla pobieramy RAZ na cale wykonanie planu.
+        // We fetch the heat sources ONCE for the whole plan execution.
         //
-        // Kazde przepalenie wolalo wczesniej VeloceHeatSources.consume(), a to
-        // robilo dwa pelne przejscia po terminalach sieci z sortowaniem. Plan
-        // moze miec kilkaset przepalen (jeden naladowany piec elektryczny to
-        // 125 operacji), wiec bylo to setki skanow w jednym ticku.
+        // Every smelting operation used to call VeloceHeatSources.consume(), and that
+        // did two full walks of the network's terminals with sorting. A plan can have
+        // several hundred smelting operations (one charged electric furnace is
+        // 125 operations), so that was hundreds of scans in a single tick.
         //
-        // Bezpieczenstwo: w obrebie jednego wykonania zbior zrodel sie nie
-        // zmienia, a nawet gdyby chunk z piecem wypadl z symulacji, trzymana
-        // referencja do block entity jest nadal waznym obiektem Java - czytamy
-        // z niej tylko wlasne pola licznika.
+        // Safety: within a single execution the set of sources does not change, and
+        // even if the chunk with the furnace dropped out of simulation, the retained
+        // reference to the block entity is still a valid Java object - we only read
+        // its own counter fields from it.
         java.util.List<com.craftingveloce.block.entity.VeloceHeatSource> heat =
                 VeloceHeatSources.allIn(level, ctx.network);
 
-        VeloceCraftTrace.log("wykonanie: %d krokow planu, zrodel ciepla w sieci=%d",
+        VeloceCraftTrace.log("execution: %d plan step(s), heat sources in network=%d",
                 plan.runs.size(), heat.size());
 
-        // Plan jest w kolejnosci post-order: skladniki produkowane przed uzyciem.
+        // The plan is in post-order: ingredients produced before use.
         for (PlannedRun run : plan.runs) {
             for (long i = 0; i < run.times(); i++) {
                 if (!runOnce(level, ctx, run.recipe(), heat)) {
@@ -1503,23 +1513,23 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Zaplata za JEDNO wykonanie receptury.
+     * Pays for ONE run of a recipe.
      *
-     * <p><b>Trzy rodzaje receptur, trzy zrodla zaplaty:</b>
+     * <p><b>Three kinds of recipes, three sources of payment:</b>
      * <ul>
-     *   <li>rodzina {@code FREE} (crafting table, stonecutter, smithing) -
-     *       nie placi niczym, bo nie potrzebuje zadnej maszyny,</li>
-     *   <li>rodzina {@code FURNACE} - placi jednym przepaleniem z pieca,</li>
-     *   <li>rodzina modulu (Create/Alchemistry/Mekanism/...) - placi jedna
-     *       operacja z maszyny tego modulu (ktora sama przelicza to na FE).</li>
+     *   <li>the {@code FREE} family (crafting table, stonecutter, smithing) -
+     *       pays with nothing, because it needs no machine,</li>
+     *   <li>the {@code FURNACE} family - pays with one smelting operation from a furnace,</li>
+     *   <li>the module family (Create/Alchemistry/Mekanism/...) - pays with one
+     *       operation from that mod's machine (which itself converts this to FE).</li>
      * </ul>
      *
-     * <p>Lista maszyn jest brana z {@link Context} (pamiec na czas jednego
-     * zlecenia), zeby nie skanowac sieci przy kazdej sztuce.
+     * <p>The machine list is taken from {@link Context} (memoized for the duration of
+     * one order), so that the network is not scanned per unit.
      *
-     * <p>Brak zaplaty NIE jest bledem konfiguracji - to zwykla sytuacja
-     * (piec bez paliwa, maszyna bez pradu). Wolajacy zwraca wtedy pobrane
-     * skladniki.
+     * <p>A missing payment is NOT a configuration error - it is an ordinary situation
+     * (a furnace without fuel, a machine without power). The caller then returns the
+     * taken ingredients.
      */
     private static boolean payForOperation(ServerLevel level, Context ctx,
                                            ProcessingEntry recipe,
@@ -1536,7 +1546,7 @@ public final class VeloceAutoCrafter {
                     recipe.id());
             return false;
         }
-        // Modul z innego moda - maszyna musi stac w sieci i miec energie.
+        // A module from another mod - the machine must stand in the network and have energy.
         if (VeloceProcessingSources.consumeFrom(ctx.moduleSourcesFor(recipe.type()), 1)) {
             return true;
         }
@@ -1547,23 +1557,23 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * DLACZEGO plan sie nie udal - komunikat, ktory gracz naprawde rozumie.
+     * WHY the plan failed - a message the player really understands.
      *
-     * <p><b>Kolejnosc pytan jest istotna</b>, bo kazde z nich prowadzi do innej
-     * naprawy:
+     * <p><b>The order of the questions matters</b>, because each of them leads to a
+     * different fix:
      * <ol>
-     *   <li>czy w sieci jest w ogole piec / maszyna modulu (brak maszyny),</li>
-     *   <li>czy ta maszyna ma paliwo/prad (stoi),</li>
-     *   <li>dopiero na koncu: ktorego SKLADNIKA brakuje.</li>
+     *   <li>is there a furnace / module machine in the network at all (no machine),</li>
+     *   <li>does that machine have fuel/power (it is idle),</li>
+     *   <li>only at the end: which INGREDIENT is missing.</li>
      * </ol>
      *
-     * <p>Wczesniej gracz dostawal jedno ogolne "nie ma itemu w sieci" - i nie
-     * dalo sie odroznic "brakuje zelaza" od "piec nie ma paliwa". Zgloszenia
-     * "GUI pokazuje, ze moge, a nie moge" byly przez to nierozwiazywalne.
+     * <p>Previously the player got one generic "no such item in the network" - and
+     * one could not distinguish "iron is missing" from "the furnace has no fuel".
+     * Reports of "the GUI says I can, but I cannot" were therefore unsolvable.
      */
     private static CraftResult diagnosePlanFailure(ServerLevel level, Context ctx, Item item,
                                                    Map<Item, Long> stock) {
-        // 1) Piec: receptura pieca istnieje, ale maszyny nie ma albo stoi.
+        // 1) Furnace: a furnace recipe exists, but the machine is absent or idle.
         if (!VeloceRecipeRegistry.getFurnaceRecipesFor(level, item).isEmpty()) {
             if (!VeloceHeatSources.hasAnyHeatSource(level, ctx.network)) {
                 return CraftResult.fail("craftingveloce.craft.error.noFurnace");
@@ -1572,8 +1582,8 @@ public final class VeloceAutoCrafter {
                 return CraftResult.fail("craftingveloce.craft.error.furnaceUnpowered");
             }
         }
-        // 2) Modul: maszyna stoi w sieci, ale nie jest zasilona (np. kruszarka
-        //    bez pradu albo maszyna kinetyczna bez obrotow).
+        // 2) Module: the machine stands in the network but is not powered (e.g. a
+        //    crusher without power or a kinetic machine without rotation).
         for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
             if (module.recipesAnywhere(level, item).isEmpty()) {
                 continue;
@@ -1586,21 +1596,22 @@ public final class VeloceAutoCrafter {
                         module.id());
             }
         }
-        // 3) Zostaje brak skladnika - mowimy, ktorego.
+        // 3) What remains is a missing ingredient - we say which one.
         return CraftResult.fail("craftingveloce.craft.error.noBase",
                 firstMissing(level, ctx, item, stock));
     }
 
     /**
-     * Pierwszy skladnik, ktorego brakuje i ktorego nie da sie zrobic.
+     * The first ingredient that is missing and cannot be made.
      *
-     * <p>Uzywane WYLACZNIE do komunikatu dla gracza (i do logu), gdy plan sie
-     * nie udal. Wczesniej gracz dostawal ogolne "nie ma itemu w sieci"
-     * i nie bylo sposobu ustalic, czy brakuje materialu, maszyny, czy receptury.
+     * <p>Used EXCLUSIVELY for the player-facing message (and the log) when the plan
+     * failed. Previously the player got a generic "no such item in the network"
+     * and there was no way to determine whether the material, the machine or the
+     * recipe was missing.
      *
-     * <p>Schodzi po recepturach w dol (z ograniczona glebokoscia i ochrona
-     * przed cyklem) i zwraca NAZWE pierwszego skladnika, dla ktorego zadna
-     * opcja nie jest dostepna. Pusty napis = nie udalo sie ustalic.
+     * <p>It descends through recipes (with a bounded depth and cycle protection) and
+     * returns the NAME of the first ingredient for which no option is available.
+     * An empty string = could not be determined.
      */
     private static String firstMissing(ServerLevel level, Context ctx, Item item,
                                        Map<Item, Long> stock) {
@@ -1611,15 +1622,15 @@ public final class VeloceAutoCrafter {
     private static String findMissing(ServerLevel level, Context ctx, Item item,
                                       Map<Item, Long> stock, Set<Item> visiting, int depth) {
         if (stock.getOrDefault(item, 0L) > 0) {
-            return null;                       // jest w sieci
+            return null;                       // it is in the network
         }
         if (depth >= MISSING_MAX_DEPTH || !visiting.add(item)) {
-            return null;                       // zbyt gleboko albo cykl - nie zgadujemy
+            return null;                       // too deep or a cycle - we do not guess
         }
         try {
             List<ProcessingEntry> recipes = ctx.recipesFor(item);
             if (recipes.isEmpty()) {
-                return name(item);             // nie ma receptury, ktorej mozemy uzyc
+                return name(item);             // there is no recipe we can use
             }
             String firstGap = null;
             for (ProcessingEntry recipe : recipes) {
@@ -1644,7 +1655,7 @@ public final class VeloceAutoCrafter {
                     }
                 }
                 if (gap == null) {
-                    return null;               // ta receptura jest wykonalna
+                    return null;               // this recipe is feasible
                 }
                 if (firstGap == null) {
                     firstGap = gap;
@@ -1656,74 +1667,74 @@ public final class VeloceAutoCrafter {
         }
     }
 
-    /** Glebokosc schodzenia przy szukaniu brakujacego skladnika. */
+    /** Depth of descent when looking for the missing ingredient. */
     private static final int MISSING_MAX_DEPTH = 6;
 
     private static String name(Item item) {
         return new ItemStack(item).getHoverName().getString();
     }
 
-    /** Jedno wykonanie receptury: pobierz skladniki, wstaw wynik. */
+    /** One run of a recipe: take the ingredients, insert the result. */
     private static boolean runOnce(ServerLevel level, Context ctx,
                                    ProcessingEntry recipe,
                                    java.util.List<com.craftingveloce.block.entity.VeloceHeatSource> heat) {
-        // 1. NAJPIERW POBRANIE SKLADNIKOW, POTEM ZAPLATA CIEPLEM.
+        // 1. FIRST TAKE THE INGREDIENTS, THEN PAY WITH HEAT.
         //
-        // Odwrotna kolejnosc (cieplo najpierw) przepalala energie na darmo:
-        // gdy po zapłacie okazywalo sie, ze brakuje skladnika, metoda
-        // zwracala pobrane itemy, ale CIEPLA NIKT NIE ODDYWAL. Przy
-        // recepturze, ktorej skladnik wlasnie sie skonczyl, kazda proba
-        // zjadala jedno przepalenie z pieca i nic z tego nie wynikalo.
+        // The reverse order (heat first) burned energy for nothing: when after the
+        // payment it turned out that an ingredient was missing, the method returned
+        // the taken items, but NOBODY EVER GAVE THE HEAT BACK. With a recipe whose
+        // ingredient had just run out, every attempt ate one smelting operation from
+        // the furnace and nothing came of it.
         //
-        // Teraz: cieplo placimy dopiero, gdy mamy juz komplet skladnikow.
-        // Wowczas jedyna przyczyna niepowodzenia jest brak pradu/paliwa,
-        // a wtedy zwracamy rowniez pobrane itemy.
+        // Now: we pay the heat only once we have the complete set of ingredients.
+        // Then the only cause of failure is a lack of power/fuel, and in that case we
+        // also return the taken items.
         NonNullList<ItemStack> consumed = NonNullList.create();
         List<Ingredient> ingredientList = recipe.ingredients();
         for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
             Ingredient ing = ingredientList.get(ingIndex);
-            // TA SAMA REGULA CO W PLANERZE (hasOptions).
+            // THE SAME RULE AS IN THE PLANNER (hasOptions).
             //
-            // BUG, ktory to naprawia (zgloszenie gracza: "GUI pokazuje 2
-            // crushing wheele, ale przy craftowaniu mowi, ze nie mam
-            // itemkow"): planer pomijal skladniki bez opcji, a wykonanie
-            // probowalo je "pobrac" i natychmiast padalo. Puste sloty siatki
-            // (Ingredient.EMPTY) sa teraz usuwane juz przy budowie receptury,
-            // ale skladnik z pustym tagiem nadal tu trafia - i musi byc
-            // pominiety tak samo, jak w planie, bo inaczej plan i wykonanie
-            // nie zgadzaja sie co do listy skladnikow.
+            // The BUG this fixes (player report: "the GUI shows 2 crushing wheels,
+            // but when crafting it says I do not have the items"): the planner skipped
+            // ingredients with no options, while execution tried to "take" them and
+            // failed immediately. Empty grid slots (Ingredient.EMPTY) are now removed
+            // already when the recipe is built, but an ingredient with an empty tag
+            // still reaches this point - and it must be skipped exactly as in the
+            // plan, because otherwise the plan and the execution disagree on the
+            // ingredient list.
             //
-            // Gdyby plan i wykonanie liczyly skladniki ROZNYMI regulami,
-            // dostajemy dokladnie ten objaw: liczba jest policzona, a craft
-            // nie dziala nigdy.
+            // If the plan and the execution counted ingredients by DIFFERENT rules,
+            // we get exactly this symptom: the number is computed, but crafting never
+            // works.
             if (!hasOptions(ing)) {
                 VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
-                        "recipe %s: pomijam skladnik bez zadnej opcji (pusty tag)",
+                        "recipe %s: skipping ingredient with no option at all (empty tag)",
                         recipe.id());
                 continue;
             }
-            // Skladnik moze wymagac kilku sztuk na jedno wykonanie
+            // An ingredient may require several units per run
             // (Alchemistry IngredientStack, Mekanism SizedIngredient).
-            // Plan liczy sie z ta sama liczba, wiec wykonanie musi ja
-            // pobrac - inaczej powstalby darmowy nadmiar w sieci.
+            // The plan takes this number into account, so execution must take it
+            // too - otherwise free surplus would appear in the network.
             int units = recipe.ingredientCount(ingIndex);
             for (int unit = 0; unit < units; unit++) {
                 ItemStack taken = takeOne(level, ctx, ing);
-                VeloceCraftTrace.log("wykonanie %s: skladnik %d/%d %s -> %s",
+                VeloceCraftTrace.log("execution %s: ingredient %d/%d %s -> %s",
                         recipe.id(), unit + 1, units, describeOptions(ing),
-                        taken.isEmpty() ? "BRAK" : (taken.getCount() + "x " + taken.getItem()));
+                        taken.isEmpty() ? "MISSING" : (taken.getCount() + "x " + taken.getItem()));
                 if (taken.isEmpty()) {
-                    // MOWIMY WPROST, CZEGO ZABRAKLO.
+                    // WE SAY PLAINLY WHAT WAS MISSING.
                     //
-                    // Bez tego w logu byl tylko komunikat "ingredients vanished
-                    // mid-craft", a gracz zgłaszal "nie mam itemkow" - i nie
-                    // dalo sie ustalic, ktorego skladnika dotyczy problem.
+                    // Without this the log only had "ingredients vanished mid-craft",
+                    // while the player reported "I do not have the items" - and it was
+                    // impossible to determine which ingredient the problem concerned.
                     String missingName = firstOptionName(ing);
                     ctx.lastMissingIngredient = missingName;
                     VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
-                            "recipe %s: brak skladnika %s (sztuk na wykonanie: %d, opcji: %d)",
+                            "recipe %s: missing ingredient %s (units per run: %d, options: %d)",
                             recipe.id(), describeOptions(ing), units, nonEmpty(ing).size());
-                    // Zwrot pobranych - nie gubimy itemow.
+                    // Return the taken ones - we do not lose items.
                     for (ItemStack s : consumed) {
                         deposit(level, ctx, s);
                     }
@@ -1733,19 +1744,19 @@ public final class VeloceAutoCrafter {
             }
         }
 
-        // 2. Zaplata za operacje.
+        // 2. Payment for the operation.
         //
-        // Piec placi cieplem (VeloceHeatSources: najpierw elektryczny, potem
-        // paliwowy), maszyna modulu placi energia wlasna (VeloceProcessingSources),
-        // a receptury bez infrastruktury (crafting table, stonecutter, smithing)
-        // nie placa niczym - dlatego rozpoznajemy je po rodzinie, a nie po tym,
-        // "czy to nie piec".
+        // A furnace pays with heat (VeloceHeatSources: electric first, then fuel),
+        // a module machine pays with its own energy (VeloceProcessingSources), and
+        // recipes needing no infrastructure (crafting table, stonecutter, smithing)
+        // pay with nothing - that is why we recognize them by family and not by
+        // "is it not a furnace".
         //
-        // Przy niepowodzeniu nie zabieramy NICZEGO i zwracamy pobrane itemy.
+        // On failure we take NOTHING and return the taken items.
         boolean paid = payForOperation(level, ctx, recipe, heat);
-        VeloceCraftTrace.log("wykonanie %s: zaplata (%s) -> %s", recipe.id(),
-                recipe.isFurnace() ? "cieplo" : (VeloceRecipeFamilies.isFree(recipe.type())
-                        ? "brak" : "maszyna modulu"), paid ? "OK" : "BRAK");
+        VeloceCraftTrace.log("execution %s: payment (%s) -> %s", recipe.id(),
+                recipe.isFurnace() ? "heat" : (VeloceRecipeFamilies.isFree(recipe.type())
+                        ? "none" : "module machine"), paid ? "OK" : "MISSING");
         if (!paid) {
             for (ItemStack s : consumed) {
                 deposit(level, ctx, s);
@@ -1753,12 +1764,12 @@ public final class VeloceAutoCrafter {
             return false;
         }
 
-        // 3. Wyniki.
+        // 3. Results.
         //
-        // Wszystkie, nie tylko glowny: Fission ma dwa, a crushing Create
-        // bywa troche wiecej. Rzucamy koscia PER WYNIK (resultChances), wiec
-        // gracz czasem dostanie wiecej, nigdy mniej niz zaplanowano - plan
-        // bowiem widzi wylacznie wyniki gwarantowane (patrz ProcessingEntry).
+        // All of them, not only the primary one: Fission has two, and Create crushing
+        // is sometimes a bit more. We roll the dice PER RESULT (resultChances), so the
+        // player sometimes gets more, never less than planned - the plan only sees
+        // guaranteed results (see ProcessingEntry).
         List<ItemStack> results = recipe.results();
         for (int i = 0; i < results.size(); i++) {
             ItemStack single = results.get(i);
@@ -1770,7 +1781,7 @@ public final class VeloceAutoCrafter {
             if (chance < 1.0f && level.random.nextFloat() >= chance) {
                 continue;
             }
-            VeloceCraftTrace.log("wykonanie %s: wynik %dx %s", recipe.id(),
+            VeloceCraftTrace.log("execution %s: result %dx %s", recipe.id(),
                     single.getCount(), single.getItem());
             deposit(level, ctx, single.copy());
         }
@@ -1778,23 +1789,23 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Pobiera jedna sztuke pasujaca do skladnika.
+     * Takes one unit matching the ingredient.
      *
-     * <p><b>Kolejnosc jest krytyczna i musi byc symetryczna do
-     * {@link #deposit}.</b> deposit wklada wyniki NAJPIERW do buforow
-     * crafterow, wiec takeOne musi ich tam szukac PRZED siecia. Bez tego
-     * wieloetapowe craftowanie (deski -> plotek) padalo: plan wiedzial, ze
-     * deski beda, bo deposit je tam wklada, ale takeOne ich nie znajdowal
-     * i zwracal EMPTY. Objaw w logu: "ingredients vanished mid-craft",
-     * a w grze - materialy zostawaly niezuzyte.
+     * <p><b>The order is critical and must be symmetric to {@link #deposit}.</b>
+     * deposit puts the results into the crafter buffers FIRST, so takeOne must look
+     * for them there BEFORE the network. Without that, multi-stage crafting
+     * (planks -> fence) failed: the plan knew the planks would be there, because
+     * deposit puts them there, but takeOne could not find them and returned EMPTY.
+     * The symptom in the log: "ingredients vanished mid-craft", and in the game -
+     * materials were left unused.
      *
-     * <p>Kolejnosc: ekwipunek gracza -> bufory crafterow -> siec.
+     * <p>The order: player inventory -> crafter buffers -> network.
      */
     private static ItemStack takeOne(ServerLevel level, Context ctx, Ingredient ing) {
         for (ItemStack opt : nonEmpty(ing)) {
             Item item = opt.getItem();
 
-            // 1. Ekwipunek gracza ma priorytet.
+            // 1. The player inventory has priority.
             if (ctx.inventory != null) {
                 ItemStack fromInv = ctx.inventory.extract(item, 1);
                 if (!fromInv.isEmpty()) {
@@ -1802,7 +1813,7 @@ public final class VeloceAutoCrafter {
                 }
             }
 
-            // 2. Bufory crafterow - tu deposit wklada wyniki posrednie.
+            // 2. Crafter buffers - this is where deposit puts intermediate results.
             if (ctx.buffers != null) {
                 for (var buf : ctx.buffers) {
                     ItemStack fromBuf = extractOneFromBuffer(buf, item);
@@ -1812,7 +1823,7 @@ public final class VeloceAutoCrafter {
                 }
             }
 
-            // 3. Zwykle endpointy sieci (skrzynie, RS).
+            // 3. Ordinary network endpoints (chests, RS).
             ItemStack fromNet = ctx.network.extractItem(level, item, 1);
             if (!fromNet.isEmpty()) {
                 return fromNet;
@@ -1821,7 +1832,7 @@ public final class VeloceAutoCrafter {
         return ItemStack.EMPTY;
     }
 
-    /** Wyciaga jedna sztuke itemu z bufora craftera. */
+    /** Takes one unit of the item out of the crafter buffer. */
     private static ItemStack extractOneFromBuffer(
             com.craftingveloce.inventory.VeloceCraftingBuffer buf, Item item) {
         for (int slot = 0; slot < buf.getContainerSize(); slot++) {
@@ -1837,37 +1848,37 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Wklada wynik do sieci.
+     * Inserts the result into the network.
      *
-     * <p>Kolejnosc: najpierw bufor craftera (pamiec podreczna na nadwyzke),
-     * potem zwykle endpointy sieci (skrzynie). Dzieki temu gdy z 1 logu
-     * powstana 4 deski, a gracz chcial 1 - pozostale 3 zostaja w buforze
-     * craftera i sa normalnie dostepne dla calej sieci.
+     * <p>Order: first the crafter buffer (scratch storage for the surplus), then the
+     * ordinary network endpoints (chests). Thanks to that, when 4 planks are made
+     * from 1 log and the player wanted 1 - the remaining 3 stay in the crafter buffer
+     * and are normally available to the whole network.
      */
     private static void deposit(ServerLevel level, Context ctx, ItemStack stack) {
         ItemStack leftover = insertWhereverPossible(ctx, stack);
         if (!leftover.isEmpty()) {
-            // BUG, ktory tu byl: reszta po przejsciu WSZYSTKICH endpointow byla
-            // po cichu porzucana. Przy pelnej sieci ginely wiec wycraftowane
-            // itemy - a takze SKLADNIKI zwracane przy nieudanym wykonaniu
-            // (runOnce oddaje je przez deposit). Teraz reszta trafia na ziemie
-            // przy bloku, ktory o craftowanie poprosil.
+            // The BUG that used to be here: the remainder after going through ALL
+            // endpoints was silently discarded. With a full network, crafted items
+            // were therefore lost - as well as the INGREDIENTS returned on a failed
+            // execution (runOnce returns them through deposit). Now the remainder is
+            // dropped on the ground at the block that requested the crafting.
             dropLeftover(level, ctx, leftover);
         }
     }
 
     /**
-     * Wklada stos tam, gdzie sie da, i zwraca to, co zostalo.
+     * Inserts the stack wherever possible and returns what is left.
      *
-     * <p>Kolejnosc: bufor craftera (pamiec podreczna na nadwyzke), potem
-     * zwykle endpointy sieci (skrzynie).
+     * <p>Order: the crafter buffer (scratch storage for the surplus), then the
+     * ordinary network endpoints (chests).
      */
     private static ItemStack insertWhereverPossible(Context ctx, ItemStack stack) {
         ItemStack remaining = stack;
         if (remaining.isEmpty()) {
             return ItemStack.EMPTY;
         }
-        // 1. Bufory crafterow.
+        // 1. Crafter buffers.
         if (ctx.buffers != null) {
             for (var buf : ctx.buffers) {
                 remaining = buf.insert(remaining);
@@ -1876,13 +1887,13 @@ public final class VeloceAutoCrafter {
                 }
             }
         }
-        // 2. Zwykle endpointy sieci.
+        // 2. Ordinary network endpoints.
         //
-        // KAZDY endpoint oddaje RESZTE i to wlasnie reszte przekazujemy dalej.
-        // Poprzednia wersja przekazywala ten sam, pelny stos do kolejnych
-        // endpointow: jesli pierwszy przyjal CZESC i zwrocil false, drugi
-        // dostawal calosc i mogl ja przyjac - czyli przyjeta czesc byla
-        // w sieci DWA razy.
+        // EVERY endpoint returns the REMAINDER and it is exactly that remainder we
+        // pass on. The previous version passed the same, full stack to the successive
+        // endpoints: if the first accepted PART of it and returned false, the second
+        // got the whole thing and could accept it - meaning the accepted part was in
+        // the network TWICE.
         for (var endpoint : ctx.network.getEndpoints().values()) {
             if (remaining.isEmpty()) {
                 return ItemStack.EMPTY;
@@ -1892,7 +1903,7 @@ public final class VeloceAutoCrafter {
         return remaining;
     }
 
-    /** Awaryjnie wypuszcza reszte przy bloku, ktory zlecil craftowanie. */
+    /** As a fallback, drops the remainder at the block that ordered the crafting. */
     private static void dropLeftover(ServerLevel level, Context ctx, ItemStack leftover) {
         if (ctx.dropPos == null) {
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
@@ -1905,16 +1916,16 @@ public final class VeloceAutoCrafter {
     }
 
     // ------------------------------------------------------------------
-    // Pomocnicze
+    // Helpers
     // ------------------------------------------------------------------
 
-    /** Nazwa pierwszej opcji skladnika (do komunikatu dla gracza). */
+    /** Name of the first ingredient option (for the player-facing message). */
     private static String firstOptionName(Ingredient ing) {
         List<ItemStack> options = nonEmpty(ing);
         return options.isEmpty() ? "" : options.get(0).getHoverName().getString();
     }
 
-    /** Krotki opis skladnika do logu: lista id itemow, ktore go spelniaja. */
+    /** A short description of the ingredient for the log: the list of item ids matching it. */
     private static String describeOptions(Ingredient ing) {
         StringBuilder sb = new StringBuilder("[");
         for (ItemStack option : nonEmpty(ing)) {
@@ -1928,10 +1939,11 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * Czy ten skladnik ma JAKAKOLWIEK opcje (czym go zastapic)?
+     * Does this ingredient have ANY option (something to substitute it with)?
      *
-     * <p>JEDNO miejsce z ta regula dla planera i dla wykonania - rozjazd tych
-     * dwoch miejsc daje objaw "liczba policzona, ale craft nigdy nie dziala".
+     * <p>ONE place with this rule for the planner and for execution - a divergence
+     * between these two places gives the symptom "the number is computed, but
+     * crafting never works".
      */
     private static boolean hasOptions(Ingredient ing) {
         for (ItemStack option : ing.getItems()) {
@@ -1952,7 +1964,7 @@ public final class VeloceAutoCrafter {
         return out;
     }
 
-    /** Receptury w kolejnosci preferencji gracza. */
+    /** Recipes in the order of the player's preference. */
     private static List<ProcessingEntry> orderRecipes(
             ServerLevel level, VelocePipeNetwork network, Item item,
             Map<Item, ResourceLocation> preferred,
@@ -1962,8 +1974,8 @@ public final class VeloceAutoCrafter {
             return all;
         }
 
-        // 1. KONKRETNA receptura wybrana w crafterze ma zawsze pierwszenstwo -
-        //    to najdokladniejsza decyzja gracza.
+        // 1. The SPECIFIC recipe chosen in the crafter always takes precedence -
+        //    it is the player's most precise decision.
         ResourceLocation pref = preferred.get(item);
         if (pref != null) {
             List<ProcessingEntry> ordered = new ArrayList<>(all.size());
@@ -1980,13 +1992,14 @@ public final class VeloceAutoCrafter {
             return ordered;
         }
 
-        // 2. Preferencja "piec czy crafting" z kontrolera.
+        // 2. The "furnace or crafting" preference from the controller.
         //
-        //    UWAGA: to PREFERENCJA, nie filtr. Przepalanie idzie pierwsze, ale
-        //    receptury craftingowe ZOSTAJA na dalszych pozycjach - jesli piec
-        //    nie ma czym zaplacic (heatAvailable == false), lista jest nietknieta
-        //    i planer normalnie uzyje craftingu. Dzieki temu wybor "wole piec"
-        //    nie odbiera graczowi mozliwosci zrobienia itemu inaczej.
+        //    NOTE: this is a PREFERENCE, not a filter. Smelting goes first, but the
+        //    crafting recipes REMAIN in later positions - if the furnace has nothing
+        //    to pay with (heatAvailable == false), the list is untouched and the
+        //    planner simply uses crafting. Thanks to that the "I prefer the furnace"
+        //    choice does not take away the player's ability to make the item
+        //    differently.
         if (furnaceFirst && heatAvailable) {
             List<ProcessingEntry> ordered = new ArrayList<>(all.size());
             for (var e : all) {
@@ -2002,25 +2015,26 @@ public final class VeloceAutoCrafter {
             return ordered;
         }
 
-        // 3. Bez preferencji: kolejnosc domyslna (crafting przed piecem).
+        // 3. Without a preference: the default order (crafting before furnace).
         return all;
     }
 
         /**
-     * Migawka wszystkiego, co jest dostepne do craftowania.
+     * A snapshot of everything available for crafting.
      *
-     * <p><b>Musi byc symetryczna z {@link #deposit}.</b> deposit wklada wyniki
-     * najpierw do buforow crafterow, wiec jesli plan ich nie widzi, uznaje ze
-     * skladnika nie ma - mimo ze deposit wlasnie go tam polozyl. To bylo
-     * zrodlem bledu "ingredients vanished mid-craft" przy wieloetapowym
-     * craftowaniu (deski -> plotek).
+     * <p><b>It MUST be symmetric with {@link #deposit}.</b> deposit puts the results
+     * into the crafter buffers first, so if the plan does not see them, it assumes
+     * the ingredient is absent - even though deposit just put it there. This was the
+     * source of the "ingredients vanished mid-craft" error in multi-stage crafting
+     * (planks -> fence).
      *
-     * <p>Kolejnosc zrodel: siec + ekwipunek + bufory crafterow.
+     * <p>The order of sources: network + inventory + crafter buffers.
      *
-     * <p>Stan sieci mozna podac z zewnatrz, zeby {@link #ensureAvailable} nie
-     * skanowal sieci DWA razy: raz na sprawdzenie dostepnosci, a chwile
-     * pozniej drugi raz na migawke do planowania. Przy wymuszonym skanie
-     * (force=true) to jest pelne przejscie po wszystkich inwentarzach sieci.
+     * <p>The network state may be supplied from outside, so that
+     * {@link #ensureAvailable} does not scan the network TWICE: once to check
+     * availability, and a moment later a second time for the planning snapshot.
+     * With a forced scan (force=true) that is a full walk over all network
+     * inventories.
      */
 
     private static Map<Item, Long> snapshotStock(Context ctx, Map<Item, Long> networkCounts) {
@@ -2030,46 +2044,46 @@ public final class VeloceAutoCrafter {
                 stock.merge(it, (long) ctx.inventory.count(it), Long::sum);
             }
         }
-        // UWAGA: buforow crafterow NIE dodajemy tutaj.
+        // NOTE: we do NOT add the crafter buffers here.
         //
-        // Bufor jest juz endpointem sieci (CraftingBufferEndpoint - patrz
-        // scanAndBuildNetwork), wiec networkCounts juz go zawiera. Dodawanie
-        // go drugi raz liczylo zawartosc bufora PODWOJNIE: planer widzial
-        // 4 deski tam, gdzie byly 2, planowal craft i wywalal sie dopiero na
-        // wykonaniu z bledem "ingredients vanished mid-craft".
+        // The buffer is already a network endpoint (CraftingBufferEndpoint - see
+        // scanAndBuildNetwork), so networkCounts already contains it. Adding it a
+        // second time counted the buffer contents TWICE: the planner saw 4 planks
+        // where there were 2, planned the craft, and only blew up during execution
+        // with the "ingredients vanished mid-craft" error.
         //
-        // Widac to bylo dokladnie tak:
+        // It was visible exactly like this:
         //   plan for minecraft:oak_fence: 1 recipe run(s) to execute
         //   execution failed for minecraft:oak_fence - ingredients vanished mid-craft
         return stock;
     }
 
     /**
-     * Ekwipunek gracza jako zrodlo skladnikow.
+     * The player inventory as a source of ingredients.
      *
-     * <p><b>UWAGA: to jest obecnie MARTWY KOD.</b> Interfejs nie ma zadnej
-     * implementacji, a oba miejsca tworzace {@link Context} przekazuja
+     * <p><b>NOTE: this is currently DEAD CODE.</b> The interface has no
+     * implementation, and both places that create a {@link Context} pass
      * {@code null}:
      * <ul>
      *   <li>{@code VeloceTomTerminalBlockEntity.craftItemFromNetwork}</li>
      *   <li>{@code VeloceExtractorBlockEntity.craftFromNetwork}</li>
      * </ul>
      *
-     * <p>Wszystkie trzy galezie "ekwipunek gracza ma priorytet"
-     * ({@link #ensureAvailable}, {@code takeOne}, {@code snapshotStock}) sa
-     * wiec nieosiagalne - auto-crafting korzysta WYLACZNIE z sieci.
+     * <p>All three branches of "the player inventory has priority"
+     * ({@link #ensureAvailable}, {@code takeOne}, {@code snapshotStock}) are therefore
+     * unreachable - auto-crafting uses the network EXCLUSIVELY.
      *
-     * <p>Nie podlaczam tego bez decyzji wlasciciela, bo zmieniloby to
-     * zachowanie: craftowanie zaczelyby zjadac itemy z ekwipunku gracza.
-     * Jesli to jest pozadane, wystarczy zaimplementowac ten interfejs nad
-     * {@code player.getInventory()} i przekazac go w obu miejscach.
+     * <p>I am not wiring this up without the owner's decision, because it would
+     * change behaviour: crafting would start eating items from the player's
+     * inventory. If that is desired, it is enough to implement this interface over
+     * {@code player.getInventory()} and pass it in both places.
      */
     public interface ItemInventory {
         int count(Item item);
 
         ItemStack extract(Item item, int max);
 
-        /** Wszystkie itemy w ekwipunku (do symulacji dostepnosci). */
+        /** All items in the inventory (for availability simulation). */
         Set<Item> allItems();
     }
 }

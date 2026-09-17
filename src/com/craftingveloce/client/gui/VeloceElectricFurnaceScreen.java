@@ -13,18 +13,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * GUI Velocity Electric Furnace.
+ * GUI of the Velocity Electric Furnace.
  *
- * <p><b>Uklad.</b> Pozioma bateria (poziom naladowania rosnie od LEWEJ do
- * PRAWEJ), a po jej prawej stronie slot na itemek z energia (bateria, Energy
- * Cube, tablet z innego moda). Nad bateria jest liczba przepalen, na ktore
- * jeszcze stac akumulator - bo to jest liczba, ktora gracza naprawde
- * interesuje, a nie surowe FE.
+ * <p><b>Layout.</b> A horizontal battery (the charge level grows from LEFT to
+ * RIGHT), and to its right a slot for an item with energy (a battery, an Energy
+ * Cube, a tablet from another mod). Above the battery is the number of smelts
+ * the accumulator can still afford - because that is the number the player is
+ * really interested in, and not the raw FE.
  *
- * <p><b>Dlaczego napis jest NAD bateria, a nie pod nia.</b> Wczesniej stal pod
- * paskiem, czyli na wysokosci y=88 - a ekwipunek gracza zaczyna sie na y=84.
- * Liczba nachodzila na sloty ekwipunku. Teraz wszystko, co rysuje ten ekran,
- * konczy sie powyzej y=48.
+ * <p><b>Why the label is ABOVE the battery, and not below it.</b> It used to
+ * stand under the bar, that is at height y=88 - and the player's inventory
+ * starts at y=84. The number overlapped the inventory slots. Now everything
+ * this screen draws ends above y=48.
  */
 public class VeloceElectricFurnaceScreen
         extends AbstractContainerScreen<VeloceElectricFurnaceMenu> {
@@ -33,29 +33,29 @@ public class VeloceElectricFurnaceScreen
             CraftingVeloceMod.MODID, "textures/gui/electric_furnace.png");
 
     /**
-     * Bateria: korpus + biegun po prawej stronie.
+     * The battery: body + terminal on the right-hand side.
      *
-     * <p>Pozycje sa wyCENTROWANE w panelu: cala grupa (korpus 56 + biegun 2 +
-     * odstep 6 + slot 16 = 80 px) ma po 66 px marginesu z kazdej strony.
-     * Musza sie zgadzac z wglebieniami w teksturze (gen_furnace_gui.py) -
-     * pilnuje tego build.py.
+     * <p>The positions are CENTRED in the panel: the whole group (body 56 +
+     * terminal 2 + gap 6 + slot 16 = 80 px) has 66 px of margin on each side.
+     * They must match the recesses in the texture (gen_furnace_gui.py) -
+     * build.py enforces this.
      */
     private static final int BATTERY_X = 66;
     private static final int BATTERY_Y = 32;
     private static final int BATTERY_W = 56;
     private static final int BATTERY_H = 14;
 
-    /** Biegun ("kapturek") baterii - rysowany po prawej stronie korpusu. */
+    /** The battery's terminal ("nub") - drawn to the right of the body. */
     private static final int NUB_W = 2;
     private static final int NUB_H = 6;
 
-    /** Tlo akumulatora - ciemna zielen, zeby pusto i pelno gralo jednym kolorem. */
+    /** Accumulator background - dark green, so that empty and full play in one colour. */
     private static final int COLOR_BATTERY_EMPTY = 0xFF8B8B8B;
 
-    /** Naladowanie - zielen "energii". */
+    /** Charge - the green of "energy". */
     private static final int COLOR_BATTERY_FILL = 0xFF39D353;
 
-    /** Jasniejsza krawedz na gorze wypelnienia (czytelny poziom). */
+    /** A lighter edge at the top of the fill (a readable level). */
     private static final int COLOR_BATTERY_HIGHLIGHT = 0xFF8CF0A5;
 
     private int energy;
@@ -64,7 +64,7 @@ public class VeloceElectricFurnaceScreen
     public VeloceElectricFurnaceScreen(VeloceElectricFurnaceMenu menu,
                                        Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        // Wymiary i etykiety DOKLADNIE jak w ekstraktorze.
+        // Dimensions and labels EXACTLY as in the extractor.
         this.imageWidth = 212;
         this.imageHeight = 166;
         this.inventoryLabelY = this.imageHeight - 94;
@@ -81,12 +81,12 @@ public class VeloceElectricFurnaceScreen
         int x = this.leftPos + BATTERY_X;
         int y = this.topPos + BATTERY_Y;
 
-        // Tlo akumulatora: ciemna zielen na CALYM korpusie. Bez tego "pusto"
-        // wygladalo jak zwykly rowek, a nie jak rozladowana bateria.
+        // Accumulator background: dark green over the WHOLE body. Without this,
+        // "empty" looked like an ordinary groove instead of a discharged battery.
         graphics.fill(x, y, x + BATTERY_W, y + BATTERY_H, COLOR_BATTERY_EMPTY);
 
-        // Naladowanie OD LEWEJ DO PRAWEJ - tak bateria wyglada w kazdym innym
-        // modzie (i tak czyta sie to najszybciej).
+        // Charge FROM LEFT TO RIGHT - that is how a battery looks in every other
+        // mod (and that is how it reads fastest).
         int filled = maxEnergy > 0
                 ? (int) Math.min(BATTERY_W, ((long) BATTERY_W * energy) / maxEnergy)
                 : 0;
@@ -94,8 +94,8 @@ public class VeloceElectricFurnaceScreen
             graphics.fill(x, y, x + filled, y + BATTERY_H, COLOR_BATTERY_FILL);
             graphics.fill(x, y, x + filled, y + 1, COLOR_BATTERY_HIGHLIGHT);
         }
-        // Biegun swieci sie tylko wtedy, gdy w akumulatorze cos jest - dzieki
-        // temu "0 FE" i "pelna bateria" roznia sie na pierwszy rzut oka.
+        // The terminal lights up only when there is something in the accumulator -
+        // thanks to that "0 FE" and "full battery" differ at first glance.
         if (energy > 0) {
             int nubX = x + BATTERY_W;
             int nubY = y + (BATTERY_H - NUB_H) / 2;
@@ -107,21 +107,21 @@ public class VeloceElectricFurnaceScreen
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        // Tooltip TYLKO na baterii. Podpowiedz na slocie (co w niego wlozyc)
-        // zostala usunieta na zyczenie uzytkownika - slot ma mowic sam za
-        // siebie, a nie dokladac tekst przy najechaniu.
+        // Tooltip ONLY on the battery. The hint on the slot (what to put into
+        // it) was removed at the user's request - the slot is supposed to speak
+        // for itself instead of adding text on hover.
         renderBatteryTooltip(graphics, mouseX, mouseY);
         this.renderTooltip(graphics, mouseX, mouseY);
     }
 
-    /** Na baterii: ile FE i na ile przepalen to wystarczy. */
+    /** On the battery: how much FE there is and how many smelts that will cover. */
     private void renderBatteryTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         if (!isHovering(BATTERY_X, BATTERY_Y, BATTERY_W + NUB_W, BATTERY_H, mouseX, mouseY)) {
             return;
         }
         long cycles = energy / VeloceElectricFurnaceBlockEntity.FE_PER_SMELT;
         List<Component> lines = new ArrayList<>();
-        // Energia i koszt przepalenia w kFE / MFE - gracz nie liczy zer w locie.
+        // Energy and the cost of one smelt in kFE / MFE - the player does not count zeros on the fly.
         lines.add(Component.translatable("gui.craftingveloce.electric.energy",
                 com.craftingveloce.util.VeloceFormat.feCompact(energy),
                 com.craftingveloce.util.VeloceFormat.feCompact(maxEnergy)));
@@ -135,7 +135,7 @@ public class VeloceElectricFurnaceScreen
     }
 
 
-    /** Odswieza pasek z block entity klienta (bez osobnego pakietu). */
+    /** Refreshes the bar from the client block entity (without a separate packet). */
     @Override
     public void containerTick() {
         super.containerTick();

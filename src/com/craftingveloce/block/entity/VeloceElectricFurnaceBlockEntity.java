@@ -14,82 +14,84 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 
 /**
- * Velocity Electric Furnace - zrodlo ciepla zasilane Forge Energy.
+ * Velocity Electric Furnace - a heat source powered by Forge Energy.
  *
- * <p><b>Roznica wobec paliwowego.</b> Nie ma filtra ani slotu paliwa i nie
- * pali sie w tle - energie trzyma w wewnetrznym akumulatorze, a kazde
- * instantowe przepalenie zabiera z niego stala porcje FE. Dzieki temu nie
- * zjada niczego, gdy nikt nie craftuje.
+ * <p><b>Difference from the fuel-powered one.</b> It has no filter and no fuel
+ * slot and does not burn in the background - it keeps energy in an internal
+ * accumulator, and every instant smelt takes a fixed portion of FE from it.
+ * Thanks to that it does not eat anything when nobody is crafting.
  *
- * <p><b>PRIORYTET.</b> {@link #heatPriority()} zwraca 0, czyli mniej niz
- * paliwowy (1) - crafter wybiera zrodlo o NAJNIZSZYM priorytecie, wiec
- * elektryczny jest uzywany PIERWSZY, a paliwowy jest fallbackiem. Dokladnie
- * tak, jak ustalono.
+ * <p><b>PRIORITY.</b> {@link #heatPriority()} returns 0, i.e. less than the
+ * fuel-powered one (1) - the crafter picks the source with the LOWEST priority,
+ * so the electric one is used FIRST, and the fuel-powered one is the fallback.
+ * Exactly as agreed.
  *
- * <p><b>Liczby (ustalone z uzytkownikiem).</b>
+ * <p><b>Numbers (agreed with the user).</b>
  * <ul>
- *   <li>pojemnosc akumulatora: {@link #ENERGY_CAPACITY} = 25 000 000 FE</li>
- *   <li>koszt jednego przepalenia: {@link #FE_PER_SMELT} = 200 000 FE</li>
+ *   <li>accumulator capacity: {@link #ENERGY_CAPACITY} = 25 000 000 FE</li>
+ *   <li>cost of one smelt: {@link #FE_PER_SMELT} = 200 000 FE</li>
  * </ul>
- * Czyli pelny akumulator wystarcza na 125 przepalen, a stack (64 sztuki)
- * kosztuje 12 800 000 FE.
+ * So a full accumulator is enough for 125 smelts, and a stack (64 items)
+ * costs 12 800 000 FE.
  */
 public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         implements MenuProvider, VeloceHeatSource, IEnergyStorage {
 
-    /** Pojemnosc wewnetrznego akumulatora. */
+    /** Capacity of the internal accumulator. */
     public static final int ENERGY_CAPACITY = 25_000_000;
 
-    /** Koszt jednego instantowego przepalenia. */
+    /** Cost of one instant smelt. */
     public static final int FE_PER_SMELT = 200_000;
 
-    /** Ile FE jest teraz w akumulatorze. */
+    /** How much FE is in the accumulator right now. */
     private int energy;
 
     /**
-     * Slot na ITEMEK Z ENERGIA (bateria, energy cube, tablet z innego moda).
+     * Slot for an ITEM WITH ENERGY (battery, energy cube, tablet from another mod).
      *
-     * <p>Piec pobiera z niego prad jak z kabla - tylko w jedna strone. Item
-     * zostaje w slocie, az gracz go wyjmie; nie da sie go tu "spalic".
+     * <p>The furnace draws power from it like from a cable - one way only. The
+     * item stays in the slot until the player takes it out; it cannot be
+     * "burned up" here.
      */
     private final net.minecraft.world.SimpleContainer batterySlot =
             new net.minecraft.world.SimpleContainer(1);
 
     /**
-     * Ile FE na tick najwyzej wyciagamy z itemu.
+     * How much FE per tick we extract from the item at most.
      *
-     * <p>Bez limitu pelna bateria wlalaby sie do akumulatora w jednym ticku.
-     * Jedna sekunda (20 tickow) to 20 mln FE, czyli prawie pelny akumulator -
-     * dosc szybko, a jednoczesnie widac, jak bateria sie oproznia.
+     * <p>Without a limit a full battery would pour itself into the accumulator
+     * in a single tick. One second (20 ticks) is 20 million FE, i.e. almost a
+     * full accumulator - fast enough, and at the same time you can see the
+     * battery draining.
      */
     public static final int MAX_ITEM_DRAIN_PER_TICK = 1_000_000;
 
     /**
-     * Do kiedy (gameTime) pokazywac "swiezo zasilony" - do paska w GUI.
+     * Until when (gameTime) to show "freshly powered" - for the bar in the GUI.
      *
-     * <p>Na razie tylko diagnostyka przez czat; pole zostaje, zeby GUI
-     * moglo pokazac ostatnia zmiane bez ciaglego synchronicowania.
+     * <p>For now it is only diagnostics via chat; the field stays so that the
+     * GUI can show the last change without constant syncing.
      */
     private long lastEnergyChangeTick;
 
     public VeloceElectricFurnaceBlockEntity(BlockPos pos, BlockState state) {
         super(com.craftingveloce.init.VeloceRegistry.ELECTRIC_FURNACE_BE.get(), pos, state);
-        // Kazda zmiana w slocie baterii musi trafic do zapisu.
+        // Every change in the battery slot must make it into the save.
         this.batterySlot.addListener(c -> setChanged());
     }
 
-    /** Slot baterii - dla menu (i dla ekranu, ktory pokazuje podpowiedz). */
+    /** The battery slot - for the menu (and for the screen that shows the hint). */
     public net.minecraft.world.Container getBatterySlot() {
         return batterySlot;
     }
 
     /**
-     * Czy ten item da sie u nas "rozadowac" - czyli czy ma energie do oddania.
+     * Whether this item can be "discharged" here - i.e. whether it has energy to give.
      *
-     * <p>Pytamy o standardowa zdolnosc NeoForge (Forge Energy na itemie).
-     * Tak wlasnie robia to inne mody: Energy Cube, baterie, tablety. Item,
-     * ktory trzyma energie w NBT, ale NIE wystawia tej zdolnosci, nie zadziala -
-     * i mowimy o tym wprost w podpowiedzi slotu, zamiast udawac, ze dziala.
+     * <p>We ask for the standard NeoForge capability (Forge Energy on an item).
+     * That is exactly what other mods do: Energy Cube, batteries, tablets. An item
+     * that stores energy in NBT but does NOT expose that capability will not work -
+     * and we say so plainly in the slot hint instead of pretending that it works.
      */
     public static boolean isEnergyItem(ItemStack stack) {
         if (stack.isEmpty()) {
@@ -101,12 +103,12 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
     }
 
     /**
-     * Bierze prad z itemu w slocie baterii i wlewa go do akumulatora.
+     * Takes power from the item in the battery slot and pours it into the accumulator.
      *
-     * <p>Kolejnosc jest wazna: NAJPIERW sprawdzamy na sucho, ile item moze
-     * oddac, potem wlewamy do akumulatora i DOPIERO z tego, co naprawde
-     * weszlo, zabieramy z itemu. Odwrotna kolejnosc (zabierz, potem wlej)
-     * zgubilaby energie, gdyby akumulator byl juz pelny.
+     * <p>The order matters: FIRST we check dry how much the item can give, then we
+     * pour it into the accumulator, and ONLY THEN do we take from the item what
+     * actually went in. The reverse order (take, then pour) would lose energy if
+     * the accumulator were already full.
      */
     private void chargeFromItem() {
         ItemStack stack = batterySlot.getItem(0);
@@ -115,7 +117,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         }
         int space = ENERGY_CAPACITY - energy;
         if (space <= 0) {
-            return;   // akumulator pelny - nie ruszamy itemu
+            return;   // accumulator full - we leave the item alone
         }
         net.neoforged.neoforge.energy.IEnergyStorage itemEnergy = stack.getCapability(
                 net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.ITEM);
@@ -124,20 +126,20 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         }
         int available = itemEnergy.extractEnergy(Math.min(space, MAX_ITEM_DRAIN_PER_TICK), true);
         if (available <= 0) {
-            return;   // item jest pusty
+            return;   // the item is empty
         }
-        // Zabieramy to, co item NAPRAWDE oddal - nie to, o co prosilismy.
-        // Niektore implementacje potrafia oddac mniej, niz zadeklarowaly
-        // w symulacji; wtedy wlanie "available" do akumulatora tworzyloby
-        // energie z niczego.
+        // We take what the item REALLY gave - not what we asked for.
+        // Some implementations can give less than they declared in the
+        // simulation; in that case pouring "available" into the accumulator
+        // would create energy out of nothing.
         int taken = itemEnergy.extractEnergy(available, false);
         if (taken <= 0) {
             return;
         }
         int accepted = receiveEnergy(taken, false);
         if (accepted < taken) {
-            // Akumulator nie przyjal calosci (np. zabraklo miejsca w trakcie) -
-            // nadwyzke ODDajemy do itemu, zeby nic nie zginelo.
+            // The accumulator did not take all of it (e.g. it ran out of room
+            // midway) - we give the surplus BACK to the item so that nothing is lost.
             itemEnergy.receiveEnergy(taken - accepted, false);
         }
         if (accepted > 0) {
@@ -169,15 +171,15 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
 
     @Override
     public boolean isPowered() {
-        // "Zasilony" = stac go na co najmniej jedno przepalenie. Piec z resztka
-        // energii ponizej kosztu nie odblokowuje receptur, bo i tak by ich
-        // nie wykonal.
+        // "Powered" = it can afford at least one smelt. A furnace with a leftover
+        // of energy below the cost does not unlock recipes, because it would not
+        // be able to perform them anyway.
         return energy >= FE_PER_SMELT;
     }
 
     @Override
     public int heatPriority() {
-        return 0;   // elektryczny wygrywa z paliwowym
+        return 0;   // the electric one beats the fuel-powered one
     }
 
     @Override
@@ -186,7 +188,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // IEnergyStorage - przyjmowanie energii z kabli
+    // IEnergyStorage - accepting energy from cables
     // ------------------------------------------------------------------
 
     @Override
@@ -205,8 +207,8 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
 
     @Override
     public int extractEnergy(int toExtract, boolean simulate) {
-        // Akumulator jest WEWNETRZNY - energia wychodzi tylko przez przepalanie
-        // w crafterze, nie przez kabel. Inaczej kabel moglby "wyssac" piec.
+        // The accumulator is INTERNAL - energy leaves only through smelting
+        // in the crafter, not through a cable. Otherwise a cable could "suck the furnace dry".
         return 0;
     }
 
@@ -231,29 +233,30 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
-    // Diagnostyka
+    // Diagnostics
     // ------------------------------------------------------------------
 
     /**
-     * Dosyla stan akumulatora do klienta, gdy sie zmienil.
+     * Sends the accumulator state to the client when it changed.
      *
-     * <p>Piec nie ma wlasnej logiki per tick - tyka WYLACZNIE po to, zeby pasek
-     * energii w GUI byl zywy. Dlatego wysylamy tylko przy realnej zmianie
-     * (i najwyzej raz na pol sekundy): kabel z innego moda potrafi ladowac
-     * co tick, a pakiet co tick bylby marnotrawstwem.
+     * <p>The furnace has no per-tick logic of its own - it ticks ONLY so that the
+     * energy bar in the GUI is alive. That is why we send only on a real change
+     * (and at most once every half a second): a cable from another mod can charge
+     * every tick, and a packet every tick would be a waste.
      */
-    /** Ile FE na tick najwyzej przyjmujemy z sieci (obok limitu zrodla). */
+    /** How much FE per tick we accept from the network at most (besides the source's own limit). */
     public static final int MAX_PULL_PER_TICK = 1_000_000;
 
 
     /**
-     * Siec, do ktorej NAPRAWDE nalezy ta maszyna.
+     * The network this machine REALLY belongs to.
      *
-     * <p>BUG z logu: piec pytal o siec przez {@code getNetworkForTerminal}
-     * i dostawal CUDZA siec - w logu jej jedyna rura sasiadowala trawie
-     * i powietrzu, wiec Energy Cube ani pieca tam nie bylo i pobor nie mial
-     * z czego dzialac. Teraz najpierw szukamy rury OBOK maszyny i pytamy
-     * o siec tej rury; dopiero gdy takiej nie ma, wracamy do starej sciezki.
+     * <p>BUG from the log: the furnace asked for the network via {@code getNetworkForTerminal}
+     * and got SOMEONE ELSE'S network - in the log its only pipe was adjacent to
+     * grass and air, so neither the Energy Cube nor the furnace was there and the
+     * draw had nothing to work from. Now we first look for a pipe NEXT TO the
+     * machine and ask for that pipe's network; only when there is none do we fall
+     * back to the old path.
      */
     private com.craftingveloce.network.pipe.VelocePipeNetwork networkFor(net.minecraft.server.level.ServerLevel sl) {
         var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
@@ -274,13 +277,14 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) {
             return;
         }
-        // UWAGA: to musi byc PRZED wczesnym returnem od synchronizacji.
-        // Inaczej ladowanie z itemu dzialaloby tylko raz na 10 tickow (czyli
-        // 10x wolniej), bo cooldown przerywa te metode.
+        // NOTE: this must happen BEFORE the early return for syncing.
+        // Otherwise charging from the item would only work once every 10 ticks
+        // (i.e. 10x slower), because the cooldown exits this method.
         chargeFromItem();
-        // To samo SCIAGANIE z sieci co w modulach: piec sam pobiera prad
-        // z obcych zrodel (Energy Cube, generator) podpietych do rur. Pelny
-        // akumulator = zero prob, limit zrodla i nasz limit respektowane.
+        // The same PULLING from the network as in the modules: the furnace draws
+        // power on its own from foreign sources (Energy Cube, generator) hooked up
+        // to the pipes. Full accumulator = zero attempts, the source limit and our
+        // limit are respected.
         com.craftingveloce.network.pipe.VeloceEnergyPull.pull(sl,
                 networkFor(sl),
                 this, MAX_PULL_PER_TICK);
@@ -294,24 +298,24 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         }
     }
 
-    /** Co ile tickow najwyzej dosylamy stan energii do klienta. */
+    /** At most how often (in ticks) we send the energy state to the client. */
     private static final int CLIENT_SYNC_INTERVAL_TICKS = 10;
 
     private int clientSyncCooldown = CLIENT_SYNC_INTERVAL_TICKS;
     private int lastSyncedEnergy = -1;
 
-    /** Ile FE jest w akumulatorze. */
+    /** How much FE is in the accumulator. */
     public int getEnergy() {
         return energy;
     }
 
-    /** Tick ostatniej zmiany energii - do GUI. */
+    /** Tick of the last energy change - for the GUI. */
     public long getLastEnergyChangeTick() {
         return lastEnergyChangeTick;
     }
 
     // ------------------------------------------------------------------
-    // Zapis / odczyt
+    // Save / load
     // ------------------------------------------------------------------
 
     @Override
@@ -320,8 +324,9 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         tag.putInt("Energy", energy);
         ItemStack battery = batterySlot.getItem(0);
         if (!battery.isEmpty()) {
-            // Zapisujemy CALY stos razem z jego danymi - energia itemu z innego
-            // moda zyje wlasnie w nich, wiec nie mozemy zapisac "samego itemu".
+            // We save the WHOLE stack together with its data - an item's energy
+            // from another mod lives precisely in that data, so we cannot save
+            // "the item alone".
             tag.put("Battery", battery.save(registries, new CompoundTag()));
         }
     }

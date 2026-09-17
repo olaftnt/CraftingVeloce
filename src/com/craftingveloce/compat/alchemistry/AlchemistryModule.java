@@ -17,18 +17,19 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Modul Alchemistry w rdzeniu Veloce.
+ * The Alchemistry module in the Veloce core.
  *
- * <p>Rdzen pyta ten modul o to samo, co kazdy inny: co umie zrobic, czy jego
- * maszyna stoi w sieci, czy ma prad i jakie ma receptury. Reszta (planer,
- * liczenie liczb, kontroler) nie zna Alchemistry.
+ * <p>The core asks this module the same things as any other one: what it can do,
+ * whether its machine stands in the network, whether it has power, and what
+ * recipes it has. Everything else (the planner, the number crunching, the
+ * controller) knows nothing about Alchemistry.
  *
- * <p>Rejestruje sie w {@code FMLCommonSetupEvent}, bo DeferredHoldery typow
- * receptur sa wiazane dopiero po zdarzeniach rejestracji.
+ * <p>It registers in {@code FMLCommonSetupEvent}, because the DeferredHolders of
+ * recipe types are only bound after the registration events.
  */
 public final class AlchemistryModule implements VeloceProcessingModule {
 
-    /** Jedna instancja - modul nie ma stanu. */
+    /** A single instance - the module is stateless. */
     private static final AlchemistryModule INSTANCE = new AlchemistryModule();
 
     private static final String ID = "alchemistry";
@@ -40,7 +41,7 @@ public final class AlchemistryModule implements VeloceProcessingModule {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
             VeloceProcessingRegistry.register(INSTANCE);
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
-                    "[Veloce][COMPAT] {}: modul maszyn zarejestrowany", ID);
+                    "[Veloce][COMPAT] {}: machine module registered", ID);
         });
     }
 
@@ -55,18 +56,18 @@ public final class AlchemistryModule implements VeloceProcessingModule {
     }
 
     /**
-     * Itemy, ktore maszyny STOJACE w sieci potrafia zrobic.
+     * Items that the machines STANDING in the network can make.
      *
-     * <p>Rodzina bez swojej maszyny nic nie doklada - sam compactor nie
-     * obiecuje wynikow fuzji, nawet jesli mod jest obecny.
+     * <p>A family without its machine contributes nothing - the compactor alone
+     * does not promise fusion outputs, even if the mod is present.
      */
     @Override
     public Set<Item> producible(ServerLevel level, VelocePipeNetwork network) {
         Set<Item> out = new HashSet<>();
         for (RecipeType<?> type : recipeTypes()) {
-            // Bez pradu maszyna nie jest dostepna dla gracza, wiec nie moze
-            // pojawiac sie na liscie "co umiemy" (gracz: "jesli nie maja pradu,
-            // to nie chcemy, zeby byly w sieci jako dostepne").
+            // Without power the machine is not available to the player, so it
+            // cannot appear on the "what we can do" list (player: "if they have
+            // no power, we do not want them in the network as available").
             if (!VeloceProcessingSources.hasPowered(level, network, type)) {
                 continue;
             }
@@ -86,10 +87,10 @@ public final class AlchemistryModule implements VeloceProcessingModule {
     }
 
     /**
-     * Receptury na dany item - TYLKO z rodzin, ktorych maszyna jest zasilona.
+     * Recipes for the given item - ONLY from families whose machine is powered.
      *
-     * <p>Filtr per rodzina jest konieczny: zasilony compactor nie znaczy, ze
-     * mozna uzywac receptur fuzji.
+     * <p>The per-family filter is necessary: a powered compactor does not mean
+     * that fusion recipes may be used.
      */
     @Override
     public List<ProcessingEntry> recipesFor(ServerLevel level, VelocePipeNetwork network,
@@ -105,11 +106,11 @@ public final class AlchemistryModule implements VeloceProcessingModule {
     }
 
     /**
-     * Receptury na dany item BEZ patrzenia na maszyny i zasilanie.
+     * Recipes for the given item WITHOUT looking at machines and power.
      *
-     * <p>Dla narzedzi diagnostycznych (komenda getitems): gracz pyta "jak to
-     * sie robi", a nie "czy moge to teraz zrobic". Planer nadal uzywa
-     * recipesFor, ktore wymaga maszyny i pradu.
+     * <p>For diagnostic tools (the getitems command): the player asks "how is
+     * this made", not "can I make this now". The planner still uses recipesFor,
+     * which requires a machine and power.
      */
     @Override
     public List<ProcessingEntry> recipesAnywhere(ServerLevel level, Item item) {

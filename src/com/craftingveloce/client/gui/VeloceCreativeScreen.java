@@ -22,27 +22,27 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Wspolna baza dla "fake creative" GUI Veloce (terminal, filter picker,
+ * The shared base for the Veloce "fake creative" GUIs (terminal, filter picker,
  * crafting table, controller).
  *
- * <p>Zbiera w jednym miejscu to, co wszystkie te ekrany robia tak samo,
- * zamiast powtarzac to w kazdej klasie:
+ * <p>It gathers in one place what all these screens do the same way, instead of
+ * repeating it in every class:
  *
  * <ul>
- *   <li>wymuszenie trybu creative na czas otwarcia i przywrocenie po zamknieciu</li>
- *   <li>wylaczenie slotow gracza (i tak sie ich nie uzywa) i zamalowanie hotbara</li>
- *   <li><b>filtrowanie listy itemow</b> - pozwala usunac itemy, ktorych nie
- *       chcemy pokazywac, zeby nie zostawialy pustych dziur w siatce</li>
- *   <li><b>ukrycie niechcianych zakladek</b> (np. Operator Utilities,
- *       Saved Hotbars) - nadpisywane w podklasach przez {@link #tabFilter}</li>
+ *   <li>forcing creative mode for the time the screen is open and restoring it afterwards</li>
+ *   <li>disabling the player slots (they are not used anyway) and painting over the hotbar</li>
+ *   <li><b>filtering the item list</b> - it lets us remove items we do not want to
+ *       show, so they do not leave empty holes in the grid</li>
+ *   <li><b>hiding unwanted tabs</b> (e.g. Operator Utilities,
+ *       Saved Hotbars) - overridden in subclasses through {@link #tabFilter}</li>
  * </ul>
  */
 public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
-    /** Pole z lista itemow biezacej zakladki (zawiera tez puste wpisy). */
+    /** The field with the current tab's item list (it also contains empty entries). */
     private static Field itemsField;
 
-    /** Pole itemow w SlotWrapper (do rozpoznania slotu gracza). */
+    /** The items field in SlotWrapper (for recognizing a player slot). */
     private static Field slotWrapperTargetField;
 
     static {
@@ -73,11 +73,11 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     private GameType modeBeforeOpen;
 
     /**
-     * Refleksja rozwiazana RAZ, a nie przy kazdym odswiezeniu.
+     * Reflection resolved ONCE, not on every refresh.
      *
-     * <p>{@code getMethod}/{@code getDeclaredField}/{@code setAccessible} to
-     * wzglednie drogie operacje (przegladanie hierarchii klas). Wczesniej
-     * lecialy 20 razy na sekunde przez cala sesje z otwartym GUI.
+     * <p>{@code getMethod}/{@code getDeclaredField}/{@code setAccessible} are
+     * relatively expensive operations (walking the class hierarchy). Previously
+     * they ran 20 times per second for the whole session with the GUI open.
      */
     private static java.lang.reflect.Method scrollToMethod;
     private static java.lang.reflect.Field scrollOffsFieldRef;
@@ -89,29 +89,29 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     // ------------------------------------------------------------------
-    // Filtrowanie zawartosci - do nadpisania w podklasach
+    // Filtering the contents - to be overridden in subclasses
     // ------------------------------------------------------------------
 
     /**
-     * Czy pokazac ten item w siatce. Zwrocenie false <b>usuwa item z listy</b>,
-     * wiec pozostale zsuwaja sie i nie ma pustych dziur.
+     * Whether to show this item in the grid. Returning false <b>removes the item from
+     * the list</b>, so the remaining ones shift up and there are no empty holes.
      */
     protected boolean acceptItem(ItemStack stack) {
         return true;
     }
 
     /**
-     * Zakladki ukrywane we wszystkich naszych GUI.
-     * Operator Utilities i Saved Hotbars sluza do administracji creative,
-     * nie do sieci Veloce - gracz ich tu nie potrzebuje.
+     * Tabs hidden in all of our GUIs.
+     * Operator Utilities and Saved Hotbars serve creative administration,
+     * not the Veloce network - the player does not need them here.
      */
     private static final Set<String> HIDDEN_TABS = Set.of(
             "operator", "hotbar", "saved_hotbars", "op_blocks", "op_items"
     );
 
     /**
-     * Czy pokazac te zakladke creative. Domyslnie ukrywamy zakladki
-     * administracyjne (operator utilities, saved hotbars).
+     * Whether to show this creative tab. By default we hide the administrative
+     * tabs (operator utilities, saved hotbars).
      */
     protected boolean acceptTab(net.minecraft.world.item.CreativeModeTab tab) {
         try {
@@ -125,7 +125,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     // ------------------------------------------------------------------
-    // Cykl zycia
+    // Lifecycle
     // ------------------------------------------------------------------
 
     @Override
@@ -142,52 +142,52 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         }
         super.init();
 
-        // KOLEJNOSC JEST KRYTYCZNA. Vanilla {@code selectTab(CreativeModeTab)}
-        // (dla zakladki INVENTORY) robi {@code menu.slots.clear()} i odbudowuje
-        // sloty od zera - czyli KASUJE nasze ukrywanie slotow gracza.
+        // THE ORDER IS CRITICAL. Vanilla {@code selectTab(CreativeModeTab)}
+        // (for the INVENTORY tab) does {@code menu.slots.clear()} and rebuilds
+        // the slots from scratch - that is, it WIPES our hiding of the player slots.
         //
-        // BUG, ktory tu byl: suppressPlayerSlots() latalo PRZED
-        // restoreViewState(), a to wlasnie restoreViewState wybiera zakladke
-        // (przez selectTab). Efekt: nasze ukrywanie bylo natychmiast kasowane,
-        // a sloty ekwipunku gracza wracaly do GUI.
+        // The BUG that was here: suppressPlayerSlots() ran BEFORE
+        // restoreViewState(), and it is restoreViewState that selects the tab
+        // (through selectTab). The effect: our hiding was immediately wiped,
+        // and the player's inventory slots came back into the GUI.
         //
-        // Teraz: najpierw zakladka, potem ukrywanie.
+        // Now: first the tab, then the hiding.
         restoreViewState();
         disableVanillaTrashSlot();
         suppressPlayerSlots();
         applyItemFilter();
-        // Dopiero teraz, gdy zakladka i fraza sa ustawione - inaczej lista
-        // bywa pusta przy pierwszym otwarciu (zakladka INVENTORY).
+        // Only now, when the tab and the phrase are set - otherwise the list
+        // is sometimes empty on the first opening (the INVENTORY tab).
         VeloceTerminalViewState.refreshContents(this);
         applyItemFilter();
     }
 
     /**
-     * Klucz, pod ktorym zapamietujemy widok tego ekranu.
+     * The key under which we remember this screen's view.
      *
-     * <p>Domyslnie {@code null} = nie pamietamy nic. Terminal zwraca pozycje
-     * swojego bloku, dzieki czemu KAZDY terminal ma wlasna zakladke, wlasna
-     * fraze wyszukiwania i wlasne przewiniecie - niezaleznie od creative
-     * inventory i od siebie nawzajem.
+     * <p>By default {@code null} = we remember nothing. The terminal returns the
+     * position of its block, thanks to which EACH terminal has its own tab, its own
+     * search phrase and its own scroll - independently of the creative
+     * inventory and of each other.
      */
     protected Object viewStateKey() {
         return null;
     }
 
     /**
-     * Czy ten ekran pamieta swoja zakladke.
+     * Whether this screen remembers its tab.
      *
-     * <p>Domyslnie tak, per {@link #viewStateKey()}. Ekran wyboru filtra
-     * zwraca {@code false}, bo ma zawsze otwierac sie na pierwszej zakladce.
+     * <p>By default yes, per {@link #viewStateKey()}. The filter picker screen
+     * returns {@code false}, because it must always open on the first tab.
      */
     protected boolean rememberTab() {
         return true;
     }
 
     /**
-     * Zakladka, na ktorej ekran otwiera sie bez zapamietanej.
+     * The tab on which the screen opens when there is nothing remembered.
      *
-     * <p>{@code null} = pierwsza dostepna (lewy gorny rog).
+     * <p>{@code null} = the first available one (top left corner).
      */
     @Nullable
     protected CreativeModeTab defaultTab() {
@@ -195,51 +195,51 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Zakladka, ktora byla wybrana ZANIM ten ekran sie otworzyl.
+     * The tab that was selected BEFORE this screen opened.
      *
-     * <p>Vanilla trzyma wybrana zakladke w polu {@code private static
-     * selectedTab}, wspolnym dla calego klienta. Nasz ekran ja zmienia, wiec
-     * po zamknieciu trzeba przywrocic poprzednia - inaczej zwykle creative
-     * inventory otwieraloby sie na zakladce z terminala.
+     * <p>Vanilla keeps the selected tab in the field {@code private static
+     * selectedTab}, shared by the whole client. Our screen changes it, so
+     * after closing we have to restore the previous one - otherwise the regular
+     * creative inventory would open on the terminal's tab.
      */
     @Nullable
     private CreativeModeTab tabBeforeOpen;
     private boolean tabBeforeOpenCaptured;
 
     /**
-     * Czy zapamietany widok zostal juz zastosowany w tym otwarciu ekranu.
+     * Whether the remembered view has already been applied in this opening of the screen.
      *
-     * <p><b>Po co.</b> {@code init()} leci nie tylko przy otwarciu, ale tez przy
-     * kazdym {@code rebuildWidgets()} (np. po kliknieciu filtra w kontrolerze)
-     * i przy zmianie rozmiaru okna. Bez tej blokady kazde takie zdarzenie
-     * PRZYWRACALO widok zapisany przy ostatnim ZAMKNIECIU ekranu.
+     * <p><b>Why.</b> {@code init()} runs not only on opening, but also on every
+     * {@code rebuildWidgets()} (e.g. after clicking a filter in the controller)
+     * and on a window resize. Without this guard, every such event RESTORED the
+     * view saved at the last CLOSING of the screen.
      *
-     * <p>Objaw byl konkretny: gracz zmienial zakladke (albo przewijal, albo
-     * wpisywal fraze), klikal przycisk filtra - i widok przeskakiwal z powrotem
-     * do miejsca sprzed zamkniecia. To samo przy kazdym resize okna.
+     * <p>The symptom was concrete: the player changed the tab (or scrolled, or typed
+     * a phrase), clicked the filter button - and the view jumped back to where it
+     * was before closing. The same on every window resize.
      */
     private boolean viewStateApplied;
 
-    /** Przywraca zapamietany widok (zakladka, fraza, przewiniecie). */
+    /** Restores the remembered view (tab, phrase, scroll). */
     private void restoreViewState() {
         Object key = viewStateKey();
 
-        // Zapamietujemy zakladke creative TYLKO raz, przy pierwszym init().
-        // init() leci takze przy rebuildWidgets (np. po kliknieciu filtra),
-        // a wtedy "poprzednia" bylaby juz nasza zakladka.
+        // We remember the creative tab ONLY once, on the first init().
+        // init() also runs on rebuildWidgets (e.g. after clicking a filter),
+        // and then the "previous" one would already be our tab.
         if (!tabBeforeOpenCaptured) {
             tabBeforeOpenCaptured = true;
             tabBeforeOpen = VeloceTerminalViewState.currentTab();
         }
 
-        // Widok stosujemy TYLKO raz na otwarcie ekranu - patrz viewStateApplied.
+        // We apply the view ONLY once per opening of the screen - see viewStateApplied.
         if (viewStateApplied) {
             return;
         }
         viewStateApplied = true;
 
-        // Ekran bez wlasnej pamieci (key == null) i jednoczesnie pamietajacy
-        // zakladke nic nie zmienia - to zwykly creative, ma zostac jak jest.
+        // A screen with no memory of its own (key == null) that also remembers
+        // its tab changes nothing - it is a regular creative and should stay as it is.
         if (key == null && rememberTab()) {
             return;
         }
@@ -247,32 +247,32 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         CreativeModeTab tab;
         if (key != null && rememberTab()) {
             tab = VeloceTerminalViewState.findTab(VeloceTerminalViewState.savedTab(key));
-            // Brak zapamietanej zakladki (pierwsze otwarcie) albo zapamietana
-            // juz nie istnieje - schodzimy na domyslna.
+            // No remembered tab (first opening) or the remembered one no longer
+            // exists - we fall back to the default.
             //
-            // BUG, ktory tu byl: przy braku zapisanej zakladki findTab() zwracalo
-            // null i CALE ustawianie bylo pomijane. Ekran zostawal wiec na
-            // wspolnej, statycznej zakladce vanilla - a jesli byla to INVENTORY
-            // (Survival Inventory), crafter pokazywal zakladke, ktora sam ukrywa
-            // i ktorej nie pozwala kliknac.
+            // The BUG that was here: when there was no saved tab, findTab() returned
+            // null and the WHOLE tab setup was skipped. The screen therefore stayed on
+            // the shared, static vanilla tab - and if that was INVENTORY
+            // (Survival Inventory), the crafter showed a tab that it hides
+            // itself and does not let you click.
             if (tab == null) {
                 tab = defaultTab() != null ? defaultTab() : firstAcceptedTab();
             }
         } else {
-            // Nie pamietamy - zawsze pierwsza dostepna (lewy gorny rog).
-            // To dotyczy takze pickera filtra, ktory nie ma klucza, a ma
-            // zawsze otwierac sie od poczatku listy.
+            // We do not remember - always the first available one (top left corner).
+            // This also applies to the filter picker, which has no key but must
+            // always open from the beginning of the list.
             tab = defaultTab() != null ? defaultTab() : firstAcceptedTab();
         }
-        // Zakladki, ktorych u nas nie ma (np. ukryte), nie przywracamy.
+        // Tabs that we do not have (e.g. hidden ones) are not restored.
         if (tab != null && acceptTab(tab)) {
             VeloceTerminalViewState.applyTab(this, tab);
-            // ...i przewin na STRONE, na ktorej ta zakladka lezy - inaczej
-            // przy duzej liczbie zakladek wybrana jest niewidoczna.
+            // ...and scroll to the PAGE that tab is on - otherwise, with a large
+            // number of tabs, the selected one is invisible.
             restoreTabPage(tab);
         }
 
-        // Fraza i przewiniecie tylko dla ekranow z wlasnym kluczem.
+        // The phrase and the scroll only for screens with a key of their own.
         if (key == null) {
             return;
         }
@@ -283,7 +283,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         }
     }
 
-    /** Zapisuje widok, zeby nastepne otwarcie wrocilo w to samo miejsce. */
+    /** Saves the view so that the next opening comes back to the same place. */
     private void saveViewState() {
         Object key = viewStateKey();
         if (key == null || !rememberTab()) {
@@ -296,13 +296,13 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Przywraca zakladke, ktora byla wybrana przed otwarciem tego ekranu.
+     * Restores the tab that was selected before this screen opened.
      *
-     * <p>Bez tego zwykle creative inventory otwieraloby sie na zakladce
-     * z terminala (albo craftera, kontrolera...), bo vanilla trzyma ja
-     * w polu statycznym wspolnym dla calego klienta. Kazdy nasz ekran ma
-     * wlasny zapamietany stan, a creative ma swoj - i te stany musza byc
-     * calkowicie od siebie niezalezne.
+     * <p>Without this, the regular creative inventory would open on the terminal's
+     * tab (or the crafter's, the controller's...), because vanilla keeps it in a
+     * static field shared by the whole client. Each of our screens has its own
+     * remembered state and creative has its own - and those states have to be
+     * completely independent of each other.
      */
     private void restoreCreativeTab() {
         if (tabBeforeOpen == null || !acceptTab(tabBeforeOpen)) {
@@ -313,31 +313,30 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Ustawia STRONE zakladek tak, zeby zawierala podana zakladke.
+     * Sets the tab PAGE so that it contains the given tab.
      *
-     * <p><b>Problem.</b> Gdy zakladek jest duzo, NeoForge dzieli je na strony
-     * z przyciskami &lt; &gt;. Strona jest wybierana TYLKO w {@code init()},
-     * i to na podstawie zakladki, ktora byla wybrana W TYM MOMENCIE:
+     * <p><b>The problem.</b> When there are many tabs, NeoForge splits them into pages
+     * with &lt; &gt; buttons. The page is chosen ONLY in {@code init()},
+     * and based on the tab that was selected AT THAT MOMENT:
      * <pre>
      *   this.currentPage = pages.stream()
      *           .filter(page -&gt; page.getVisibleTabs().contains(selectedTab))
      *           .findFirst().orElse(this.currentPage);
      * </pre>
-     * (odczytane z bajtkodu patchowanej klasy NeoForge).
+     * (read from the bytecode of the patched NeoForge class).
      *
-     * <p>A nasze {@code restoreViewState()} przywraca zapamietana zakladke
-     * przez {@code selectTab} DOPIERO PO {@code super.init()} - a
-     * {@code selectTab} strony NIE zmienia. Efekt: {@code currentPage}
-     * zostawala na stronie starej zakladki, wiec przywrocona zakladka byla
-     * na innej stronie i nie bylo jej widac. Uzytkownik widzial poprawnie
-     * zapamietana zakladke, ale nie widzial jej na ekranie.
+     * <p>And our {@code restoreViewState()} restores the remembered tab through
+     * {@code selectTab} only AFTER {@code super.init()} - and {@code selectTab} does
+     * NOT change the page. The effect: {@code currentPage} stayed on the old tab's
+     * page, so the restored tab was on a different page and was not visible. The user
+     * saw the correctly remembered tab, but did not see it on the screen.
      *
-     * <p><b>Rozwiazanie.</b> Po wyborze zakladki odtwarzamy te sama logike,
-     * ktorej uzywa NeoForge: znajdujemy strone zawierajaca te zakladke
-     * i ustawiamy ja jako biezaca. Nie zapisujemy numeru strony osobno, bo
-     * numer strony nie jest stabilny (zmienia sie, gdy dojdzie mod z nowymi
-     * zakladkami) - a zakladka jest. Dzieki temu zawsze trafiamy na te sama
-     * strone co przed zamknieciem, i zawsze widac wybrana zakladke.
+     * <p><b>The solution.</b> After selecting the tab we replay the same logic
+     * that NeoForge uses: we find the page containing that tab and make it the
+     * current one. We do not store the page number separately, because
+     * the page number is not stable (it changes when a mod with new tabs is
+     * added) - but the tab is. Thanks to that we always land on the same
+     * page as before closing, and the selected tab is always visible.
      */
     protected void restoreTabPage(CreativeModeTab tab) {
         if (tab == null) {
@@ -357,21 +356,21 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
                 tabPageFailureLogged = true;
                 com.craftingveloce.util.VeloceLog.Gui.failure(
                         com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                        "nie moge ustawic strony zakladek: %s", t);
+                        "cannot set the tab page: %s", t);
             }
         }
     }
 
-    /** Czy juz logowalismy awarie obslugi stron zakladek. */
+    /** Whether we have already logged a failure of the tab page handling. */
     private boolean tabPageFailureLogged;
 
     /**
-     * Lista stron zakladek.
+     * The list of tab pages.
      *
-     * <p>Pole jest prywatne i NeoForge nie daje publicznego dostepu do CALEJ
-     * listy (tylko {@code getCurrentPage()}), wiec czytamy je refleksja.
-     * Sam typ strony jest dostepny w kompilacji, wiec dalej pracujemy na nim
-     * normalnie, bez refleksji.
+     * <p>The field is private and NeoForge gives no public access to the WHOLE
+     * list (only {@code getCurrentPage()}), so we read it by reflection.
+     * The page type itself is available at compile time, so we keep working on it
+     * normally, without reflection.
      */
     private static java.lang.reflect.Field tabPagesField;
     private static boolean tabPagesResolveTried;
@@ -401,7 +400,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
                 : java.util.List.of();
     }
 
-    /** Pierwsza zakladka, ktora u nas przechodzi filtr (lewy gorny rog). */
+    /** The first tab that passes our filter (top left corner). */
     @Nullable
     protected CreativeModeTab firstAcceptedTab() {
         for (CreativeModeTab tab : net.minecraft.world.item.CreativeModeTabs.tabs()) {
@@ -413,17 +412,17 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     // ------------------------------------------------------------------
-    // Slot "odkladania do sieci" na miejscu vanillaowego kosza
+    // The "deposit into the network" slot in place of the vanilla trash can
     // ------------------------------------------------------------------
 
     /**
-     * Wylacza vanillaowy tooltip "Destroy Item".
+     * Disables the vanilla "Destroy Item" tooltip.
      *
-     * <p><b>Dlaczego w ogole.</b> Vanilla trzyma slot kosza w prywatnym polu
-     * {@code destroyItemSlot} i w swoim {@code render()} rysuje na jego
-     * podstawie wlasny tooltip - ZUPELNIE z pominięciem
-     * {@code getTooltipFromContainerItem}, wiec nadpisanie samego tooltipa nic
-     * nie dawalo (potwierdzone w bajtkocie):
+     * <p><b>Why at all.</b> Vanilla keeps the trash slot in the private field
+     * {@code destroyItemSlot} and in its own {@code render()} draws its own tooltip
+     * based on it - COMPLETELY bypassing
+     * {@code getTooltipFromContainerItem}, so overriding the tooltip alone achieved
+     * nothing (confirmed in the bytecode):
      * <pre>
      *   if (destroyItemSlot != null
      *           &amp;&amp; selectedTab.getType() == Type.INVENTORY
@@ -431,30 +430,30 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      *       renderTooltip(font, TRASH_SLOT_TOOLTIP, mouseX, mouseY);
      *   }
      * </pre>
-     * Ustawienie pola na {@code null} wylacza caly ten blok.
+     * Setting the field to {@code null} disables that whole block.
      *
-     * <p><b>DLACZEGO ZERUJEMY TO CO KLATKE.</b> To byl prawdziwy powod, dla
-     * ktorego "Destroy Item" nie znikal mimo zerowania w {@code init()}.
-     * Pole jest przypisywane w metodzie <b>{@code selectTab(CreativeModeTab)}</b>
-     * (nie w {@code init()}): gdy wybrana zakladka jest typu INVENTORY, vanilla
-     * tworzy tam NOWY slot kosza i dodaje go do menu.
+     * <p><b>WHY WE ZERO IT EVERY FRAME.</b> This was the real reason why
+     * "Destroy Item" did not disappear despite zeroing it in {@code init()}.
+     * The field is assigned in the method <b>{@code selectTab(CreativeModeTab)}</b>
+     * (not in {@code init()}): when the selected tab is of type INVENTORY, vanilla
+     * creates a NEW trash slot there and adds it to the menu.
      *
-     * <p>A nasz {@code restoreViewState()} wola {@code selectTab} przy KAZDYM
-     * otwarciu ekranu (zeby przywrocic zapamietana zakladke). Czyli kolejnosc
-     * byla taka:
+     * <p>And our {@code restoreViewState()} calls {@code selectTab} on EVERY
+     * opening of the screen (to restore the remembered tab). So the order
+     * was like this:
      * <pre>
-     *   super.init()            - vanilla tworzy destroyItemSlot
-     *   disableVanillaTrashSlot - my zerujemy pole
-     *   restoreViewState()      - selectTab OD TWARZA destroyItemSlot
+     *   super.init()            - vanilla creates destroyItemSlot
+     *   disableVanillaTrashSlot - we zero the field
+     *   restoreViewState()      - selectTab RE-CREATES destroyItemSlot
      * </pre>
-     * i tooltip wracal. Zerowanie przed kazdym {@code super.render()} zamyka
-     * te luke niezaleznie od tego, co i kiedy odtworzy pole.
+     * and the tooltip came back. Zeroing before every {@code super.render()} closes
+     * that gap regardless of what recreates the field and when.
      *
-     * <p><b>Dlaczego po TYPIE, a nie po nazwie.</b> Refleksja po nazwie jest
-     * krucha (w srodowisku produkcyjnym nazwy moga byc zmapowane inaczej),
-     * a jej awaria byla wczesniej polykana po cichu. Szukamy wiec jedynego
-     * NIEstatycznego pola typu {@code Slot} - {@code originalSlots} to lista,
-     * wiec nie pasuje.
+     * <p><b>Why by TYPE and not by name.</b> Reflection by name is
+     * fragile (in a production environment names may be remapped differently),
+     * and its failure used to be swallowed silently. So we look for the only
+     * NON-static field of type {@code Slot} - {@code originalSlots} is a list,
+     * so it does not match.
      */
     private static java.lang.reflect.Field trashSlotField;
     private static boolean trashSlotResolveTried;
@@ -484,14 +483,14 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
                 trashSlotMissingLogged = true;
                 com.craftingveloce.util.VeloceLog.Gui.failure(
                         com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                        "nie znaleziono pola slotu kosza - vanilla 'Destroy Item' "
-                                + "moze byc widoczny");
+                        "the trash slot field was not found - vanilla 'Destroy Item' "
+                                + "may be visible");
             }
             return;
         }
         try {
-            // Sprawdzamy najpierw, bo set() na tym samym obiekcie co klatke
-            // to niepotrzebna praca; pole i tak czesto jest juz null.
+            // We check first, because set() on the same object every frame
+            // is unnecessary work; the field is usually already null anyway.
             if (trashSlotField.get(this) != null) {
                 trashSlotField.set(this, null);
             }
@@ -500,12 +499,12 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Czy patrzymy na zakladke Survival Inventory.
+     * Whether we are looking at the Survival Inventory tab.
      *
-     * <p>Tylko tam vanilla pokazuje swoj kosz (warunek w jej {@code render()}:
-     * {@code selectedTab.getType() == Type.INVENTORY}), wiec tylko tam ma sens
-     * nasz slot odkladania. W pozostalych zakladkach tego miejsca po prostu
-     * nie ma i rysowanie tam strzalki wygladalo jak blad.
+     * <p>Only there does vanilla show its trash can (the condition in its
+     * {@code render()}: {@code selectedTab.getType() == Type.INVENTORY}), so only
+     * there does our deposit slot make sense. In the other tabs that place simply
+     * does not exist and drawing an arrow there looked like a bug.
      */
     protected boolean isSurvivalInventoryTab() {
         CreativeModeTab tab = VeloceTerminalViewState.currentTab();
@@ -513,30 +512,30 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Slot "odkladania" jest na miejscu vanillaowego kosza (173, 112).
+     * The "deposit" slot is in the place of the vanilla trash can (173, 112).
      *
-     * <p>Numeru nie bierzemy z sufitu: to pozycja, ktora vanilla sama ustawia
-     * dla {@code destroyItemSlot}, potwierdzona w bajtkodzie.
+     * <p>We did not make the number up: it is the position that vanilla itself sets
+     * for {@code destroyItemSlot}, confirmed in the bytecode.
      */
     protected boolean isStoreSlot(Slot slot) {
         return slot != null && slot.x == 173 && slot.y == 112;
     }
 
     /**
-     * Rysuje strzalke "do sieci" na slocie odkladania.
+     * Draws the "into the network" arrow on the deposit slot.
      *
-     * <p>Rysujemy to w {@code render()} PO {@code super}, a nie w
-     * {@code renderSlot}, zeby miec pewnosc, ze zaslonimy krzyzyk wypalony
-     * w teksturze creative inventory.
+     * <p>We draw this in {@code render()} AFTER {@code super}, not in
+     * {@code renderSlot}, to be sure we cover the cross burned into the
+     * creative inventory texture.
      */
     private void drawStoreSlotIcon(GuiGraphics graphics) {
         if (!isSurvivalInventoryTab()) {
-            return;   // poza Survival Inventory to miejsce nie istnieje
+            return;   // outside Survival Inventory that place does not exist
         }
         int x = this.leftPos + 173;
         int y = this.topPos + 112;
 
-        // Tlo slotu - zaslania krzyzyk wypalony w teksturze creative inventory.
+        // Slot background - it covers the cross burned into the creative inventory texture.
         graphics.fill(x, y, x + 16, y + 16, 0xFFC6C6C6);
         graphics.fill(x, y, x + 16, y + 1, 0xFF8B8B8B);
         graphics.fill(x, y, x + 1, y + 16, 0xFF8B8B8B);
@@ -545,34 +544,34 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Strzalka w prawo: "odloz to do sieci".
+     * An arrow to the right: "deposit this into the network".
      *
-     * <p>Rysowana jako plaska figura (plaszcz + trojkatny gro), zeby byla
-     * czytelna w 16-pikselowym slocie. Poprzednia wersja skladala gro
-     * z pojedynczych pikseli po przekatnej, co wygladalo jak przypadkowe
-     * kleksy.
+     * <p>Drawn as a flat figure (shaft + triangular head) so that it is
+     * readable in a 16-pixel slot. The previous version assembled the head
+     * from single pixels along the diagonal, which looked like random
+     * blobs.
      */
     private static void drawArrowRight(GuiGraphics graphics, int x, int y) {
-        int color = 0xFF2E7D32;      // ciemna zielen - "siec"
+        int color = 0xFF2E7D32;      // dark green - "network"
         int shadow = 0xFF1B5E20;
 
-        // Plaszcz strzalki: 2 px wysokosci.
+        // Arrow shaft: 2 px tall.
         graphics.fill(x, y + 3, x + 5, y + 5, color);
         graphics.fill(x, y + 5, x + 5, y + 6, shadow);
 
-        // Gro: trojkat o podstawie 7 px, zwężajacy sie do czubka w prawo.
+        // Head: a triangle with a 7 px base, narrowing to the tip on the right.
         for (int i = 0; i < 4; i++) {
             int half = 3 - i;
             graphics.fill(x + 4 + i, y + 4 - half, x + 5 + i, y + 5 + half, color);
         }
-        // Cien pod grotem - tylko dolna krawedz, dla glebi.
+        // Shadow under the head - only the bottom edge, for depth.
         for (int i = 0; i < 4; i++) {
             int half = 3 - i;
             graphics.fill(x + 4 + i, y + 4 + half, x + 5 + i, y + 5 + half, shadow);
         }
     }
 
-    /** Tooltip slotu odkladania - zamiast vanillaowego "Destroy Item". */
+    /** Tooltip of the deposit slot - instead of the vanilla "Destroy Item". */
     private void drawStoreSlotTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         if (!isSurvivalInventoryTab()) {
             return;
@@ -580,43 +579,44 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         if (!this.isHovering(173, 112, 16, 16, mouseX, mouseY)) {
             return;
         }
-        // DWIE linie jako osobne wpisy - to gwarantuje, ze tooltip jest waski
-        // i ze NIE zamieni sie w jedna dluga linie.
+        // TWO lines as separate entries - this guarantees that the tooltip is narrow
+        // and that it does NOT turn into one long line.
         java.util.List<net.minecraft.util.FormattedCharSequence> lines = java.util.List.of(
                 Component.translatable("gui.craftingveloce.terminal.storeSlot").getVisualOrderText(),
                 Component.translatable("gui.craftingveloce.terminal.storeHint")
                         .withStyle(net.minecraft.ChatFormatting.GRAY).getVisualOrderText());
 
-        // WLASNY POSITIONER: zawsze po PRAWEJ stronie kursora.
+        // OUR OWN POSITIONER: always on the RIGHT side of the cursor.
         //
-        // BUG, ktory to naprawia: domyslny positioner Minecrafta decyduje
-        // o stronie na podstawie tego, czy tooltip sie MIESCI. Gdy sie nie
-        // miescil, ODWRACAL go na lewo od myszki. Vanilla "Destroy Item" byl
-        // krotki i miescil sie po prawej, a nasz dluzszy tooltip ladowal po
-        // lewej - stad wrazenie dwoch roznych tooltipow.
+        // The BUG this fixes: Minecraft's default positioner decides
+        // the side based on whether the tooltip FITS. When it did not
+        // fit, it FLIPPED it to the left of the mouse. Vanilla "Destroy Item" was
+        // short and fit on the right, while our longer tooltip landed on
+        // the left - hence the impression of two different tooltips.
         //
-        // Teraz strona jest ustalona: +12 px w prawo od kursora (tak samo jak
-        // robi to vanilla dla krotkich tooltipow). Gdy zabraknie miejsca przy
-        // krawedzi ekranu, tooltip zostaje DOciagniety do krawedzi - ale
-        // NADAL po prawej stronie kursora, nigdy po lewej.
+        // Now the side is fixed: +12 px to the right of the cursor (exactly as
+        // vanilla does it for short tooltips). When there is not enough room at
+        // the screen edge, the tooltip is pulled UP TO the edge - but
+        // STILL on the right side of the cursor, never on the left.
         graphics.renderTooltip(this.font, lines, TOOLTIP_RIGHT_OF_CURSOR, mouseX, mouseY);
     }
 
     /**
-     * Positioner tooltipa: zawsze na prawo od kursora.
+     * Tooltip positioner: always to the right of the cursor.
      *
-     * <p>Kolejnosc argumentow pochodzi z interfejsu:
+     * <p>The argument order comes from the interface:
      * {@code (screenWidth, screenHeight, mouseX, mouseY, tooltipWidth, tooltipHeight)}.
      */
     private static final net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipPositioner
             TOOLTIP_RIGHT_OF_CURSOR = (screenWidth, screenHeight, mouseX, mouseY,
                                        tooltipWidth, tooltipHeight) -> {
-        // 12 px w prawo i 12 px w gore - dokladnie jak vanilla.
+        // 12 px right and 12 px up - exactly like vanilla.
         int x = mouseX + 12;
         int y = mouseY - 12;
 
-        // Przy krawedzi ekranu dosuwamy do brzegu, ale NIE przenosimy na lewa
-        // strone kursora. To jest cala roznica wobec domyslnego positionera.
+        // At the screen edge we push it to the border, but we do NOT move it to the
+        // left side of the cursor. That is the whole difference from the default
+        // positioner.
         if (x + tooltipWidth > screenWidth - 4) {
             x = Math.max(4, screenWidth - tooltipWidth - 4);
         }
@@ -628,45 +628,45 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // PRZED super.render(): to wlasnie tam vanilla sprawdza destroyItemSlot
-        // i rysuje "Destroy Item". Pole bywa odtworzone przez selectTab, wiec
-        // zerujemy je tuz przed rysowaniem.
+        // BEFORE super.render(): that is exactly where vanilla checks destroyItemSlot
+        // and draws "Destroy Item". The field is sometimes recreated by selectTab, so
+        // we zero it right before drawing.
         disableVanillaTrashSlot();
 
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        // Po super, wiec na wierzchu wszystkiego co narysowala vanilla.
+        // After super, so on top of everything vanilla drew.
         drawStoreSlotIcon(graphics);
         drawStoreSlotTooltip(graphics, mouseX, mouseY);
     }
 
     /**
-     * Nakłada nasz filtr na liste itemow menu.
+     * Applies our filter to the menu's item list.
      *
-     * <p><b>Dlaczego tak, a nie przez nadpisanie metod vanilla.</b>
-     * {@code CreativeModeInventoryScreen.refreshSearchResults()} i
-     * {@code refreshCurrentTabContents()} sa PRYWATNE, wiec nie da sie ich
-     * przechwycic dziedziczeniem. A to wlasnie one robia
-     * {@code menu.items.clear()} i wypelniaja liste SUROWYMI
-     * {@code getDisplayItems()}, kasujac wszystko, co odfiltrowalismy - przy
-     * zmianie zakladki, przy wpisywaniu w wyszukiwarke i z {@code containerTick}.
+     * <p><b>Why this way and not by overriding the vanilla methods.</b>
+     * {@code CreativeModeInventoryScreen.refreshSearchResults()} and
+     * {@code refreshCurrentTabContents()} are PRIVATE, so they cannot be
+     * intercepted by inheritance. And it is exactly they that do
+     * {@code menu.items.clear()} and fill the list with the RAW
+     * {@code getDisplayItems()}, wiping everything we filtered out - on a tab
+     * change, when typing into the search box and from {@code containerTick}.
      *
-     * <p>Dlatego filtr jest nakladany z {@code containerTick} (wołanym co tick,
-     * publicznym) i opiera sie na POROWNANIU ZE STANEM LISTY: jesli vanilla
-     * wlasnie ja przebudowala, lista sie rozni od naszej wersji i filtr leci
-     * od nowa. Dzieki temu dziala niezaleznie od tego, KTO i KIEDY ja nadpisal.
+     * <p>That is why the filter is applied from {@code containerTick} (called every
+     * tick, public) and is based on a COMPARISON WITH THE LIST STATE: if vanilla has
+     * just rebuilt it, the list differs from our version and the filter runs again.
+     * Thanks to that it works regardless of WHO overwrote it and WHEN.
      */
     @Override
     public void containerTick() {
         super.containerTick();
 
-        // ZMIANA ZAKLADKI PRZEZ GRACZA.
+        // THE PLAYER CHANGING THE TAB.
         //
-        // Gracz moze kliknac inna zakladke, a vanilla robi to samo co przy
-        // otwarciu: {@code selectTab} czysci {@code menu.slots} i odbudowuje je
-        // od zera. To kasuje i nasze ukrywanie slotow gracza, i wylaczenie
-        // kosza. Wykrywamy wiec zmiane zakladki i nakladamy nasze poprawki
-        // od nowa.
+        // The player can click another tab, and vanilla does the same as on
+        // opening: {@code selectTab} clears {@code menu.slots} and rebuilds them
+        // from scratch. That wipes both our hiding of the player slots and the
+        // disabling of the trash can. So we detect the tab change and re-apply our
+        // fixes from scratch.
         CreativeModeTab current = VeloceTerminalViewState.currentTab();
         if (current != lastSeenTab) {
             lastSeenTab = current;
@@ -677,17 +677,17 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         applyItemFilter();
     }
 
-    /** Zakladka widziana w poprzednim ticku - do wykrywania zmian. */
+    /** The tab seen in the previous tick - for detecting changes. */
     @Nullable
     private CreativeModeTab lastSeenTab;
 
     /**
-     * Usuwa z listy itemy odrzucone przez {@link #acceptItem}.
+     * Removes from the list the items rejected by {@link #acceptItem}.
      *
-     * <p>Vanilla buduje siatke z pol listy, wiec jesli pozostawimy w niej
-     * odrzucone wpisy jako puste stosy, powstaną dziury. Kompaktujemy liste,
-     * a ogon dopelniamy pustymi stosami - inaczej vanilla probowalby czytac
-     * nieistniejace indeksy.
+     * <p>Vanilla builds the grid from half the list, so if we leave the rejected
+     * entries in it as empty stacks, holes appear. We compact the list and fill the
+     * tail with empty stacks - otherwise vanilla would try to read
+     * non-existent indices.
      */
     protected void applyItemFilter() {
         if (itemsField == null || this.menu == null) {
@@ -709,42 +709,42 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             @SuppressWarnings("unchecked")
             NonNullList<ItemStack> items = (NonNullList<ItemStack>) list;
 
-            // NIE ma tu "szybkiego wyjscia" i to jest celowe.
+            // There is NO "fast exit" here and that is deliberate.
             //
-            // BUG, ktory tu byl: porownywalismy zawartosc listy z pozadanym
-            // wynikiem i wychodzilismy, gdy byly identyczne. Problem w tym, ze
+            // The BUG that was here: we compared the list contents with the desired
+            // result and returned when they were identical. The problem is that
             // vanilla (refreshSearchResults / refreshCurrentTabContents)
-            // wypelnia liste SUROWYMI getDisplayItems() - a to sa TE SAME
-            // instancje ItemStack, ktore same przechodza nasz filtr. Gdy zadna
-            // z nich nie jest odfiltrowana, lista po przebudowie wyglada
-            // IDENTYCZNIE jak przed nia, wiec uznawalismy "nic sie nie zmienilo"
-            // i POMIJALISMY scrollTo.
+            // fills the list with the RAW getDisplayItems() - and those are THE SAME
+            // ItemStack instances that themselves pass our filter. When none
+            // of them is filtered out, the list after the rebuild looks
+            // IDENTICAL to the one before it, so we concluded "nothing changed"
+            // and SKIPPED scrollTo.
             //
-            // A to scrollTo przepisuje liste do CONTAINER, z ktorego czytaja
-            // sloty. Bez niego CONTAINER zostawal z danymi z POPRZEDNIEGO
-            // przefiltrowania - czyli dokladnie objaw zglaszany przez
-            // uzytkownika: GUI pokazuje nieodfiltrowana liste, dopoki nie
-            // ruszy sie scrollem (scroll wywoluje scrollTo sam).
+            // And it is scrollTo that copies the list into the CONTAINER from which the
+            // slots read. Without it the CONTAINER kept the data from the PREVIOUS
+            // filtering - that is, exactly the symptom reported by the
+            // user: the GUI shows an unfiltered list until you
+            // move the scrollbar (scrolling calls scrollTo itself).
             //
-            // Wiec: zawsze przepisujemy liste i zawsze odswiezamy sloty.
-            // Koszt jest znikomy (jedno przejscie po ~1.5 tys. wpisow), a to
-            // jedyny sposob, zeby dzialalo niezaleznie od tego, co vanilla
-            // zrobila z lista miedzy tickami.
+            // So: we always rewrite the list and always refresh the slots.
+            // The cost is negligible (one pass over ~1.5 thousand entries), and it is
+            // the only way to make it work regardless of what vanilla
+            // did with the list between ticks.
             for (int i = 0; i < total; i++) {
                 items.set(i, i < kept.size() ? kept.get(i) : ItemStack.EMPTY);
             }
             refreshSlotsFromItems();
         } catch (Throwable ignored) {
-            // Refleksja moze sie nie udac przy zmianie wersji - wtedy po prostu
-            // nie filtrujemy, GUI dalej dziala (z dziurami).
+            // Reflection may fail on a version change - then we simply
+            // do not filter, the GUI still works (with holes).
         }
     }
 
     /**
-     * Przepisuje liste itemow do slotow menu.
+     * Copies the item list into the menu slots.
      *
-     * <p>Vanilla robi to samo w {@code ItemPickerMenu.scrollTo(float)}, wiec
-     * wywolujemy te metode z biezaca pozycja przewijania.
+     * <p>Vanilla does the same in {@code ItemPickerMenu.scrollTo(float)}, so
+     * we call that method with the current scroll position.
      */
     private void refreshSlotsFromItems() {
         try {
@@ -756,9 +756,9 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             }
             scrollToMethod.invoke(this.menu, currentScrollOffset());
         } catch (Throwable t) {
-            // NIE po cichu. Cicha awaria w tym miejscu kosztowala nas juz raz
-            // dluga diagnoze: filtr "wracal" po przewinieciu, a w logu nie bylo
-            // ani sladu, ze scrollTo w ogole sie nie wykonuje.
+            // NOT silently. A silent failure here has already cost us one long
+            // diagnosis: the filter "came back" after scrolling, and there was not
+            // a single trace in the log that scrollTo was not being executed at all.
             if (!slotRefreshFailed) {
                 slotRefreshFailed = true;
                 com.craftingveloce.util.VeloceLog.Gui.failure(
@@ -769,24 +769,24 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         }
     }
 
-    /** Czy blad odswiezania slotow zostal juz zaraportowany (raz wystarczy). */
+    /** Whether the slot refresh error has already been reported (once is enough). */
     private static boolean slotRefreshFailed;
 
-    /** Rozwiazuje refleksje raz na proces, nie raz na tick. */
+    /** Resolves the reflection once per process, not once per tick. */
     private void resolveReflection() {
         reflectionResolved = true;
-        // scrollTo ZYJE W ItemPickerMenu, NIE w CreativeModeInventoryScreen.
+        // scrollTo LIVES IN ItemPickerMenu, NOT in CreativeModeInventoryScreen.
         //
-        // TO BYL PRAWDZIWY POWOD, dlaczego filtr "wracal" po przewinieciu.
-        // Wczesniej szukalismy metody na klasie ekranu:
+        // THIS WAS THE REAL REASON why the filter "came back" after scrolling.
+        // Previously we looked for the method on the screen class:
         //     CreativeModeInventoryScreen.class.getMethod("scrollTo", float.class)
-        // a tam jej NIE MA - jest w zagnieżdżonej klasie ItemPickerMenu.
-        // getMethod rzucal wiec NoSuchMethodException, scrollToMethod zostawalo
-        // null, a refreshSlotsFromItems() po cichu nic nie robilo. Lista byla
-        // filtrowana, ale sloty czytaly z CONTAINER, ktory nikt nie odswiezal -
-        // az do momentu, gdy gracz ruszył scrollem (scroll sam wola scrollTo).
+        // and it is NOT there - it is in the nested class ItemPickerMenu.
+        // So getMethod threw NoSuchMethodException, scrollToMethod stayed
+        // null, and refreshSlotsFromItems() silently did nothing. The list was
+        // filtered, but the slots read from the CONTAINER, which nobody refreshed -
+        // until the moment the player moved the scrollbar (scrolling calls scrollTo itself).
         //
-        // Szukamy wiec po KLASIE MENU (this.menu), a nie po klasie ekranu.
+        // So we look it up on the MENU class (this.menu), not on the screen class.
         try {
             scrollToMethod = this.menu.getClass().getMethod("scrollTo", float.class);
             scrollToMethod.setAccessible(true);
@@ -805,7 +805,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         }
     }
 
-    /** Biezaca pozycja przewijania listy (pole 'scrollOffs' w vanilla). */
+    /** The current list scroll position (the 'scrollOffs' field in vanilla). */
     private float currentScrollOffset() {
         try {
             if (!reflectionResolved) {
@@ -824,12 +824,12 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Ukrywa zakladki odrzucone przez {@link #acceptTab}.
+     * Hides the tabs rejected by {@link #acceptTab}.
      *
-     * <p>Robimy to przez nadpisanie {@link #renderTabButton} (nie rysujemy
-     * odrzuconych) oraz {@link #checkTabClicked} (ignorujemy klikniecia).
-     * Nie da sie tego zrobic przez usuniecie z listy, bo
-     * {@code CreativeModeTabs.tabs()} zwraca liste niemodyfikowalna.
+     * <p>We do this by overriding {@link #renderTabButton} (we do not draw the
+     * rejected ones) and {@link #checkTabClicked} (we ignore clicks).
+     * It cannot be done by removing them from the list, because
+     * {@code CreativeModeTabs.tabs()} returns an unmodifiable list.
      */
     @Override
     protected void renderTabButton(net.minecraft.client.gui.GuiGraphics graphics,
@@ -850,25 +850,25 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     // ------------------------------------------------------------------
-    // Przelaczanie pojedynczych itemow - do nadpisania w podklasach
+    // Toggling individual items - to be overridden in subclasses
     // ------------------------------------------------------------------
 
-    /** Czy ten item w ogole mozna tu przelaczac. Domyslnie: nie. */
+    /** Whether this item can be toggled here at all. By default: no. */
     protected boolean isToggleable(ItemStack stack) {
         return false;
     }
 
-    /** Czy item jest aktualnie wlaczony. */
+    /** Whether the item is currently on. */
     protected boolean isToggledOn(net.minecraft.world.item.Item item) {
         return false;
     }
 
-    /** Przelacza pojedynczy item (wysyla tez pakiet do serwera). */
+    /** Toggles a single item (also sends a packet to the server). */
     protected void applyToggle(net.minecraft.world.item.Item item) {
     }
 
     // ------------------------------------------------------------------
-    // Sloty gracza
+    // Player slots
     // ------------------------------------------------------------------
 
     protected boolean isPlayerInventorySlot(Slot slot) {
@@ -891,11 +891,11 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Zbiera sloty zbroi i tarczy z menu ekwipunku gracza.
+     * Collects the armor and shield slots from the player's inventory menu.
      *
-     * <p>Creatiive inventory ich nie ma, ale zakladka Survival Inventory
-     * pokazuje prawdziwe menu gracza - i tam one sa. Trzeba je odroznic od
-     * zwyklych slotow ekwipunku, bo inaczej zostana ukryte.
+     * <p>The creative inventory does not have them, but the Survival Inventory
+     * tab shows the real player menu - and they are there. They have to be told
+     * apart from the regular inventory slots, otherwise they will be hidden.
      */
     protected java.util.Set<Slot> collectArmorAndShieldSlots() {
         java.util.Set<Slot> out = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
@@ -925,7 +925,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         return out;
     }
 
-    /** Czyta statyczna stala int z klasy vanilla (null gdy sie nie uda). */
+    /** Reads a static int constant from a vanilla class (null when it fails). */
     @Nullable
     private static Integer reflectStaticInt(String className, String fieldName) {
         try {
@@ -937,10 +937,10 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Slot zastepczy dla ukrytych slotow gracza.
+     * A replacement slot for hidden player slots.
      *
-     * <p>Osobna klasa (a nie anonimowa) po to, zeby dalo sie go ROZPOZNAC przy
-     * kolejnym wywolaniu - inaczej zawijalibysmy go w nieskonczonosc.
+     * <p>A separate class (not an anonymous one) so that it can be RECOGNIZED on
+     * the next call - otherwise we would wrap it endlessly.
      */
     private static final class HiddenSlot extends Slot {
         HiddenSlot(net.minecraft.world.Container container, int index) {
@@ -959,65 +959,65 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Czy zostawic hotbar gracza dzialajacy.
+     * Whether to leave the player's hotbar working.
      *
-     * <p>Domyslnie wylaczamy sloty gracza (te GUI sa "fake creative" i nie
-     * sluza do przenoszenia itemow). Terminal tego nie chce - gracz musi moc
-     * korzystac z hotbara, np. odkladac wyciagniete itemy. Podklasy
-     * nadpisuja te metode zwracajac true.
+     * <p>By default we disable the player slots (these GUIs are "fake creative" and
+     * are not meant for moving items). The terminal does not want that - the player
+     * has to be able to use the hotbar, e.g. to put away pulled-out items. Subclasses
+     * override this method returning true.
      */
     protected boolean keepPlayerHotbar() {
         return false;
     }
 
-    /** Zastepuje sloty gracza nieaktywnymi slotami poza ekranem. */
+    /** Replaces the player slots with inactive slots off-screen. */
     protected void suppressPlayerSlots() {
         if (this.menu == null || this.minecraft == null || this.minecraft.player == null) {
             return;
         }
-        // ===== REGRESJA, ktora to naprawia =====
+        // ===== THE REGRESSION THIS FIXES =====
         //
-        // Na zakladce SURVIVAL INVENTORY ekwipunek gracza to CALA ZAWARTOSC
-        // tego ekranu. Ukrycie go daje PUSTE GUI - zadnych slotow, nic nie
-        // da sie kliknac. Dokladnie to sie stalo, gdy suppression zaczela
-        // dzialac PO wyborze zakladki: wczesniej vanilla selectTab odbudowywala
-        // sloty i przypadkiem je "odslaniala".
+        // On the SURVIVAL INVENTORY tab the player's inventory is the ENTIRE CONTENTS
+        // of that screen. Hiding it gives an EMPTY GUI - no slots, nothing
+        // can be clicked. That is exactly what happened when the suppression started
+        // working AFTER the tab selection: previously vanilla selectTab rebuilt
+        // the slots and accidentally "revealed" them again.
         //
-        // Teraz regula jest jawna: ukrywamy sloty gracza TYLKO na zakladkach
-        // z siatka itemow (tam zaslaniaja nasz uklad), a na Survival
-        // Inventory zostawiamy je w spokoju.
+        // Now the rule is explicit: we hide the player slots ONLY on tabs
+        // with an item grid (there they cover our layout), and on Survival
+        // Inventory we leave them alone.
         if (isSurvivalInventoryTab()) {
             return;
         }
-        // Sloty zbroi i tarczy w zakladce Survival Inventory.
+        // The armor and shield slots on the Survival Inventory tab.
         //
-        // BUG: te sloty maja kontener gracza, wiec isPlayerInventorySlot()
-        // kwalifikowalo je do ukrycia - i znikaly (zostawaly tylko zwykle
-        // sloty ekwipunku). Uzytkownik zglaszal brak slotu na tarcze.
+        // BUG: these slots have the player's container, so isPlayerInventorySlot()
+        // qualified them for hiding - and they disappeared (only the regular
+        // inventory slots remained). The user reported a missing shield slot.
         //
-        // Rozpoznajemy je po POZYCJI w menu gracza (ARMOR_SLOT_START..COUNT),
-        // bo te stale sa stabilne, a sam slot nie ma wlasnego typu.
+        // We recognize them by their POSITION in the player menu (ARMOR_SLOT_START..COUNT),
+        // because those constants are stable and the slot itself has no type of its own.
         java.util.Set<Slot> armorAndShield = collectArmorAndShieldSlots();
 
         for (int i = 0; i < this.menu.slots.size(); i++) {
             Slot s = this.menu.slots.get(i);
 
             if (armorAndShield.contains(s)) {
-                continue;   // zbroja i tarcza zostaja widoczne
+                continue;   // armor and shield stay visible
             }
 
-            // Juz ukryty - nie zawijamy go drugi raz.
+            // Already hidden - we do not wrap it a second time.
             //
-            // BUG, ktory tu byl: zastepczy slot zachowywal TEN SAM container,
-            // wiec isPlayerInventorySlot() nadal rozpoznawal go jako slot gracza
-            // i przy kolejnym init() zawijal go ponownie. A init() leci przy
-            // KAZDYM rebuildWidgets() (np. po kazdym kliknieciu filtra
-            // w kontrolerze), wiec lancuch wrapperow rosl bez ograniczen.
+            // The BUG that was here: the replacement slot kept THE SAME container,
+            // so isPlayerInventorySlot() still recognized it as a player slot
+            // and on the next init() wrapped it again. And init() runs on
+            // EVERY rebuildWidgets() (e.g. after every filter click
+            // in the controller), so the chain of wrappers grew without limit.
             if (s instanceof HiddenSlot) {
                 continue;
             }
             if (isPlayerInventorySlot(s)) {
-                // Hotbar zostawiamy, jesli podklasa tego chce.
+                // We leave the hotbar if the subclass wants that.
                 if (keepPlayerHotbar() && isHotbarSlot(s)) {
                     continue;
                 }
@@ -1026,7 +1026,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         }
     }
 
-    /** Czy slot nalezy do paska szybkiego dostepu (9 slotow gracza). */
+    /** Whether the slot belongs to the quick access bar (the player's 9 slots). */
     protected boolean isHotbarSlot(Slot slot) {
         if (slot == null || this.minecraft == null || this.minecraft.player == null) {
             return false;
@@ -1039,12 +1039,12 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         return false;
     }
 
-    /** Czy to slot kosza (prawy dolny rog creative inventory). */
+    /** Whether this is the trash slot (bottom right corner of the creative inventory). */
     protected static boolean isTrashSlot(Slot slot) {
         return slot != null && slot.x == 173 && slot.y == 112;
     }
 
-    /** Zamalowuje pasek hotbara (jest nieuzywany w tych GUI). */
+    /** Paints over the hotbar strip (it is unused in these GUIs). */
     protected void drawHotbarCover(net.minecraft.client.gui.GuiGraphics graphics, int color) {
         graphics.fill(this.leftPos + 8, this.topPos + 111,
                 this.leftPos + 170, this.topPos + 130, color);
@@ -1055,90 +1055,91 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Niezawodne wyjscie z ekranu.
+     * A reliable way out of the screen.
      *
-     * <p>Te ekrany udaja creative inventory, wiec latwo o sytuacje, w ktorej
-     * gracz nie ma jak wyjsc - brak reagowania na Esc albo zablokowany stan.
-     * Wymuszamy zamkniecie po Esc i po klawiszu ekwipunku, niezaleznie od
-     * tego, co robi vanilla.
+     * <p>These screens pretend to be the creative inventory, so it is easy to end up
+     * in a situation where the player has no way out - no reaction to Esc or a stuck
+     * state. We force closing on Esc and on the inventory key, regardless of
+     * what vanilla does.
      */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         boolean typing = isTypingInTextField();
 
-        // GRACZ PISZE W WYSZUKIWARCE - klawisze naleza do POLA, a nie do ekranu.
+        // THE PLAYER IS TYPING IN THE SEARCH BOX - the keys belong to the FIELD, not to
+        // the screen.
         //
-        // BUG, ktory to naprawia (zgloszenie gracza): "E" (klawisz ekwipunku)
-        // zamykalo GUI w trakcie pisania. Wersja posrednia zdejmowala fokus,
-        // wiec pierwsze E cicho przerywalo pisanie, a drugie zamykalo okno -
-        // gracz widzial dokladnie to samo: "pisze i E zamyka inventory".
+        // The BUG this fixes (player report): "E" (the inventory key)
+        // closed the GUI while typing. An intermediate version removed the focus,
+        // so the first E silently interrupted typing and the second closed the window -
+        // the player saw exactly the same thing: "I type and E closes the inventory".
         //
-        // Vanilla creative robi to tak (bajtkod CreativeModeInventoryScreen):
+        // Vanilla creative does it like this (bytecode of CreativeModeInventoryScreen):
         //     if (searchBox.keyPressed(...)) { ...; return true; }
         //     if (searchBox.isFocused() && searchBox.isVisible() && key != ESC)
         //         return true;
-        // czyli: pole obsluguje to, co chce, a CALA reszta (w tym E) jest
-        // pochlaniana bez zamykania okna. Fokus zostaje, wiec pisanie trwa,
-        // a litera "e" trafia do pola przez charTyped - tak jak w wanilii.
+        // that is: the field handles what it wants, and ALL the rest (including E) is
+        // swallowed without closing the window. The focus stays, so typing continues,
+        // and the letter "e" reaches the field through charTyped - just as in vanilla.
         if (typing) {
             boolean isEscape = keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
             boolean isInventoryKey = this.minecraft != null && this.minecraft.options != null
                     && this.minecraft.options.keyInventory != null
                     && this.minecraft.options.keyInventory.matches(keyCode, scanCode);
 
-            // ESC ZAWSZE ZAMYKA - takze gdy pole tekstowe jest aktywne.
+            // ESC ALWAYS CLOSES - even when the text field is active.
             //
-            // Tak robi wanilia: w jej galezi dla wyszukiwarki kazdy klawisz jest
-            // pochlaniany POZA Escape (`... && keyCode != 256`), wiec Esc leci
-            // do bazy i zamyka ekran. Wczesniej nasza galaz "pisze" zdejmowala
-            // tylko fokus, wiec gracz musial nacisnac Esc dwa razy - a po
-            // naprawie wykrywania pisania (searchBox.isFocused) Esc przestal
-            // zamykac ZUPELNIE, bo do tej galezi trafial czesciej. Blokujemy
-            // wiec wylacznie klawisz ekwipunku (E), a Esc zostaje wyjsciem.
+            // That is what vanilla does: in its search box branch every key is
+            // swallowed EXCEPT Escape (`... && keyCode != 256`), so Esc goes
+            // to the base and closes the screen. Previously our "typing" branch only
+            // removed the focus, so the player had to press Esc twice - and after
+            // fixing the typing detection (searchBox.isFocused) Esc stopped
+            // closing AT ALL, because this branch was hit more often. So we block
+            // only the inventory key (E), and Esc remains the way out.
             if (isEscape) {
                 this.onClose();
                 return true;
             }
             if (isEscape || isInventoryKey) {
-                // Log dokladnie tego przypadku: bez niego nie da sie odroznic
-                // "poprawka nie dziala" od "gracz testuje stary JAR".
+                // We log exactly this case: without it, it is impossible to tell
+                // "the fix does not work" from "the player is testing an old JAR".
                 com.craftingveloce.util.VeloceLog.Gui.detail(
                         com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                        "pole tekstowe aktywne: klawisz %d zostaje w polu (okno sie nie zamyka)",
+                        "text field active: key %d stays in the field (the window does not close)",
                         keyCode);
             }
             if (isInventoryKey && this.minecraft != null && this.minecraft.options != null) {
-                // KLUCZOWE: samo POCHLONIECIE klawisza przez ekran NIE WYSTARCZA.
+                // CRITICAL: merely SWALLOWING the key by the screen is NOT ENOUGH.
                 //
-                // Minecraft.handleKeybinds() co tick robi
-                //     while (options.keyInventory.consumeClick()) { ...otworz ekwipunek... }
-                // i NIE patrzy przy tym na ekran (sprawdzone w bajtkodzie: nie ma
-                // tam zadnego testu `screen == null`). Wiec nacisniete "E"
-                // zostawalo w kolejce klawisza i po chwili otwieralo ekwipunek -
-                // gracz widzial to jako "E zamyka mi GUI, kiedy pisze".
-                // Konsumujemy wiec ten klik, zeby handleKeybinds nie mial czego
-                // obsluzyc. Dokladnie takiego efektu oczekuje gracz: "E nie
-                // zamyka, kiedy pole tekstowe jest aktywne".
+                // Minecraft.handleKeybinds() does this every tick
+                //     while (options.keyInventory.consumeClick()) { ...open the inventory... }
+                // and it does NOT look at the screen while doing so (checked in the
+                // bytecode: there is no `screen == null` test there). So the pressed "E"
+                // stayed in the key queue and after a moment opened the inventory -
+                // the player saw this as "E closes my GUI while I am typing".
+                // So we consume that click, so that handleKeybinds has nothing
+                // to handle. This is exactly the effect the player expects: "E does not
+                // close when the text field is active".
                 this.minecraft.options.keyInventory.consumeClick();
             }
-            // 1) Klawisz oddajemy WANILIOWEJ galezi tego ekranu.
+            // 1) We hand the key over to the VANILLA branch of this screen.
             //
-            //    BUG, ktory to naprawia: wolalismy pole tekstowe BEZPOSREDNIO,
-            //    przez co pomijalismy wazna czesc waniliowej obslugi -
-            //    CreativeModeInventoryScreen.keyPressed po kazdym nacisnietym
-            //    klawiszu sprawdza, czy tekst sie zmienil, i wtedy wola
-            //    refreshSearchResults(). Bez tego BACKSPACE zmienial tekst,
-            //    ale lista wynikow zostawala stara (zgloszenie gracza).
-            //    Wanilia obsluguje tez poprawnie strzalki, Ctrl+A i wklejanie.
+            //    The BUG this fixes: we called the text field DIRECTLY,
+            //    which skipped an important part of the vanilla handling -
+            //    CreativeModeInventoryScreen.keyPressed checks after every pressed
+            //    key whether the text changed, and then calls
+            //    refreshSearchResults(). Without that, BACKSPACE changed the text
+            //    but the result list stayed old (player report).
+            //    Vanilla also handles the arrows, Ctrl+A and pasting correctly.
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
 
-        // Esc zamyka (gdy nie piszemy).
+        // Esc closes (when we are not typing).
         if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
             this.onClose();
             return true;
         }
-        // Klawisz ekwipunku (domyslnie E) tez zamyka.
+        // The inventory key (E by default) also closes.
         if (this.minecraft != null && this.minecraft.options != null
                 && this.minecraft.options.keyInventory != null
                 && this.minecraft.options.keyInventory.matches(keyCode, scanCode)) {
@@ -1149,17 +1150,18 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Czy w slotach siatki jest COKOLWIEK (poza slotami gracza).
+     * Whether there is ANYTHING in the grid slots (besides player slots).
      *
-     * <p>Zadanie liczb budujemy ze slotow, a one bywaja puste mimo ze itemy sa
-     * WYSWIETLONE - wanilia rysuje siatke z listy {@code items}, a sloty
-     * wypelnia dopiero {@code scrollTo}. W logu gracza widzielismy to wprost:
+     * <p>We build the number request from the slots, and they are sometimes empty even
+     * though the items are DISPLAYED - vanilla draws the grid from the {@code items}
+     * list and only {@code scrollTo} fills the slots. In the player's log we saw this
+     * literally:
      * <pre>
-     *   craftable counts: NIC do policzenia (slots=47, gracza=4, puste=43)
+     *   craftable counts: NOTHING to compute (slots=47, player=4, empty=43)
      * </pre>
-     * Czyli zero zamowien i zero liczb, dopoki nie przelaczy sie zakladki albo
-     * frazy. Dlatego przed zamowieniem sprawdzamy ten stan i - gdy trzeba -
-     * uzupelniamy sloty z listy itemow.
+     * That is, zero requests and zero numbers until you switch the tab or the
+     * phrase. That is why we check this state before requesting and - when needed -
+     * fill the slots from the item list.
      */
     protected boolean hasGridItems() {
         if (this.menu == null) {
@@ -1174,12 +1176,12 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Upewnia sie, ze sloty siatki odpowiadaja wyswietlanej liscie.
+     * Makes sure the grid slots match the displayed list.
      *
-     * <p>To samo, co robi zmiana zakladki czy frazy ({@link #applyItemFilter()}
-     * przepisuje liste i wola {@code scrollTo}), tylko wolane wtedy, gdy
-     * zauwazymy, ze sloty sa puste - inaczej liczby "+N" nie mialyby skad
-     * powstac.
+     * <p>The same thing a tab or phrase change does ({@link #applyItemFilter()}
+     * rewrites the list and calls {@code scrollTo}), only called when we
+     * notice that the slots are empty - otherwise the "+N" numbers would have
+     * nowhere to come from.
      */
     protected void ensureGridItems() {
         if (hasGridItems()) {
@@ -1189,23 +1191,23 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         if (hasGridItems()) {
             com.craftingveloce.util.VeloceLog.Gui.detail(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                    "sloty siatki byly puste - uzupelnilem je z listy itemow");
+                    "grid slots were empty - I filled them from the item list");
             return;
         }
-        // Nadal puste - mowimy WPROST, co jest puste: lista itemow wanilii,
-        // czy dopiero sloty (np. przewiniecie poza liste). Bez tego kolejna
-        // poprawka bylaby znowu zgadywaniem.
+        // Still empty - we say EXPLICITLY what is empty: vanilla's item list,
+        // or only the slots (e.g. scrolled past the list). Without that the next
+        // fix would again be guesswork.
         com.craftingveloce.util.VeloceLog.Gui.detail(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                "sloty siatki NADAL puste: slotow=%d, z itemami=%d, w menu=%d, "
-                        + "przewiniecie=%s",
+                "grid slots STILL empty: slots=%d, with items=%d, in menu=%d, "
+                        + "scroll=%s",
                 this.menu == null ? -1 : this.menu.slots.size(),
                 countGridSlotsWithItems(),
                 menuItemCount(),
                 currentScrollOffset());
     }
 
-    /** Ile slotow siatki (poza graczem) ma item - do diagnostyki. */
+    /** How many grid slots (besides the player's) have an item - for diagnostics. */
     private int countGridSlotsWithItems() {
         if (this.menu == null) {
             return 0;
@@ -1219,7 +1221,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         return n;
     }
 
-    /** Ile pozycji ma waniliowa lista itemow - do diagnostyki. */
+    /** How many positions the vanilla item list has - for diagnostics. */
     private int menuItemCount() {
         try {
             if (itemsField == null || this.menu == null) {
@@ -1233,17 +1235,17 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Tooltip itemu BEZ linii kategorii i tagow, ktore dokleja creative.
+     * Item tooltip WITHOUT the category line and tags that creative appends.
      *
-     * <p><b>BUG, ktory to naprawia (zgloszenie gracza).</b> W zakladkach
-     * CATEGORY i SEARCH wanilia dokleja do tooltipa nazwe kategorii
-     * ("Building Blocks") oraz tagi. W kontrolerze dochodzil do tego drugi,
-     * wlasny tooltip - i napisy nachodzily na siebie, przykrywajac liczby przy
-     * ikonach. Gracz nie chce tam kategorii: "wszędzie indziej jest ukryte".
+     * <p><b>The BUG this fixes (player report).</b> In the CATEGORY and SEARCH tabs
+     * vanilla appends the category name ("Building Blocks") and tags to the tooltip.
+     * In the controller a second, own tooltip was added on top of that - and the texts
+     * overlapped, covering the numbers next to the icons. The player does not want the
+     * category there: "it is hidden everywhere else".
      *
-     * <p>Zwracamy wiec CZYSTY tooltip itemu (nazwa, opis, atrybuty). Trzymamy
-     * to w klasie bazowej, zeby terminal, kontroler, crafter i selektor filtra
-     * mialy DOKLADNIE to samo - a nie cztery wlasne wersje, ktore sie rozjada.
+     * <p>So we return a CLEAN item tooltip (name, description, attributes). We keep
+     * this in the base class so that the terminal, controller, crafter and filter
+     * picker have EXACTLY the same thing - and not four own versions that drift apart.
      */
     @Override
     public List<net.minecraft.network.chat.Component> getTooltipFromContainerItem(
@@ -1260,26 +1262,26 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     }
 
     /**
-     * Czy gracz wlasnie pisze w polu tekstowym (wyszukiwarka).
+     * Whether the player is currently typing in a text field (the search box).
      *
-     * <p>Po to, zeby klawisze skrotow (E, Esc, Enter) nie zabieraly znakow
-     * ani nie zamykaly okna w trakcie pisania.
+     * <p>So that the shortcut keys (E, Esc, Enter) do not steal characters
+     * or close the window while typing.
      */
     protected boolean isTypingInTextField() {
         try {
-            // 1) Widget skupiony przez ekran (nasze wlasne pola, np. prog sensora).
+            // 1) A widget focused by the screen (our own fields, e.g. the sensor threshold).
             if (this.getFocused() instanceof net.minecraft.client.gui.components.EditBox) {
                 return true;
             }
-            // 2) WYSZUKIWARKA WANILI - pytamy SAM WIDGET, nie ekran.
+            // 2) THE VANILLA SEARCH BOX - we ask the WIDGET itself, not the screen.
             //
-            // BUG, ktory to naprawia (zgloszenie gracza powtarzane dwa razy):
-            // sprawdzalismy tylko fokus EKRANU, a waniliowa wyszukiwarka
-            // creative zyje wlasnym zyciem. Gdy ekran nie wskazywal na nia jako
-            // na skupiony widget, ten test wychodzil FALSE, wiec "E" (klawisz
-            // ekwipunku) zamykalo GUI w trakcie pisania. Vanilla pyta wprost
-            // o searchBox.isFocused() (CreativeModeInventoryScreen.keyPressed)
-            // i to jest jedyne wiarygodne zrodlo tej informacji.
+            // The BUG this fixes (a player report repeated twice):
+            // we only checked the SCREEN's focus, and the vanilla creative search box
+            // lives its own life. When the screen did not point at it as
+            // the focused widget, this test came out FALSE, so "E" (the inventory
+            // key) closed the GUI while typing. Vanilla asks directly
+            // about searchBox.isFocused() (CreativeModeInventoryScreen.keyPressed)
+            // and that is the only reliable source of this information.
             return VeloceTerminalViewState.isSearchBoxFocused(this);
         } catch (Throwable t) {
             return false;
@@ -1288,19 +1290,19 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
 
     @Override
     public void removed() {
-        // Najpierw zapisujemy swoj widok, potem oddajemy creative jego wlasny.
+        // First we save our view, then we give creative its own back.
         saveViewState();
         restoreCreativeTab();
-        // Stos trzymany na kursorze NIE MOZE zginac.
+        // A stack held on the cursor MUST NOT vanish.
         //
-        // Wczesniej bylo tu `this.menu.setCarried(ItemStack.EMPTY)` - czyli
-        // przedmiot, ktory gracz mial "na myszce" w chwili zamkniecia okna,
-        // po prostu znikal. To samo powtarzaly nadpisania w kontrolerze
-        // i pickerze filtrow, a ekran craftera dziedziczyl to z tej klasy.
-        // Tylko terminal robil to poprawnie.
+        // There used to be `this.menu.setCarried(ItemStack.EMPTY)` here - that is,
+        // the item the player had "on the mouse" at the moment the window was closed
+        // simply disappeared. The same was repeated by the overrides in the controller
+        // and the filter picker, and the crafter screen inherited it from this class.
+        // Only the terminal did it correctly.
         //
-        // Teraz robimy to raz, tutaj: probujemy wlozyc do ekwipunku, a jak sie
-        // nie zmiesci - upuszczamy do swiata (zamiast skasowac).
+        // Now we do it once, here: we try to put it into the inventory, and if it does
+        // not fit - we drop it into the world (instead of deleting it).
         if (this.minecraft != null && this.minecraft.player != null && this.menu != null
                 && !this.menu.getCarried().isEmpty()) {
             ItemStack carried = this.menu.getCarried();

@@ -5,25 +5,25 @@ import net.minecraft.world.item.crafting.RecipeType;
 import java.util.function.Supplier;
 
 /**
- * JEDEN opis maszyny modulu zasilanej FE - dane, nie klasa.
+ * ONE description of an FE-powered module machine - data, not a class.
  *
- * <p><b>Po co.</b> Maszyny modulow (kruszarka, wzbogacanie, compactor, ...)
- * roznia sie TYLKO trzema rzeczami: typem receptury, kosztem energii i
- * etykieta. Osobna klasa block entity dla kazdej znaczylaby kopie tej samej
- * logiki energii - czyli dokladnie ten rodzaj duplikatu, ktory w tym projekcie
- * juz kilka razy sie rozjechal.
+ * <p><b>Why.</b> Module machines (crusher, enrichment, compactor, ...) differ
+ * ONLY in three things: the recipe type, the energy cost and the label. A
+ * separate block entity class for each would mean copying the same energy logic -
+ * that is, exactly the kind of duplicate that has already drifted apart several
+ * times in this project.
  *
- * <p><b>Dlaczego {@link Supplier}, a nie gotowy typ receptury.</b> Typy
- * receptur obcych modow to DeferredHoldery, wiazane dopiero po zdarzeniach
- * rejestracji. Instancje tego rekordu powstaja przy ladowaniu klas blokow
- * (czyli w konstruktorze moda), wiec typ MUSI byc rozwiazany pozniej -
- * dostawca robi to leniwie, w momencie pierwszego uzycia.
+ * <p><b>Why a {@link Supplier}, and not a ready recipe type.</b> Recipe types of
+ * foreign mods are DeferredHolders, bound only after the registration events.
+ * Instances of this record are created while loading the block classes (that is,
+ * in the mod constructor), so the type MUST be resolved later - the supplier
+ * does that lazily, at the moment of first use.
  *
- * @param id             identyfikator do logow, np. {@code "mekanism:crusher"}
- * @param label          etykieta maszyny (logi, komunikat o energii)
- * @param fePerOperation koszt jednej operacji w FE
- * @param capacity       pojemnosc akumulatora w FE
- * @param recipeType     typ receptury obslugiwany przez te maszyne (leniwie)
+ * @param id             identifier for logs, e.g. {@code "mekanism:crusher"}
+ * @param label          machine label (logs, energy message)
+ * @param fePerOperation cost of one operation in FE
+ * @param capacity       accumulator capacity in FE
+ * @param recipeType     recipe type handled by this machine (lazily)
  */
 public record FeModule(String id, String label, int fePerOperation, int capacity,
                        Supplier<RecipeType<?>> recipeType) {

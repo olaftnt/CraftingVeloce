@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
 """
-Buduje craftingveloce-1.0.0.jar i wdraza go do profilu testing.
+Builds craftingveloce-1.0.0.jar and deploys it to the testing profile.
 
-Uzycie:
+Usage:
     python3 scripts/build.py
 
-Skrypt robi wszystko po kolei i PRZERYWA przy pierwszym bledzie, zamiast
-zostawiac polowiczny JAR:
+The script does everything in order and ABORTS on the first error, instead of
+leaving a half-finished JAR:
 
-  1. kompiluje wszystkie zrodla OPROCZ src/moze_intel i src/eatawesome
-     (to klasy obcego moda - w naszym JARze powodowalyby ResolutionException)
-  2. sprawdza, ze kazda klasa importowana przez kod faktycznie istnieje
-     w skompilowanym wyniku
-  3. pakuje JAR, wykluczajac smieci systemowe (.DS_Store, __MACOSX)
-  4. sprawdza wynik: sciezka klasy, brak duplikatow com/com, META-INF,
-     brak wyciekow obcych pakietow
-  5. kopiuje JAR do profilu testing
+  1. compiles all sources EXCEPT src/moze_intel and src/eatawesome
+     (those are another mod's classes - in our JAR they would cause
+     ResolutionException)
+  2. checks that every class imported by the code actually exists in the
+     compiled output
+  3. packages the JAR, excluding system junk (.DS_Store, __MACOSX)
+  4. checks the result: class path, no com/com duplicates, META-INF,
+     no foreign package leaks
+  5. copies the JAR into the testing profile
 
-UWAGA: nie podmieniaj JARa gdy Minecraft dziala. Gra trzyma juz zaladowane
-klasy w pamieci i po podmianie pliku moze rzucic NoClassDefFoundError dla
-klas, ktorych w zaladowanej wersji nie bylo.
+NOTE: do not swap the JAR while Minecraft is running. The game already holds
+loaded classes in memory, and after replacing the file it may throw
+NoClassDefFoundError for classes that were not in the loaded version.
 """
 import glob
 import json
@@ -40,22 +41,24 @@ JAR_NAME = "craftingveloce-1.0.0.jar"
 STAGING = "craftingveloce_jar_root"
 BUILD_OUT = "/tmp/craftingveloce_build"
 
-# Katalog na zaleznosci kompilacyjne (compileOnly). W .gitignore (*.jar),
-# bo to cudze mody - nigdy nie moga trafic do naszego JARa.
+# Directory for compile-time dependencies (compileOnly). It is in .gitignore
+# (*.jar), because these are other people's mods - they must NEVER end up in
+# our JAR.
 LIBS = "libs"
 
-# Zaleznosci kompilacyjne opcjonalnych integracji (compileOnly).
+# Compile-time dependencies of the optional integrations (compileOnly).
 #
-# Klucz = prefiks pakietu obcego moda. Po nim POZNAJEMY, ktore JAR-y sa
-# potrzebne: jesli zaden plik w src/ nie importuje tego pakietu, JAR nie jest
-# wymagany. Dzieki temu etap "same bramki, zero blokow" kompiluje sie takze
-# bez tych modow, a etap z blokami od razu zglasza brakujacy JAR.
+# Key = package prefix of the foreign mod. It is how we RECOGNIZE which JARs
+# are needed: if no file in src/ imports that package, the JAR is not required.
+# That way the "gates only, zero blocks" stage also compiles without those
+# mods, and the stage with blocks immediately reports the missing JAR.
 #
-# Wartosc = krotka WYMAGANYCH artefaktow; kazdy artefakt to lista NAZW
-# (wariantow) do wyboru - pierwszy znaleziony wygrywa. Np. Mekanism ma wariant
-# "sam API" i "pelny JAR": oba wystarcza do kompilacji, ale API jest maly.
-# JAR-y szukamy w kilku katalogach (rozne maszyny trzymaja je roznie), a
-# brakujace biblioteki z META-INF/jarjar wyciagamy do libs/.
+# Value = tuple of REQUIRED artifacts; each artifact is a list of NAMES
+# (variants) to choose from - the first one found wins. For example Mekanism
+# has an "API only" variant and a "full JAR" variant: both are enough to
+# compile, but the API is small. We look for the JARs in several directories
+# (different machines keep them differently), and we pull the missing
+# libraries out of META-INF/jarjar into libs/.
 COMPILE_ONLY = {
     "com.simibubi.create": (
         ("create-1.21.1-6.0.10.jar",),
@@ -86,38 +89,40 @@ COMPILE_ONLY = {
     ),
 }
 
-# Katalogi, w ktorych szukamy JAR-ow compileOnly (w tej kolejnosci).
+# Directories in which we look for the compileOnly JARs (in this order).
 COMPILE_ONLY_DIRS = (LIBS, MODS, os.path.expanduser("~/Downloads"))
 
-# Pakiety obcego moda - nigdy nie moga trafic do naszego JARa.
+# Foreign mod packages - they must NEVER end up in our JAR.
 EXCLUDED_SRC = ("eatawesome", "moze_intel")
 
-# Pakiety obcych modow = granica izolacji. Rdzen (wszystko poza compat/)
-# nie moze ich importowac, a modul compat/ danego moda nie moze importowac
-# innego obcego moda (latwo o pomylke przy kopiowaniu pliku).
+# Foreign mod packages = the isolation boundary. The core (everything outside
+# compat/) must not import them, and the compat/ module of a given mod must
+# not import another foreign mod (an easy mistake when copying a file).
 FOREIGN_PACKAGES = ("com.simibubi.create", "net.createmod",
                     "com.smashingmods", "mekanism", "mezz.jei", "snownee.jade")
 FOREIGN_JAR_PATHS = ("com/simibubi/create/", "net/createmod/",
                      "com/smashingmods/", "mekanism/", "mezz/jei/", "snownee/jade/")
 
 
-# Smieci systemowe, ktore nie moga trafic do JARa.
+# System junk that must not end up in the JAR.
 JUNK = (".DS_Store", "__MACOSX", ".git")
 
-# Lista blokow pochodzi z generatora danych, a NIE z drugiej, recznej listy.
-# Ten projekt czterokrotnie ugryzl juz wlasnie taki rozjazd dwoch spisow.
+# The block list comes from the data generator, and NOT from a second,
+# hand-written list. This project has already been bitten four times by
+# exactly such a divergence between two registries.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from gen_loot_tables import registered_block_ids  # noqa: E402
 
 
 def validate_block_data(jar_names):
     """
-    Kazdy zarejestrowany blok musi miec w JARze komplet danych.
+    Every registered block must have a complete set of data in the JAR.
 
-    Sprawdzamy trzy rzeczy, ktorych brak jest widoczny dopiero w grze:
-      * loot table    - bez niej blok NIE WYPADA po zniszczeniu,
-      * blockstate    - bez niego blok sie nie renderuje,
-      * model itemu   - bez niego blok nie ma ikony w ekwipunku i kreatywnym.
+    We check three things whose absence only becomes visible in game:
+      * loot table    - without it the block does NOT drop when destroyed,
+      * blockstate    - without it the block does not render,
+      * item model    - without it the block has no icon in the inventory
+                        and in creative.
     """
     names = set(jar_names)
     missing = []
@@ -125,17 +130,17 @@ def validate_block_data(jar_names):
         for opis, sciezka in (
             ("loot table", f"data/craftingveloce/loot_table/blocks/{block_id}.json"),
             ("blockstate", f"assets/craftingveloce/blockstates/{block_id}.json"),
-            ("model itemu", f"assets/craftingveloce/models/item/{block_id}.json"),
+            ("item model", f"assets/craftingveloce/models/item/{block_id}.json"),
         ):
             if sciezka not in names:
-                missing.append(f"{block_id}: brak {opis} ({sciezka})")
+                missing.append(f"{block_id}: no {opis} ({sciezka})")
     if missing:
-        fail("bloki bez kompletu danych:\n  " + "\n  ".join(missing))
-    print(f"    OK (dane {len(registered_block_ids())} blokow kompletne)")
+        fail("blocks without a complete data set:\n  " + "\n  ".join(missing))
+    print(f"    OK (data of {len(registered_block_ids())} blocks complete)")
 
 
 def _record_components(path):
-    """(nazwa, lista skladnikow) rekordu-pakietu z jego pliku zrodlowego."""
+    """(name, list of components) of a record-packet from its source file."""
     text = open(path, encoding="utf-8").read()
     m = re.search(r"public record\s+(\w+)\s*\(", text)
     if not m:
@@ -153,7 +158,7 @@ def _record_components(path):
 
 
 def _split_components(body):
-    """Dzieli naglowek rekordu po przecinkach NA POZIOMIE 0 (generyki!)."""
+    """Splits a record header on commas at DEPTH 0 (generics!)."""
     out, depth, cur = [], 0, ""
     for ch in body:
         if ch in "(<[":
@@ -171,24 +176,26 @@ def _split_components(body):
 
 
 def _normalize_signature(text):
-    """Skladniki bez pakietow: 'net.minecraft.core.BlockPos pos' -> 'BlockPos pos'."""
+    """Components without packages: 'net.minecraft.core.BlockPos pos' -> 'BlockPos pos'."""
     text = text.replace("`", "").replace("@Nullable", "")
-    text = re.sub(r"(?<![A-Za-z0-9_])(?:[a-z][a-z0-9_]*\.)+", "", text)  # segmenty-pakiety
+    text = re.sub(r"(?<![A-Za-z0-9_])(?:[a-z][a-z0-9_]*\.)+", "", text)  # package segments
     return re.sub(r"\s+", " ", text).strip()
 
 
 def validate_packet_docs():
     """
-    Kazdy zarejestrowany pakiet musi byc wymieniony w README - Z SYGNATURA.
+    Every registered packet must be listed in the README - WITH ITS SIGNATURE.
 
-    Tabela pakietow w README jest pisana recznie, a rejestracja pakietow zyje
-    w VelocePacketHandler.java. To dwa spisy tej samej rzeczy, wiec bez kontroli
-    rozjezdzaja sie same - i juz sie rozjezdaly: README wymienial dwa pakiety,
-    ktorych nie ma, nie znal osmiu nowych, a potem przez kilka zmian opisywal
-    `OpenControllerScreenPKT` z polem `hotbar`, ktorego juz nie bylo.
+    The packet table in the README is written by hand, while packet
+    registration lives in VelocePacketHandler.java. Those are two registers of
+    the same thing, so without a check they diverge on their own - and they
+    already did: the README listed two packets that do not exist, was missing
+    eight new ones, and then for several changes it described
+    `OpenControllerScreenPKT` with a `hotbar` field that was long gone.
 
-    Dlatego sprawdzamy nie tylko NAZWE, ale i SKLADNIKI: naglowek rekordu
-    kontra komorka tabeli. Nazwa bez pol to dokument, ktory klamie polowicznie.
+    That is why we check not only the NAME but also the COMPONENTS: the record
+    header against the table cell. A name without fields is a document that
+    lies halfway.
     """
     handler = os.path.join("src/com/craftingveloce/network/VelocePacketHandler.java")
     readme = "README.md"
@@ -199,9 +206,9 @@ def validate_packet_docs():
     doc = open(readme, encoding="utf-8").read()
     missing = [p for p in registered if p not in doc]
     if missing:
-        fail("pakiety zarejestrowane, ale nieopisane w README.md:\n  " + "\n  ".join(missing))
+        fail("packets registered but not documented in README.md:\n  " + "\n  ".join(missing))
 
-    # Sygnatury: naglowek rekordu kontra trzecia kolumna wiersza tabeli.
+    # Signatures: the record header against the third column of the table row.
     mismatches = []
     for name in registered:
         path = os.path.join("src/com/craftingveloce/network", name + ".java")
@@ -213,25 +220,26 @@ def validate_packet_docs():
         row = re.search(r"^\|\s*`" + re.escape(name) + r"`\s*\|[^|]*\|([^|]*)\|",
                         doc, re.MULTILINE)
         if not row:
-            mismatches.append(f"{name}: brak wiersza w tabeli")
+            mismatches.append(f"{name}: no row in the table")
             continue
         code = _normalize_signature(body)
         docs = _normalize_signature(row.group(1))
         if code != docs:
-            mismatches.append(f"{name}:\n    kod:   {code}\n    README: {docs}")
+            mismatches.append(f"{name}:\n    code:   {code}\n    README: {docs}")
     if mismatches:
-        fail("sygnatury pakietow niezgodne z README.md:\n  " + "\n  ".join(mismatches))
-    print(f"    OK (README opisuje wszystkie {len(registered)} pakietow - nazwy i sygnatury)")
+        fail("packet signatures do not match README.md:\n  " + "\n  ".join(mismatches))
+    print(f"    OK (README documents all {len(registered)} packets - names and signatures)")
 
 
 def validate_lang_keys():
     """
-    Kazdy klucz tlumaczenia uzyty w kodzie musi istniec w en_us.json.
+    Every translation key used in the code must exist in en_us.json.
 
-    Brakujacy klucz NIE jest bledem kompilacji - gracz zobaczy w GUI surowy
-    napis "gui.craftingveloce.controller.flow.churn" i nikt tego nie zauwazy
-    w testach, bo kod "dziala". To dokladnie ta klasa bledu, ktora ten projekt
-    juz raz mial (klucz skasowany razem z metoda, a uzywany gdzie indziej).
+    A missing key is NOT a compilation error - the player sees the raw string
+    "gui.craftingveloce.controller.flow.churn" in the GUI and nobody notices it
+    in tests, because the code "works". This is exactly the class of bug this
+    project has already had once (a key deleted together with a method, while
+    still used elsewhere).
     """
     lang_path = os.path.join("assets/craftingveloce/lang/en_us.json")
     if not os.path.exists(lang_path):
@@ -249,18 +257,18 @@ def validate_lang_keys():
                     used.add(lit)
     missing = sorted(k for k in used if k not in lang)
     if missing:
-        fail("klucze jezykowe uzywane w kodzie, a nieobecne w en_us.json:\n  "
+        fail("language keys used in the code but absent from en_us.json:\n  "
              + "\n  ".join(missing))
     unused = sorted(k for k in lang
                     if k not in used and not k.startswith(("block.", "item.")))
-    info = f"    OK ({len(used)} kluczy uzywanych, wszystkie obecne"
+    info = f"    OK ({len(used)} keys used, all present"
     if unused:
-        info += f"; nieuzywane: {', '.join(unused)}"
-    print(info + ")   [block./item. pomijam - te tworzy rejestr]")
+        info += f"; unused: {', '.join(unused)}"
+    print(info + ")   [block./item. skipped - the registry creates those]")
 
 
 def _balanced(text, open_index):
-    """Zawartosc nawiasow, ktore zaczynaja sie na open_index (poziom 0 w srodku)."""
+    """Contents of the parentheses that start at open_index (level 0 inside)."""
     depth = 0
     for i in range(open_index, len(text)):
         if text[i] == "(":
@@ -274,13 +282,14 @@ def _balanced(text, open_index):
 
 def _method_body(text, signature):
     """
-    Cialo metody (w nawiasach klamrowych) po podanym poczatku sygnatury.
+    Method body (inside the braces) after the given start of the signature.
 
-    Po co: guardy sprawdzajace "czy w kodzie jest takie wywolanie" sa
-    BEZUZYTECZNE, gdy ta sama linia wystepuje w pliku jeszcze raz (np. to samo
-    zgloszenie wezla do sieci jest i przy postawieniu bloku, i przy podmianie
-    bloku). Wtedy usuniecie wywolania z JEDNEGO z tych miejsc przechodzi przez
-    build, a objaw jest cichy. Sprawdzamy wiec zawartosc KONKRETNEJ metody.
+    Why: guards that check "is such a call present in the code" are USELESS
+    when the same line occurs in the file a second time (e.g. the same node
+    registration to the network happens both when a block is placed and when a
+    block is replaced). Then removing the call from ONE of those places passes
+    the build, and the symptom is silent. So we check the contents of a
+    SPECIFIC method.
     """
     start = text.find(signature)
     if start < 0:
@@ -301,19 +310,21 @@ def _method_body(text, signature):
 
 def validate_helper_docs():
     """
-    Sygnatury metod ClientTerminalHelper w README musza sie zgadzac z kodem.
+    The ClientTerminalHelper method signatures in the README must match the code.
 
-    README sam o to prosi ("pilnuj, zeby ta lista nie zostala w tyle"), a i tak
-    zostala: `openControllerScreen` jeszcze dlugo opisywal parametr `hotbar`,
-    ktorego nie bylo od dwoch sesji. Dokladnie ta sama klasa bledu, co tabela
-    pakietow - dlatego dostaje ten sam rodzaj kontroli.
+    The README itself asks for this ("make sure this list does not fall
+    behind"), and it fell behind anyway: `openControllerScreen` still described
+    a `hotbar` parameter that had not existed for two sessions. Exactly the
+    same class of bug as the packet table - hence it gets the same kind of
+    check.
 
-    Sprawdzamy:
-      * kazda metoda opisana w README istnieje w kodzie,
-      * liczba parametrow sie zgadza,
-      * gdy README podaje pelne typy - takze same typy.
-    Metody zapisane skrotowo (bez typow, np. `handleSyncCounts(a, b)`) sprawdzamy
-    tylko po liczbie parametrow, bo nie da sie ich porownac doslownie.
+    We check:
+      * every method described in the README exists in the code,
+      * the number of parameters matches,
+      * when the README gives full types - the types as well.
+    Methods written in shorthand (without types, e.g. `handleSyncCounts(a, b)`)
+    are checked only by parameter count, because they cannot be compared
+    literally.
     """
     readme = "README.md"
     src = "src/com/craftingveloce/client/ClientTerminalHelper.java"
@@ -340,7 +351,7 @@ def validate_helper_docs():
         name, raw = dm.group(1), dm.group(2)
         documented.add(name)
         if name not in methods:
-            problems.append(f"{name}: opisana w README, a nie ma jej w kodzie")
+            problems.append(f"{name}: documented in the README, but missing from the code")
             continue
         parts = [p for p in _split_components(raw) if p.strip()]
         typed = all(" " in p.strip() for p in parts)
@@ -349,33 +360,34 @@ def validate_helper_docs():
         if not candidates:
             arities = [len([x for x in _split_components(p) if x.strip()])
                        for p in methods[name]]
-            problems.append(f"{name}: README podaje {len(parts)} parametr(ow), "
-                            f"w kodzie jest {arities}")
+            problems.append(f"{name}: README gives {len(parts)} parameter(s), "
+                            f"the code has {arities}")
         elif typed and _normalize_signature(raw) not in candidates:
-            problems.append(f"{name}:\n    kod:    {candidates[0]}\n"
+            problems.append(f"{name}:\n    code:   {candidates[0]}\n"
                             f"    README: {_normalize_signature(raw)}")
 
     missing = sorted(n for n in methods if n not in documented)
     if missing:
-        problems.append("metody publiczne bez opisu w README: " + ", ".join(missing))
+        problems.append("public methods without a README description: " + ", ".join(missing))
 
     if problems:
-        fail("ClientTerminalHelper w README rozjechany z kodem:\n  "
+        fail("ClientTerminalHelper in the README out of sync with the code:\n  "
              + "\n  ".join(problems))
-    print(f"    OK (README opisuje {len(documented)} metod ClientTerminalHelper - "
-          f"sygnatury zgodne)")
+    print(f"    OK (README documents {len(documented)} ClientTerminalHelper methods - "
+          f"signatures match)")
 
 
 def validate_filter_labels():
     """
-    Etykiety guzikow filtra kontrolera musza sie zmiescic w guziku.
+    The controller's filter button labels must fit inside the button.
 
-    Ten przycisk ma 52 px, a poprzednie napisy ("Show all" = 8 znakow,
-    "Not available" = 13) wychodzily za niego i nachodzily na sasiedni guzik.
-    Szerokosci czcionki nie da sie tu zmierzyc dokladnie (to zalezy od
-    zasobow gry), wiec liczymy szacunek: ~6 px na znak + 8 px na wewnetrzny
-    odstep guzika. Kalibracja: ten wzor flaguje OBA napisy, ktore kiedys
-    naprawde sie nie miescily, a przepuszcza obecne ("All", "Active", "None").
+    This button is 52 px wide, and the previous labels ("Show all" = 8
+    characters, "Not available" = 13) ran past it and overlapped the
+    neighbouring button. The font width cannot be measured exactly here (it
+    depends on the game assets), so we use an estimate: ~6 px per character +
+    8 px for the button's inner padding. Calibration: this formula flags BOTH
+    labels that really did not fit once, and lets the current ones through
+    ("All", "Active", "None").
     """
     lang_path = os.path.join("assets/craftingveloce/lang/en_us.json")
     screen = "src/com/craftingveloce/client/gui/VeloceControllerScreen.java"
@@ -384,7 +396,7 @@ def validate_filter_labels():
     text = open(screen, encoding="utf-8").read()
     m = re.search(r"FILTER_BUTTON_W\s*=\s*(\d+)", text)
     if not m:
-        fail("brak stalej FILTER_BUTTON_W w VeloceControllerScreen")
+        fail("no FILTER_BUTTON_W constant in VeloceControllerScreen")
     width = int(m.group(1))
     lang = json.load(open(lang_path, encoding="utf-8"))
 
@@ -393,30 +405,30 @@ def validate_filter_labels():
     too_long = []
     for key in sorted(keys):
         label = lang[key]
-        # ~6 px na znak + 8 px odstepu wewnatrz guzika
+        # ~6 px per character + 8 px of padding inside the button
         estimated = len(label) * 6 + 8
         if estimated > width:
             too_long.append(f"{key} = '{label}' (~{estimated} px > {width} px)")
     if too_long:
-        fail("etykiety filtra nie mieszcza sie w guziku:\n  " + "\n  ".join(too_long))
-    print(f"    OK (etykiety filtra mieszcza sie w {width} px: "
+        fail("filter labels do not fit inside the button:\n  " + "\n  ".join(too_long))
+    print(f"    OK (filter labels fit in {width} px: "
           + ", ".join(f"'{lang[k]}'" for k in sorted(keys)) + ")")
-
 
 def validate_gui_layout():
     """
-    Wspolrzedne GUI zyja w kilku plikach i musza sie zgadzac.
+    The GUI coordinates live in several files and must agree.
 
-    Kto z kim, zalezy od tego, kto czego uzywa:
-      * FILTER_X/Y  - menu stawia sloty, ekran rysuje ikony filtrow,
-                      generator maluje ramki  -> wszystkie trzy,
-      * FUEL_X/Y    - menu (slot) + generator (ramka),
-      * PLAYER_X/Y  - menu (ekwipunek) + generator (ramki),
-      * FLAME_X/Y   - ekran (sprite plomienia) + generator (pozycja do opisu).
+    Who is compared with whom depends on who uses what:
+      * FILTER_X/Y  - the menu places the slots, the screen draws the filter
+                      icons, the generator paints the frames  -> all three,
+      * FUEL_X/Y    - menu (slot) + generator (frame),
+      * PLAYER_X/Y  - menu (inventory) + generator (frames),
+      * FLAME_X/Y   - screen (flame sprite) + generator (position for the label).
 
-    Raz juz sie to rozjechalo: slot paliwa stal tam, gdzie mowilo menu, a
-    tekstura miala ramke gdzie indziej - slot nachodzil na napis "Inventory".
-    Kompilator tego nie widzi, a w grze wyglada jak blad grafiki.
+    It has already diverged once: the fuel slot sat where the menu said, while
+    the texture had its frame somewhere else - the slot overlapped the
+    "Inventory" label. The compiler does not see this, and in game it looks
+    like a graphics bug.
     """
     def consts(path, names):
         text = open(path, encoding="utf-8").read()
@@ -431,13 +443,14 @@ def validate_gui_layout():
         "ekran": "src/com/craftingveloce/client/gui/VeloceVelocityFurnaceScreen.java",
         "generator": "scripts/gen_furnace_gui.py",
     }
-    # Bateria i jej slot zyja w menu pieca ELEKTRYCZNEGO i w jego ekranie.
+    # The battery and its slot live in the ELECTRIC furnace menu and in its screen.
     paths["menu_el"] = "src/com/craftingveloce/inventory/VeloceElectricFurnaceMenu.java"
     paths["ekran_el"] = "src/com/craftingveloce/client/gui/VeloceElectricFurnaceScreen.java"
-    # Sensor: slot itemu stawia menu, a ramke pod nim maluje generator GUI.
-    # To ta sama para co w piecu - i wlasnie ta para byla poza kontrola, dopoki
-    # generator zapisywal ja krotko ("FILTER_X, FILTER_Y = 26, 18"), czego
-    # wyrazenie regularne nie widzi.
+    # Sensor: the menu places the item slot, and the GUI generator paints the
+    # frame underneath it. It is the same pair as in the furnace - and this
+    # very pair was outside the check as long as the generator wrote it as a
+    # one-liner ("FILTER_X, FILTER_Y = 26, 18"), which a regular expression
+    # does not see.
     paths["menu_s"] = "src/com/craftingveloce/inventory/VeloceThresholdSensorMenu.java"
     paths["gen_s"] = "scripts/gen_sensor_textures.py"
     names = ["FILTER_X", "FILTER_Y", "FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y",
@@ -445,20 +458,21 @@ def validate_gui_layout():
              "BATTERY_X", "BATTERY_Y", "BATTERY_W", "BATTERY_H", "NUB_W", "NUB_H",
              "BATTERY_SLOT_X", "BATTERY_SLOT_Y",
              "FILTER_SLOT_X", "FILTER_SLOT_Y"]
-    # Domyslnie porownujemy trojke pieca PALIWOWEGO: menu, ekran, generator.
-    # Pozostale elementy maja wlasne listy nizej.
+    # By default we compare the FUEL furnace triple: menu, screen, generator.
+    # The remaining elements have their own lists below.
     who = {n: ["menu", "ekran", "generator"] for n in names}
     for n in ("FILTER_SLOT_X", "FILTER_SLOT_Y"):
         who[n] = ["menu_s", "gen_s"]            # sensor: menu + generator
     for n in ("FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y"):
-        who[n] = ["menu", "generator"]          # ekran ich nie potrzebuje
+        who[n] = ["menu", "generator"]          # the screen does not need them
     for n in ("FLAME_X", "FLAME_Y"):
-        who[n] = ["ekran", "generator"]         # menu ich nie potrzebuje
+        who[n] = ["ekran", "generator"]         # the menu does not need them
     for n in ("BATTERY_X", "BATTERY_Y", "BATTERY_W", "BATTERY_H", "NUB_W", "NUB_H"):
-        who[n] = ["ekran_el", "generator"]      # bateria pieca elektrycznego
+        who[n] = ["ekran_el", "generator"]      # battery of the electric furnace
     for n in ("BATTERY_SLOT_X", "BATTERY_SLOT_Y"):
-        # Ekran elektryczny UZYWA stalej z menu (nie ma wlasnej kopii) - i tak
-        # ma byc: jedno zrodlo. Generator maluje ramke pod ta pozycja.
+        # The electric screen USES the constant from the menu (it has no copy
+        # of its own) - and that is how it should be: one source. The generator
+        # paints the frame under that position.
         who[n] = ["menu_el", "generator"]
 
     values = {n: {k: consts(paths[k], [n])[n] for k in who[n]} for n in names}
@@ -467,27 +481,27 @@ def validate_gui_layout():
     for n in names:
         v = values[n]
         if any(x is None for x in v.values()):
-            problems.append(f"{n}: brak stalej (" + ", ".join(
-                f"{k}={'brak' if x is None else x}" for k, x in v.items()) + ")")
+            problems.append(f"{n}: no constant (" + ", ".join(
+                f"{k}={'missing' if x is None else x}" for k, x in v.items()) + ")")
         elif len(set(v.values())) > 1:
             problems.append(f"{n}: " + ", ".join(f"{k}={x}" for k, x in v.items()))
 
     if problems:
-        fail("uklad GUI nie zgadza sie miedzy plikami:\n  " + "\n  ".join(problems))
-    print("    OK (uklad GUI zgodny: " + ", ".join(
+        fail("GUI layout does not agree between files:\n  " + "\n  ".join(problems))
+    print("    OK (GUI layout consistent: " + ", ".join(
         f"{n}={values[n][who[n][0]]}" for n in names) + ")")
-
 
 def validate_sensor_row():
     """
-    Wiersz sensora: wysrodkowany W OBIE STRONY, rowne odstepy, nic na sobie.
+    The sensor row: centred ON BOTH SIDES, even gaps, nothing overlapping.
 
-    Gracz poprosil wprost o JEDEN wyrownany rzad (slot itemu, pole liczby, "+",
-    "-", guzik trybu), wycentrowany - najpierw w poziomie, a potem doszedl
-    drugi zglos: "w poziomie ok, ale w pionie za wysoko". Wspolrzedne sa recznie
-    policzonymi liczbami, a taka literowke widac dopiero w grze - jako krzywy
-    GUI. Tutaj liczymy to samo, co widzi gracz: marginesy poziome, marginesy
-    pionowe w polu roboczym (tytul -> ekwipunek) i wysrodkowanie slotu w rzedzie.
+    The player asked directly for ONE aligned row (item slot, number field,
+    "+", "-", mode button), centred - first horizontally, and then a second
+    report came in: "horizontally fine, but vertically too high". The
+    coordinates are hand-calculated numbers, and such a typo is only visible
+    in game - as a crooked GUI. Here we compute the same thing the player
+    sees: horizontal margins, vertical margins in the working area
+    (title -> inventory) and the slot centred in the row.
     """
     path = "src/com/craftingveloce/inventory/VeloceThresholdSensorMenu.java"
     if not os.path.exists(path):
@@ -500,68 +514,70 @@ def validate_sensor_row():
     for n in names:
         m = re.search(r"\b" + re.escape(n) + r"\s*=\s*(-?\d+)", text)
         if not m:
-            fail(f"brak stalej {n} w {path} (build.py czyta je pojedynczo)")
+            fail(f"no {n} constant in {path} (build.py reads them one by one)")
         v[n] = int(m.group(1))
 
     pieces = [("slot", v["FILTER_SLOT_X"], v["SLOT_SIZE"]),
-              ("pole", v["FIELD_X"], v["FIELD_W"]),
+              ("field", v["FIELD_X"], v["FIELD_W"]),
               ("+", v["STEP_PLUS_X"], v["BTN_W"]),
               ("-", v["STEP_MINUS_X"], v["BTN_W"]),
-              ("tryb", v["MODE_X"], v["BTN_W"])]
+              ("mode", v["MODE_X"], v["BTN_W"])]
 
     problems = []
     for (an, ax, aw), (bn, bx, _bw) in zip(pieces, pieces[1:]):
         gap = bx - (ax + aw)
         if gap != v["GAP"]:
-            problems.append(f"odstep {an} -> {bn} = {gap} px, ma byc {v['GAP']}")
+            problems.append(f"gap {an} -> {bn} = {gap} px, should be {v['GAP']}")
     left = pieces[0][1]
     right = v["PANEL_WIDTH"] - (pieces[-1][1] + pieces[-1][2])
     if left != right:
-        problems.append(f"wiersz nie jest wysrodkowany poziomo: "
-                        f"lewy margines {left}, prawy {right}")
+        problems.append(f"row is not centred horizontally: "
+                        f"left margin {left}, right margin {right}")
 
-    # Pion: polem roboczym jest odstep miedzy tytulem a ekwipunkiem gracza.
+    # Vertical: the working area is the gap between the title and the player inventory.
     above = v["ROW_Y"] - v["TITLE_BOTTOM"]
     below = v["PLAYER_Y"] - (v["ROW_Y"] + v["ROW_H"])
     if below < 0:
-        problems.append(f"wiersz (y={v['ROW_Y']}..{v['ROW_Y'] + v['ROW_H']}) "
-                        f"wchodzi na ekwipunek gracza (y={v['PLAYER_Y']})")
+        problems.append(f"row (y={v['ROW_Y']}..{v['ROW_Y'] + v['ROW_H']}) "
+                        f"overlaps the player inventory (y={v['PLAYER_Y']})")
     elif abs(above - below) > 1:
-        problems.append(f"wiersz nie jest wysrodkowany w pionie: nad nim "
-                        f"{above} px, pod nim {below} px")
+        problems.append(f"row is not centred vertically: "
+                        f"{above} px above it, {below} px below it")
 
-    # Slot 16 px ma byc wysrodkowany w rzedzie 20 px.
+    # A 16 px slot must be centred in a 20 px row.
     slot_above = v["FILTER_SLOT_Y"] - v["ROW_Y"]
     slot_below = v["ROW_Y"] + v["ROW_H"] - (v["FILTER_SLOT_Y"] + v["SLOT_SIZE"])
     if abs(slot_above - slot_below) > 1:
-        problems.append(f"slot nie jest wysrodkowany w rzedzie: nad nim "
-                        f"{slot_above} px, pod nim {slot_below} px")
+        problems.append(f"slot is not centred in the row: "
+                        f"{slot_above} px above it, {slot_below} px below it")
 
     if problems:
-        fail("wiersz sensora:\n  " + "\n  ".join(problems))
+        fail("sensor row:\n  " + "\n  ".join(problems))
     row_w = pieces[-1][1] + pieces[-1][2] - pieces[0][1]
-    print(f"    OK (wiersz sensora: {row_w} px, margines {left} px z bokow, "
-          f"{above} px nad i {below} px pod)")
+    print(f"    OK (sensor row: {row_w} px, margin {left} px on both sides, "
+          f"{above} px above and {below} px below)")
 
 
 def validate_node_blocks():
     """
-    Kto jest wezlem sieci, musi to mowic JEDNYM sposobem - interfejsem.
+    Whoever is a network node must say so in ONE way - through the interface.
 
-    Wezel sieci rur ma dwa obowiazki, ktore musza isc w parze:
-      * implementowac {@code VeloceNetworkNode} (inaczej rdzen go nie
-        rozpozna: nie trafi do terminali i jego chunk nie bedzie utrzymywany),
-      * wolac {@code VeloceNodeBlocks.onNodePlaced} / {@code onNodeRemoved}
-        (inaczej siec nie dowie sie o postawieniu/zniszczeniu bloku).
+    A pipe network node has two duties that must go hand in hand:
+      * implement {@code VeloceNetworkNode} (otherwise the core will not
+        recognise it: it will not reach the terminals and its chunk will not be
+        kept loaded),
+      * call {@code VeloceNodeBlocks.onNodePlaced} / {@code onNodeRemoved}
+        (otherwise the network will not learn about the block being
+        placed/destroyed).
 
-    Ta para juz sie raz rozjechala: kontroler nie byl rozpoznawany jako wezel,
-    wiec jego GUI pokazywalo pusty stock, a gniazda filtrów mogly zostac
-    wystawione sieci jako zwykly magazyn. Oba bledy sa niewidoczne dla
-    kompilatora - dlatego pilnuje ich build.
+    This pair has already diverged once: the controller was not recognised as a
+    node, so its GUI showed an empty stock, and the filter slots could be
+    exposed to the network as ordinary storage. Both errors are invisible to
+    the compiler - that is why the build guards them.
     """
-    # Bloki rdzenia ORAZ bloki modulow: maszyna z compat/ tez jest wezlem sieci
-    # (inaczej crafter by jej nie widzial), a latwo o tym zapomniec wlasnie
-    # w module, ktory dopiero powstaje.
+    # Core blocks AND module blocks: a machine from compat/ is also a network
+    # node (otherwise the crafter would not see it), and it is easy to forget
+    # exactly in a module that is only just being written.
     block_dirs = ["src/com/craftingveloce/block"]
     block_dirs += sorted(glob.glob("src/com/craftingveloce/compat/*/block"))
     files = []
@@ -584,39 +600,41 @@ def validate_node_blocks():
         if is_interface:
             nodes.append(name)
             if not (has_hook and has_remove):
-                fail(f"{name} implementuje VeloceNetworkNode, ale nie wola "
+                fail(f"{name} implements VeloceNetworkNode, but does not call "
                      f"{'onNodePlaced' if not has_hook else 'onNodeRemoved'} - "
-                     f"siec nie dowie sie o zmianie tego bloku")
+                     f"the network will not learn about this block changing")
         elif has_hook or has_remove:
             hooked.append(name)
     if hooked:
-        fail("te bloki zglaszaja sie do sieci, ale nie sa wezlami "
-             "(brak VeloceNetworkNode):\n  " + "\n  ".join(hooked))
+        fail("these blocks register themselves with the network, but are not "
+             "nodes (no VeloceNetworkNode):\n  " + "\n  ".join(hooked))
     if not nodes:
-        fail("zaden blok nie implementuje VeloceNetworkNode - "
-             "rozpoznawanie wezlow sieci jest zepsute")
-    print(f"    OK ({len(nodes)} wezlow sieci: interfejs + hooki parami)")
+        fail("no block implements VeloceNetworkNode - "
+             "network node recognition is broken")
+    print(f"    OK ({len(nodes)} network nodes: interface + hooks in pairs)")
 
 
 def validate_recipe_model():
     """
-    Jedna regula o recepturach = jedno miejsce w kodzie.
+    One rule about recipes = one place in the code.
 
-    Ten projekt ma powtarzalny blad: te sama regule zapisano recznie w dwoch
-    miejscach i miejsca sie rozjechaly (lista wezlow sieci, lista packetow,
-    uklad GUI). Przy recepturach byly az TRZY kopie listy typow (rejestr,
-    graf, GUI craftera) i DWIE kopie filtra "special" - przez ten drugi filtr
-    receptury modow byly po cichu wyrzucane (Mekanism oznacza tak wszystkie
-    swoje), wiec zaden modul z innego moda nie mialby czego liczyc.
+    This project has a recurring bug: the same rule written by hand in two
+    places, and the places diverging (network node list, packet list, GUI
+    layout). With recipes there were as many as THREE copies of the type list
+    (registry, graph, crafter GUI) and TWO copies of the "special" filter -
+    because of that second filter, mod recipes were being silently thrown away
+    (Mekanism marks all of its own that way), so no module from another mod
+    would have had anything to count.
 
-    Pilnujemy trzech niezmiennikow:
-      1. istnieje JEDEN model receptury (ProcessingEntry) - bez drugiego
-         rekordu CraftingEntry,
-      2. liste typow receptur wolno deklarowac WYLACZNIE w
-         VeloceRecipeFamilies.java (reszta musi ja brac z tamtej klasy),
-      3. filtr "special" wolno stosowac WYLACZNIE w
-         VeloceRecipeRegistry.isVanillaSpecial (zawężenie do namespace
-         minecraft), a nie bezposrednio przez recipe.isSpecial().
+    We guard three invariants:
+      1. there is ONE recipe model (ProcessingEntry) - no second
+         CraftingEntry record,
+      2. the recipe type list may be declared ONLY in
+         VeloceRecipeFamilies.java (everything else must take it from that
+         class),
+      3. the "special" filter may be applied ONLY in
+         VeloceRecipeRegistry.isVanillaSpecial (narrowed to the minecraft
+         namespace), and not directly through recipe.isSpecial().
     """
     src_root = "src"
     if not os.path.isdir(src_root):
@@ -639,44 +657,46 @@ def validate_recipe_model():
                 dup_lists.append(rel)
             if ".isSpecial()" in text:
                 if rel.endswith("crafting/VeloceRecipeRegistry.java"):
-                    # Filtr WOLNO stosowac tylko tutaj - i dokladnie w jednym
-                    # miejscu (isVanillaSpecial). Druga proba w tym samym pliku
-                    # znaczylaby drugi filtr obok zawężonego do minecraft.
+                    # The filter may be applied only here - and in exactly one
+                    # place (isVanillaSpecial). A second attempt in the same
+                    # file would mean a second filter next to the one narrowed
+                    # to minecraft.
                     uses = text.count(".isSpecial()")
                     if uses != 1:
-                        dup_special.append(rel + f" ({uses}x, ma byc 1x)")
+                        dup_special.append(rel + f" ({uses}x, should be 1x)")
                 else:
                     dup_special.append(rel)
     problems = []
     if dup_model:
-        problems.append("drugi model receptury (record CraftingEntry) w: "
+        problems.append("a second recipe model (record CraftingEntry) in: "
                         + ", ".join(dup_model))
     if dup_lists:
-        problems.append("wlasna kopia listy typow receptur (ma byc tylko "
-                        "VeloceRecipeFamilies) w: " + ", ".join(dup_lists))
+        problems.append("a private copy of the recipe type list (only "
+                        "VeloceRecipeFamilies is allowed) in: " + ", ".join(dup_lists))
     if dup_special:
-        problems.append("filtrowanie po recipe.isSpecial() poza "
-                        "isVanillaSpecial() w: " + ", ".join(dup_special))
+        problems.append("filtering by recipe.isSpecial() outside "
+                        "isVanillaSpecial() in: " + ", ".join(dup_special))
     if problems:
-        fail("model receptur:\n  " + "\n  ".join(problems))
+        fail("recipe model:\n  " + "\n  ".join(problems))
     entries = os.path.join(src_root, "com/craftingveloce/crafting/ProcessingEntry.java")
     if not os.path.exists(entries):
-        fail("brak ProcessingEntry - jedynego modelu receptury")
-    print("    OK (jeden model receptury, jedna lista rodzin, jeden filtr special)")
+        fail("no ProcessingEntry - the single recipe model")
+    print("    OK (one recipe model, one family list, one special filter)")
 
 
 def _imports_of(path):
-    """Pelen zbiór importowanych nazw w pliku (prosto i bez parsera)."""
+    """The full set of imported names in a file (simply, without a parser)."""
     text = open(path, encoding="utf-8").read()
     return [m.group(1) for m in re.finditer(r"^import\s+([\w.]+);", text, re.M)]
 
 
 def foreign_packages_used():
     """
-    Prefiksy obcych pakietow, ktore sa FAKTYCZNIE importowane w src/.
+    Prefixes of foreign packages that are ACTUALLY imported in src/.
 
-    Dzieki temu etap "same bramki, zero blokow" nie wymaga JAR-ow obcych
-    modow, a pierwszy plik z obcym typem od razu je wymusza.
+    Thanks to this, the "gates only, zero blocks" stage does not require
+    foreign mod JARs, and the first file with a foreign type immediately
+    forces them.
     """
     used = set()
     for path in glob.glob("src/**/*.java", recursive=True):
@@ -699,12 +719,11 @@ def _find_jar(name):
 
 def _extract_nested_jar(name):
     """
-    Wyciaga JAR z META-INF/jarjar innego moda do libs/.
+    Extracts a JAR from another mod's META-INF/jarjar into libs/.
 
-    Create dolacza swoje biblioteki (Ponder, Flywheel, Registrate) jako
-    zagniezdzone JAR-y. Do kompilacji wystarczy Ponder - bez niego javac
-    nie widzi klasy bazowej bloku kinetycznego ("cannot access
-    VirtualBlockEntity").
+    Create bundles its libraries (Ponder, Flywheel, Registrate) as nested
+    JARs. Ponder alone is enough to compile - without it javac does not see the
+    kinetic block base class ("cannot access VirtualBlockEntity").
     """
     for directory in COMPILE_ONLY_DIRS:
         if not os.path.isdir(directory):
@@ -719,7 +738,7 @@ def _extract_nested_jar(name):
                     dest = os.path.join(LIBS, name)
                     with archive.open(member) as src, open(dest, "wb") as out:
                         shutil.copyfileobj(src, out)
-                    print(f"    wyciagnieto {name} z {os.path.basename(jar)}")
+                    print(f"    extracted {name} from {os.path.basename(jar)}")
                     return dest
             except zipfile.BadZipFile:
                 continue
@@ -727,7 +746,7 @@ def _extract_nested_jar(name):
 
 
 def resolve_compile_only():
-    """JAR-y compileOnly potrzebne do TEJ kompilacji (moze byc pusto)."""
+    """The compileOnly JARs needed for THIS compilation (may be empty)."""
     used = foreign_packages_used()
     if not used:
         return []
@@ -745,25 +764,26 @@ def resolve_compile_only():
             if found:
                 paths.append(found)
             else:
-                missing.append(" albo ".join(variants))
+                missing.append(" or ".join(variants))
     if missing:
-        fail("brak zaleznosci kompilacyjnych: " + ", ".join(sorted(set(missing)))
-             + "\n  importy obcych pakietow w src/: " + ", ".join(sorted(used))
-             + "\n  szukalem w: " + ", ".join(COMPILE_ONLY_DIRS)
-             + "\n  wloz JAR-y tam (albo do libs/) i uruchom ponownie")
+        fail("missing compile-time dependencies: " + ", ".join(sorted(set(missing)))
+             + "\n  foreign package imports in src/: " + ", ".join(sorted(used))
+             + "\n  looked in: " + ", ".join(COMPILE_ONLY_DIRS)
+             + "\n  put the JARs there (or into libs/) and run again")
     return paths
-
 
 def validate_core_isolation():
     """
-    Rdzen nie zna obcych modow, a modul compat zna TYLKO swojego moda.
+    The core does not know foreign mods, and a compat module knows ONLY its own mod.
 
-    Dwa niezmienniki:
-      1. zaden plik poza {@code compat/} nie importuje obcego pakietu - inaczej
-         mod nie wstaje bez tamtego moda (NoClassDefFoundError przy linkowaniu),
-      2. modul {@code compat/<mod>} nie importuje innego obcego moda - to
-         najczestszy blad przy kopiowaniu pliku z jednej integracji do drugiej
-         i objawia sie dopiero u gracza, ktory ma tylko jeden z tych modow.
+    Two invariants:
+      1. no file outside {@code compat/} imports a foreign package - otherwise
+         the mod will not start without that mod (NoClassDefFoundError while
+         linking),
+      2. a {@code compat/<mod>} module does not import another foreign mod -
+         this is the most common mistake when copying a file from one
+         integration to another, and it only shows up for a player who has just
+         one of those mods.
     """
     owners = {
         "create": ("com.simibubi.create", "net.createmod"),
@@ -788,47 +808,48 @@ def validate_core_isolation():
         allowed = owners.get(owner, ())
         for name in foreign:
             if not any(name == p or name.startswith(p + ".") for p in allowed):
-                cross.append(f"{rel} -> {name} (modul '{owner}')")
+                cross.append(f"{rel} -> {name} (module '{owner}')")
     problems = []
     if core:
-        problems.append("rdzen importuje obce mody:\n  " + "\n  ".join(core))
+        problems.append("the core imports foreign mods:\n  " + "\n  ".join(core))
     if cross:
-        problems.append("modul compat importuje obcego moda:\n  " + "\n  ".join(cross))
+        problems.append("a compat module imports a foreign mod:\n  " + "\n  ".join(cross))
     if problems:
-        fail("izolacja modulow:\n  " + "\n  ".join(problems))
-    print(f"    OK (izolacja: {checked} plikow z obcymi importami, wszystkie w compat/)")
+        fail("module isolation:\n  " + "\n  ".join(problems))
+    print(f"    OK (isolation: {checked} files with foreign imports, all in compat/)")
 
 
 def validate_compat_gates(z):
     """
-    Klasy ladowane ZAWSZE nie moga miec obcego typu w swojej sygnaturze.
+    Classes loaded ALWAYS must not have a foreign type in their signature.
 
-    To najwazniejszy niezmiennik izolacji i jednoczesnie najlatwiejszy do
-    zlamania: dopisanie pola albo parametru typu obcego moda do klasy bramki
-    wywala moda bez tego moda. Powod jest mechaniczny - JVM musi znac typy
-    z sygnatur, zeby zweryfikowac klase, a ciala metod tylko przy ich
-    WYWOLANIU.
+    This is the most important isolation invariant and at the same time the
+    easiest to break: adding a field or a parameter of a foreign mod's type to
+    a gate class breaks the mod without that mod. The reason is mechanical -
+    the JVM must know the types from the signatures in order to verify a class,
+    while it resolves method bodies only when they are CALLED.
 
-    Sprawdzamy cztery grupy klas (wszystkie ladowane bezwarunkowo):
-      1. rdzen (poza {@code compat/}),
-      2. klasy w samym {@code compat/} (np. VeloceMods - enum modow),
-      3. klasy-bramki {@code compat/<mod>/XCompat},
-      4. klasy w {@code compat/<mod>/} - z wyjatkiem bramek - sa ladowane
-         TYLKO po sprawdzeniu obecnosci moda, wiec one moga miec obce typy.
+    We check four groups of classes (all loaded unconditionally):
+      1. the core (outside {@code compat/}),
+      2. classes in {@code compat/} itself (e.g. VeloceMods - the mod enum),
+      3. the gate classes {@code compat/<mod>/XCompat},
+      4. classes in {@code compat/<mod>/} - except the gates - are loaded ONLY
+         after checking that the mod is present, so they may have foreign types.
 
-    JEI jest tu szczegolnym przypadkiem i dlatego NIE ma wlasnej bramki: jego
-    plugin ({@code compat/jei/VeloceJeiPlugin}) ma obcy typ w SYGNATURZE metody
-    ({@code registerRecipeCatalysts(IRecipeCatalystRegistration)}), a laduje go
-    samo JEI, skanujac adnotacje {@code @JeiPlugin}. Bez JEI nie ma kto go
-    zaladowac, wiec niezmiennik "obce typy tylko po sprawdzeniu obecnosci moda"
-    jest spelniony - i wlasnie dlatego plugin jest w {@code module_dirs}, a nie
-    w {@code gates}.
+    JEI is a special case here, and that is why it has NO gate of its own: its
+    plugin ({@code compat/jei/VeloceJeiPlugin}) has a foreign type in the
+    SIGNATURE of a method ({@code registerRecipeCatalysts(IRecipeCatalystRegistration)}),
+    and JEI itself loads it by scanning for the {@code @JeiPlugin} annotation.
+    Without JEI there is nobody to load it, so the invariant "foreign types
+    only after checking that the mod is present" holds - and that is exactly
+    why the plugin is in {@code module_dirs} and not in {@code gates}.
 
-    UWAGA: to musi byc kontrola SYGNATUR, a nie test ladowania klasy. HotSpot
-    rozwiazuje typy leniwie, wiec klasa z nieuzywanym polem obcego typu
-    zaladuje sie bez obcego moda - i wywali sie dopiero, gdy ktos dotknie tego
-    pola (np. rok pozniej, przy okazji innej zmiany). Kalibracja: wstrzykniecie
-    pola typu Create do VeloceMods przechodzi test L1, a MUSI byc zlapane tutaj.
+    NOTE: this must be a SIGNATURE check, not a class-loading test. HotSpot
+    resolves types lazily, so a class with an unused field of a foreign type
+    will load without the foreign mod - and only blow up when somebody touches
+    that field (e.g. a year later, while making another change). Calibration:
+    injecting a field of a Create type into VeloceMods passes the L1 test, and
+    it MUST be caught here.
     """
     gates = {
         "create": "com.craftingveloce.compat.create.CreateCompat",
@@ -848,7 +869,7 @@ def validate_compat_gates(z):
             continue
         in_module = any(name.startswith(d) for d in module_dirs)
         if in_module and name not in gate_paths:
-            continue   # ladowane warunkowo - obce typy sa tu dozwolone
+            continue   # loaded conditionally - foreign types are allowed here
         targets.append(name[:-len(".class")].replace("/", "."))
 
     problems, checked = [], 0
@@ -856,38 +877,38 @@ def validate_compat_gates(z):
         res = subprocess.run(["javap", "-p", "-s", "-cp", BUILD_OUT, cls],
                              capture_output=True, text=True)
         if res.returncode != 0:
-            problems.append(f"{cls}: javap nie powiodl sie ({res.stderr.strip()[:120]})")
+            problems.append(f"{cls}: javap failed ({res.stderr.strip()[:120]})")
             continue
         checked += 1
         for line in res.stdout.splitlines():
             stripped = line.strip()
             if not (stripped.endswith(";") or stripped.startswith("descriptor:")):
                 continue
-            # Nasze wlasne nazwy moga zawierac slowo "mekanism" (pakiet modulu
-            # compat), wiec najpierw usuwamy cala nasza kwalifikacje - szukamy
-            # obcego pakietu, a nie slowa.
+            # Our own names may contain the word "mekanism" (the compat module
+            # package), so we first strip our whole qualification - we are
+            # looking for a foreign package, not for a word.
             probe = re.sub(r"com\.craftingveloce(\.\w+)+", "", line)
             probe = re.sub(r"com/craftingveloce(/[\w$]+)+", "", probe)
             for pkg in FOREIGN_PACKAGES:
                 if pkg in probe or pkg.replace(".", "/") in probe:
-                    problems.append(f"{cls}: obcy typ w sygnaturze -> {stripped}")
+                    problems.append(f"{cls}: foreign type in signature -> {stripped}")
     if problems:
-        fail("izolacja sygnatur:\n  " + "\n  ".join(problems[:8]))
+        fail("signature isolation:\n  " + "\n  ".join(problems[:8]))
     missing = [c for c in gates.values() if c not in targets]
     if missing:
-        fail("brak klas bramek w JARze: " + ", ".join(missing))
-    print(f"    OK ({checked} klas ladowanych zawsze: zero obcych typow w sygnaturach)")
+        fail("missing gate classes in the JAR: " + ", ".join(missing))
+    print(f"    OK ({checked} always-loaded classes: zero foreign types in signatures)")
 
 
 def validate_jar_isolation(z):
     """
-    Poziom BAJTKODU: rdzen nie odwoluje sie do zadnej klasy obcego moda.
+    BYTECODE level: the core does not reference any foreign mod class.
 
-    Kontrola zrodel patrzy na linie {@code import} - a obcy typ moze byc
-    uzyty bez importu (pelna nazwa w kodzie). Dlatego sprawdzamy gotowy
-    artefakt: zadna nasza klasa SPOZA {@code compat/} nie moze miec w stalej
-    puli odwolania do obcego pakietu. To ten sam niezmiennik, ale odporny na
-    sposob zapisu w zrodle.
+    The source check looks at {@code import} lines - but a foreign type can be
+    used without an import (a fully qualified name in the code). That is why we
+    check the finished artifact: none of our classes OUTSIDE {@code compat/}
+    may have a reference to a foreign package in the constant pool. It is the
+    same invariant, but resistant to how it is spelled in the source.
     """
     root = "com/craftingveloce/"
     compat = root + "compat/"
@@ -895,7 +916,7 @@ def validate_jar_isolation(z):
     patterns = [p.encode() for p in FOREIGN_JAR_PATHS]
 
     def foreign_refs(data):
-        """Odwolania do obcych pakietow, pomijajac nasz wlasny katalog compat/."""
+        """References to foreign packages, ignoring our own compat/ directory."""
         found = []
         for pattern in patterns:
             start = 0
@@ -903,9 +924,9 @@ def validate_jar_isolation(z):
                 i = data.find(pattern, start)
                 if i < 0:
                     break
-                # Odwolanie do NASZEGO modulu compat
-                # (com/craftingveloce/compat/mekanism/...) tez zawiera slowo
-                # "mekanism/" - to nie wyciek.
+                # A reference to OUR compat module
+                # (com/craftingveloce/compat/mekanism/...) also contains the
+                # word "mekanism/" - that is not a leak.
                 if not data[max(0, i - len(own_prefix)):i].endswith(own_prefix):
                     found.append(pattern.decode())
                     break
@@ -920,21 +941,22 @@ def validate_jar_isolation(z):
         if found:
             bad.append(f"{name} -> {', '.join(found)}")
     if bad:
-        fail("rdzen odwoluje sie do obcych modow (poziom bajtkodu):\n  "
+        fail("the core references foreign mods (bytecode level):\n  "
              + "\n  ".join(bad[:5]))
-    print("    OK (bajtkod rdzenia bez odwolan do obcych modow)")
+    print("    OK (core bytecode with no references to foreign mods)")
 
 
 def validate_isolation_runtime(cp, toms, rs):
     """
-    L1 na zywo: klasy bramek MUSZA dac sie zaladowac BEZ obcych modow.
+    L1 live: the gate classes MUST be loadable WITHOUT the foreign mods.
 
-    Statyczne kontrole (importy, bajtkod) pilnuja, gdzie lezy obcy typ.
-    Ten test sprawdza SKUTEK: uruchamia maly program z classpath BEZ Create,
-    Alchemistry i Mekanism, ktory laduje klasy bramek i pyta je o obecnosc
-    modow. Gdyby bramka miala obcy typ w sygnaturze, samo jej zaladowanie
-    rzuciloby NoClassDefFoundError - dokladnie to, co zobaczylby gracz bez
-    tamtego moda (i czego nie da sie zobaczyc w kompilacji).
+    The static checks (imports, bytecode) guard where a foreign type sits.
+    This test checks the EFFECT: it runs a small program with a classpath
+    WITHOUT Create, Alchemistry and Mekanism, which loads the gate classes and
+    asks them about mod presence. If a gate had a foreign type in its
+    signature, merely loading it would throw NoClassDefFoundError - exactly
+    what a player without that mod would see (and what cannot be seen at
+    compile time).
     """
     src = os.path.join("scripts", "isolation", "L1Test.java")
     if not os.path.exists(src):
@@ -947,26 +969,27 @@ def validate_isolation_runtime(cp, toms, rs):
     res = subprocess.run(["javac", "-nowarn", "-cp", classpath, "-d", out, src],
                          capture_output=True, text=True)
     if res.returncode != 0:
-        fail("nie kompiluje sie test izolacji (scripts/isolation/L1Test.java):\n"
+        fail("the isolation test does not compile (scripts/isolation/L1Test.java):\n"
              + res.stderr[:600])
-    # Uruchamiamy w katalogu tymczasowym, zeby logger (log4j z classpath MC)
-    # nie tworzyl katalogu logs/ w repozytorium.
+    # We run it in a temporary directory so that the logger (log4j from the MC
+    # classpath) does not create a logs/ directory in the repository.
     res = subprocess.run(["java", "-cp", os.pathsep.join([out, classpath]), "L1Test"],
                          capture_output=True, text=True, cwd=out)
     if res.returncode != 0:
-        lines = [l for l in res.stdout.splitlines() if l.startswith("FAIL") or l.startswith("BLAD")]
-        fail("L1 (mod bez obcych modow) nie przeszedl:\n  " + "\n  ".join(lines[:8]))
-    print("    OK (L1: bramki laduja sie bez obcych modow i mowia 'brak')")
+        lines = [l for l in res.stdout.splitlines() if l.startswith("FAIL") or l.startswith("ERROR")]
+        fail("L1 (mod without the foreign mods) did not pass:\n  " + "\n  ".join(lines[:8]))
+    print("    OK (L1: gates load without the foreign mods and report 'missing')")
 
 
 def validate_module_block_ids():
     """
-    Id bloku modulu musi zaczynac sie od {@code veloce_<mod>_}.
+    A module block ID must start with {@code veloce_<mod>_}.
 
-    Bez tego dwa moduly moga niezaleznie wybrac te sama nazwe (np. "combiner"
-    istnieje i w Mekanism, i w Alchemistry) i jeden blok nadpisze drugi -
-    a blad wyjdzie dopiero u gracza, ktory ma oba mody. Prefiks moda rozwiazuje
-    to raz na zawsze i mowi od razu, z ktorej integracji pochodzi blok.
+    Without that, two modules may independently pick the same name (e.g.
+    "combiner" exists both in Mekanism and in Alchemistry) and one block will
+    overwrite the other - and the bug only shows up for a player who has both
+    mods. The mod prefix solves this once and for all and immediately says
+    which integration the block comes from.
     """
     problems = []
     checked = 0
@@ -978,23 +1001,24 @@ def validate_module_block_ids():
             checked += 1
             expected = f"veloce_{mod}_"
             if not block_id.startswith(expected):
-                problems.append(f"{rel}: '{block_id}' nie zaczyna sie od '{expected}'")
+                problems.append(f"{rel}: '{block_id}' does not start with '{expected}'")
     if problems:
-        fail("nazwy blokow modulow:\n  " + "\n  ".join(problems))
+        fail("module block names:\n  " + "\n  ".join(problems))
     if checked:
-        print(f"    OK ({checked} blokow modulow: nazwy z prefiksem moda)")
+        print(f"    OK ({checked} module blocks: names with the mod prefix)")
 
 
 def validate_create_kinetics():
     """
-    Blok kinetyczny Create MUSI implementowac {@code IBE}.
+    A Create kinetic block MUST implement {@code IBE}.
 
-    Create tickuje swoje maszyny przez domyslny {@code getTicker} z
-    {@code IBE} - bez tego interfejsu block entity nie jest tickowany nigdy,
-    {@code getSpeed()} zostaje zerem, a maszyna na zawsze jest "bez napedu".
+    Create ticks its machines through the default {@code getTicker} from
+    {@code IBE} - without that interface the block entity is never ticked,
+    {@code getSpeed()} stays at zero, and the machine is "unpowered" forever.
 
-    To najgorszy rodzaj bledu: blok sie stawia, wyglada dobrze, w logach nie ma
-    nic, a integracja po prostu nie dziala. Dlatego pilnuje tego build.
+    This is the worst kind of bug: the block places fine, looks good, there is
+    nothing in the logs, and the integration simply does not work. That is why
+    the build guards it.
     """
     problems, checked = [], 0
     for path in sorted(glob.glob("src/com/craftingveloce/compat/*/block/*.java")):
@@ -1004,26 +1028,26 @@ def validate_create_kinetics():
         checked += 1
         if "IBE<" not in text:
             problems.append(path.replace(os.sep, "/")
-                            + ": dziedziczy po KineticBlock, ale nie implementuje IBE<> "
-                              "(BE nie bylby tickowany - maszyna nigdy sie nie kreci)")
+                            + ": extends KineticBlock but does not implement IBE<> "
+                              "(the BE would not be ticked - the machine never spins)")
     if problems:
-        fail("kinetyka Create:\n  " + "\n  ".join(problems))
+        fail("Create kinetics:\n  " + "\n  ".join(problems))
     if checked:
-        print(f"    OK ({checked} blokow kinetycznych: IBE zapewnia tickowanie BE)")
+        print(f"    OK ({checked} kinetic blocks: IBE provides BE ticking)")
 
 
 def validate_number_format():
     """
-    Formatowanie liczb w GUI zyje w JEDNYM miejscu: {@code util/VeloceFormat}.
+    Number formatting in the GUI lives in ONE place: {@code util/VeloceFormat}.
 
-    Ten projekt ma powtarzalny blad: te sama regule zapisano recznie w kilku
-    miejscach i miejsca sie rozjechaly. Przy liczbach byly TRZY kopie
-    (nakladka slotu, terminal, ekran kontrolera), a gracz zglosil to wprost:
-    "15.0" w tooltipie obok "1K" na ikonie to dwa rozne formaty tej samej
-    liczby.
+    This project has a recurring bug: the same rule written by hand in several
+    places, and the places diverging. With numbers there were THREE copies
+    (slot overlay, terminal, controller screen), and the player reported it
+    directly: "15.0" in the tooltip next to "1K" on the icon are two different
+    formats of the same number.
 
-    Regula: wzorzec {@code %.<cyfry>f} (recznie skladany ulamek) wolno uzyc
-    WYLACZNIE w VeloceFormat. Kto potrzebuje liczby do GUI, wola
+    The rule: the {@code %.<digits>f} pattern (a hand-built fraction) may be
+    used ONLY in VeloceFormat. Anyone who needs a number for the GUI calls
     {@code compact}/{@code rate}/{@code feCompact}.
     """
     pattern = re.compile(r"%\.[0-9]+f")
@@ -1035,25 +1059,27 @@ def validate_number_format():
         if pattern.search(open(path, encoding="utf-8").read()):
             bad.append(path.replace(os.sep, "/"))
     if bad:
-        fail("wlasne formatowanie ulamkow poza VeloceFormat:\n  "
+        fail("custom fraction formatting outside VeloceFormat:\n  "
              + "\n  ".join(bad)
-             + "\n  uzyj VeloceFormat.compact/rate/feCompact")
-    print("    OK (formaty liczb tylko w VeloceFormat)")
+             + "\n  use VeloceFormat.compact/rate/feCompact")
+    print("    OK (number formats only in VeloceFormat)")
 
 
 def validate_module_recipe_access():
     """
-    {@code recipesAnywhere} NIE moze filtrowac po maszynach ani zasilaniu.
+    {@code recipesAnywhere} must NOT filter by machines or by power.
 
-    Ta metoda istnieje wlasnie po to, zeby narzedzia (np. {@code /cv getitems})
-    mogly powiedziec "jak sie to robi" bez posiadania maszyny. Jesli ktos
-    dopisze do niej warunek "maszyna stoi i ma prad" (bo tak wyglada metoda
-    obok, {@code recipesFor}), komenda znowu zacznie klamac: dla itemu
-    powstajacego w maszynie modulu powie "nie ma receptury".
+    This method exists precisely so that tools (e.g. {@code /cv getitems}) can
+    say "how is this made" without having a machine. If somebody adds a
+    condition "the machine is running and has power" to it (because that is
+    what the neighbouring method, {@code recipesFor}, looks like), the command
+    will start lying again: for an item produced in a module machine it will
+    say "no recipe".
 
-    To nie jest hipoteza - ten blad juz wystapil w innej formie (komenda nie
-    widziala receptur modulow wcale), a objaw jest mylacy: brak informacji
-    udaje informacje. Dlatego pilnuje tego build.
+    This is not a hypothesis - the bug already occurred in another form (the
+    command did not see module recipes at all), and the symptom is misleading:
+    missing information pretends to be information. That is why the build
+    guards it.
     """
     problems, checked = [], 0
     for path in sorted(glob.glob("src/com/craftingveloce/compat/*/*Module.java")):
@@ -1079,37 +1105,39 @@ def validate_module_recipe_access():
         if offenders:
             problems.append(path.replace(os.sep, "/") + ": " + ", ".join(offenders))
     if problems:
-        fail("recipesAnywhere filtruje po maszynach (a nie powinno):\n  "
+        fail("recipesAnywhere filters by machines (and it should not):\n  "
              + "\n  ".join(problems))
     if checked:
-        print(f"    OK ({checked} modulow: recipesAnywhere bez gatingu maszyn)")
+        print(f"    OK ({checked} modules: recipesAnywhere without machine gating)")
 
 
 def validate_auto_crafter_ingredient_rule():
     """
-    Planer i WYKONANIE musza uzywac tej samej reguly "co jest skladnikiem".
+    The planner and the EXECUTION must use the same "what counts as an
+    ingredient" rule.
 
-    Objaw rozjazdu tych dwoch miejsc (zgloszenie gracza): "GUI pokazuje 2
-    crushing wheele, ale przy craftowaniu mowi, ze nie mam itemkow". Planer
-    pomijal puste sloty siatki, wykonanie probowalo je "pobrac" i padalo od
-    razu - liczba byla policzona poprawnie, a craft nie dzialal NIGDY.
+    The symptom of those two places diverging (a player report): "the GUI shows
+    2 crushing wheels, but when crafting it says I do not have the items". The
+    planner skipped empty grid slots, while the execution tried to "take" them
+    and failed immediately - the count was computed correctly, and the craft
+    NEVER worked.
 
-    Dlatego oba miejsca MUSZA pytac wspolna regule ({@code hasOptions}).
+    That is why both places MUST ask a common rule ({@code hasOptions}).
     """
     path = "src/com/craftingveloce/crafting/VeloceAutoCrafter.java"
     if not os.path.exists(path):
         return
     text = open(path, encoding="utf-8").read()
     if "private static boolean hasOptions(" not in text:
-        fail("brak wspolnej reguly hasOptions w VeloceAutoCrafter")
+        fail("no common hasOptions rule in VeloceAutoCrafter")
     problems = []
     for method in ("planRecipe", "runOnce"):
         markers = [m.start() for m in re.finditer(r"\b" + method + r"\s*\(", text)]
-        # deklaracja metody jest ostatnim (lub jedynym wlasciwym) trafieniem;
-        # bierzemy pierwsze trafienie po slowie "private static" dla tej nazwy
+        # the method declaration is the last (or the only proper) hit;
+        # we take the first hit after the words "private static" for this name
         decl = re.search(r"private static [\w<>\[\], .]*\b" + method + r"\s*\(", text)
         if not decl:
-            problems.append(method + ": nie znaleziono deklaracji")
+            problems.append(method + ": declaration not found")
             continue
         start = text.index("{", decl.end())
         depth, end = 0, start
@@ -1122,26 +1150,25 @@ def validate_auto_crafter_ingredient_rule():
                     end = i
                     break
         if "hasOptions(" not in text[start:end]:
-            problems.append(method + ": nie sprawdza hasOptions (regula rozjedzie sie "
-                                    "z drugim miejscem)")
+            problems.append(method + ": does not check hasOptions (the rule will "
+                                    "diverge from the other place)")
     if problems:
-        fail("regula skladnikow w auto-crafterze:\n  " + "\n  ".join(problems))
-    print("    OK (planer i wykonanie: jedna regula skladnikow)")
-
+        fail("ingredient rule in the auto-crafter:\n  " + "\n  ".join(problems))
+    print("    OK (planner and execution: one ingredient rule)")
 
 def validate_block_models():
     """
-    Kazdy blockstate i model itemu musi wskazywac na plik, ktory JEST w JARze.
+    Every blockstate and item model must point to a file that IS in the JAR.
 
-    BUG, ktory to wykryl (zgloszenie gracza: "model ma popsuty"): po zmianie
-    nazw blokow modulow Mekanism (veloce_crusher_module -> veloce_mekanism_
-    crusher_module) przenioslem pliki modeli, ale BLOCKSTATE'y dalej wskazywaly
-    stare nazwy. W grze cztery bloki nie mialy modelu (komunikat "Unable to load
-    model" leci do loga klienta), a wygladalo to jak zepsuty blok, a nie jak
-    blad w danych - dokladnie ten rodzaj rozjazdu dwoch miejsc, ktory w tym
-    projekcie wraca.
+    The BUG that uncovered this (a player report: "the model is broken"): after
+    renaming the Mekanism module blocks (veloce_crusher_module ->
+    veloce_mekanism_crusher_module) I moved the model files, but the
+    BLOCKSTATES still pointed at the old names. In game four blocks had no
+    model (the message "Unable to load model" goes to the client log), and it
+    looked like a broken block rather than a data bug - exactly the kind of
+    divergence of two places that keeps coming back in this project.
 
-    Sprawdzamy tez TEKSTURY: model musi wskazywac na istniejacy plik PNG.
+    We also check the TEXTURES: a model must point to an existing PNG file.
     """
     asset_root = "assets/craftingveloce"
     model_dir = os.path.join(asset_root, "models")
@@ -1149,12 +1176,12 @@ def validate_block_models():
     checked = 0
 
     def model_path(ref):
-        """craftingveloce:block/x -> sciezka pliku modelu."""
+        """craftingveloce:block/x -> model file path."""
         ns, _, path = ref.partition(":")
         if not path:
             ns, path = "minecraft", ns
         if ns != "craftingveloce":
-            return None            # modele wanilii - nie nasza sprawa
+            return None            # vanilla models - not our business
         return os.path.join(model_dir, path + ".json")
 
     for bs in sorted(glob.glob(os.path.join(asset_root, "blockstates/*.json"))):
@@ -1165,7 +1192,7 @@ def validate_block_models():
                 refs.append(variant.get("model"))
             elif isinstance(variant, list):
                 refs.extend(v.get("model") for v in variant)
-        # Blockstate wieloczesciowy (multipart): model ramy + zaslepki stron.
+        # Multipart blockstate: the frame model + the side panels.
         for part in data.get("multipart", []):
             apply = part.get("apply")
             if isinstance(apply, dict):
@@ -1180,12 +1207,12 @@ def validate_block_models():
                 continue
             checked += 1
             if not os.path.exists(path):
-                problems.append(f"{bs.replace(os.sep, '/')}: brak modelu {ref} ({path})")
+                problems.append(f"{bs.replace(os.sep, '/')}: no model {ref} ({path})")
 
-    # Modele itemow i ich rodzic (model bloku) plus tekstury. Sprawdzamy tez
-    # tekstury wewnatrz modeli itemow (np. ikona "stol w klatce" ma wlasne
-    # sciany) - brak pliku PNG w JARze to znowu "popsuty model", a nie blad
-    # kompilacji.
+    # Item models and their parent (the block model) plus textures. We also
+    # check the textures inside item models (e.g. the "table in the frame" icon
+    # has walls of its own) - a missing PNG file in the JAR is again a "broken
+    # model", not a compilation error.
     for item_model in sorted(glob.glob(os.path.join(model_dir, "item/*.json"))):
         data = json.load(open(item_model, encoding="utf-8"))
         parent = data.get("parent")
@@ -1193,7 +1220,7 @@ def validate_block_models():
             path = model_path(parent)
             checked += 1
             if path is not None and not os.path.exists(path):
-                problems.append(f"{item_model.replace(os.sep, '/')}: brak rodzica {parent}")
+                problems.append(f"{item_model.replace(os.sep, '/')}: no parent {parent}")
 
     for model_pattern in ("block/*.json", "item/*.json"):
         for model_file in sorted(glob.glob(os.path.join(model_dir, model_pattern))):
@@ -1216,19 +1243,20 @@ def validate_block_models():
                 if ns != "craftingveloce":
                     continue
                 if not os.path.exists(os.path.join(asset_root, "textures", path + ".png")):
-                    problems.append(f"{model_file.replace(os.sep, '/')}: brak tekstury {ref}")
+                    problems.append(f"{model_file.replace(os.sep, '/')}: no texture {ref}")
 
     if problems:
-        fail("modele blokow:\n  " + "\n  ".join(problems))
-    print(f"    OK ({checked} odwolan do modeli i tekstur istnieje)")
+        fail("block models:\n  " + "\n  ".join(problems))
+    print(f"    OK ({checked} references to models and textures exist)")
 
 
-# Kategorie JEI obslugiwane przez nasze klocki: plik -> {UID kategorii: pole klocka}.
+# JEI categories handled by our blocks: file -> {category UID: block field}.
 #
-# UID to UID KATEGORII JEI, a NIE nazwa typu przepisu - i to jest tu glowna
-# pulapka: pila Create ma kategorie "create:sawing", choc jej typ przepisu
-# nazywa sie "create:cutting". UID-y ustalone z bajtkodu modow (Create:
-# Create.asResource(name) z build("sawing", ...), Mekanism:
+# The UID is the UID of the JEI CATEGORY, and NOT the name of the recipe type -
+# and that is the main trap here: the Create saw has the category
+# "create:sawing", even though its recipe type is called "create:cutting".
+# The UIDs were determined from the mods' bytecode (Create:
+# Create.asResource(name) from build("sawing", ...), Mekanism:
 # RecipeTypeRegistryObject.getId(), Alchemistry: RecipeType.create("alchemistry", ...)).
 JEI_CATEGORIES = {
     "src/com/craftingveloce/compat/VeloceJeiCatalysts.java": {
@@ -1260,85 +1288,87 @@ JEI_CATEGORIES = {
 
 def validate_jade_info():
     """
-    Jade: JEDNA linia statusu (pracuje / za malo sily / za malo energii).
+    Jade: ONE status line (working / not enough force / not enough energy).
 
-    Gracz: "wypierdol wszystko, co pisze w integracji Jade i zostaw tylko
-    powered/working". Sprawdzamy, ze plugin istnieje, dziala bez modulow maszyn
-    i dopisuje DOKLADNIE jedna linie - bez predkosci, SU, energii i sieci.
+    The player: "throw out everything the Jade integration says and leave only
+    powered/working". We check that the plugin exists, works without the
+    machine modules, and adds EXACTLY one line - without speed, SU, energy and
+    the network.
     """
     problems = []
     plugin = "src/com/craftingveloce/compat/jade/VeloceJadePlugin.java"
     data_provider = "src/com/craftingveloce/compat/jade/VeloceModuleDataProvider.java"
     component = "src/com/craftingveloce/compat/jade/VeloceModuleComponentProvider.java"
-    for path, what in ((plugin, "pluginu Jade"), (data_provider, "danych dla Jade"),
-                       (component, "tooltipa Jade")):
+    for path, what in ((plugin, "Jade plugin"), (data_provider, "Jade data"),
+                       (component, "Jade tooltip")):
         if not os.path.exists(path):
-            problems.append("brak " + what)
+            problems.append("no " + what)
     if problems:
         fail("Jade:\n  " + "\n  ".join(problems))
 
     plugin_text = open(plugin, encoding="utf-8").read()
     if "@WailaPlugin" not in plugin_text or "IWailaPlugin" not in plugin_text:
-        problems.append("plugin Jade nie jest pluginem Jade")
+        problems.append("the Jade plugin is not a Jade plugin")
     common = _method_body(plugin_text, "public void register(")
     if common is None or "registerBlockDataProvider(" not in common:
-        problems.append("plugin Jade nie rejestruje danych serwera")
+        problems.append("the Jade plugin does not register server data")
     client = _method_body(plugin_text, "public void registerClient(")
     if client is None or "registerBlockComponent(" not in client:
-        problems.append("plugin Jade nie rejestruje skladnika tooltipa")
+        problems.append("the Jade plugin does not register the tooltip component")
     for path in sorted(glob.glob("src/com/craftingveloce/compat/jade/*.java")):
         for name in _imports_of(path):
             if name.startswith(("com.craftingveloce.compat.create",
                                 "com.craftingveloce.compat.mekanism",
                                 "com.craftingveloce.compat.alchemistry")):
-                problems.append(f"{os.path.basename(path)}: plugin Jade importuje {name}")
+                problems.append(f"{os.path.basename(path)}: the Jade plugin imports {name}")
 
     data_text = open(data_provider, encoding="utf-8").read()
     should = _method_body(data_text, "public boolean shouldRequestData(")
     if should is None or "VeloceModuleInfoSource" not in should:
-        problems.append("Jade pyta o dane o byle jaki block entity")
+        problems.append("Jade asks for data about any old block entity")
 
     component_text = open(component, encoding="utf-8").read()
     tooltip = _method_body(component_text, "public void appendTooltip(")
     if tooltip is None:
-        problems.append("tooltip Jade bez metody")
+        problems.append("the Jade tooltip has no method")
     else:
         if "VeloceModuleStatus.message(" not in tooltip:
-            problems.append("Jade nie pokazuje statusu pracy")
+            problems.append("Jade does not show the working status")
         extra = [line.strip() for line in tooltip.splitlines()
                  if "tooltip.add" in line and "VeloceModuleStatus.message(" not in line
                  and "addAll" not in line]
         if extra:
-            problems.append("Jade dopisuje wiecej niz status: " + " | ".join(extra[:3]))
+            problems.append("Jade adds more than the status: " + " | ".join(extra[:3]))
         for forbidden in ("speed", "suDraw", "energy", "networkNodes"):
             if forbidden in tooltip:
-                problems.append(f"Jade nadal wypisuje {forbidden}")
+                problems.append(f"Jade still prints {forbidden}")
 
     if problems:
-        fail("Jade (tylko status pracy):\n  " + "\n  ".join(problems))
-    print("    OK (Jade: jedna linia statusu - pracuje / za malo sily / za malo energii)")
+        fail("Jade (working status only):\n  " + "\n  ".join(problems))
+    print("    OK (Jade: one status line - working / not enough force / not enough energy)")
 
 
 def validate_terminal_craft_error():
     """
-    Powod nieudanego craftu w terminalu trafia do TOOLTIPA itemu.
+    The reason for a failed craft in the terminal goes into the item TOOLTIP.
 
-    Gracz: "jak czegos nie mozna zrobic w terminalu, to te komunikaty leca na
-    pasek w gierce, ktorego w GUI terminala nie widac - niech powod pokaze sie
-    w tooltipie tego itemu, ktorego nie udalo sie zrobic".
+    The player: "when something cannot be made in the terminal, those messages
+    go to the in-game action bar, which is not visible in the terminal GUI -
+    let the reason show up in the tooltip of the item that could not be made".
 
-    Lancuch jest dlugi i kazde ogniwo psuje sie PO CICHU (gracz znow nie widzi
-    nic albo widzi komunikat przy losowym itemie):
-      1. serwer wysyla powod PAKIETEM, a nie przez pasek akcji - i tylko
-         w galezi niepowodzenia (komunikaty o braku terminala i pelnym
-         ekwipunku zostaja, bo ich nic nie zastepuje),
-      2. pakiet jest zarejestrowany (inaczej nie dotrze),
-      3. ekran dokleja powod do tooltipa i czysci pamiec przy zamknieciu,
-      4. ekran porownuje pozycje terminala (pakiet z innego terminala nie moze
-         pokazac powodu przy tym ekranie),
-      5. pamiec powodow zna ITEM, wygasa i jest czerwona,
-      6. komunikat sklada wspolne zrodlo kluczy (VeloceCraftErrors), a nie
-         drugi, recznie pisany switch.
+    The chain is long and every link breaks SILENTLY (the player again sees
+    nothing, or sees the message on a random item):
+      1. the server sends the reason in a PACKET, not through the action bar -
+         and only in the failure branch (the messages about a missing terminal
+         and a full inventory stay, because nothing replaces them),
+      2. the packet is registered (otherwise it will not arrive),
+      3. the screen attaches the reason to the tooltip and clears the memory
+         when closed,
+      4. the screen compares the terminal position (a packet from another
+         terminal must not show the reason on this screen),
+      5. the reason memory knows the ITEM, expires and is red,
+      6. the message is assembled from the common source of keys
+         (VeloceCraftErrors), and not from a second, hand-written switch.
     """
     problems = []
     pkt = "src/com/craftingveloce/network/TerminalCraftErrorPKT.java"
@@ -1348,88 +1378,90 @@ def validate_terminal_craft_error():
     hints = "src/com/craftingveloce/client/gui/VeloceCraftErrorHints.java"
     helper = "src/com/craftingveloce/client/ClientTerminalHelper.java"
     errors = "src/com/craftingveloce/crafting/VeloceCraftErrors.java"
-    for path, what in ((pkt, "pakietu powodu"), (hints, "pamieci powodow"),
-                       (errors, "wspolnych kluczy komunikatow")):
+    for path, what in ((pkt, "the reason packet"), (hints, "the reason memory"),
+                       (errors, "the common message keys")):
         if not os.path.exists(path):
-            problems.append("brak " + what)
+            problems.append("no " + what)
 
     if os.path.exists(handler) and "TerminalCraftErrorPKT.TYPE" not in open(
             handler, encoding="utf-8").read():
-        problems.append("pakiet powodu nie jest zarejestrowany")
+        problems.append("the reason packet is not registered")
 
     if os.path.exists(pull):
         body = _method_body(open(pull, encoding="utf-8").read(), "public static void handle(")
         if body is None:
-            problems.append("brak obslugi wyciagania z terminala")
+            problems.append("no terminal pull handling")
         else:
             branch = _failure_branch(body)
             if branch is None:
-                problems.append("brak galezi niepowodzenia w obsludze terminala")
+                problems.append("no failure branch in the terminal handling")
             elif "sendCraftError(serverPlayer, pkt, pulled)" not in branch:
-                problems.append("niepowodzenie nie wysyla powodu do tooltipa")
+                problems.append("the failure does not send the reason to the tooltip")
             elif "displayClientMessage" in branch:
-                problems.append("niepowodzenie nadal leci na pasek akcji (w GUI go nie widac)")
+                problems.append("the failure still goes to the action bar (invisible in the GUI)")
             if "inventoryFull" not in body:
-                problems.append("zginela informacja o pelnym ekwipunku")
+                problems.append("the information about a full inventory is gone")
 
     if os.path.exists(screen):
         text = open(screen, encoding="utf-8").read()
         tooltip = _method_body(text, "public List<Component> getTooltipFromContainerItem(")
         if tooltip is None or "craftErrors.appendTo(" not in tooltip:
-            problems.append("tooltip itemu nie doklada powodu nieudanego craftu")
+            problems.append("the item tooltip does not attach the reason for a failed craft")
         removed = _method_body(text, "public void removed(")
         if removed is None or "craftErrors.clear()" not in removed:
-            problems.append("ekran nie czysci powodow przy zamknieciu")
+            problems.append("the screen does not clear the reasons when closed")
         setter = _method_body(text, "public void setCraftError(")
         if setter is None or "pos.equals(this.terminalPos)" not in setter:
-            problems.append("ekran nie sprawdza, z ktorego terminala jest powod")
+            problems.append("the screen does not check which terminal the reason comes from")
 
     if os.path.exists(hints):
         text = open(hints, encoding="utf-8").read()
-        for need, what in (("ChatFormatting.RED", "czerwonego koloru"),
-                           ("VeloceCraftErrors.message(", "wspolnego zrodla kluczy"),
-                           ("Map<Item, Hint>", "klucza po itemie")):
+        for need, what in (("ChatFormatting.RED", "the red colour"),
+                           ("VeloceCraftErrors.message(", "the common source of keys"),
+                           ("Map<Item, Hint>", "the key by item")):
             if need not in text:
-                problems.append("pamiec powodow bez " + what)
-        # WYGASANIE sprawdzamy w CIELE appendTo, a nie w calym pliku: sama
-        # deklaracja stalej LIFETIME_MS zostaje na miejscu nawet wtedy, gdy
-        # warunek z niej zniknie - i komunikat sprzed pol godziny wraca do
-        # tooltipa. Kalibracja: podmiana warunku na `if (false)` MUSI byc
-        # zlapana (a nie byla, dopoki kontrola patrzyla na caly plik).
+                problems.append("the reason memory without " + what)
+        # We check EXPIRY in the BODY of appendTo, and not in the whole file:
+        # the LIFETIME_MS constant declaration stays in place even when the
+        # condition using it disappears - and a message from half an hour ago
+        # comes back to the tooltip. Calibration: replacing the condition with
+        # `if (false)` MUST be caught (and it was not, as long as the check
+        # looked at the whole file).
         append = _method_body(text, "public void appendTo(")
         if append is None:
-            problems.append("pamiec powodow bez metody doklejajacej powod")
+            problems.append("the reason memory has no method that attaches the reason")
         else:
-            for need, what in (("LIFETIME_MS", "wygasania powodow"),
-                               ("Util.getMillis()", "czasu zapisu powodu")):
+            for need, what in (("LIFETIME_MS", "reason expiry"),
+                               ("Util.getMillis()", "the timestamp of the reason")):
                 if need not in append:
-                    problems.append("pamiec powodow bez " + what)
+                    problems.append("the reason memory without " + what)
 
     if os.path.exists(helper):
         forward = _method_body(open(helper, encoding="utf-8").read(),
                                "public static void handleCraftError(")
         if forward is None or "screen.setCraftError(" not in forward:
-            problems.append("helper nie przekazuje powodu do ekranu terminala")
+            problems.append("the helper does not forward the reason to the terminal screen")
 
     if os.path.exists(errors):
         text = open(errors, encoding="utf-8").read()
         for need in ("craftingveloce.craft.error.noBaseItem",
                      "craftingveloce.craft.error.extractItem"):
             if need not in text:
-                problems.append(f"wspolne klucze bez wariantu z detalem ({need})")
+                problems.append(f"the common keys without the variant with detail ({need})")
 
     if problems:
-        fail("powod nieudanego craftu w terminalu:\n  " + "\n  ".join(problems))
-    print("    OK (terminal: powod nieudanego craftu w tooltipie itemu, nie na pasku akcji)")
+        fail("reason for a failed craft in the terminal:\n  " + "\n  ".join(problems))
+    print("    OK (terminal: the reason for a failed craft in the item tooltip, not the action bar)")
 
 
 def _failure_branch(body):
     """
-    Galez niepowodzenia z obslugi terminala: od warunku do jego {@code return}.
+    The failure branch of the terminal handling: from the condition to its
+    {@code return}.
 
-    Sprawdzamy WLASNIE te kilka linii, bo tylko tam wolno (i trzeba) wyslac
-    powod. Kontrola calego ciala metody przepuscilaby powrot paska akcji -
-    w metodzie zostaje przeciez komunikat o pelnym ekwipunku.
+    We check EXACTLY those few lines, because only there may (and must) the
+    reason be sent. Checking the whole method body would let the action bar
+    return - after all, the message about a full inventory stays in the method.
     """
     start = body.find("if (pulled.stack().isEmpty()) {")
     if start < 0:
@@ -1437,71 +1469,72 @@ def _failure_branch(body):
     end = body.find("return;\n            }", start)
     return body[start:end if end > 0 else len(body)]
 
-
 def validate_jei_catalysts():
     """
-    JEI: nasze klocki na liscie "w tym mozna zrobic ten przepis".
+    JEI: our blocks on the "this is where you can make this recipe" list.
 
-    Gracz: "JEI musi pokazywac, ze nasze klocki tez robia przepis (jak lista
-    stol rzemieslniczy, crafter, formulatic assembler, robot, terminal przy
-    przepisie wytwarzania)". Kazde ogniwo tego lancucha psuje sie PO CICHU -
-    JEI pokaze po prostu za malo ikonek i nikt tego nie zauwazy - dlatego:
-      1. plugin {@code @JeiPlugin} istnieje i rejestruje katalizatory przez API
-         JEI ({@code getJeiHelpers().getRecipeType(...)} +
-         {@code addRecipeCatalysts(...)}), a nie przez wlasne klasy obcych modow,
-      2. zaden plik POZA {@code compat/jei/} nie odwoluje sie do pluginu (klasa z
-         obcym typem w sygnaturze nie moze byc dotknieta przez rdzen).
-         Granicy importow samego pluginu pilnuje {@code validate_core_isolation}
-         (mapa {@code owners} zna modul {@code jei}; wolno mu tylko
-         {@code mezz.jei}) - dlatego nie ma tu drugiej, nieosiagalnej kontroli:
-         kalibracja pokazala, ze wstrzykniecie {@code import com.simibubi.create}
-         do pluginu zatrzymuje build wlasnie tam,
-      3. tabela UID kategorii -&gt; nasz klocek zgadza sie CO DO PARY (zamiana
-         UID-ow miejscami to tez blad: mlyn pokazalby sie przy kruszarce),
-      4. rdzen wypelnia kategorie {@code minecraft:crafting}, a kazda bramka
-         moda wola swoja tabele,
-      5. UID-y obcych kategorii sa w {@code FOREIGN_PACKAGES} - inaczej kontrola
-         wyciekow w JARze ich nie widzi.
+    The player: "JEI must show that our blocks also make the recipe (like the
+    crafting table, crafter, formulaic assembler, robot, terminal list at the
+    crafting recipe)". Every link of this chain breaks SILENTLY - JEI will
+    simply show too few icons and nobody will notice - therefore:
+      1. the {@code @JeiPlugin} plugin exists and registers catalysts through
+         the JEI API ({@code getJeiHelpers().getRecipeType(...)} +
+         {@code addRecipeCatalysts(...)}), and not through its own classes of
+         the foreign mods,
+      2. no file OUTSIDE {@code compat/jei/} references the plugin (a class
+         with a foreign type in its signature must not be touched by the core).
+         The import boundary of the plugin itself is guarded by
+         {@code validate_core_isolation} (the {@code owners} map knows the
+         {@code jei} module; it may only use {@code mezz.jei}) - that is why
+         there is no second, unreachable check here: calibration showed that
+         injecting {@code import com.simibubi.create} into the plugin stops the
+         build exactly there,
+      3. the table of category UID -> our block matches AS PAIRS (swapping the
+         UIDs is also a bug: the millstone would show up for the crusher),
+      4. the core fills in the {@code minecraft:crafting} category, and each
+         mod's gate calls its own table,
+      5. the UIDs of foreign categories are in {@code FOREIGN_PACKAGES} -
+         otherwise the leak check in the JAR does not see them.
     """
     problems = []
     plugin = "src/com/craftingveloce/compat/jei/VeloceJeiPlugin.java"
     registry = "src/com/craftingveloce/compat/VeloceJeiCatalysts.java"
-    for path, what in ((plugin, "pluginu JEI"), (registry, "spisu kategorii JEI")):
+    for path, what in ((plugin, "JEI plugin"), (registry, "JEI category list")):
         if not os.path.exists(path):
-            problems.append("brak " + what)
+            problems.append("no " + what)
             return fail("JEI:\n  " + "\n  ".join(problems))
 
     plugin_text = open(plugin, encoding="utf-8").read()
     if "@JeiPlugin" not in plugin_text or "IModPlugin" not in plugin_text:
-        problems.append("plugin JEI nie jest pluginem JEI (@JeiPlugin/IModPlugin)")
+        problems.append("the JEI plugin is not a JEI plugin (@JeiPlugin/IModPlugin)")
     if 'ResourceLocation.fromNamespaceAndPath(MOD_ID, "jei")' not in plugin_text:
-        problems.append("plugin JEI bez wlasnego UID")
+        problems.append("the JEI plugin has no UID of its own")
     body = _method_body(plugin_text, "public void registerRecipeCatalysts(")
     if body is None:
-        problems.append("plugin JEI nie rejestruje katalizatorow")
+        problems.append("the JEI plugin does not register catalysts")
     else:
-        for need, what in (("getJeiHelpers()", "pobrania pomocy JEI"),
-                           ("getRecipeType(", "szukania kategorii po UID"),
-                           ("addRecipeCatalysts(", "dodania katalizatora")):
+        for need, what in (("getJeiHelpers()", "fetching the JEI helpers"),
+                           ("getRecipeType(", "looking up a category by UID"),
+                           ("addRecipeCatalysts(", "adding a catalyst")):
             if need not in body:
-                problems.append("plugin JEI bez " + what)
+                problems.append("the JEI plugin without " + what)
 
-    # Plugin jest ladowany przez JEI takze BEZ pozostalych modow, wiec wolno mu
-    # znac tylko JEI - tej granicy pilnuje validate_core_isolation (owners["jei"]).
+    # The plugin is loaded by JEI also WITHOUT the other mods, so it may only
+    # know JEI - that boundary is guarded by validate_core_isolation (owners["jei"]).
 
-    # ...i odwrotnie: nikt poza compat/jei/ nie moze dotknac pluginu.
+    # ...and the other way round: nobody outside compat/jei/ may touch the plugin.
     for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
         rel = path.replace(os.sep, "/")
         if "/compat/jei/" in rel:
             continue
         text = open(path, encoding="utf-8").read()
         if "VeloceJeiPlugin" in text or "compat.jei" in text:
-            problems.append(f"{rel}: rdzen/bramka odwoluje sie do pluginu JEI")
+            problems.append(f"{rel}: the core/gate references the JEI plugin")
 
-    # Tabela UID -> klocek: porownujemy PARY, nie same zbiory nazw.
+    # UID -> block table: we compare PAIRS, not just the sets of names.
     for path, expected in JEI_CATEGORIES.items():
         if not os.path.exists(path):
-            problems.append("brak tabeli kategorii JEI: " + path)
+            problems.append("no JEI category table: " + path)
             continue
         text = open(path, encoding="utf-8").read()
         found = {}
@@ -1513,16 +1546,16 @@ def validate_jei_catalysts():
         wrong = {k: (v, found[k]) for k, v in expected.items()
                  if k in found and found[k] != v}
         if missing:
-            problems.append(f"{os.path.basename(path)}: brak kategorii {sorted(missing)}")
+            problems.append(f"{os.path.basename(path)}: missing categories {sorted(missing)}")
         if extra:
-            problems.append(f"{os.path.basename(path)}: kategoria spoza listy {sorted(extra)}")
+            problems.append(f"{os.path.basename(path)}: category outside the list {sorted(extra)}")
         for uid, (want, got) in wrong.items():
-            problems.append(f"{os.path.basename(path)}: {uid} -> {got}, a ma byc {want}")
+            problems.append(f"{os.path.basename(path)}: {uid} -> {got}, should be {want}")
 
     core = "src/com/craftingveloce/CraftingVeloceMod.java"
     if os.path.exists(core) and "VeloceJeiCatalysts.registerDefaults()" \
             not in open(core, encoding="utf-8").read():
-        problems.append("rdzen nie wypelnia kategorii minecraft:crafting")
+        problems.append("the core does not fill in the minecraft:crafting category")
     for path, call in (("src/com/craftingveloce/compat/create/CreateCompat.java",
                         "CreateJeiCatalysts.register()"),
                        ("src/com/craftingveloce/compat/mekanism/MekanismCompat.java",
@@ -1530,304 +1563,317 @@ def validate_jei_catalysts():
                        ("src/com/craftingveloce/compat/alchemistry/AlchemistryCompat.java",
                         "AlchemistryJeiCatalysts.register()")):
         if not os.path.exists(path) or call not in open(path, encoding="utf-8").read():
-            problems.append(f"{os.path.basename(path)}: brak {call}")
+            problems.append(f"{os.path.basename(path)}: no {call}")
     if 'JEI("jei")' not in open("src/com/craftingveloce/compat/VeloceMods.java",
                                 encoding="utf-8").read():
-        problems.append("VeloceMods bez wpisu JEI")
+        problems.append("VeloceMods without a JEI entry")
     toml = "src_meta/META-INF/neoforge.mods.toml"
     if os.path.exists(toml) and 'modId="jei"' not in open(toml, encoding="utf-8").read():
-        problems.append("neoforge.mods.toml bez opcjonalnej zaleznosci jei")
+        problems.append("neoforge.mods.toml without the optional jei dependency")
     if "mezz.jei" not in FOREIGN_PACKAGES:
-        problems.append("mezz.jei poza FOREIGN_PACKAGES - wyciek bylby niewidoczny")
+        problems.append("mezz.jei outside FOREIGN_PACKAGES - a leak would be invisible")
 
     if problems:
-        fail("JEI (katalizatory kategorii):\n  " + "\n  ".join(problems))
+        fail("JEI (category catalysts):\n  " + "\n  ".join(problems))
     total = sum(len(v) for v in JEI_CATEGORIES.values())
-    print(f"    OK (JEI: {total} kategorii -> nasze klocki, plugin bez obcych modow)")
+    print(f"    OK (JEI: {total} categories -> our blocks, plugin without the foreign mods)")
 
 
 def validate_module_info_gui():
     """
-    Okna maszyn: osobne dla energii i osobne dla Create (jak piec).
+    Machine windows: separate for energy and separate for Create (like the furnace).
 
-    Gracz: "w GUI modulow z Create w tle widoczny jest pasek bateryjki oraz slot
-    na akumulator ... przygotuj osobny ekran dedykowany wylacznie blokom
-    kinetycznym (bez slotu i bez wskaznika energii)".
+    The player: "in the GUI of Create modules there is a battery bar and a slot
+    for the accumulator visible in the background ... prepare a separate screen
+    dedicated exclusively to kinetic blocks (without a slot and without an
+    energy indicator)".
 
-    Sprawdzamy dwa ekrany i dwa menu:
-      * maszyna na FE: tekstura pieca, pasek baterii i tooltip 1:1 z piecem
-        (te same klucze: energia, cykle, koszt cyklu),
-      * maszyna kinetyczna: WLASNY ekran i WLASNE menu, zero baterii, zero
-        slotu, na srodku jeden wysrodkowany status (ten sam napis co w Jade),
-      * oba typy menu sa zarejestrowane i podpiete pod swoje ekrany,
-      * ladowanie: slot baterii + dobieranie pradu w ticku + ticker,
-      * stare, kombinowane okna nie wrocily.
+    We check two screens and two menus:
+      * a FE machine: furnace texture, battery bar and tooltip 1:1 with the
+        furnace (the same keys: energy, cycles, cycle cost),
+      * a kinetic machine: its OWN screen and its OWN menu, zero battery, zero
+        slot, one centred status in the middle (the same text as in Jade),
+      * both menu types are registered and wired to their screens,
+      * charging: the battery slot + drawing power in the tick + a ticker,
+      * the old, combined windows have not come back.
     """
     problems = []
     inventory = "src/com/craftingveloce/inventory/VeloceModuleMenu.java"
     kinetic_menu = "src/com/craftingveloce/inventory/VeloceKineticMenu.java"
     screen = "src/com/craftingveloce/client/gui/VeloceModuleScreen.java"
     kinetic_screen = "src/com/craftingveloce/client/gui/VeloceKineticScreen.java"
-    for path, what in ((inventory, "menu maszyny FE"), (kinetic_menu, "menu maszyny kinetycznej"),
-                       (screen, "ekranu maszyny FE"), (kinetic_screen, "ekranu maszyny kinetycznej")):
+    for path, what in ((inventory, "FE machine menu"), (kinetic_menu, "kinetic machine menu"),
+                       (screen, "FE machine screen"), (kinetic_screen, "kinetic machine screen")):
         if not os.path.exists(path):
-            problems.append("brak " + what)
+            problems.append("no " + what)
     for gone in ("src/com/craftingveloce/client/gui/VeloceModuleInfoScreen.java",
                  "src/com/craftingveloce/network/OpenModuleInfoPKT.java",
                  "src/com/craftingveloce/crafting/VeloceModuleInfoLines.java"):
         if os.path.exists(gone):
-            problems.append("zostalo stare okno: " + os.path.basename(gone))
+            problems.append("the old window is still there: " + os.path.basename(gone))
     if problems:
-        fail("okna maszyn:\n  " + "\n  ".join(problems))
+        fail("machine windows:\n  " + "\n  ".join(problems))
 
     registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
-    for need, what in (("VELOCE_MODULE_MENU =", "menu maszyny FE"),
-                       ("VELOCE_KINETIC_MENU =", "menu maszyny kinetycznej")):
+    for need, what in (("VELOCE_MODULE_MENU =", "the FE machine menu"),
+                       ("VELOCE_KINETIC_MENU =", "the kinetic machine menu")):
         if need not in registry:
-            problems.append("nie zarejestrowano " + what)
+            problems.append("not registered: " + what)
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
-    for need, what in (("VELOCE_MODULE_MENU.get()", "ekranu FE"),
-                       ("VeloceModuleScreen::new", "ekranu FE"),
-                       ("VELOCE_KINETIC_MENU.get()", "ekranu kinetycznego"),
-                       ("VeloceKineticScreen::new", "ekranu kinetycznego")):
+    for need, what in (("VELOCE_MODULE_MENU.get()", "the FE screen"),
+                       ("VeloceModuleScreen::new", "the FE screen"),
+                       ("VELOCE_KINETIC_MENU.get()", "the kinetic screen"),
+                       ("VeloceKineticScreen::new", "the kinetic screen")):
         if need not in mod:
-            problems.append("brak podpiecia " + what)
+            problems.append("not wired: " + what)
 
-    # Maszyna kinetyczna: WLASNE menu (bez slotu baterii) i otwieranie go.
+    # Kinetic machine: its OWN menu (without a battery slot) and opening it.
     km = open(kinetic_menu, encoding="utf-8").read()
-    for need, what in (("VELOCE_KINETIC_MENU", "wlasnego typu menu"),
-                       ("VeloceModuleDisplay", "czytania pol maszyny")):
+    for need, what in (("VELOCE_KINETIC_MENU", "its own menu type"),
+                       ("VeloceModuleDisplay", "reading the machine fields")):
         if need not in km:
-            problems.append("menu kinetyczne bez " + what)
+            problems.append("the kinetic menu without " + what)
     if "getBatterySlot" in km or "isEnergyItem" in km:
-        problems.append("menu kinetyczne ma slot baterii (a nie powinno)")
+        problems.append("the kinetic menu has a battery slot (and it should not)")
     block = "src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java"
     block_text = open(block, encoding="utf-8").read()
     if "VeloceKineticMenu" not in block_text:
-        problems.append("maszyna kinetyczna otwiera nie swoje menu")
+        problems.append("the kinetic machine opens a menu that is not its own")
     body = _method_body(block_text,
                         "protected net.minecraft.world.InteractionResult useWithoutItem(")
     if body is None or "openMenu(" not in body:
-        problems.append("maszyna kinetyczna nie otwiera menu")
+        problems.append("the kinetic machine does not open a menu")
 
-    # Ekran kinetyczny: tylko wysrodkowany status, zero energii i slotow.
+    # Kinetic screen: only the centred status, zero energy and slots.
     ks = open(kinetic_screen, encoding="utf-8").read()
-    for need, what in (("AbstractContainerScreen<VeloceKineticMenu>", "zwyklego ekranu kontenera"),
-                       ("electric_furnace.png", "tekstury pieca"),
+    for need, what in (("AbstractContainerScreen<VeloceKineticMenu>", "the ordinary container screen"),
+                       ("electric_furnace.png", "the furnace texture"),
                        ("drawCenteredString(this.font, VeloceModuleStatus.message(display)",
-                        "wysrodkowanego statusu"),
-                       ("module.info.minimum", "progu (min. RPM - SU)")):
+                        "the centred status"),
+                       ("module.info.minimum", "the threshold (min. RPM - SU)")):
         if need not in ks:
-            problems.append("ekran kinetyczny bez " + what)
-    for forbidden, what in (("drawBattery", "wskaznika energii"), ("getBatterySlot", "slotu baterii"),
-                            ("module.info.speed", "predkosci"), ("module.info.stress", "SU")):
+            problems.append("the kinetic screen without " + what)
+    for forbidden, what in (("drawBattery", "the energy indicator"), ("getBatterySlot", "the battery slot"),
+                            ("module.info.speed", "speed"), ("module.info.stress", "SU")):
         if forbidden in ks:
-            problems.append(f"ekran kinetyczny nadal pokazuje {what}")
+            problems.append(f"the kinetic screen still shows {what}")
 
-    # Ekran FE: bateria + tooltip 1:1 z piecem.
+    # FE screen: battery + tooltip 1:1 with the furnace.
     fs = open(screen, encoding="utf-8").read()
-    for need, what in (("electric_furnace.png", "tekstury pieca"), ("drawBattery(", "baterii"),
-                       ("gui.craftingveloce.electric.energy", "linii energii"),
-                       ("gui.craftingveloce.electric.smelts", "linii cykli"),
-                       ("gui.craftingveloce.electric.perSmelt", "kosztu cyklu")):
+    for need, what in (("electric_furnace.png", "the furnace texture"), ("drawBattery(", "the battery"),
+                       ("gui.craftingveloce.electric.energy", "the energy line"),
+                       ("gui.craftingveloce.electric.smelts", "the cycle line"),
+                       ("gui.craftingveloce.electric.perSmelt", "the cycle cost")):
         if need not in fs:
-            problems.append("ekran FE bez " + what)
+            problems.append("the FE screen without " + what)
     if "VeloceModuleStatus" in fs:
-        problems.append("ekran FE pokazuje status kinetyczny")
+        problems.append("the FE screen shows the kinetic status")
 
-    # Ladowanie akumulatora: slot baterii w menu + dobieranie pradu z itemu.
+    # Charging the accumulator: a battery slot in the menu + drawing power from the item.
     menu = open(inventory, encoding="utf-8").read()
-    for need, what in (("getBatterySlot()", "slotu na baterie w menu"),
-                       ("isEnergyItem", "filtra: tylko itemy z energia")):
+    for need, what in (("getBatterySlot()", "the battery slot in the menu"),
+                       ("isEnergyItem", "the filter: only items with energy")):
         if need not in menu:
-            problems.append("menu maszyny bez " + what)
+            problems.append("the machine menu without " + what)
     fe_be = "src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
     fe_be_text = open(fe_be, encoding="utf-8").read()
-    for need, what in (("private void chargeFromItem()", "metody dobierania pradu"),
-                       ("getBatterySlot()", "wystawienia slotu baterii"),
-                       ('tag.put("Battery"', "zapisu baterii w NBT"),
-                       ("getUpdatePacket()", "wysylania energii na klienta")):
+    for need, what in (("private void chargeFromItem()", "the method that draws power"),
+                       ("getBatterySlot()", "exposing the battery slot"),
+                       ('tag.put("Battery"', "saving the battery in NBT"),
+                       ("getUpdatePacket()", "sending the energy to the client")):
         if need not in fe_be_text:
-            problems.append("modul FE bez " + what)
+            problems.append("the FE module without " + what)
     tick_body = _method_body(fe_be_text, "public void serverTick()")
     if tick_body is None or "        chargeFromItem();" not in tick_body:
-        problems.append("modul FE nie dobiera pradu w ticku")
+        problems.append("the FE module does not draw power in the tick")
     ticker = ("public <T extends BlockEntity> "
               "net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(")
     if ticker not in open("src/com/craftingveloce/block/VeloceFeModuleBlock.java",
                           encoding="utf-8").read():
-        problems.append("modul FE nie ma tickera (ladowanie z itemu nie zadziala)")
+        problems.append("the FE module has no ticker (charging from the item will not work)")
 
     if problems:
-        fail("okna maszyn (FE i kinetyczne):\n  " + "\n  ".join(problems))
-    print("    OK (okna maszyn: FE jak piec z bateria, Create osobny ekran bez energii)")
-
+        fail("machine windows (FE and kinetic):\n  " + "\n  ".join(problems))
+    print("    OK (machine windows: FE like the furnace with a battery, Create a separate screen without energy)")
 
 def validate_pipe_energy():
     """
-    Energia w rurze: pobor z oznaczonych zrodel z sieci (VeloceCraftingCache.tickAll)
-    i rozdanie do wezlow sieci.
+    Energy in the pipe: drawing from flagged sources in the network
+    (VeloceCraftingCache.tickAll) and distribution to the network nodes.
 
-    Gracz przeniosl bufor do sieci rur i tick energii do ticku poziomu. Sprawdzamy
-    ogniwa, ktore inaczej znikna po cichu:
-      1. VelocePipeNetwork ma pojemnik energii,
-      2. pobor/rozdanie dziala z VeloceCraftingCache.tickAll,
-      3. rura NIE wystawia pojemnika jako capability (nie jest przewodem dla innych modow),
-      4. maszyny nie oddaja energii (extractEnergy = 0), wiec nie moga byc dla siebie zrodlem.
+    The player moved the buffer into the pipe network and the energy tick into
+    the level tick. We check the links that would otherwise disappear silently:
+      1. VelocePipeNetwork has an energy container,
+      2. drawing/distribution works from VeloceCraftingCache.tickAll,
+      3. the pipe does NOT expose the container as a capability (it is not a
+         conduit for other mods),
+      4. machines do not give energy back (extractEnergy = 0), so they cannot be
+         a source for each other.
     """
     problems = []
     
-    # 1. Pojemnik w sieci
+    # 1. The container in the network
     net_path = "src/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
     net_text = open(net_path, encoding="utf-8").read()
     if "private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer" not in net_text:
-        problems.append("VelocePipeNetwork bez deklaracji pojemnika energii")
+        problems.append("VelocePipeNetwork without an energy container declaration")
     
-    # 2. Tick w cache
+    # 2. The tick in the cache
     cache_path = "src/com/craftingveloce/crafting/VeloceCraftingCache.java"
     cache_text = open(cache_path, encoding="utf-8").read()
     tick = _method_body(cache_text, "public static void tickAll(ServerLevel level)")
     if tick is None or "VeloceEnergyPull.pull" not in tick:
-        problems.append("energia nie jest tykowana (brak VeloceEnergyPull w VeloceCraftingCache.tickAll)")
+        problems.append("energy is not ticked (no VeloceEnergyPull in VeloceCraftingCache.tickAll)")
     
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
-    # Rejestracja energii na rurze = rura staje sie przewodem dla innych modow.
-    # Sprawdzamy OKNO wokol kazdej rejestracji, bo typ bywa w nastepnej linii.
+    # Registering energy on the pipe = the pipe becomes a conduit for other mods.
+    # We check a WINDOW around each registration, because the type is sometimes
+    # on the next line.
     for idx in [i for i in range(len(mod)) if mod.startswith("EnergyStorage.BLOCK", i)]:
         window = mod[idx:idx + 200]
         if "VELOCE_PIPE_BE" in window or "VELOCE_PIPE" in window:
-            problems.append("rura wystawia EnergyStorage (moglaby byc przewodem)")
+            problems.append("the pipe exposes EnergyStorage (it could be a conduit)")
             break
 
-    # Maszyny: tylko odbiorniki - extractEnergy musi zwracac 0.
+    # Machines: sinks only - extractEnergy must return 0.
     for path, what in (("src/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java",
-                        "piec elektryczny"),
+                        "the electric furnace"),
                        ("src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java",
-                        "modul FE")):
+                        "the FE module")):
         body = _method_body(open(path, encoding="utf-8").read(), "public int extractEnergy(")
         if body is None or "return 0;" not in body:
-            problems.append(f"{what}: oddaje energie (maszyny maja byc tylko odbiornikami)")
+            problems.append(f"{what}: gives energy back (machines must be sinks only)")
 
     if problems:
-        fail("energia w rurze:\n  " + "\n  ".join(problems))
-    print("    OK (energia: bufor w rurze, pobor extracting, rozdanie, maszyny tylko odbieraja)")
+        fail("energy in the pipe:\n  " + "\n  ".join(problems))
+    print("    OK (energy: buffer in the pipe, extracting draw, distribution, machines only receive)")
 
 
 def validate_brewing_stand():
     """
-    Brewing Stand: blok, BE, menu, ekran i dane - z waniliowa logika warzenia.
+    Brewing Stand: block, BE, menu, screen and data - with vanilla brewing logic.
 
-    Gracz: "dodaj brewing stand tak samo jak piecyk czy crafting". Sprawdzamy
-    ogniwa, ktore latwo zgubic pojedynczo (a wtedy blok stoi i nic nie robi):
-      1. block entity DZIEDZICZY po waniliowym BrewingStandBlockEntity (5 slotow,
-         brewTime, paliwo, PotionBrewing, NBT) zamiast kopiowac logike,
-      2. ticker bloku wola {@code serverTick()} i BE je MA - to byla prawdziwa
-         przyczyna czerwonych buildow: skopiowany z pieca blok wolal metode
-         instancyjna pieca, ktorej brewing stand nie mial,
-      3. menu ma SLOTY WARZENIA (3 butelki + skladnik + blaze powder) i ekwipunek,
-      4. ekran nie udaje pieca: brak paska baterii (warzenie nie ma akumulatora),
-      5. rejestracja (blok/item/BE/menu + ekran), obudowa Integrale i dane.
+    The player: "add a brewing stand just like the furnace or crafting". We
+    check the links that are easy to lose one by one (and then the block just
+    stands there doing nothing):
+      1. the block entity INHERITS from the vanilla BrewingStandBlockEntity
+         (5 slots, brewTime, fuel, PotionBrewing, NBT) instead of copying the
+         logic,
+      2. the block ticker calls {@code serverTick()} and the BE HAS it - that
+         was the real cause of the red builds: a block copied from the furnace
+         called the furnace's instance method, which the brewing stand did not
+         have,
+      3. the menu has the BREWING SLOTS (3 bottles + ingredient + blaze powder)
+         and the inventory,
+      4. the screen does not pretend to be a furnace: no battery bar (brewing
+         has no accumulator),
+      5. registration (block/item/BE/menu + screen), the Integrale casing and
+         the data.
     """
     problems = []
     block = "src/com/craftingveloce/block/VeloceBrewingStandBlock.java"
     be = "src/com/craftingveloce/block/entity/VeloceBrewingStandBlockEntity.java"
     menu = "src/com/craftingveloce/inventory/VeloceBrewingStandMenu.java"
     screen = "src/com/craftingveloce/client/gui/VeloceBrewingStandScreen.java"
-    for path, what in ((block, "bloku"), (be, "block entity"), (menu, "menu"),
-                       (screen, "ekranu")):
+    for path, what in ((block, "the block"), (be, "block entity"), (menu, "menu"),
+                       (screen, "screen")):
         if not os.path.exists(path):
-            problems.append("brak " + what)
+            problems.append("no " + what)
     if problems:
         fail("brewing stand:\n  " + "\n  ".join(problems))
 
-    # UWAGA: dziedziczenie po waniliowym BrewingStandBlockEntity jest
-    # NIE MOZLIWE dla naszego bloku - waniliowy konstruktor ustawia typ
-    # minecraft:brewing_stand, a nasz blok ma wlasny typ, co konczylo sie
-    # crashem "Invalid block entity ... got Block craftingveloce:brewing_stand".
-    # Dlatego BE jest nasz wlasny: 5 slotow + zapis w NBT + menu, a logika
-    # mieszania (PotionBrewing) dochodzi osobno.
+    # NOTE: inheriting from the vanilla BrewingStandBlockEntity is NOT POSSIBLE
+    # for our block - the vanilla constructor sets the type
+    # minecraft:brewing_stand, while our block has a type of its own, which
+    # ended in a crash "Invalid block entity ... got Block craftingveloce:brewing_stand".
+    # That is why the BE is our own: 5 slots + NBT saving + a menu, and the
+    # brewing logic (PotionBrewing) is added separately.
     be_text = open(be, encoding="utf-8").read()
     if "extends BlockEntity" not in be_text:
-        problems.append("BE nie jest naszym wlasnym block entity")
-    for need, what in (("implements net.minecraft.world.Container", "kontenera 5 slotow"),
-                       ("new SimpleContainer(5)", "pieciu slotow (3 butelki, skladnik, paliwo)"),
-                       ('tag.put("Items"', "zapisu zawartosci w NBT"),
-                       ("createMenu(", "otwierania wlasnego menu")):
+        problems.append("the BE is not our own block entity")
+    for need, what in (("implements net.minecraft.world.Container", "the 5-slot container"),
+                       ("new SimpleContainer(5)", "five slots (3 bottles, ingredient, fuel)"),
+                       ('tag.put("Items"', "saving the contents in NBT"),
+                       ("createMenu(", "opening our own menu")):
         if need not in be_text:
-            problems.append("BE brewing standu bez " + what)
+            problems.append("the brewing stand BE without " + what)
     if "BrewingStandBlockEntity" in be_text and "extends" in be_text \
             and "extends BlockEntity" not in be_text:
-        problems.append("BE dziedziczy po waniliowym (to powoduje crash typow)")
+        problems.append("the BE inherits from the vanilla one (this causes a type crash)")
 
     menu_text = open(menu, encoding="utf-8").read()
-    # Slotow maszyny szukamy w WYWOLANIACH addSlot, nie w stalych: sama nazwa
-    # stalej zostaje w pliku nawet wtedy, gdy slot zniknie (kalibracja to
-    # pokazala - pierwsza wersja checku przepuscila usuniecie slotu paliwa).
-    for need, what in (("new Slot(container, bottle,", "petli trzech butelek"),
-                                              ("new Slot(container, 3,", "slotu skladnika"),
-                       ("new Slot(container, 4,", "slotu paliwa (blaze powder)"),
-                       ("new Slot(playerInv,", "ekwipunku gracza")):
+    # We look for the machine slots in the addSlot CALLS, not in the constants:
+    # the constant name alone stays in the file even when the slot disappears
+    # (calibration showed this - the first version of the check let the removal
+    # of the fuel slot through).
+    for need, what in (("new Slot(container, bottle,", "the loop over three bottles"),
+                                              ("new Slot(container, 3,", "the ingredient slot"),
+                       ("new Slot(container, 4,", "the fuel slot (blaze powder)"),
+                       ("new Slot(playerInv,", "the player inventory")):
         if need not in menu_text:
-            problems.append("menu bez " + what)
+            problems.append("the menu without " + what)
     if "getBatterySlot" in menu_text:
-        problems.append("menu warzenia ma slot baterii (to nie maszyna na FE)")
+        problems.append("the brewing menu has a battery slot (this is not a FE machine)")
 
     screen_text = open(screen, encoding="utf-8").read()
     if "drawBattery" in screen_text or "energyCapacity" in screen_text:
-        problems.append("ekran warzenia rysuje baterie (warzenie nie ma akumulatora)")
+        problems.append("the brewing screen draws a battery (brewing has no accumulator)")
     if "electric_furnace.png" not in screen_text:
-        problems.append("ekran warzenia nie uzywa tekstury pieca")
+        problems.append("the brewing screen does not use the furnace texture")
 
     reg = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
-    for need, what in (("BREWING_STAND =", "bloku"), ("BREWING_STAND_ITEM", "itemu"),
+    for need, what in (("BREWING_STAND =", "the block"), ("BREWING_STAND_ITEM", "the item"),
                        ("BREWING_STAND_BE", "block entity"), ("BREWING_STAND_MENU", "menu")):
         if need not in reg:
-            problems.append("rejestracja bez " + what)
+            problems.append("registration without " + what)
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VeloceBrewingStandScreen::new" not in mod:
-        problems.append("ekran warzenia nie jest podpiety")
+        problems.append("the brewing screen is not wired")
     cc = open("src/com/craftingveloce/block/VeloceCaseContents.java", encoding="utf-8").read()
     if "BREWING_STAND.get()" not in cc:
-        problems.append("brak obudowy Integrale dla brewing standa")
+        problems.append("no Integrale casing for the brewing stand")
     for path in ("assets/craftingveloce/blockstates/brewing_stand.json",
                  "assets/craftingveloce/models/item/brewing_stand.json",
                  "data/craftingveloce/loot_table/blocks/brewing_stand.json"):
         if not os.path.exists(path):
-            problems.append("brak danych: " + path)
+            problems.append("missing data: " + path)
 
-    # Czesc B celu: co siec umie ze stolow specjalnych. To FAKTY z wanilii,
-    # nie obietnice - smithing i fletching sa juz obslugiwane, a kartografia
-    # i warzenie nie maja RecipeType, wiec NIE wolno ich dopisywac do rodzin.
+    # Part B of the goal: what the network can do with special tables. These are
+    # FACTS from vanilla, not promises - smithing and fletching are already
+    # handled, while cartography and brewing have no RecipeType, so they must
+    # NOT be added to the families.
     families = open("src/com/craftingveloce/crafting/VeloceRecipeFamilies.java",
                     encoding="utf-8").read()
     if "RecipeType.SMITHING" not in families:
-        problems.append("smithing table wypadl z rodzin receptur (siec go nie zrobi)")
+        problems.append("the smithing table fell out of the recipe families (the network will not make it)")
     if "RecipeType.CRAFTING" not in families:
-        problems.append("fletching table przestal byc obslugiwany (to zwykly crafting)")
+        problems.append("the fletching table is no longer handled (it is ordinary crafting)")
     if "BREWING" in families or "CARTOGRAPHY" in families:
-        problems.append("ktos dopisal nieistniejacy RecipeType (BREWING/CARTOGRAPHY)")
+        problems.append("somebody added a non-existent RecipeType (BREWING/CARTOGRAPHY)")
 
     if problems:
         fail("brewing stand:\n  " + "\n  ".join(problems))
-    print("    OK (brewing stand: waniliowa logika warzenia + menu/sloty + dane)")
+    print("    OK (brewing stand: vanilla brewing logic + menu/slots + data)")
 
 
 def validate_energy_pull():
     """
-    Nasze maszyny SAME sciagaja prad z obcych zrodel w sieci (Forge Energy).
+    Our machines draw power from foreign sources in the network THEMSELVES
+    (Forge Energy).
 
-    Gracz: "nasz modul moze sciagnac prad z energy cuba, ale tylko w te strone;
-    inne moduly nie moga uzywac naszych kabli; jesli jest pelny, to nie probuje
-    sciagac; i chcemy limity".
+    The player: "our module can pull power from an energy cube, but only in
+    that direction; the other modules cannot use our cables; if it is full, it
+    does not try to pull; and we want limits".
 
-    Sprawdzamy caly lancuch:
-      1. obce zrodlo energii jest typem endpointu i trafia do sieci ze skanu,
-         ktory POMIJA nasze bloki (maszyny nie moga byc dla siebie zrodlem),
-      2. pobor respektuje: pelny akumulator = zero prob, limit odbioru maszyny,
-         limit zrodla (pytamy extractEnergy), zwrot nadwyzki i nieciagniecie
-         niezaladowanych chunkow,
-      3. ciagnie PIEC i moduly FE w swoim serwerowym ticku,
-      4. nasza rura NIE wystawia EnergyStorage (kierunek tylko jeden).
+    We check the whole chain:
+      1. a foreign energy source is an endpoint type and reaches the network
+         from the scan, which SKIPS our blocks (machines must not be a source
+         for each other),
+      2. the draw respects: a full accumulator = zero attempts, the machine's
+         receive limit, the source's limit (we ask extractEnergy), returning the
+         surplus and not pulling unloaded chunks,
+      3. the FURNACE and the FE modules pull in their own server tick,
+      4. our pipe does NOT expose EnergyStorage (one direction only).
     """
     problems = []
     enum_path = "src/com/craftingveloce/network/pipe/ConnectedEndpointInfo.java"
@@ -1836,76 +1882,80 @@ def validate_energy_pull():
     net_path = "src/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
 
     if "ENERGY" not in open(enum_path, encoding="utf-8").read():
-        problems.append("brak typu endpointu ENERGY")
+        problems.append("no ENERGY endpoint type")
     net_text = open(net_path, encoding="utf-8").read()
-    for need, what in (("addEnergyEndpoint(", "zapisu zrodel energii"),
-                       ("getEnergyEndpoints()", "odczytu zrodel energii"),
-                       ("clearEnergyEndpoints()", "czyszczenia listy zrodel")):
+    for need, what in (("addEnergyEndpoint(", "recording energy sources"),
+                       ("getEnergyEndpoints()", "reading energy sources"),
+                       ("clearEnergyEndpoints()", "clearing the source list")):
         if need not in net_text:
-            problems.append("VelocePipeNetwork bez " + what)
+            problems.append("VelocePipeNetwork without " + what)
 
     scan = open(scan_path, encoding="utf-8").read()
     if "discoveredEnergy.add(" not in scan:
-        problems.append("skan nie zapamietuje obcych zrodel energii")
+        problems.append("the scan does not remember foreign energy sources")
     if "instanceof VeloceNetworkNode" not in scan or "addEnergyEndpoint(" not in scan:
-        problems.append("skan nie pomija naszych blokow / nie zapisuje zrodel do sieci")
+        problems.append("the scan does not skip our blocks / does not record sources into the network")
 
     if not os.path.exists(pull_path):
-        problems.append("brak wspolnego poboru energii (VeloceEnergyPull)")
+        problems.append("no shared energy draw (VeloceEnergyPull)")
     else:
         pull = open(pull_path, encoding="utf-8").read()
-        for need, what in (("free <= 0", "braku poboru przy pelnym akumulatorze"),
-                           ("extractEnergy(", "pytania zrodla o transfer (limit zrodla)"),
-                           ("receiveEnergy(taken - accepted, false)", "zwrotu nadwyzki"),
-                           ("isLoaded(pos)", "pomijania niezaladowanych zrodel"),
-                           ("Math.min(free, maxRate)", "limitu odbioru maszyny")):
+        for need, what in (("free <= 0", "no draw when the accumulator is full"),
+                           ("extractEnergy(", "asking the source about the transfer (source limit)"),
+                           ("receiveEnergy(taken - accepted, false)", "returning the surplus"),
+                           ("isLoaded(pos)", "skipping unloaded sources"),
+                           ("Math.min(free, maxRate)", "the machine's receive limit")):
             if need not in pull:
-                problems.append("pobor energii bez " + what)
+                problems.append("the energy draw without " + what)
 
-    # Modul FE wola pobor przez wlasny helper (pullFromNetwork), piec robi to
-    # wprost - dlatego sprawdzamy TICK + wywolanie w pliku, a nie sam literal
-    # w ciele ticku (pierwsza wersja testu dawala falszywy alarm).
+    # The FE module calls the draw through its own helper (pullFromNetwork),
+    # while the furnace does it directly - that is why we check the TICK + the
+    # call in the file, and not the literal inside the tick body (the first
+    # version of the test raised a false alarm).
     fe_mod = "src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
     fe_text = open(fe_mod, encoding="utf-8").read()
     fe_tick = _method_body(fe_text, "public void serverTick()")
     if fe_tick is None or "pullFromNetwork()" not in fe_tick \
             or "VeloceEnergyPull.pull(" not in fe_text:
-        problems.append("modul FE: nie sciaga pradu z sieci w ticku")
+        problems.append("the FE module: does not pull power from the network in the tick")
     furn = "src/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java"
     furn_text = open(furn, encoding="utf-8").read()
     furn_tick = _method_body(furn_text, "public void serverTick()")
     if furn_tick is None or "VeloceEnergyPull.pull(" not in furn_tick:
-        problems.append("piec elektryczny: nie sciaga pradu z sieci w ticku")
+        problems.append("the electric furnace: does not pull power from the network in the tick")
 
-    # Kierunek tylko jeden: rura nie moze wystawiac EnergyStorage.
+    # One direction only: the pipe must not expose EnergyStorage.
     pipe_be = "src/com/craftingveloce/block/entity/VelocePipeBlockEntity.java"
     if os.path.exists(pipe_be) and "IEnergyStorage" in open(pipe_be, encoding="utf-8").read():
-        problems.append("rura wystawia EnergyStorage (obcy mod moglby z niej pobierac)")
+        problems.append("the pipe exposes EnergyStorage (a foreign mod could draw from it)")
 
     if problems:
-        fail("pobor pradu z sieci:\n  " + "\n  ".join(problems))
-    print("    OK (pobor pradu: maszyny same sciagaja, limity i pelny akumulator respektowane)")
+        fail("power draw from the network:\n  " + "\n  ".join(problems))
+    print("    OK (power draw: machines pull on their own, limits and a full accumulator respected)")
 
 
 def validate_craftable_cache():
     """
-    Cache liczb "ile da sie dorobic": serwerowy, JEDEN na siec, instant dla GUI.
+    The cache of "how many more can be made" numbers: server-side, ONE per
+    network, instant for the GUI.
 
-    Gracz: "cyferki w terminalu laduja sie powoli od lewej do prawej, a kontroler
-    pokazuje kilka pierwszych i przestaje; chce, zeby sie keszowaly na serwerze
-    i zeby klient przy otwarciu GUI instant dostal gotowy kesz, a dopiero potem
-    odpalila sie logika liczenia widocznego".
+    The player: "the numbers in the terminal load slowly from left to right,
+    and the controller shows a few and then stops; I want them cached on the
+    server so that the client gets a ready cache instantly when the GUI opens,
+    and only then does the visible-counting logic start".
 
-    Sprawdzamy cale ogniwo, bo kazde psuje sie po cichu (cyferki po prostu
-    znikaja albo wracaja do powolnego doliczania):
-      1. cache zyje przy SIECI (nie przy terminalu ani kontrolerze) - inaczej
-         dwa GUI maja dwa rozne kesze, ktore sie rozjezdzaja,
-      2. pakiet najpierw wysyla migawke cache, a DOPIERO POTEM liczy widoczna
-         strone (odwrotna kolejnosc = powrot do "ladowania od lewej"),
-      3. swiezo policzone liczby trafiaja do cache (bez tego cache nigdy sie
-         nie zapelni i instant nie ma czego pokazac),
-      4. zmiany sieci kasuja cache (inaczej gracz widzi stare liczby),
-      5. kontroler idzie TA SAMA sciezka co terminal (bez wlasnego toru liczb).
+    We check the whole link, because each one breaks silently (the numbers
+    simply disappear or go back to slow counting):
+      1. the cache lives with the NETWORK (not with the terminal or the
+         controller) - otherwise two GUIs have two different caches that drift
+         apart,
+      2. the packet first sends the cache snapshot and ONLY THEN computes the
+         visible page (the reverse order = a return to "loading from the left"),
+      3. freshly computed numbers go into the cache (without this the cache
+         never fills up and instant has nothing to show),
+      4. network changes clear the cache (otherwise the player sees stale
+         numbers),
+      5. the controller follows the SAME path as the terminal (no track of its own).
     """
     problems = []
     network = "src/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
@@ -1915,69 +1965,70 @@ def validate_craftable_cache():
     controller = "src/com/craftingveloce/client/gui/VeloceControllerScreen.java"
 
     net_text = open(network, encoding="utf-8").read()
-    for need, what in (("craftableMemo", "mapy cache"),
-                       ("public void rememberCraftable(", "zapisu do cache"),
-                       ("public Map<Item, Long> getCraftableMemo()", "migawki cache"),
-                       ("public void clearCraftableMemo()", "kasowania cache")):
+    for need, what in (("craftableMemo", "the cache map"),
+                       ("public void rememberCraftable(", "writing to the cache"),
+                       ("public Map<Item, Long> getCraftableMemo()", "the cache snapshot"),
+                       ("public void clearCraftableMemo()", "clearing the cache")):
         if need not in net_text:
-            problems.append("VelocePipeNetwork bez " + what)
+            problems.append("VelocePipeNetwork without " + what)
 
     handle = _method_body(open(packet, encoding="utf-8").read(), "public static void handle(")
     if handle is None:
-        problems.append("brak obslugi zadania liczb")
+        problems.append("no handling of the number request")
     else:
         if "getCraftableMemo()" not in handle:
-            problems.append("pakiet nie wysyla cache (instant cyferek nie ma)")
+            problems.append("the packet does not send the cache (no instant numbers)")
         if "rememberCraftable(" not in handle:
-            problems.append("pakiet nie dopisuje wyniku do cache")
+            problems.append("the packet does not write the result into the cache")
         if "getCraftableMemo()" in handle and "computeCraftableCounts(" in handle \
                 and handle.index("getCraftableMemo()") > handle.index("computeCraftableCounts("):
-            problems.append("cache leci PO liczeniu (ma byc instant, przed)")
+            problems.append("the cache goes AFTER the counting (it must be instant, before)")
 
-    for path, what in ((nodes, "wezly sieci"), (toggle, "przelacznik craftera"),
-                       (nodes, "wezly sieci")):
+    for path, what in ((nodes, "network nodes"), (toggle, "the crafter toggle"),
+                       (nodes, "network nodes")):
         if "clearCraftableMemo(" not in open(path, encoding="utf-8").read():
-            problems.append(f"{what}: zmiana nie kasuje cache")
-    # Zmiana ukladu / przeladowanie chunkow: kasowanie MUSI byc w CIELE
-    # reconcileCaches - inaczej metoda clearCraftableMemo istnieje, ale nikt
-    # jej nie wola przy zmianie topologii (kalibracja to pokazala).
+            problems.append(f"{what}: a change does not clear the cache")
+    # Layout change / chunk reload: clearing MUST be in the BODY of
+    # reconcileCaches - otherwise the clearCraftableMemo method exists, but
+    # nobody calls it when the topology changes (calibration showed this).
     mgr_text = open("src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
                     encoding="utf-8").read()
     reconcile = _method_body(mgr_text, "private void reconcileCaches(")
     if reconcile is None or "clearCraftableMemo()" not in reconcile:
-        problems.append("zmiana ukladu / przeladowanie chunkow nie kasuje cache")
+        problems.append("a layout change / chunk reload does not clear the cache")
 
     ctrl = open(controller, encoding="utf-8").read()
     if "craftableCounts.request(" not in ctrl:
-        problems.append("kontroler nie zamawia liczb ta sama sciezka co terminal")
+        problems.append("the controller does not order the numbers through the same path as the terminal")
     if "updateCraftableCounts(" not in ctrl:
-        problems.append("kontroler nie odbiera liczb z tej samej sciezki")
+        problems.append("the controller does not receive the numbers from the same path")
 
-    # Persystencja: cache musi jechac do save'a razem z siecia.
+    # Persistence: the cache must go into the save together with the network.
     if "saveCraftableMemo(" not in open(
             "src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
             encoding="utf-8").read():
-        problems.append("cache liczb nie jest zapisywany do save'a gry")
+        problems.append("the number cache is not saved into the game save")
     if "restoreCraftableMemo(" not in open(
             "src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
             encoding="utf-8").read():
-        problems.append("cache liczb nie jest odczytywany z save'a gry")
+        problems.append("the number cache is not read from the game save")
 
     if problems:
-        fail("cache liczb craftowalnych:\n  " + "\n  ".join(problems))
-    print("    OK (cache liczb: siec + instant migawka + douczanie + kasowanie przy zmianach)")
-
+        fail("craftable number cache:\n  " + "\n  ".join(problems))
+    print("    OK (number cache: network + instant snapshot + learning + clearing on changes)")
 
 def validate_block_probe():
     """
-    `/cv block`: statystyki klocka pod celownikiem + tolerancja progu RPM.
+    `/cv block`: statistics of the block under the crosshair + RPM threshold tolerance.
 
-    Gracz: "mam creative motor, ktory teoretycznie daje 256 obrotow, a modul
-    pokazuje not enough ... dodaj komende, ktora pokaze statystyki klocka,
-    na ktory patrze - ile mu brakuje speeda". Dwa ogniwa, oba latwe do zgubienia:
-      1. prog 256 RPM musi miec tolerancje (256.0 bywa 255.99998 po propagacji),
-      2. komenda musi istniec, byc podpieta pod /cv i czytac te same dane co
-         okno/Jade (VeloceModuleInfoSource) oraz pokazywac BRAKUJACA predkosc.
+    The player: "I have a creative motor that theoretically gives 256 rotation,
+    and the module shows not enough ... add a command that shows the statistics
+    of the block I am looking at - how much speed it is missing". Two links,
+    both easy to lose:
+      1. the 256 RPM threshold must have a tolerance (256.0 is sometimes
+         255.99998 after propagation),
+      2. the command must exist, be wired into /cv, read the same data as the
+         window/Jade (VeloceModuleInfoSource) and show the MISSING speed.
     """
     problems = []
     be = ("src/com/craftingveloce/compat/create/block/entity/"
@@ -1985,76 +2036,79 @@ def validate_block_probe():
     text = open(be, encoding="utf-8").read()
     speed = _method_body(text, "public boolean hasEnoughRotationSpeed()")
     if speed is None or "REQUIRED_SPEED_TOLERANCE" not in speed:
-        problems.append("prog 256 RPM bez tolerancji (256.0 bywa 255.99998)")
+        problems.append("the 256 RPM threshold without tolerance (256.0 is sometimes 255.99998)")
 
     probe = "src/com/craftingveloce/commands/BlockProbeCommand.java"
     if not os.path.exists(probe):
-        problems.append("brak komendy /cv block")
+        problems.append("no /cv block command")
     else:
         ptext = open(probe, encoding="utf-8").read()
-        for need, what in (("moduleInfo(", "danych maszyny"),
-                           ("BRAKUJE: ", "brakujacej predkosci"),
-                           ("VeloceNetworkNode", "informacji o wezle sieci")):
+        # The needle is the player-facing label the command prints for a missing
+        # speed. It is English now; the guard follows the text it asserts on.
+        for need, what in (("moduleInfo(", "machine data"),
+                           ("MISSING: ", "the missing speed"),
+                           ("VeloceNetworkNode", "information about the network node")):
             if need not in ptext:
-                problems.append("komenda /cv block bez " + what)
+                problems.append("the /cv block command without " + what)
     root = open("src/com/craftingveloce/commands/CVDebugCommand.java", encoding="utf-8").read()
     if 'Commands.literal("block")' not in root or "BlockProbeCommand::describe" not in root:
-        problems.append("/cv block nie jest podpiete")
+        problems.append("/cv block is not wired")
     readme = "README.md"
     if os.path.exists(readme) and "/cv block" not in open(readme, encoding="utf-8").read():
-        problems.append("/cv block nieopisane w README")
+        problems.append("/cv block is not documented in the README")
 
     if problems:
-        fail("podglad klocka (/cv block):\n  " + "\n  ".join(problems))
-    print("    OK (/cv block: statystyki klocka + tolerancja progu RPM)")
+        fail("block probe (/cv block):\n  " + "\n  ".join(problems))
+    print("    OK (/cv block: block statistics + RPM threshold tolerance)")
 
 
 def validate_showcase_command():
     """
-    /cv showcase: lista blokow z REJESTRU, nie z recznej listy.
+    /cv showcase: a block list from the REGISTRY, not from a hand-written list.
 
-    Recznie pisana lista blokow do testow rozjedzie sie z rejestrem przy
-    pierwszym nowym bloku (i nikt tego nie zauwazy, bo komenda "dziala" -
-    tylko nie pokazuje nowego klocka). Guard pilnuje, ze komenda chodzi po
-    rejestrze (BuiltInRegistries.BLOCK), ze wypelnia maszyny budowane
-    (VeloceCaseBuildable) i ze jest podpieta do rejestracji komend.
+    A hand-written block list for testing will diverge from the registry with
+    the first new block (and nobody will notice, because the command "works" -
+    it just does not show the new block). The guard ensures the command walks
+    the registry (BuiltInRegistries.BLOCK), fills the built machines
+    (VeloceCaseBuildable) and is wired into the command registration.
     """
     path = "src/com/craftingveloce/commands/CVShowcaseCommand.java"
     if not os.path.exists(path):
-        fail("showcase:\n  brak klasy komendy /cv showcase")
+        fail("showcase:\n  no /cv showcase command class")
     text = open(path, encoding="utf-8").read()
     problems = []
     if "getStateForPlacement" not in text:
-        problems.append("komenda showcase bez stanu z wlasna logika postawienia")
-    for need, what in (('literal("pipes")', "trybu z rurami"),
-                       ('literal("clear")', "trybu sprzatania")):
+        problems.append("the showcase command without a state with its own placement logic")
+    for need, what in (('literal("pipes")', "pipe mode"),
+                       ('literal("clear")', "cleanup mode")):
         if need not in text:
-            problems.append("komenda showcase bez " + what)
-    # Ciala metod, nie caly plik: nazwa "BuiltInRegistries.BLOCK" wystepuje
-    # w kilku miejscach, wiec samo jej usuniecie z listy blokow nie byloby widoczne.
+            problems.append("the showcase command without " + what)
+    # Method bodies, not the whole file: the name "BuiltInRegistries.BLOCK"
+    # occurs in several places, so removing it from the block list alone would
+    # not be visible.
     blocks_body = _method_body(text, "private static List<Block> ourBlocks()")
     if blocks_body is None or "BuiltInRegistries.BLOCK.keySet()" not in blocks_body:
-        problems.append("showcase nie czyta listy blokow z REJESTRU (reczna lista sie rozjedzie)")
+        problems.append("showcase does not read the block list from the REGISTRY (a hand-written list will diverge)")
     fill_body = _method_body(text, "private static void fillParts(")
     if fill_body is None or "VeloceCaseBuildable" not in fill_body:
-        problems.append("showcase nie wypelnia maszyn budowanych elementami")
+        problems.append("showcase does not fill the built machines with parts")
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "CVShowcaseCommand.register" not in mod:
-        problems.append("komenda showcase nie jest zarejestrowana")
+        problems.append("the showcase command is not registered")
     if problems:
         fail("showcase:\n  " + "\n  ".join(problems))
-    print("    OK (/cv showcase: bloki z rejestru + elementy + rury + sprzatanie)")
+    print("    OK (/cv showcase: blocks from the registry + parts + pipes + cleanup)")
 
 
 def validate_loot_item_ids():
     """
-    Kazda loot table musi wskazywac na ISTNIEJACY item.
+    Every loot table must point to an EXISTING item.
 
-    BUG z loga gry ("Unknown registry key in ResourceKey[minecraft:item]:
-    craftingveloce:veloce_crusher_module"): 4 loot table modulow Mekanism
-    wskazywaly item BEZ prefiksu moda, bo generator zostawial istniejace pliki
-    nietkniete. Objaw: te bloki nie dropily NIC (a blad lecial tylko do loga,
-    przy wczytywaniu loot table).
+    The BUG from the game log ("Unknown registry key in ResourceKey[minecraft:item]:
+    craftingveloce:veloce_crusher_module"): 4 loot tables of Mekanism modules
+    pointed to an item WITHOUT the mod prefix, because the generator left the
+    existing files untouched. The symptom: those blocks dropped NOTHING (and
+    the error only went to the log, while loading the loot tables).
     """
     registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     compat = "".join(open(path, encoding="utf-8").read()
@@ -2071,12 +2125,12 @@ def validate_loot_item_ids():
             if name.split(":", 1)[1] not in items:
                 problems.append(f"{os.path.basename(path)} -> {name}")
     if problems:
-        fail("loot table wskazuja nieistniejace itemy:\n  " + "\n  ".join(problems))
-    print(f"    OK ({len(files)} loot table, kazdy wskazany item istnieje)")
+        fail("loot tables point to non-existent items:\n  " + "\n  ".join(problems))
+    print(f"    OK ({len(files)} loot tables, every referenced item exists)")
 
 
 def _loot_item_names(node):
-    """Wszystkie 'name' z wpisow typu minecraft:item (rekurencyjnie)."""
+    """All 'name' values from minecraft:item entries (recursively)."""
     if isinstance(node, dict):
         if node.get("type") == "minecraft:item" and isinstance(node.get("name"), str):
             yield node["name"]
@@ -2089,14 +2143,15 @@ def _loot_item_names(node):
 
 def validate_case_occlusion():
     """
-    Kazdy nasz blok musi byc {@code noOcclusion()} + nie zaslaniac sasiadow.
+    Every one of our blocks must be {@code noOcclusion()} + must not hide its neighbours.
 
-    BUG, ktory to wykryl (zgloszenie gracza): obudowy z zawartoscia w srodku
-    (kontroler, ekstraktor, sensory, piece, moduly) nie mialy {@code noOcclusion},
-    wiec gra traktowala je jak PELNY, nieprzezroczysty szescian i obcinala
-    sciany sasiadow tam, gdzie sie stykaly ("robila sie przezroczystosc i nie
-    bylo widac klocka obok"). Pusta klatka Integrale miala te opcje od poczatku -
-    dlatego dzialala i dlatego objaw wygladal na przypadkowy.
+    The BUG that uncovered this (a player report): casings with contents inside
+    (controller, extractor, sensors, furnaces, modules) did not have
+    {@code noOcclusion}, so the game treated them as a FULL, opaque cube and
+    clipped the neighbours' faces where they touched ("transparency appeared
+    and the block next to it was not visible"). The empty Integrale frame had
+    that option from the start - which is why it worked and why the symptom
+    looked random.
     """
     problems = []
     files = ["src/com/craftingveloce/init/VeloceRegistry.java"]
@@ -2111,350 +2166,362 @@ def validate_case_occlusion():
             continue
         missing = chains - text.count("noOcclusion()")
         if missing > 0:
-            problems.append(f"{path.replace(os.sep, '/')}: {missing} z {chains} "
-                            f"definicji blokow bez noOcclusion()")
+            problems.append(f"{path.replace(os.sep, '/')}: {missing} of {chains} "
+                            f"block definitions without noOcclusion()")
     if problems:
-        fail("przezroczystosc obudow (noOcclusion):\n  " + "\n  ".join(problems))
-    print("    OK (kazda definicja bloku: noOcclusion + nie zaslania sasiadow)")
+        fail("casing transparency (noOcclusion):\n  " + "\n  ".join(problems))
+    print("    OK (every block definition: noOcclusion + does not hide neighbours)")
 
 
 def validate_create_mechanics():
     """
-    Mechanika maszyn Create: naped z kazdej strony, blachy, siatka, wymagania.
+    Create machine mechanics: rotation from every side, sheets, grid, requirements.
 
-    Gracz opisal cztery rzeczy, ktore musza dzialac razem:
-      1. krecenie przyjmowane z KAZDEJ strony (os obrotu ze stanu bloku, wal
-         na obu koncach osi) - inaczej naped z boku jest ignorowany,
-      2. bok, z ktorego dochodzi naped, zamyka sie blacha jak przy rurze,
-      3. crafter mechaniczny ma tyle pol siatki, ile zbudowal gracz, a receptura
-         wchodzi tylko wtedy, gdy sie w nich zmiesci (5x5 = 25 oczek, sufit 9x9),
-      4. receptury z Basenem i cieplem (Blaze Burner) sa craftowalne wtedy, gdy
-         te rzeczy sa w sieci - bez nich planer ich nie widzi.
+    The player described four things that must work together:
+      1. rotation accepted from EVERY side (the rotation axis from the block
+         state, a shaft on both ends of the axis) - otherwise rotation from the
+         side is ignored,
+      2. the side the rotation comes from is closed with a sheet, as with a pipe,
+      3. the mechanical crafter has as many grid cells as the player built, and
+         a recipe only goes in when it fits them (5x5 = 25 cells, ceiling 9x9),
+      4. recipes with a Basin and heat (Blaze Burner) are craftable when those
+         things are in the network - without them the planner does not see them.
     """
     problems = []
 
     block_code = open("src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
                       encoding="utf-8").read()
-    for need, what in (("BlockStateProperties.AXIS", "stanu osi obrotu"),
+    for need, what in (("BlockStateProperties.AXIS", "the rotation axis state"),
                        ("side.getAxis() == own",
-                        "walu z kazdej strony zgodnej z osia"),
+                        "a shaft from every side aligned with the axis"),
                        ("neighbourAxis(world, pos.relative(side)",
-                        "walu od strony sasiada z napedem"),
+                        "a shaft on the side of a powered neighbour"),
                        ("return state.getValue(BlockStateProperties.AXIS)",
-                        "osi obrotu czytanej ze stanu"),
+                        "the rotation axis read from the state"),
                        ("instanceof com.simibubi.create.content.kinetics.base.KineticBlockEntity",
-                        "blachy od strony napedu Create"),
-                       ("VeloceIntegraleFrame.withClosure", "blach na bokach obudowy"),
-                       ("protected BlockState updateShape", "przeliczania blach po zmianie sasiada")):
+                        "the sheet on the side the Create rotation comes from"),
+                       ("VeloceIntegraleFrame.withClosure", "sheets on the casing sides"),
+                       ("protected BlockState updateShape", "recomputing the sheets after a neighbour changes")):
         if need not in block_code:
-            problems.append("maszyna kinetyczna bez " + what)
+            problems.append("the kinetic machine without " + what)
 
     entry = open("src/com/craftingveloce/crafting/ProcessingEntry.java", encoding="utf-8").read()
     if "public boolean fitsGrid(int side, int parts)" not in entry:
-        problems.append("ProcessingEntry nie sprawdza LICZBY pol (tylko bok siatki)")
+        problems.append("ProcessingEntry does not check the NUMBER of cells (only the grid side)")
     if "gridWidth * gridHeight <= parts" not in entry:
-        problems.append("brak warunku na pokrycie wszystkich pol receptury")
+        problems.append("no condition that all recipe cells are covered")
     processing_sources = open("src/com/craftingveloce/crafting/VeloceProcessingSources.java",
                               encoding="utf-8").read()
     if "public static int maxParts(" not in processing_sources:
-        problems.append("brak liczenia liczby zbudowanych pol")
+        problems.append("no counting of the built cells")
     if "return (int) Math.floor(Math.sqrt(maxParts(level, network, type)));" not in processing_sources:
-        problems.append("bok siatki nie liczy sie z liczby zbudowanych pol")
+        problems.append("the grid side is not computed from the number of built cells")
     if "public boolean fitsGrid(int side)" in entry:
-        problems.append("ProcessingEntry bez reguly dopasowania siatki")
+        problems.append("ProcessingEntry without the grid fitting rule")
     sources = open("src/com/craftingveloce/crafting/VeloceProcessingSources.java",
                    encoding="utf-8").read()
     if "maxGridSide" not in sources:
-        problems.append("brak liczenia boku zbudowanej siatki")
+        problems.append("no computation of the built grid side")
     harvest = open("src/com/craftingveloce/compat/create/CreateRecipeHarvest.java",
                    encoding="utf-8").read()
-    for need, what in (("recipe.getWidth()", "szerokosci siatki z receptury"),
-                       ("recipe.getHeight()", "wysokosci siatki z receptury"),
-                       ("requiresHeat", "flagi ciepla (Blaze Burner)")):
+    for need, what in (("recipe.getWidth()", "the grid width from the recipe"),
+                       ("recipe.getHeight()", "the grid height from the recipe"),
+                       ("requiresHeat", "the heat flag (Blaze Burner)")):
         if need not in harvest:
-            problems.append("harvest Create bez " + what)
+            problems.append("the Create harvest without " + what)
     module = open("src/com/craftingveloce/compat/create/CreateModule.java",
                   encoding="utf-8").read()
-    for need, what in (('"blaze_burner"', "wymagania Blaze Burnera"),
-                       ('"basin"', "wymagania Basenu")):
+    for need, what in (('"blaze_burner"', "the Blaze Burner requirement"),
+                       ('"basin"', "the Basin requirement")):
         if need not in module:
-            problems.append("modul Create bez " + what)
-    # Filtrowanie musi byc w OBIE strony zapytania (planer i lista "co umiemy"):
-    # samo wystapienie nazwy w pliku nic nie znaczy - latwo usunac jedno z dwoch
-    # miejsc i cicho dostac receptury ponad zbudowana siatke.
+            problems.append("the Create module without " + what)
+    # Filtering must happen in BOTH directions of the query (the planner and
+    # the "what can we do" list): the mere occurrence of a name in the file
+    # means nothing - it is easy to delete one of the two places and silently
+    # get recipes above the built grid.
     for signature, name in (("public List<ProcessingEntry> recipesFor(", "recipesFor"),
                             ("public Set<Item> producible(", "producible")):
         body = _method_body(module, signature)
         if body is None or "fitsGrid" not in body or "requirementsMet" not in body:
-            problems.append(f"{name} nie filtruje receptur po siatce i wymaganiach")
+            problems.append(f"{name} does not filter recipes by grid and requirements")
     family = open("src/com/craftingveloce/compat/create/CreateRecipeFamily.java",
                   encoding="utf-8").read()
-    for need, what in (("pressing()", "typu prasy"), ("mixing()", "typu miksera")):
+    for need, what in (("pressing()", "the press type"), ("mixing()", "the mixer type")):
         if need not in family:
-            problems.append("rodzina Create bez " + what)
+            problems.append("the Create family without " + what)
     be = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
               encoding="utf-8").read()
-    for need, what in (("public static final int GRID_LIMIT = 9", "granicy 9x9"),
-                       ("GRID_LIMIT * GRID_LIMIT", "limitu oczek craftera")):
+    for need, what in (("public static final int GRID_LIMIT = 9", "the 9x9 limit"),
+                       ("GRID_LIMIT * GRID_LIMIT", "the crafter cell limit")):
         if need not in be:
-            problems.append("crafter bez " + what)
+            problems.append("the crafter without " + what)
 
-    # Konwersje: pusty Integrale + klocek z Create = nasz modul. To ta sciezka,
-    # ktora gracz opisal ("biore puste veloce integrale, klikam crushing
-    # wheel'em - pojawia sie jeden w srodku, drugi klik - drugi i dopiero
-    # teraz maszyna dziala").
+    # Conversions: an empty Integrale + a Create block = our module. This is the
+    # path the player described ("I take an empty veloce integrale, click it
+    # with a crushing wheel - one appears in the middle, a second click - the
+    # second one, and only now does the machine work").
     compat = open("src/com/craftingveloce/compat/create/CreateCompat.java",
                   encoding="utf-8").read()
     if "registerConversions();" not in compat:
-        problems.append("bramka Create nie rejestruje konwersji z pustej obudowy")
+        problems.append("the Create gate does not register conversions from the empty casing")
     for item in ("crushing_wheel", "mechanical_crafter", "millstone", "mechanical_saw",
                  "mechanical_press", "mechanical_mixer", "deployer"):
         if f'VeloceIntegraleConversions.register(create("{item}")' not in compat:
-            problems.append(f"brak konwersji obudowy na modul z create:{item}")
+            problems.append(f"no casing conversion to a module from create:{item}")
 
-    # Klucz tabeli konwersji MUSI byc ID, nie referencja do bloku: bloki z
-    # innego moda moga jeszcze nie istniec, gdy bramka rejestruje wpisy, a wtedy
-    # wpis wskazywalby pusty blok i klik w obudowe nie robilby NIC.
+    # The key of the conversion table MUST be an ID, not a block reference:
+    # blocks from another mod may not exist yet when the gate registers the
+    # entries, and then the entry would point to an empty block and clicking the
+    # casing would do NOTHING.
     conversions = open("src/com/craftingveloce/block/VeloceIntegraleConversions.java",
                        encoding="utf-8").read()
     if "record Conversion(ResourceLocation inputId" not in conversions:
-        problems.append("tabela konwersji kluczuje po bloku, a nie po ID "
-                        "(klik klockiem z moda moze nie dzialac)")
+        problems.append("the conversion table is keyed by block, not by ID "
+                        "(clicking with a block from a mod may not work)")
     if "BuiltInRegistries.BLOCK.getKey(block)" not in conversions:
-        problems.append("konwersje nie szukaja wejscia po ID w chwili uzycia")
+        problems.append("conversions do not look up the input by ID at use time")
 
     integrale = open("src/com/craftingveloce/block/VeloceIntegraleBlock.java",
                      encoding="utf-8").read()
     if "VeloceCaseBuildable" not in integrale or "buildable.addPart()" not in integrale:
-        problems.append("pierwszy wlozony klocek nie zostaje w maszynie "
-                        "(konwersja nie dokłada elementu)")
+        problems.append("the first inserted block does not stay in the machine "
+                        "(the conversion does not add a part)")
 
     renderer = open("src/com/craftingveloce/client/render/VeloceCaseRenderer.java",
                     encoding="utf-8").read()
     render_body = _method_body(renderer, "public void render(")
     if render_body is None or "caseParts() > 0" not in render_body \
             or "caseBuiltFromParts()" not in render_body:
-        problems.append("maszyna bez wklikanych elementow nie jest pusta obudowa "
-                        "(z creative'a widac gotowy klocek)")
+        problems.append("a machine without clicked-in parts is not an empty casing "
+                        "(from creative you see a finished block)")
     if "for (int i = 0; i < parts; i++)" not in renderer:
-        problems.append("renderer nie rysuje tylu modeli, ile gracz wklikal")
+        problems.append("the renderer does not draw as many models as the player clicked in")
 
-    # Zawartosc MUSI byc rysowana jako MODEL ITEMU. Maszyny z innych modow
-    # (mlynek, pila, kruszarka, maszyny Mekanism) nie maja zwyklego modelu
-    # bloku - rysuja je wlasne renderery block entity, wiec renderSingleBlock
-    # pokazywal PUSTA obudowe (zgloszenie gracza: "inne itemki w ogole nie
-    # renderuja sie w srodku, tylko waniliowe").
+    # The contents MUST be drawn as an ITEM MODEL. Machines from other mods
+    # (millstone, saw, crusher, Mekanism machines) do not have an ordinary block
+    # model - their own block entity renderers draw them, so renderSingleBlock
+    # showed an EMPTY casing (a player report: "other items do not render inside
+    # at all, only vanilla ones").
     parts_body = _method_body(renderer, "private void renderParts(")
     render_body = _method_body(renderer, "public void render(")
 
-    # Zawartosc obudowy to model ITEMU (pelna reprezentacja maszyny), a nie
-    # model bloku - modele blokow maszyn z modow sa okrojone (czesc rysuje ich
-    # wlasny renderer / Flywheel), a modele itemow sa pelne. Transformacja
-    # przedmiotu (FIXED) MUSI byc skompensowana, inaczej item jest maly i w rogu.
+    # The casing contents are an ITEM model (the full representation of the
+    # machine), not a block model - the block models of machines from mods are
+    # trimmed (part of them is drawn by their own renderer / Flywheel), while
+    # item models are complete. The item transform (FIXED) MUST be compensated,
+    # otherwise the item is small and in a corner.
     content_body = _method_body(renderer, "private void renderContent(")
     if content_body is None:
-        problems.append("renderer obudowy bez renderContent")
+        problems.append("the casing renderer without renderContent")
     else:
-        # Warunki sprawdzamy w CIELE renderContent - nazwy wystepuja tez
-        # w innych metodach (contentTransform), wiec sama obecnosc w pliku
-        # przepuscilaby np. podmiane kontekstu FIXED na NONE.
-        for need, what in (("ItemDisplayContext.FIXED", "kontekstu FIXED"),
-                           ("renderStatic(", "rysowania modelu itemu"),
-                           ("transform.scale.x", "kompensacji rozmiaru"),
-                           ("-transform.translation.x", "kompensacji przesuniecia")):
+        # We check the conditions in the BODY of renderContent - the names also
+        # occur in other methods (contentTransform), so mere presence in the
+        # file would let, for example, swapping the FIXED context for NONE through.
+        for need, what in (("ItemDisplayContext.FIXED", "the FIXED context"),
+                           ("renderStatic(", "drawing the item model"),
+                           ("transform.scale.x", "the size compensation"),
+                           ("-transform.translation.x", "the offset compensation")):
             if need not in content_body:
-                problems.append("renderContent bez " + what)
-        # Model musi stac PROSTO: transformacja FIXED przekreca przedmiot jak
-        # w ekwipunku (30/225 stopni), przez co gracz widzial "saw i deployer
-        # patrzA na bok". Zerujemy rotacje odwrotnoscia rotationZYX.
+                problems.append("renderContent without " + what)
+        # The model must stand UPRIGHT: the FIXED transform tilts the item as in
+        # the inventory (30/225 degrees), which made the player see "the saw and
+        # the deployer looking sideways". We zero the rotation with the inverse
+        # of rotationZYX.
         if "rotationZYX(" not in content_body or "transform.rotation" not in content_body:
-            problems.append("zawartosc nie stoi prosto (przechyl z transformacji FIXED)")
+            problems.append("the contents do not stand upright (tilt from the FIXED transform)")
         if "contentScale" not in content_body:
-            problems.append("zawartosc nie uzywa skali maszyny (duze maszyny wystaja gora)")
+            problems.append("the contents do not use the machine scale (large machines stick out at the top)")
     if "getTransforms()" not in renderer or "getTransform(ItemDisplayContext.FIXED)" not in renderer:
-        problems.append("brak odczytu transformacji modelu itemu")
+        problems.append("no reading of the item model transform")
 
-    # Skala per maszyna zyje w tabeli obudow.
+    # The per-machine scale lives in the casing table.
     contents = open("src/com/craftingveloce/block/VeloceCaseContents.java", encoding="utf-8").read()
     if "public static float contentScale(BlockState state)" not in contents:
-        problems.append("tabela obudow bez skali zawartosci")
-    for need, what in (("float scale,", "rozmiaru zawartosci we wpisie tabeli"),
-                       ("float pitch,", "obrotu maszyny we wpisie tabeli"),
-                       ("boolean keepItemRotation", "wyboru orientacji modelu we wpisie tabeli")):
+        problems.append("the casing table without a content scale")
+    for need, what in (("float scale,", "the content size in the table entry"),
+                       ("float pitch,", "the machine rotation in the table entry"),
+                       ("boolean keepItemRotation", "the model orientation choice in the table entry")):
         if need not in contents:
-            problems.append("wpis tabeli obudow bez " + what)
+            problems.append("the casing table entry without " + what)
     compat_create = open("src/com/craftingveloce/compat/create/CreateCompat.java", encoding="utf-8").read()
-    for need, what in (('block("crushing_wheel"), 0.4F, 0.0F, true', "mocno zmniejszonej kruszarki"),
-                       ('block("mechanical_crafter"), 0.42F', "zmniejszonego craftera"),
-                       ('block("mechanical_press"), 0.5F', "zmniejszonej prasy"),
-                       ('block("mechanical_mixer"), 0.5F', "zmniejszonego miksera"),
-                       ('block("deployer"), 0.5F, -90.0F', "deployera patrzacego w dol"),
-                       ('block("mechanical_saw"), 0.7F, -90.0F', "pily patrzacej w dol")):
+    for need, what in (('block("crushing_wheel"), 0.4F, 0.0F, true', "the strongly reduced crusher"),
+                       ('block("mechanical_crafter"), 0.42F', "the reduced crafter"),
+                       ('block("mechanical_press"), 0.5F', "the reduced press"),
+                       ('block("mechanical_mixer"), 0.5F', "the reduced mixer"),
+                       ('block("deployer"), 0.5F, -90.0F', "the deployer looking down"),
+                       ('block("mechanical_saw"), 0.7F, -90.0F', "the saw looking down")):
         if need not in compat_create:
-            problems.append("brak " + what)
+            problems.append("no " + what)
 
     be_code = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
                    encoding="utf-8").read()
 
-    # Naped: PROG 256 RPM + pobor 1024 SU. Wczesniejszy model (dzielenie stalej
-    # przez predkosc bez progu) dawal ogromny "impact" przy malych obrotach i
-    # sieć krzyczala overstressed - gracz to zglosil ("przy 256 sie zacina,
-    # przy 1 kreci normalnie").
+    # Rotation: a 256 RPM THRESHOLD + a 1024 SU draw. The earlier model
+    # (dividing a constant by the speed without a threshold) produced a huge
+    # "impact" at low rotation and the network screamed overstressed - the
+    # player reported it ("at 256 it jams, at 1 it spins normally").
     modules = open("src/com/craftingveloce/compat/create/CreateKineticModules.java",
                    encoding="utf-8").read()
     if "public static final int REQUIRED_SPEED = 256;" not in modules:
-        problems.append("brak progu wymaganej predkosci 256 RPM")
+        problems.append("no required speed threshold of 256 RPM")
     if "public static final float STRESS_SU = 1024.0F;" not in modules:
-        problems.append("brak stalej 1024 SU dla modulow")
+        problems.append("no 1024 SU constant for the modules")
     if modules.count("STRESS_SU") < 8:
-        problems.append("nie kazdy modul bierze 1024 SU (ktos wpisal wlasna liczbe)")
+        problems.append("not every module takes 1024 SU (somebody hard-coded their own number)")
     stress_body = _method_body(be_code, "float calculateStressApplied()")
     if stress_body is None or "module.constantSu() / speed" not in stress_body:
-        problems.append("brak kompensacji predkosci w poborze")
+        problems.append("no speed compensation in the draw")
     if stress_body is None or "speed < 1f" not in stress_body:
-        problems.append("brak zabezpieczenia przy predkosci 0 (dzielenie przez zero)")
+        problems.append("no safeguard at speed 0 (division by zero)")
     if "public boolean hasEnoughRotationSpeed()" not in be_code:
-        problems.append("brak sprawdzenia progu predkosci w maszynie")
+        problems.append("no check of the speed threshold in the machine")
     powered_body = _method_body(be_code, "public boolean isPowered()")
     if powered_body is None or "hasEnoughRotationSpeed()" not in powered_body:
-        problems.append("isPowered nie wymaga progu predkosci")
+        problems.append("isPowered does not require the speed threshold")
 
-    # Status "za malo sily" NIE jest juz rysowany wlasnym napisem po ekranie.
+    # The "not enough force" status is no longer drawn with its own text on the
+    # screen.
     #
-    # Gracz: "wywal to cos, zamiast tego zrob integracje z Jade" - te informacje
-    # pokazuje teraz tooltip Jade i okno po prawym kliku (patrz validate_jade_info,
-    # ktory pilnuje, ze naprawde je pokazuja). Ten test pilnuje drugiego konca:
-    # ze wlasnego napisu przy celowniku nie ma.
+    # The player: "throw that thing out, make a Jade integration instead" -
+    # this information is now shown by the Jade tooltip and the right-click
+    # window (see validate_jade_info, which checks that they really show it).
+    # This test guards the other end: that there is no text of our own at the
+    # crosshair.
     gone = "src/com/craftingveloce/client/VeloceModuleOverlay.java"
     if os.path.exists(gone):
-        problems.append("wrocil wlasny napis przy celowniku (ma byc w tooltipie Jade)")
+        problems.append("our own text at the crosshair came back (it should be in the Jade tooltip)")
     own_mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VeloceModuleOverlay" in own_mod:
-        problems.append("mod nadal podpina wlasny napis przy celowniku")
+        problems.append("the mod still wires our own text at the crosshair")
 
-    # Kreatywnosc i middle click maja dawac maszyne WYPELNIONA (kruszarka: 2 kola,
-    # crafter: 3x3), a nie pusta - inaczej gracz stawia pustke i wyglada jak blad.
-    for need, what in (("public ItemStack filledStack()", "przedmiotu z zapisanymi elementami"),
-                       ("public int defaultParts()", "domyslnej liczby elementow"),
-                       ("getCloneItemStack", "wypelnionego middle clicka"),
-                       ("return 9;", "domyslnego gridu 3x3 dla craftera"),
-                       ("return 2;", "domyslnych dwoch kol dla kruszarki")):
+    # Creative and middle click must give a FILLED machine (crusher: 2 wheels,
+    # crafter: 3x3), not an empty one - otherwise the player places emptiness
+    # and it looks like a bug.
+    for need, what in (("public ItemStack filledStack()", "the item with the saved parts"),
+                       ("public int defaultParts()", "the default number of parts"),
+                       ("getCloneItemStack", "the filled middle click"),
+                       ("return 9;", "the default 3x3 grid for the crafter"),
+                       ("return 2;", "the default two wheels for the crusher")):
         if need not in block_code:
-            problems.append("maszyna bez " + what)
+            problems.append("the machine without " + what)
     blocks_registry = open("src/com/craftingveloce/compat/create/CreateBlocks.java",
                            encoding="utf-8").read()
-    for need, what in (("VELOCE_CRUSHING_MODULE.get().filledStack()", "wypelnionej kruszarki w zakladce"),
+    for need, what in (("VELOCE_CRUSHING_MODULE.get().filledStack()", "the filled crusher in the tab"),
                        ("VELOCE_MECHANICAL_CRAFTER_MODULE.get().filledStack()",
-                        "wypelnionego craftera w zakladce")):
+                        "the filled crafter in the tab")):
         if need not in blocks_registry:
-            problems.append("brak " + what)
+            problems.append("no " + what)
 
-    # Crafter mechaniczny NIE reaguje na moc: ani animacja, ani stan bloku.
+    # The mechanical crafter does NOT react to power: neither the animation nor
+    # the block state.
     if "ignoresPowerInModel()" not in block_code:
-        problems.append("maszyna nie ma znacznika 'ignoruje moc w modelu'")
+        problems.append("the machine has no 'ignores power in the model' marker")
     neighbour = _method_body(block_code, "protected void neighborChanged(")
     if neighbour is None or "ignoresPowerInModel()" in neighbour:
-        # Os musi sie dopasowac do napedu z KAZDEJ strony - takze w crafterze.
-        # Wczesniej crafter wracal tu od razu i nie przyjmowal obrotow z boku.
-        problems.append("maszyna nie dopasowuje osi do napedu (brak mocy z kazdej strony)")
+        # The axis must adapt to the rotation from EVERY side - including in the
+        # crafter. Previously the crafter returned here immediately and did not
+        # accept rotation from the side.
+        problems.append("the machine does not adapt the axis to the rotation (no power from every side)")
     if neighbour is None or "AXIS" not in neighbour:
-        problems.append("maszyna nie ustawia osi obrotu przy zmianie sasiada")
+        problems.append("the machine does not set the rotation axis when a neighbour changes")
     speed_body = _method_body(be_code, "public float caseSpinDegreesPerTick()")
     if speed_body is None or "ignoresPowerInModel()" not in speed_body:
-        problems.append("animacja craftera zalezy od napedu (ma byc stala)")
+        problems.append("the crafter animation depends on the rotation (it must be constant)")
 
-    for need, what in (('block("mechanical_press"), 0.5F, 180.0F', "prasy obroconej o 180 stopni"),
-                       ('block("mechanical_mixer"), 0.5F, 180.0F', "miksera obroconego o 180 stopni")):
+    for need, what in (('block("mechanical_press"), 0.5F, 180.0F', "the press rotated by 180 degrees"),
+                       ('block("mechanical_mixer"), 0.5F, 180.0F', "the mixer rotated by 180 degrees")):
         if need not in compat_create:
-            problems.append("brak " + what)
+            problems.append("no " + what)
 
-    # Obrot per maszyna musi byc stosowany, a zerowanie przechylu musi omijac
-    # maszyny, ktore maja zostac w swojej orientacji (kolo mlynskie).
-    for need, what in (("contentPitch", "obrotu per maszyna"),
-                       ("keepsItemRotation", "wyboru, czy zerowac przechyl"),
-                       ("Axis.XP.rotationDegrees(contentPitch)", "stosowania obrotu maszyny"),
-                       ("if (!keepRotation)", "omijania zerowania dla wybranych maszyn")):
+    # The per-machine rotation must be applied, and zeroing the tilt must skip
+    # the machines that are to keep their orientation (the millstone wheel).
+    for need, what in (("contentPitch", "the per-machine rotation"),
+                       ("keepsItemRotation", "the choice of whether to zero the tilt"),
+                       ("Axis.XP.rotationDegrees(contentPitch)", "applying the machine rotation"),
+                       ("if (!keepRotation)", "skipping the zeroing for selected machines")):
         if need not in renderer:
-            problems.append("renderer obudowy bez " + what)
+            problems.append("the casing renderer without " + what)
 
     if "renderSingleBlock" in renderer or "getBlockRenderer" in renderer:
-        problems.append("renderer obudowy rysuje model BLOKU - modele blokow maszyn "
-                        "sa okrojone (pelny jest model itemu)")
+        problems.append("the casing renderer draws a BLOCK model - the block models of "
+                        "machines are trimmed (the item model is the complete one)")
     if "getBlockEntityRenderDispatcher" in renderer:
-        problems.append("renderer obudowy wola renderery block entity - maszyny "
-                        "Create rysuje Flywheel, wiec bylaby pusta")
+        problems.append("the casing renderer calls block entity renderers - Create "
+                        "machines are drawn by Flywheel, so it would be empty")
 
     spin_iface = open("src/com/craftingveloce/block/VeloceCaseSpin.java", encoding="utf-8").read()
     if "boolean casePartsSpinIndividually();" not in spin_iface:
-        problems.append("interfejs bez informacji, czy elementy krecA sie pojedynczo")
+        problems.append("the interface without information whether the parts spin individually")
     if "boolean caseBuiltFromParts();" not in spin_iface:
-        problems.append("brak rozroznienia maszyny budowanej od maszyny ze stala zawartoscia")
+        problems.append("no distinction between a built machine and a machine with fixed contents")
     if "caseBuiltFromParts()" not in renderer:
-        problems.append("renderer nie odroznia pustej maszyny budowanej od stalej zawartosci")
+        problems.append("the renderer does not distinguish an empty built machine from fixed contents")
 
-    # Siatka: uklad liczy MASZYNA (kolumny x rzedy), renderer i powiadomienie
-    # musza korzystac z tego samego zrodla - inaczej gracz widzi "1x2",
-    # a w srodku rysuje sie cos innego.
+    # Grid: the layout is computed by the MACHINE (columns x rows), the renderer
+    # and the notification must use the same source - otherwise the player sees
+    # "1x2" while something else is drawn inside.
     if "gridLabel()" not in block_code or "displayClientMessage" not in block_code:
-        problems.append("brak powiadomienia na pasku o ukladzie siatki")
+        problems.append("no action bar notification about the grid layout")
     be_code = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
                    encoding="utf-8").read()
-    for need, what in (("public int caseGridColumns()", "kolumn ukladu"),
-                       ("public int caseGridRows()", "rzedow ukladu"),
-                       ("public String gridLabel()", "tekstu ukladu dla gracza")):
+    for need, what in (("public int caseGridColumns()", "the layout columns"),
+                       ("public int caseGridRows()", "the layout rows"),
+                       ("public String gridLabel()", "the layout text for the player")):
         if need not in be_code:
-            problems.append("maszyna bez " + what)
-    # Siatka musi zostawiac zapas na animacje (gracz: craftery wystawaly ponad
-    # model przy najwyzszej klatce bujania).
+            problems.append("the machine without " + what)
+    # The grid must leave headroom for the animation (the player: crafters stuck
+    # out above the model at the highest bobbing frame).
     if "GRID_EXTENT" not in renderer or "GRID_EXTENT / cols" not in renderer:
-        problems.append("siatka elementow nie ma zapasu na animacje")
+        problems.append("the part grid has no headroom for the animation")
     if "spin.caseGridColumns()" not in renderer or "spin.caseGridRows()" not in renderer:
-        problems.append("renderer nie uklada elementow tak, jak podaje maszyna")
+        problems.append("the renderer does not arrange the parts the way the machine reports them")
 
-    # Siatka craftera rosnie KWADRATOWO od srodka na zewnatrz (1x1, 2x2, 3x3...),
-    # a nie jako rosnaca linia (1x2, 1x3...). Bok = ceil(sqrt(oczek)), a pola
-    # wypelniaja sie od srodka obudowy.
+    # The crafter grid grows SQUARELY from the centre outwards (1x1, 2x2, 3x3...),
+    # and not as a growing line (1x2, 1x3...). The side = ceil(sqrt(cells)), and
+    # the cells fill up from the centre of the casing.
     if "Math.ceil(Math.sqrt(Math.max(1, parts)))" not in be_code:
-        problems.append("siatka craftera nie rosnie kwadratowo (bok z pierwiastka oczek)")
-    # Sprawdzamy TRESC metody renderParts, nie samo wystapienie nazwy w pliku:
-    # definicja spiralOrder zostaje nawet wtedy, gdy pętla jej nie uzywa.
+        problems.append("the crafter grid does not grow squarely (side from the square root of the cells)")
+    # We check the CONTENT of the renderParts method, not the mere occurrence of
+    # the name in the file: the spiralOrder definition stays even when the loop
+    # does not use it.
     if parts_body is None or "centreOrder(" not in parts_body or "order[i][0]" not in parts_body:
-        problems.append("elementy nie wypelniaja kwadratu od SRODKA na zewnatrz")
+        problems.append("the parts do not fill the square from the CENTRE outwards")
 
     if "neighbourAxis" not in block_code or "Direction.Axis axis = neighbourAxis" not in block_code:
-        problems.append("os maszyny nie dopasowuje sie do sasiada z napedem "
-                        "(naped z boku nie zadziala)")
+        problems.append("the machine axis does not adapt to a powered neighbour "
+                        "(rotation from the side will not work)")
 
 
-    # Maszyna bez pradu nie jest dostepna: dotyczy WSZYSTKICH integracji.
+    # A machine without power is not available: applies to ALL integrations.
     for path, name in (("src/com/craftingveloce/compat/create/CreateModule.java", "Create"),
                        ("src/com/craftingveloce/compat/mekanism/MekanismModule.java", "Mekanism"),
                        ("src/com/craftingveloce/compat/alchemistry/AlchemistryModule.java", "Alchemistry")):
         body = _method_body(open(path, encoding="utf-8").read(), "public Set<Item> producible(")
         if body is None or "hasPowered" not in body:
-            problems.append(f"modul {name}: producible pokazuje maszyny BEZ pradu")
+            problems.append(f"the {name} module: producible shows machines WITHOUT power")
     if problems:
-        fail("mechanika Create:\n  " + "\n  ".join(problems))
-    print("    OK (Create: os z kazdej strony + blachy, siatka z receptury, "
-          "wymagania basin/blaze, sufit 9x9)")
-
+        fail("Create mechanics:\n  " + "\n  ".join(problems))
+    print("    OK (Create: axis from every side + sheets, grid from the recipe, "
+          "basin/blaze requirements, 9x9 ceiling)")
 
 def validate_case_disassembly():
     """
-    Rozkladanie obudowy: NBT na dropie + receptura w stole craftingu.
+    Casing disassembly: NBT on the drop + a crafting table recipe.
 
-    Gracz: "niech dany blok ma w tagu NBT zapamietane, ile dokladnie crafterow
-    zawiera w srodku - po zniszczeniu dokladnie ta sama liczba zostaje w NBT
-    dropnietego itemu, a po postawieniu ma zachowac te sama wartosc. A gdy
-    wloze ten przedmiot do Crafting Table, receptura ma zwrocic sam mechanical
-    crafter w liczbie, ile ich bylo, plus sam ten bazowy klocek."
+    The player: "let a given block have in its NBT tag a record of exactly how
+    many crafters it contains - after destruction exactly that number stays in
+    the NBT of the dropped item, and after placement it must keep the same
+    value. And when I put that item into a Crafting Table, the recipe should
+    return the mechanical crafter itself in the number that there were, plus the
+    base block itself."
 
-    Sprawdzamy cztery ogniwa, bo kazde z nich latwo zgubic po osobno:
-      1. blok zapisuje licznik elementow do NBT dropnietego przedmiotu,
-      2. block entity umie go odczytac (inaczej postawienie gubi wartosc),
-      3. receptura zwraca pusta obudowe ORAZ klocki bazowe w liczbie z NBT,
-      4. serializer jest zarejestrowany, a receptura dostarczona jako JSON
-         (bez JSON-a receptura nie istnieje w swiecie).
+    We check four links, because each of them is easy to lose separately:
+      1. the block writes the part counter into the NBT of the dropped item,
+      2. the block entity can read it (otherwise placement loses the value),
+      3. the recipe returns the empty casing AND the base blocks in the number
+         from the NBT,
+      4. the serializer is registered, and the recipe is provided as JSON
+         (without the JSON the recipe does not exist in the world).
     """
     problems = []
 
@@ -2462,64 +2529,65 @@ def validate_case_disassembly():
                         encoding="utf-8").read()
     drops = _method_body(module_block, "protected java.util.List<ItemStack> getDrops(")
     if drops is None:
-        problems.append("maszyna nie ma wlasnego dropu (licznik nie trafi do NBT)")
+        problems.append("the machine has no drop of its own (the counter will not reach the NBT)")
     else:
-        for need, what in (('tag.putInt("VeloceParts"', "zapisu liczby elementow"),
-                           ("BlockItem.setBlockEntityData", "wpisania danych do przedmiotu"),
-                           ("LootContextParams.BLOCK_ENTITY", "odczytu block entity przy zbiciu")):
+        for need, what in (('tag.putInt("VeloceParts"', "writing the number of parts"),
+                           ("BlockItem.setBlockEntityData", "writing the data into the item"),
+                           ("LootContextParams.BLOCK_ENTITY", "reading the block entity on break")):
             if need not in drops:
-                problems.append("drop maszyny bez " + what)
+                problems.append("the machine drop without " + what)
 
     be = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
               encoding="utf-8").read()
     if 'tag.getInt("VeloceParts")' not in be or 'tag.putInt("VeloceParts"' not in be:
-        problems.append("block entity nie czyta/zapisuje liczby elementow w NBT")
+        problems.append("the block entity does not read/write the number of parts in NBT")
 
     recipe_path = "src/com/craftingveloce/crafting/VeloceCaseDisassemblyRecipe.java"
     if not os.path.exists(recipe_path):
-        fail("rozkladanie obudowy:\n  brak klasy receptury")
+        fail("casing disassembly:\n  no recipe class")
     recipe = open(recipe_path, encoding="utf-8").read()
     remaining_body = _method_body(recipe, "public NonNullList<ItemStack> getRemainingItems(")
     if remaining_body is None or "remaining.set(" not in remaining_body \
             or "base.asItem()" not in remaining_body:
-        problems.append("getRemainingItems nie zwraca klockow bazowych do siatki")
-    for need, what in (("VELOCE_INTEGRALE_ITEM", "zwrotu pustej obudowy"),
-                       ("getRemainingItems", "zwrotu klockow bazowych do siatki"),
-                       ("base.asItem()", "klocka bazowego jako zwrotu"),
-                       ("partsOf(machine)", "liczby elementow z NBT"),
-                       ('getInt("VeloceParts")', "odczytu licznika z NBT przedmiotu")):
+        problems.append("getRemainingItems does not return the base blocks into the grid")
+    for need, what in (("VELOCE_INTEGRALE_ITEM", "returning the empty casing"),
+                       ("getRemainingItems", "returning the base blocks into the grid"),
+                       ("base.asItem()", "the base block as the remainder"),
+                       ("partsOf(machine)", "the number of parts from the NBT"),
+                       ('getInt("VeloceParts")', "reading the counter from the item NBT")):
         if need not in recipe:
-            problems.append("receptura bez " + what)
+            problems.append("the recipe without " + what)
 
     recipes = open("src/com/craftingveloce/crafting/VeloceRecipes.java", encoding="utf-8").read()
     if '"case_disassembly"' not in recipes:
-        problems.append("serializer receptury nie jest zarejestrowany")
+        problems.append("the recipe serializer is not registered")
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VeloceRecipes.register" not in mod:
-        problems.append("rejestracja receptur nie jest podpieta do moda")
+        problems.append("recipe registration is not wired into the mod")
 
     json_path = "data/craftingveloce/recipe/case_disassembly.json"
     if not os.path.exists(json_path):
-        problems.append("brak JSON-a receptury (data/craftingveloce/recipe/case_disassembly.json)")
+        problems.append("no recipe JSON (data/craftingveloce/recipe/case_disassembly.json)")
     else:
         data = json.load(open(json_path, encoding="utf-8"))
         if data.get("type") != "craftingveloce:case_disassembly":
-            problems.append(f"JSON receptury ma typ {data.get('type')}")
+            problems.append(f"the recipe JSON has type {data.get('type')}")
 
     if problems:
-        fail("rozkladanie obudowy:\n  " + "\n  ".join(problems))
-    print("    OK (obudowa: NBT z liczba elementow + receptura rozkladajaca)")
+        fail("casing disassembly:\n  " + "\n  ".join(problems))
+    print("    OK (casing: NBT with the part count + a disassembly recipe)")
 
 
 def validate_mods_toml():
     """
-    `neoforge.mods.toml` musi sie PARSOWAC i miec wymagane zaleznosci.
+    `neoforge.mods.toml` must PARSE and have the required dependencies.
 
-    BUG, ktory to wykryl: przy usuwaniu bloku zaleznosci (Jade) zostala
-    osierocona linia `side="CLIENT"` na koncu pliku. TOML dokleja taka linie do
-    POPRZEDNIEJ tabeli, a duplikat klucza `side` wywala parsowanie CALEGO pliku
-    - czyli mod nie wstaje. Build tego nie widzial, bo to plik danych, a nie
-    kod: kompilacja przechodzi, JAR sie pakuje, a blad wychodzi dopiero w grze.
+    The BUG that uncovered this: while removing a dependency block (Jade), an
+    orphaned `side="CLIENT"` line was left at the end of the file. TOML appends
+    such a line to the PREVIOUS table, and a duplicate `side` key makes parsing
+    the WHOLE file fail - that is, the mod does not start. The build did not see
+    it, because it is a data file and not code: compilation passes, the JAR
+    packages, and the error only shows up in game.
     """
     path = "src_meta/META-INF/neoforge.mods.toml"
     if not os.path.exists(path):
@@ -2527,48 +2595,52 @@ def validate_mods_toml():
     try:
         import tomllib
     except ImportError:      # Python < 3.11
-        print("    (pomijam: brak tomllib)")
+        print("    (skipping: no tomllib)")
         return
     try:
         with open(path, "rb") as handle:
             data = tomllib.load(handle)
     except Exception as exc:
-        fail(f"neoforge.mods.toml nie parsuje sie: {exc}")
+        fail(f"neoforge.mods.toml does not parse: {exc}")
 
     dependencies = data.get("dependencies", {}).get("craftingveloce", [])
     mod_ids = {dep.get("modId") for dep in dependencies}
     missing = sorted({"neoforge", "minecraft", "toms_storage"} - mod_ids)
     if missing:
-        fail("neoforge.mods.toml bez wymaganych zaleznosci: " + ", ".join(missing))
-    print(f"    OK (mods.toml parsuje sie: {len(mod_ids)} zaleznosci)")
+        fail("neoforge.mods.toml without the required dependencies: " + ", ".join(missing))
+    print(f"    OK (mods.toml parses: {len(mod_ids)} dependencies)")
 
 
 def validate_integrale_display():
     """
-    Klatka Veloce Integrale: OBUDOWA, ktora zamienia sie w nasza maszyne.
+    The Veloce Integrale frame: a CASING that turns into our machine.
 
-    Gracz: "jak wkladam furnace to robi sie furnace display - ma sie zmieniac
-    w normalne itemki veloce". Klatka nie wystawia wiec niczego i nie udaje
-    craftera: prawy klik odpowiednim waniliowym klockiem PODMIENIA ja na
-    prawdziwy blok Veloce wedlug tabeli (VeloceIntegraleConversions): z pulpitu
-    powstaje kontroler, z dozownika ekstraktor, z obserwatora sensor progu,
-    ze stolu craftingu stol (ten jeden w obudowie), z pieca piec.
+    The player: "when I put in a furnace it becomes a furnace display - it
+    should turn into normal veloce items". So the frame exposes nothing and does
+    not pretend to be a crafter: a right click with the right vanilla block
+    REPLACES it with a real Veloce block according to the table
+    (VeloceIntegraleConversions): a crafting table becomes a crafting table
+    (that one inside a casing), a lectern becomes a controller, a dispenser an
+    extractor, an observer a threshold sensor, a furnace a furnace.
 
-    Sprawdzamy:
-      1. tabela przepisan mapuje wlasciwe pary,
-      2. klatka pyta te tabele i podmienia blok, zglaszajac nowy wezel sieci,
-      3. stary system "eksponatow" zniknal CALKOWICIE (polowiczny refaktor
-         zostawilby w swiecie blok, ktory nic nie robi),
-      4. stol w obudowie oddaje przy zbiciu JEDEN przedmiot i ma droge powrotna,
-      5. klient renderuje stol w obudowie (a nie "eksponat"),
-      6. klatka nie jest crafterem dla sieci, a jej przedmiot ma podpowiedz
-         generowana z tabeli przepisan.
+    We check:
+      1. the conversion table maps the right pairs,
+      2. the frame asks that table and replaces the block, registering a new
+         network node,
+      3. the old "display item" system is COMPLETELY gone (a partial refactor
+         would leave a block in the world that does nothing),
+      4. the crafting table in the casing returns ONE item when broken and has a
+         way back,
+      5. the client renders the crafting table inside the casing (and not a
+         "display item"),
+      6. the frame is not a crafter for the network, and its item has a tooltip
+         generated from the conversion table.
     """
     problems = []
 
     conv_path = "src/com/craftingveloce/block/VeloceIntegraleConversions.java"
     if not os.path.exists(conv_path):
-        fail("klatka / maszyny:\n  brak tabeli przepisan VeloceIntegraleConversions")
+        fail("frame / machines:\n  no VeloceIntegraleConversions conversion table")
     conversions = open(conv_path, encoding="utf-8").read()
     for input_block, target in (("Blocks.CRAFTING_TABLE", "VELOCE_CRAFTING_TABLE"),
                                 ("Blocks.LECTERN", "VELOCE_CONTROLLER"),
@@ -2577,40 +2649,41 @@ def validate_integrale_display():
                                 ("Blocks.FURNACE", "VELOCITY_FURNACE")):
         pair = f"add({input_block}, () -> VeloceRegistry.{target}.get())"
         if pair not in conversions:
-            problems.append(f"tabela przepisan bez pary {input_block} -> {target}")
+            problems.append(f"the conversion table without the pair {input_block} -> {target}")
 
     integrale = "src/com/craftingveloce/block/VeloceIntegraleBlock.java"
     text = open(integrale, encoding="utf-8").read()
-    for need, what in (("VeloceIntegraleConversions.forItem", "wgladu do tabeli przepisan"),
-                       ("world.setBlock(pos, result", "podmiany bloku"),
-                       ("VeloceNodeBlocks.onNodePlaced", "zgloszenia nowego bloku do sieci")):
+    for need, what in (("VeloceIntegraleConversions.forItem", "a look into the conversion table"),
+                       ("world.setBlock(pos, result", "replacing the block"),
+                       ("VeloceNodeBlocks.onNodePlaced", "registering the new block with the network")):
         if need not in text:
-            problems.append("klatka bez " + what)
-    # Samo wystapienie onNodePlaced w pliku nic nie znaczy - to samo wywolanie
-    # jest przy postawieniu bloku, wiec sprawdzamy TRESC metody podmiany.
+            problems.append("the frame without " + what)
+    # The mere occurrence of onNodePlaced in the file means nothing - the same
+    # call is there when a block is placed, so we check the CONTENT of the
+    # replacement method.
     convert = _method_body(text, "private static void convert")
     if convert is None:
-        problems.append("klatka nie ma metody zamiany na maszyne")
+        problems.append("the frame has no method that turns it into a machine")
     else:
-        for need, what in (("world.setBlock(pos, result", "postawienia maszyny"),
-                           ("VeloceNodeBlocks.onNodePlaced", "zgloszenia nowego wezla sieci")):
+        for need, what in (("world.setBlock(pos, result", "placing the machine"),
+                           ("VeloceNodeBlocks.onNodePlaced", "registering the new network node")):
             if need not in convert:
-                problems.append("zamiana klatki na maszyne bez " + what)
+                problems.append("turning the frame into a machine without " + what)
     use_item = _method_body(text, "protected ItemInteractionResult useItemOn")
     if use_item is None or "convert(" not in use_item:
-        problems.append("prawy klik nie zamienia klatki na maszyne")
+        problems.append("the right click does not turn the frame into a machine")
     if "exposesCraftingBuffer" in text:
-        problems.append("klatka wystawia bufor craftingu, choc crafterem nie jest")
+        problems.append("the frame exposes the crafting buffer even though it is not a crafter")
 
-    # 3. Stary system eksponatow ma zniknac z CALEGO moda. Sprawdzamy to
-    # plik po pliku, bo najczestszy polowiczny refaktor zostawia metode, ktora
-    # juz nikt nie wola, albo pole, ktore nadal jedzie w NBT.
+    # 3. The old display item system must disappear from the WHOLE mod. We check
+    # this file by file, because the most common partial refactor leaves a method
+    # nobody calls any more, or a field that still travels in NBT.
     #
-    # UWAGA (sprawdzone na prawdziwych klasach wanilii): usuniecie wlasciwosci
-    # stanu bloku NIE psuje zapisanych swiatow - od 1.20.5 stan bloku jedzie
-    # w palecie jako mapa {Name, Properties}, a nieznane klucze sa pomijane
-    # (test: {Name:"minecraft:oak_fence",Properties:{filled:"true"}} parsuje sie
-    # bez bledu, tak samo jak zla wartosc znanej wlasciwosci).
+    # NOTE (verified against the real vanilla classes): removing a block state
+    # property does NOT break saved worlds - since 1.20.5 the block state
+    # travels in the palette as a {Name, Properties} map, and unknown keys are
+    # skipped (test: {Name:"minecraft:oak_fence",Properties:{filled:"true"}}
+    # parses without an error, just like a wrong value of a known property).
     leftovers = []
     for path in sorted(glob.glob("src/com/craftingveloce/**/*.java", recursive=True)):
         body = open(path, encoding="utf-8").read()
@@ -2620,85 +2693,86 @@ def validate_integrale_display():
             if need in body:
                 leftovers.append(f"{path.replace(os.sep, '/')} -> {need}")
     if leftovers:
-        problems.append("zostal stary system eksponatow:\n  " + "\n  ".join(leftovers))
+        problems.append("the old display item system is still there:\n  " + "\n  ".join(leftovers))
 
     be_path = "src/com/craftingveloce/block/entity/VeloceCraftingTableBlockEntity.java"
     be = open(be_path, encoding="utf-8").read()
     if "instanceof com.craftingveloce.block.VeloceCraftingTableBlock" not in be:
-        problems.append("block entity stolu nie rozpoznaje craftera po TYPIE bloku")
+        problems.append("the crafting table block entity does not recognise a crafter by BLOCK TYPE")
 
-    # Widmo magazynu: endpoint bufora musi znikac, gdy blok przestaje byc
-    # crafterem - walidacja nie moze wiec opierac sie na samym block entity.
+    # Storage ghost: the buffer endpoint must disappear when the block stops
+    # being a crafter - so the validation cannot rely on the block entity alone.
     manager = open("src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
                    encoding="utf-8").read()
     buffer_case = manager.partition("case CRAFTING_BUFFER")[2][:400]
     if "exposesCraftingBuffer" not in buffer_case:
-        problems.append("walidacja bufora craftera nie pyta wezla o regule - "
-                        "po podmianie bloku zostaje widmo magazynu")
+        problems.append("the crafter buffer validation does not ask the node about the rule - "
+                        "after the block is replaced a storage ghost remains")
 
     registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     if "integraleBlock()" in registry:
-        problems.append("klatka nadal ma wlasny block entity stolu (ma go nie miec)")
+        problems.append("the frame still has its own crafting table block entity (it must not)")
 
     mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VeloceCaseRenderer" not in mod:
-        problems.append("brak rejestracji renderera obudowy (RegisterRenderers)")
+        problems.append("no casing renderer registration (RegisterRenderers)")
 
     renderer = "src/com/craftingveloce/client/render/VeloceCaseRenderer.java"
     if not os.path.exists(renderer):
-        problems.append("brak klasy renderera obudowy")
+        problems.append("no casing renderer class")
     else:
         body = open(renderer, encoding="utf-8").read()
-        for need, what in (("VeloceCaseContents.contentFor", "zawartosci z tabeli obudow"),
-                           ("renderStatic(", "rysowania modelu itemu zawartosci"),
-                           ("rotationDegrees", "animacji (obrot)"),
-                           ("Math.sin", "animacji (bujanie)")):
+        for need, what in (("VeloceCaseContents.contentFor", "the contents from the casing table"),
+                           ("renderStatic(", "drawing the contents item model"),
+                           ("rotationDegrees", "the animation (rotation)"),
+                           ("Math.sin", "the animation (bobbing)")):
             if need not in body:
-                problems.append("renderer obudowy bez " + what)
-        # Samo wystapienie "VeloceCaseSpin" w pliku nic nie znaczy (jest w
-        # sygnaturze metody pomocniczej) - musi byc WYWOLANE z render().
+                problems.append("the casing renderer without " + what)
+        # The mere occurrence of "VeloceCaseSpin" in the file means nothing (it
+        # is in the signature of a helper method) - it must be CALLED from render().
         render_body = _method_body(body, "public void render(")
         if render_body is None or "VeloceCaseSpin" not in render_body \
                 or "renderParts(" not in render_body:
-            problems.append("renderer nie rysuje elementow maszyny (kola mlynskie) "
-                            "z predkoscia z maszyny - VeloceCaseSpin nieuzywany")
+            problems.append("the renderer does not draw the machine parts (mill wheels) "
+                            "with the speed from the machine - VeloceCaseSpin unused")
 
     contents_path = "src/com/craftingveloce/block/VeloceCaseContents.java"
     if not os.path.exists(contents_path):
-        problems.append("brak tabeli zawartosci obudow (VeloceCaseContents)")
+        problems.append("no casing contents table (VeloceCaseContents)")
     else:
         body = open(contents_path, encoding="utf-8").read()
-        for need, what in (("VELOCE_CRAFTING_TABLE.get()", "stolu craftingu"),
-                           ("VELOCE_CONTROLLER.get()", "kontrolera"),
-                           ("VELOCE_EXTRACTOR.get()", "ekstraktora"),
-                           ("THRESHOLD_SENSOR.get()", "sensora progu"),
-                           ("VELOCITY_FURNACE.get()", "pieca paliwowego"),
-                           ("ELECTRIC_FURNACE.get()", "pieca elektrycznego")):
+        for need, what in (("VELOCE_CRAFTING_TABLE.get()", "the crafting table"),
+                           ("VELOCE_CONTROLLER.get()", "the controller"),
+                           ("VELOCE_EXTRACTOR.get()", "the extractor"),
+                           ("THRESHOLD_SENSOR.get()", "the threshold sensor"),
+                           ("VELOCITY_FURNACE.get()", "the fuel furnace"),
+                           ("ELECTRIC_FURNACE.get()", "the electric furnace")):
             if need not in body:
-                problems.append("tabela obudow bez " + what)
+                problems.append("the casing table without " + what)
 
     if problems:
-        fail("klatka / maszyny z klatki:\n  " + "\n  ".join(problems))
-    print(f"    OK (klatka: {len(conversions.split('add(Blocks.')) - 1} przepisan, "
-          f"obudowa + zawartosc, brak duplikatow)")
-
+        fail("frame / machines from the frame:\n  " + "\n  ".join(problems))
+    print(f"    OK (frame: {len(conversions.split('add(Blocks.')) - 1} conversions, "
+          f"casing + contents, no duplicates)")
 
 def validate_integrale_model():
     """
-    Klatka Veloce Integrale: rama z pretow + FIOLETOWE SZKLO w oknach.
+    The Veloce Integrale frame: a rod frame + PURPLE GLASS in the windows.
 
-    Gracz opisal to w dwóch krokach: najpierw "tylko rogi i kance, bez
-    kolorowania srodka", a potem "te dziury w modelu bloczka zabarw na
-    fioletowo, jak purple stained glass". Model latwo zepsuc jedna literowka
-    (szyba nieprzezroczysta, szyba zlewajaca sie z rama, rama wypelniona),
-    a w grze wyglada to jak zwykly klocek - czyli odwrotnie niz ma byc.
+    The player described it in two steps: first "only the corners and edges,
+    without colouring the middle", and then "paint those holes in the block
+    model purple, like purple stained glass". The model is easy to break with a
+    single typo (opaque glass, glass blending into the frame, a filled frame),
+    and in game it looks like an ordinary block - that is, the opposite of what
+    it should be.
 
-    Sprawdzamy to, co widzi gracz:
-      * 12 elementow ramy, kazdy CIENKI pret (2 wymiary <= 2, trzeci >= 16),
-      * srodki scian (miejsce okien) sa przykryte WYLACZNIE szyba, ktora jest
-        wcieta w ramę (nie dotyka plaszczyzn bloku - inaczej z-fighting),
-      * szyba bierze teksture szkla, a nie metalu ramy,
-      * model ma render_type translucent (bez tego fiolet jest nieprzezroczysty).
+    We check what the player sees:
+      * 12 frame elements, each a THIN rod (2 dimensions <= 2, the third >= 16),
+      * the centres of the faces (where the windows are) are covered ONLY by
+        glass that is recessed into the frame (it does not touch the block
+        planes - otherwise z-fighting),
+      * the glass takes the glass texture, and not the frame's metal,
+      * the model has render_type translucent (without it the purple is opaque).
     """
     path = "assets/craftingveloce/models/block/veloce_integrale_frame.json"
     if not os.path.exists(path):
@@ -2707,7 +2781,7 @@ def validate_integrale_model():
     elements = model.get("elements", [])
     problems = []
 
-    # 1) Rama: dokladnie 12 cienkich pretow.
+    # 1) Frame: exactly 12 thin rods.
     bars = []
     for i, el in enumerate(elements):
         sizes = [el["to"][0] - el["from"][0], el["to"][1] - el["from"][1],
@@ -2715,41 +2789,41 @@ def validate_integrale_model():
         if sum(1 for size in sizes if size <= 2) >= 2 and max(sizes) >= 16:
             bars.append((i, el))
     if len(bars) != 12:
-        problems.append(f"pretow ramy: {len(bars)}, ma byc 12 (12 krawedzi szescianu)")
+        problems.append(f"frame rods: {len(bars)}, should be 12 (12 edges of a cube)")
 
-    # 2) Szyba: element WCIETY (zadna sciana nie lezy na plaszczyznie bloku).
+    # 2) Glass: a RECESSED element (no wall lies on the block plane).
     glass = [(i, el) for i, el in enumerate(elements) if el not in [b[1] for b in bars]]
     if len(glass) != 1:
-        problems.append(f"elementow szyby: {len(glass)}, ma byc 1")
+        problems.append(f"glass elements: {len(glass)}, should be 1")
     for i, el in glass:
         f, t = el["from"], el["to"]
         if min(f) < 1.0 or max(t) > 15.0:
-            problems.append(f"szyba {f}..{t} dotyka plaszczyzny bloku "
-                            f"(z-fighting z rama) - ma byc wcieta")
+            problems.append(f"glass {f}..{t} touches the block plane "
+                            f"(z-fighting with the frame) - it must be recessed")
         if min(f) > 4.0 or max(t) < 12.0:
-            problems.append(f"szyba {f}..{t} jest za mala - okno ma 12x12 px")
+            problems.append(f"glass {f}..{t} is too small - the window is 12x12 px")
         textures = {face.get("texture") for face in el.get("faces", {}).values()}
         if "#glass" not in textures:
-            problems.append(f"szyba nie uzywa tekstury #glass (ma {textures})")
+            problems.append(f"the glass does not use the #glass texture (it has {textures})")
 
     textures = model.get("textures", {})
     glass_texture = textures.get("glass", "")
     if "glass" not in glass_texture:
-        problems.append(f"tekstura szyby nie jest szklem: {glass_texture}")
+        problems.append(f"the glass texture is not glass: {glass_texture}")
     if model.get("ambientocclusion", True):
-        problems.append("ambientocclusion nie jest false - cienie na pretach klatki")
+        problems.append("ambientocclusion is not false - shadows on the frame rods")
 
     render_type = model.get("render_type", "")
     if "translucent" not in render_type:
-        problems.append(f"render_type={render_type!r} - bez translucent fiolet jest "
-                        f"nieprzezroczysty (gracz chce szklo)")
+        problems.append(f"render_type={render_type!r} - without translucent the purple is "
+                        f"opaque (the player wants glass)")
 
-    # 3) Zaslepki stron: po jednej na kazda strone, dokladnie w świetle okna.
+    # 3) Side panels: one per side, exactly in the light of the window.
     #
-    # Gracz chce widziec, z ktorej strony dochodzi kabel - okno od tej strony
-    # zamyka sie blacha. Zaslepka MUSI lezec na plaszczyznie TEJ wlasnie strony
-    # (0 albo 16) i przykrywac okno 2..14, inaczej zostaje szpara albo blacha
-    # wisi w powietrzu.
+    # The player wants to see which side the cable comes from - the window on
+    # that side is closed with a sheet. The panel MUST lie on the plane of THAT
+    # very side (0 or 16) and cover the window 2..14, otherwise a gap remains or
+    # the sheet hangs in the air.
     sides = {
         "north": (2, 0), "south": (2, 1), "west": (0, 2),
         "east": (1, 2), "down": (2, 2), "up": (2, 2),
@@ -2758,50 +2832,50 @@ def validate_integrale_model():
         panel_path = ("assets/craftingveloce/models/block/"
                       f"veloce_integrale_panel_{side}.json")
         if not os.path.exists(panel_path):
-            problems.append(f"brak modelu zaslepki {side}")
+            problems.append(f"no panel model for {side}")
             continue
         panel_model = json.load(open(panel_path, encoding="utf-8"))
         panel_elements = panel_model.get("elements", [])
         if len(panel_elements) != 1:
-            problems.append(f"zaslepka {side}: elementow {len(panel_elements)}, ma byc 1")
+            problems.append(f"panel {side}: {len(panel_elements)} elements, should be 1")
             continue
         f, t = panel_elements[0]["from"], panel_elements[0]["to"]
         if side in ("north", "south"):
             low, high = f[2], t[2]
             if not ((side == "north" and low == 0 and high == 2)
                     or (side == "south" and low == 14 and high == 16)):
-                problems.append(f"zaslepka {side}: z={low}..{high}, ma byc przy scianie")
+                problems.append(f"panel {side}: z={low}..{high}, should be at the wall")
             if (f[0], t[0], f[1], t[1]) != (2, 14, 2, 14):
-                problems.append(f"zaslepka {side}: okno ma byc 2..14, jest "
+                problems.append(f"panel {side}: the window should be 2..14, it is "
                                 f"{f[0]}..{t[0]} x {f[1]}..{t[1]}")
         if side in ("west", "east"):
             low, high = f[0], t[0]
             if not ((side == "west" and low == 0 and high == 2)
                     or (side == "east" and low == 14 and high == 16)):
-                problems.append(f"zaslepka {side}: x={low}..{high}, ma byc przy scianie")
+                problems.append(f"panel {side}: x={low}..{high}, should be at the wall")
             if (f[1], t[1], f[2], t[2]) != (2, 14, 2, 14):
-                problems.append(f"zaslepka {side}: okno ma byc 2..14, jest "
+                problems.append(f"panel {side}: the window should be 2..14, it is "
                                 f"{f[1]}..{t[1]} x {f[2]}..{t[2]}")
         if side in ("down", "up"):
             low, high = f[1], t[1]
             if not ((side == "down" and low == 0 and high == 2)
                     or (side == "up" and low == 14 and high == 16)):
-                problems.append(f"zaslepka {side}: y={low}..{high}, ma byc przy scianie")
+                problems.append(f"panel {side}: y={low}..{high}, should be at the wall")
             if (f[0], t[0], f[2], t[2]) != (2, 14, 2, 14):
-                problems.append(f"zaslepka {side}: okno ma byc 2..14, jest "
+                problems.append(f"panel {side}: the window should be 2..14, it is "
                                 f"{f[0]}..{t[0]} x {f[2]}..{t[2]}")
 
-    # 4) Blockstate musi byc wieloczesciowy: rama + po jednej zaslepce na strone.
+    # 4) The blockstate must be multipart: the frame + one panel per side.
     bs_path = "assets/craftingveloce/blockstates/veloce_integrale.json"
     bs = json.load(open(bs_path, encoding="utf-8"))
     parts = bs.get("multipart", [])
     if not parts:
-        problems.append("blockstate nie jest wieloczesciowy (multipart) - "
-                        "nie da sie pokazac zabudowanych stron")
+        problems.append("the blockstate is not multipart - "
+                        "the closed sides cannot be shown")
     else:
         applied = {p.get("apply", {}).get("model") for p in parts}
         if "craftingveloce:block/veloce_integrale_frame" not in applied:
-            problems.append("blockstate nie zawiera modelu ramy")
+            problems.append("the blockstate does not contain the frame model")
         for side in sides:
             condition = parts and any(
                 p.get("when", {}).get(side) == "true"
@@ -2809,13 +2883,14 @@ def validate_integrale_model():
                 == f"craftingveloce:block/veloce_integrale_panel_{side}"
                 for p in parts)
             if not condition:
-                problems.append(f"blockstate nie ma warunku dla strony {side}")
+                problems.append(f"the blockstate has no condition for side {side}")
 
-    # 5) KAZDA nasza maszyna ma model OBUDOWY (rama + szyba), a nie swoj stary
-    #    model - tak gracz chce: "model zmienia sie na ten veloce integrale,
-    #    a dopiero w srodku jest render". Jednoczesciowy model jest tez jedynym
-    #    sposobem, zeby particles przy zbiciu pochodzily z ramy: przy multipart
-    #    wanilia bierze particleIcon z PIERWSZEJ czesci listy.
+    # 5) EVERY one of our machines has a CASING model (frame + glass), and not
+    #    its own old model - that is what the player wants: "the model changes
+    #    to this veloce integrale, and only inside is there a render". A
+    #    single-part model is also the only way for the break particles to come
+    #    from the frame: with multipart, vanilla takes the particleIcon from the
+    #    FIRST part of the list.
     machines_with_frame = set()
     for j in glob.glob("src/com/craftingveloce/block/*.java") + glob.glob("src/com/craftingveloce/compat/*/block/*.java"):
         if "VeloceIntegraleFrame.addProperties" in open(j, encoding="utf-8").read():
@@ -2844,32 +2919,33 @@ def validate_integrale_model():
                 uses_frame = True
                 
         if uses_frame:
-            # MASZYNA MUSI BYC MULTIPARTEM ramy + paneli, nie statycznym modelem.
+            # A MACHINE MUST BE A MULTIPART of the frame + panels, not a static model.
             if not parts:
-                problems.append(f"blockstate {block_id} uzywa ramy Integrale, ale jest 'variants' - MUSI byc multipart z panelami")
+                problems.append(f"blockstate {block_id} uses the Integrale frame, but is 'variants' - it MUST be a multipart with panels")
             else:
                 applied = [p.get("apply", {}).get("model") for p in parts]
                 if applied[0] != "craftingveloce:block/veloce_integrale_frame":
-                    problems.append(f"blockstate {block_id} nie jest obudowa Integrale "
-                                    f"(pierwsza czesc musi byc rama - particleIcon): {applied[:2]}")
+                    problems.append(f"blockstate {block_id} is not an Integrale casing "
+                                    f"(the first part must be the frame - particleIcon): {applied[:2]}")
                 else:
                     for side in ("north", "east", "south", "west", "up", "down"):
                         if not any(p.get("when", {}).get(side) == "true"
                                    and p.get("apply", {}).get("model")
                                    == f"craftingveloce:block/veloce_integrale_panel_{side}"
                                    for p in parts):
-                            problems.append(f"blockstate {block_id}: brak warunku zaslepki {side}")
+                            problems.append(f"blockstate {block_id}: no panel condition for {side}")
 
-    # 5b) Obudowa = model ramy (pierwsza czesc!) + ikona z ZAWARTOSCIA.
+    # 5b) Casing = the frame model (the first part!) + an icon WITH CONTENTS.
     #
-    # "Obudowa" rozpoznajemy po tym, ze blok ma rama w blockstate ALBO ikone
-    # z zawartoscia (#content) - dzieki temu rura i terminal (ktore obudowy nie
-    # maja) nie wpadaja do tego sprawdzenia, a blok, ktoremu podmieniono model
-    # na obcy, nadal jest sprawdzany.
+    # We recognise a "casing" by the block having the frame in its blockstate OR
+    # an icon with contents (#content) - thanks to that the pipe and the
+    # terminal (which have no casing) do not fall into this check, while a block
+    # whose model was swapped for a foreign one is still checked.
     #
-    # Kolejnosc czesci ma znaczenie: waniliowy MultiPartBakedModel bierze
-    # particleIcon z PIERWSZEJ czesci listy, wiec blacha (albo stary model) na
-    # poczatku = particles z zlej tekstury - dokladnie to zglosil gracz.
+    # The order of the parts matters: the vanilla MultiPartBakedModel takes the
+    # particleIcon from the FIRST part of the list, so a sheet (or the old
+    # model) at the beginning = particles from the wrong texture - exactly what
+    # the player reported.
     allowed_models = ("craftingveloce:block/veloce_integrale_frame",
                       "craftingveloce:block/veloce_integrale_panel_")
     for bs_file in sorted(glob.glob("assets/craftingveloce/blockstates/*.json")):
@@ -2882,7 +2958,7 @@ def validate_integrale_model():
         if not bs_models:
             continue
         if block_id == "veloce_integrale":
-            continue   # PUSTA obudowa: nie ma zawartosci i nie ma jej miec
+            continue   # The EMPTY casing: it has no contents and must not have any
         item_file = f"assets/craftingveloce/models/item/{block_id}.json"
         icon = open(item_file, encoding="utf-8").read() if os.path.exists(item_file) else ""
         has_content = "#content" in icon
@@ -2890,19 +2966,18 @@ def validate_integrale_model():
         if not is_case:
             continue
         if not has_content:
-            problems.append(f"{block_id}: obudowa bez zawartosci w ikonie itemu (#content)")
+            problems.append(f"{block_id}: casing without contents in the item icon (#content)")
         wrong = [m for m in bs_models if m and not m.startswith(allowed_models)]
         if wrong:
-            problems.append(f"{block_id}: obudowa z obcym modelem {wrong[0]}")
+            problems.append(f"{block_id}: casing with a foreign model {wrong[0]}")
         elif bs_models[0] != "craftingveloce:block/veloce_integrale_frame":
-            problems.append(f"{block_id}: pierwsza czesc obudowy to {bs_models[0]}, "
-                            f"a musi byc rama obudowy (particles przy zbiciu)")
+            problems.append(f"{block_id}: the first part of the casing is {bs_models[0]}, "
+                            f"and it must be the casing frame (particles on break)")
 
     if problems:
-        fail("model klatki veloce_integrale:\n  " + "\n  ".join(problems))
-    print(f"    OK (klatka: {len(bars)} pretow + szyba {glass_texture}, "
-          f"6 zaslepek stron, translucent; fasada stolu + ikona z stolem)")
-
+        fail("veloce_integrale frame model:\n  " + "\n  ".join(problems))
+    print(f"    OK (frame: {len(bars)} rods + glass {glass_texture}, "
+          f"6 side panels, translucent; crafting table facade + icon with the table)")
 
 def game_running():
 
@@ -2911,11 +2986,11 @@ def game_running():
 
 
     """
-    Czy Minecraft z tego profilu wlasnie dziala?
+    Is Minecraft from this profile running right now?
 
-    Potrzebne, zeby ostrzec, ze podmiana JARa nie zmieni DZIALAJACEJ sesji -
-    jej classloader trzyma stary plik otwarty. Wczesniej nadpisywalismy JAR
-    w miejscu i konczylo sie to ClassNotFoundException w losowym miejscu.
+    Needed in order to warn that swapping the JAR will not change a RUNNING
+    session - its classloader keeps the old file open. Previously we overwrote
+    the JAR in place and it ended in a ClassNotFoundException at a random place.
     """
     try:
         out = subprocess.run(["pgrep", "-fl", "MinecraftLaunch"],
@@ -2926,7 +3001,7 @@ def game_running():
 
 
 def fail(msg):
-    print(f"\nBLAD: {msg}")
+    print(f"\nERROR: {msg}")
     sys.exit(1)
 
 
@@ -2935,18 +3010,18 @@ def step(n, text):
 
 
 def main():
-    # --- 1. kompilacja -------------------------------------------------
-    step(1, "Kompilacja zrodel")
+    # --- 1. compilation ------------------------------------------------
+    step(1, "Compiling sources")
     cp = open("scripts/cp.txt").read().strip()
     toms = os.path.join(MODS, "toms_storage-1.21-2.4.2.jar")
     rs = os.path.join(MODS, "refinedstorage-neoforge-2.0.9.jar")
     for dep in (toms, rs):
         if not os.path.exists(dep):
-            fail(f"brak zaleznosci: {dep}")
+            fail(f"missing dependency: {dep}")
 
     sources = [f for f in glob.glob("src/**/*.java", recursive=True)
                if not any(x in f for x in EXCLUDED_SRC)]
-    print(f"    plikow: {len(sources)} (pominieto {', '.join(EXCLUDED_SRC)})")
+    print(f"    files: {len(sources)} (skipped {', '.join(EXCLUDED_SRC)})")
 
     extra_cp = resolve_compile_only()
     if extra_cp:
@@ -2960,11 +3035,11 @@ def main():
         capture_output=True, text=True)
     if res.returncode != 0:
         errs = [l for l in res.stderr.split("\n") if "error" in l.lower()]
-        fail("kompilacja nie powiodla sie:\n" + "\n".join(errs[:20]))
+        fail("compilation failed:\n" + "\n".join(errs[:20]))
     print("    OK")
 
-    # --- 2. weryfikacja klas ------------------------------------------
-    step(2, "Weryfikacja, czy wszystkie importowane klasy istnieja")
+    # --- 2. class verification ----------------------------------------
+    step(2, "Verifying that all imported classes exist")
     built = {os.path.relpath(os.path.join(dp, f), BUILD_OUT).replace(os.sep, "/")
              for dp, _, fs in os.walk(BUILD_OUT) for f in fs if f.endswith(".class")}
     imports = set()
@@ -2977,14 +3052,14 @@ def main():
                     imports.add(t)
     missing = []
     for t in imports:
-        # Import a.b.C.D moze oznaczac:
-        #   - klase a/b/C/D.class
-        #   - klase zagniezdzona a/b/C$D.class  (albo glebiej: a/b/C$D$E)
-        # Nie da sie tego rozstrzygnac bez parsowania zrodel, wiec probujemy
-        # wszystkie podzialy: zamieniamy od konca kolejne kropki na '$'.
+        # An import a.b.C.D may mean:
+        #   - the class a/b/C/D.class
+        #   - a nested class a/b/C$D.class  (or deeper: a/b/C$D$E)
+        # This cannot be decided without parsing the sources, so we try every
+        # split: we replace successive dots with '$' from the end.
         parts = t.split(".")
         found = False
-        # level = ile ostatnich segmentow traktujemy jako klasy zagniezdzone
+        # level = how many trailing segments we treat as nested classes
         for level in range(1, len(parts)):
             pkg = parts[:len(parts) - level]
             nested = "$".join(parts[len(parts) - level:])
@@ -2992,19 +3067,19 @@ def main():
             if cand in built:
                 found = True
                 break
-        # Wariant bez zagniezdzen: a/b/C/D.class
+        # The variant without nesting: a/b/C/D.class
         if not found and t.replace(".", "/") + ".class" in built:
             found = True
         if not found:
             missing.append(t)
 
     if missing:
-        fail("kod uzywa klas, ktorych nie ma w wyniku kompilacji:\n  "
+        fail("the code uses classes that are not in the compilation output:\n  "
              + "\n  ".join(sorted(missing)))
-    print(f"    OK ({len(imports)} importow, wszystkie obecne)")
+    print(f"    OK ({len(imports)} imports, all present)")
 
-    # --- 3. pakowanie --------------------------------------------------
-    step(3, "Pakowanie JAR")
+    # --- 3. packaging --------------------------------------------------
+    step(3, "Packaging the JAR")
     for sub in ("com", "assets", "data"):
         p = os.path.join(STAGING, sub)
         if os.path.exists(p):
@@ -3013,69 +3088,72 @@ def main():
                     dirs_exist_ok=True)
 
     def copy_clean(src, dst):
-        """Kopiuje drzewo pomijajac smieci systemowe."""
+        """Copies a tree while skipping system junk."""
         shutil.copytree(src, dst, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns(*JUNK))
 
     copy_clean("assets", os.path.join(STAGING, "assets"))
     copy_clean("data", os.path.join(STAGING, "data"))
 
-    # META-INF bierzemy z src_meta/, a NIE ze stagingu.
+    # We take META-INF from src_meta/, and NOT from staging.
     #
-    # Wczesniej neoforge.mods.toml istnial WYLACZNIE w katalogu staging
-    # (craftingveloce_jar_root/) i nie byl wersjonowany. Wyczyszczenie stagingu
-    # oznaczalo build bez metadanych moda - JAR, ktorego loader nie widzi.
+    # Previously neoforge.mods.toml existed ONLY in the staging directory
+    # (craftingveloce_jar_root/) and was not versioned. Cleaning the staging
+    # directory meant a build without the mod metadata - a JAR the loader does
+    # not see.
     META_SRC = "src_meta"
     if os.path.exists(os.path.join(META_SRC, "META-INF")):
         copy_clean(os.path.join(META_SRC, "META-INF"),
                    os.path.join(STAGING, "META-INF"))
 
     if not os.path.exists(os.path.join(STAGING, "META-INF", "neoforge.mods.toml")):
-        fail("brak META-INF/neoforge.mods.toml (zrodlo: src_meta/META-INF/)")
+        fail("no META-INF/neoforge.mods.toml (source: src_meta/META-INF/)")
 
     if os.path.exists(JAR_NAME):
         os.remove(JAR_NAME)
     res = subprocess.run(["jar", "cf", JAR_NAME, "-C", STAGING, "."],
                          capture_output=True, text=True)
     if res.returncode != 0:
-        fail("jar nie powstal: " + res.stderr[:400])
+        fail("the jar was not created: " + res.stderr[:400])
 
-    # --- 4. kontrola jakosci -------------------------------------------
-    step(4, "Kontrola jakosci JAR")
+    # --- 4. quality check ----------------------------------------------
+    step(4, "JAR quality check")
     z = zipfile.ZipFile(JAR_NAME)
     names = z.namelist()
 
     main_class = "com/craftingveloce/CraftingVeloceMod.class"
     if main_class not in names:
-        fail(f"brak {main_class} - zly uklad pakietow (com/com?)")
+        fail(f"no {main_class} - wrong package layout (com/com?)")
 
     dupes = [n for n in names if n.startswith("com/com/")]
     if dupes:
-        fail(f"zdublowany prefiks com/com ({len(dupes)} plikow)")
+        fail(f"duplicated com/com prefix ({len(dupes)} files)")
 
     if "META-INF/neoforge.mods.toml" not in names:
-        fail("brak META-INF/neoforge.mods.toml")
+        fail("no META-INF/neoforge.mods.toml")
 
-    # Wyciek = klasa obcego moda w NASZYM JARze. Nasze wlasne klasy pod
-    # com/craftingveloce/ moga miec w sciezce slowo "mekanism" (pakiet modulu
-    # compat), wiec granica jest prefiks naszego pakietu, a nie sama nazwa.
+    # A leak = a foreign mod class in OUR JAR. Our own classes under
+    # com/craftingveloce/ may contain the word "mekanism" in their path (the
+    # compat module package), so the boundary is our package prefix, and not the
+    # name alone.
     foreign = [n for n in names
                if not n.startswith("com/craftingveloce/")
                and any(p in n for p in FOREIGN_JAR_PATHS)]
     leaks = [n for n in names if "moze_intel" in n or "eatawesome" in n] + foreign
     if leaks:
-        fail(f"wyciek obcych pakietow: {leaks[:5]}")
+        fail(f"foreign package leak: {leaks[:5]}")
 
     junk = [n for n in names if any(j in n for j in JUNK)]
     if junk:
-        fail(f"smieci systemowe w JARze: {junk}")
+        fail(f"system junk in the JAR: {junk}")
 
-    # KAZDY zarejestrowany blok MUSI miec komplet danych.
+    # EVERY registered block MUST have a complete data set.
     #
-    # Bez loot table blok nie wypada po zniszczeniu (w creative tego nie widac,
-    # wiec latwo przeoczyc), a brakiem modelu/blockstate blok jest niewidzialny.
-    # Liste blokow bierzemy z TEGO SAMEGO miejsca co generator danych - patrz
-    # scripts/gen_loot_tables.py - zeby nie powstal drugi, recznie pisany spis.
+    # Without a loot table the block does not drop when destroyed (you cannot
+    # see that in creative, so it is easy to miss), and without a model or
+    # blockstate the block is invisible. We take the block list from the SAME
+    # place as the data generator - see scripts/gen_loot_tables.py - so that a
+    # second, hand-written register does not come into being.
     validate_block_data(names)
     validate_packet_docs()
     validate_lang_keys()
@@ -3114,41 +3192,41 @@ def main():
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))
-    print(f"    klas: {classes}, plikow: {len(names)}, "
-          f"rozmiar: {os.path.getsize(JAR_NAME)} B")
+    print(f"    classes: {classes}, files: {len(names)}, "
+          f"size: {os.path.getsize(JAR_NAME)} B")
     print("    OK")
 
-    # --- 5. wdrozenie ---------------------------------------------------
-    step(5, "Wdrozenie do profilu testing")
+    # --- 5. deployment --------------------------------------------------
+    step(5, "Deploying to the testing profile")
 
-    # WDROZENIE MUSI BYC ATOMOWE.
+    # THE DEPLOYMENT MUST BE ATOMIC.
     #
-    # shutil.copyfile() otwiera plik docelowy i nadpisuje go W MIEJSCU. Gdy
-    # Minecraft wlasnie dziala, jego classloader trzyma ten JAR otwarty i czyta
-    # z niego klasy LENIWIE - po pierwszym uruchomieniu wiekszosc klas nie jest
-    # jeszcze zaladowana. Nadpisanie pliku pod dzialajacym JVM konczy sie wiec:
+    # shutil.copyfile() opens the destination file and overwrites it IN PLACE.
+    # When Minecraft is running, its classloader keeps that JAR open and reads
+    # classes from it LAZILY - after the first launch most classes are not
+    # loaded yet. Overwriting the file under a running JVM therefore ends in:
     #
     #   Caused by: java.lang.ClassNotFoundException:
     #       com.craftingveloce.crafting.VeloceRecipeGraph
     #
-    # i crashem serwera w losowym miejscu, wygladajacym na blad w kodzie.
+    # and a server crash at a random place, looking like a bug in the code.
     #
-    # Zapis do pliku tymczasowego + os.replace() to pojedyncza operacja rename(2):
-    # dzialajaca gra zostaje przy starym inode (wiec dziala dalej), a nowy JAR
-    # pojawia sie dla nastepnego uruchomienia.
+    # Writing to a temporary file + os.replace() is a single rename(2)
+    # operation: the running game stays on the old inode (so it keeps working),
+    # and the new JAR appears for the next launch.
     tmp_deploy = DEPLOYED + ".tmp"
     shutil.copyfile(JAR_NAME, tmp_deploy)
     os.replace(tmp_deploy, DEPLOYED)
     print(f"    {DEPLOYED}")
 
-    # --- 5b. ostrzezenie o dzialajacej grze -----------------------------
+    # --- 5b. warning about a running game -------------------------------
     if game_running():
         print()
         print("    " + "!" * 62)
-        print("    Minecraft DZIALA. JAR zostal podmieniony bezpiecznie (atomowo),")
-        print("    ale ta sesja nadal uzywa STAREJ wersji - jej classloader trzyma")
-        print("    stary plik otwarty. ZAMKNIJ gre i uruchom ponownie, inaczej")
-        print("    przetestujesz stary kod.")
+        print("    Minecraft IS RUNNING. The JAR was swapped safely (atomically),")
+        print("    but this session still uses the OLD version - its classloader keeps")
+        print("    the old file open. CLOSE the game and start it again, otherwise")
+        print("    you will test the old code.")
         print("    " + "!" * 62)
 
     import hashlib
@@ -3157,9 +3235,9 @@ def main():
         return hashlib.md5(open(p, "rb").read()).hexdigest()
 
     if md5(JAR_NAME) != md5(DEPLOYED):
-        fail("skopiowany JAR rozni sie od zbudowanego")
+        fail("the copied JAR differs from the built one")
     print(f"    md5: {md5(JAR_NAME)}")
-    print("\nGotowe. ZAMKNIJ Minecrafta przed uruchomieniem z nowym JARem.")
+    print("\nDone. CLOSE Minecraft before launching with the new JAR.")
 
 
 if __name__ == "__main__":

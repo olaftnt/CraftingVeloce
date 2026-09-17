@@ -8,27 +8,31 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Receptury modulow (z innych modow) dla danego itemu.
+ * Module recipes (from other mods) for a given item.
  *
- * <p><b>Po co osobna klasa.</b> Planer musi widziec receptury WSZYSTKICH
- * modulow tak samo jak receptury waniliowe - inaczej automat nigdy nie uzyje
- * kruszarki czy compaktora, mimo ze stoja w sieci. To miejsce zbiera je w jeden
- * strumien, pytajac wylacznie interfejs {@link VeloceProcessingModule}:
+ * <p><b>Why a separate class.</b> The planner must see the recipes of ALL
+ * modules the same way it sees vanilla recipes - otherwise the automation would
+ * never use a crusher or a compactor, even though they stand in the network.
+ * This place gathers them into a single stream, asking only the
+ * {@link VeloceProcessingModule} interface:
  * <ol>
- *   <li>modul musi byc DOSTEPNY (stoi jego maszyna) i ZASILONY (ma prad/paliwo) -
- *       inaczej jego receptury nie sa wykonalne i nie moga trafic do planu,</li>
- *   <li>modul sam tlumaczy swoja recepture na wspolny {@link ProcessingEntry}.</li>
+ *   <li>the module must be AVAILABLE (its machine stands there) and POWERED
+ *       (it has power/fuel) - otherwise its recipes are not executable and must
+ *       not make it into the plan,</li>
+ *   <li>the module itself translates its recipe into the common
+ *       {@link ProcessingEntry}.</li>
  * </ol>
  *
- * <p>Dzieki temu rdzen nie zna ani jednej nazwy z obcego moda - dodanie
- * kolejnego modulu to rejestracja i implementacja receptur, bez zmian tutaj.
+ * <p>Thanks to that the core does not know a single name from a foreign mod -
+ * adding another module is a registration and a recipe implementation, with no
+ * changes here.
  *
- * <p><b>Pamiec na czas ticku.</b> Pytanie "ktore moduly sa zasilone" wymaga
- * przejscia po wezlach sieci i odczytu ich block entity. Planer zadaje je przy
- * KAZDYM rozpatrywanym itemie (a przy liczeniu liczb - setki razy na jedno
- * klikniecie), wiec bez pamieci byloby to samo, co kiedys zrobiono z piecem:
- * setki skanow sieci w jednym ticku. W obrebie jednego ticku i jednej sieci
- * odpowiedz sie nie zmienia.
+ * <p><b>Per-tick memory.</b> The question "which modules are powered" requires
+ * walking the network nodes and reading their block entities. The planner asks
+ * it for EVERY item under consideration (and when counting quantities -
+ * hundreds of times per single click), so without memory it would be the same
+ * thing that was once done with the furnace: hundreds of network scans in a
+ * single tick. Within one tick and one network the answer does not change.
  */
 public final class VeloceModuleRecipes {
 
@@ -39,7 +43,7 @@ public final class VeloceModuleRecipes {
     private static long cacheTick = Long.MIN_VALUE;
     private static List<VeloceProcessingModule> cacheModules = List.of();
 
-    /** Receptury wszystkich zasilonych modulow, ktore wytwarzaja {@code item}. */
+    /** Recipes of all powered modules that produce {@code item}. */
     public static List<ProcessingEntry> forItem(ServerLevel level, VelocePipeNetwork network,
                                                 Item item) {
         if (item == null) {
@@ -59,12 +63,12 @@ public final class VeloceModuleRecipes {
         return out;
     }
 
-    /** Czy choc jeden zasilony modul ma recepture na ten item. */
+    /** Whether at least one powered module has a recipe for this item. */
     public static boolean hasAny(ServerLevel level, VelocePipeNetwork network, Item item) {
         return !forItem(level, network, item).isEmpty();
     }
 
-    /** Moduly, ktore maja w tej sieci maszyne i moga nia teraz zaplacic. */
+    /** Modules that have a machine in this network and can pay with it right now. */
     private static List<VeloceProcessingModule> activeModules(ServerLevel level,
                                                              VelocePipeNetwork network) {
         long now = level.getGameTime();
@@ -83,7 +87,7 @@ public final class VeloceModuleRecipes {
         return out;
     }
 
-    /** Czysci pamiec - wolane przy zmianie swiata, tak jak inne cache'y. */
+    /** Clears the memory - called on world change, just like the other caches. */
     public static void invalidate() {
         cacheNetwork = null;
         cacheTick = Long.MIN_VALUE;

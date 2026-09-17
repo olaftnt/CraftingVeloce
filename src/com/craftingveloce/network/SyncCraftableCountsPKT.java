@@ -14,15 +14,16 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * S→C: odpowiedz z liczbami "ile da sie dorobic" dla zadanych itemow.
+ * S->C: a response with the "how many more can be made" counts for the given items.
  *
- * <p>Wysylane tylko w odpowiedzi na {@link RequestCraftableCountsPKT},
- * czyli dla itemow aktualnie widocznych w terminalu.
+ * <p>Sent only in response to {@link RequestCraftableCountsPKT}, that is, for
+ * the items currently visible in the terminal.
  *
- * <p>Pole {@code complete} mowi, czy serwer FAKTYCZNIE przezyl wszystkie
- * zadane itemy. Gdy siec nie jest jeszcze gotowa (brak craftera, brak sieci,
- * przerwany budzet), odpowiedz ma {@code complete = false} i klient NIE
- * kasuje poprzednich wartosci - inaczej liczby znikaly i nie wracaly.
+ * <p>The {@code complete} field says whether the server ACTUALLY got through all
+ * the requested items. When the network is not ready yet (no crafter, no
+ * network, an interrupted budget), the response has {@code complete = false} and
+ * the client does NOT discard the previous values - otherwise the counts
+ * disappeared and never came back.
  */
 public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts, boolean complete)
         implements CustomPacketPayload {

@@ -13,29 +13,30 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * "Jak w ogole zrobic ten item" - receptury ze WSZYSTKICH zrodel.
+ * "How do I make this item at all" - recipes from ALL sources.
  *
- * <p><b>Czym to sie rozni od {@link VeloceModuleRecipes}.</b> Tamto odpowiada
- * na pytanie PLANERA: "co moge zrobic TERAZ z tego, co mam w sieci" - wiec
- * przepuszcza tylko moduly z maszyna i pradem. To jest pytanie CZLOWIEKA
- * (i narzedzi, np. komendy {@code /cv getitems}): "jak sie to robi" - wiec
- * receptura musi byc widoczna takze wtedy, gdy gracz nie ma jeszcze zadnej
- * maszyny.
+ * <p><b>How this differs from {@link VeloceModuleRecipes}.</b> That one answers
+ * the PLANNER's question: "what can I make NOW from what I have in the network" -
+ * so it only lets through modules with a machine and power. This is a HUMAN
+ * question (and that of tools, e.g. the {@code /cv getitems} command): "how is
+ * this made" - so the recipe must be visible also when the player does not have
+ * any machine yet.
  *
- * <p><b>Kolejnosc ma znaczenie dla komunikatow:</b> najpierw receptury bez
- * infrastruktury (crafting table, stonecutter, smithing), potem rodziny
- * modulow (Create/Alchemistry/Mekanism), a na koncu piec - bo dla itemu
- * z receptura craftingowa informacja "mozna tez w piecu" jest tylko dodatkiem.
+ * <p><b>The order matters for the messages:</b> first recipes without
+ * infrastructure (crafting table, stonecutter, smithing), then the module
+ * families (Create/Alchemistry/Mekanism), and finally the furnace - because for
+ * an item with a crafting recipe, the information "you can also use a furnace"
+ * is only an addition.
  *
- * <p><b>Bez duplikatow.</b> Ta sama receptura moze byc widziana z dwoch stron
- * (np. indeks i modul), wiec kluczujemy po identyfikatorze receptury.
+ * <p><b>No duplicates.</b> The same recipe can be seen from two sides (e.g. the
+ * index and the module), so we key by the recipe identifier.
  */
 public final class VeloceRecipeFinder {
 
     private VeloceRecipeFinder() {
     }
 
-    /** Wszystkie receptury wytwarzajace dany item, w kolejnosci zrodel. */
+    /** All recipes producing a given item, in source order. */
     public static List<ProcessingEntry> all(ServerLevel level, Item item) {
         Map<ResourceLocation, ProcessingEntry> unique = new LinkedHashMap<>();
         add(unique, VeloceRecipeRegistry.getRecipesFor(level, item));
@@ -47,10 +48,10 @@ public final class VeloceRecipeFinder {
     }
 
     /**
-     * Czy receptura pochodzi z rodziny modulu (Create/Alchemistry/Mekanism)?
+     * Does the recipe come from a module family (Create/Alchemistry/Mekanism)?
      *
-     * <p>Do komunikatow: gracz ma wiedziec, ze do tej receptury potrzebna jest
-     * maszyna modulu, a nie zwykly crafting table.
+     * <p>For the messages: the player must know that this recipe requires a
+     * module machine, not an ordinary crafting table.
      */
     public static boolean isModuleRecipe(ProcessingEntry recipe) {
         Set<RecipeType<?>> furnace = VeloceRecipeFamilies.FURNACE;
@@ -59,7 +60,7 @@ public final class VeloceRecipeFinder {
                 && VeloceRecipeFamilies.isKnown(recipe.type());
     }
 
-    /** Czytelna nazwa typu receptury, np. {@code "create:mechanical_crafting"}. */
+    /** A readable recipe type name, e.g. {@code "create:mechanical_crafting"}. */
     public static String typeName(RecipeType<?> type) {
         ResourceLocation id = BuiltInRegistries.RECIPE_TYPE.getKey(type);
         return id == null ? String.valueOf(type) : id.toString();

@@ -7,33 +7,34 @@ import snownee.jade.api.IWailaPlugin;
 import snownee.jade.api.WailaPlugin;
 
 /**
- * Plugin Jade: opis naszych maszyn w podpowiedzi przy celowniku.
+ * Jade plugin: a description of our machines in the tooltip at the crosshair.
  *
- * <p><b>Co to daje.</b> Gracz patrzy na maszyne i widzi to samo, co w oknie po
- * prawym kliku: predkosc aktualna/wymagana/maksymalna, pobor SU, liczbe
- * wklikanych elementow, stan akumulatora (dla maszyn na FE), stan sieci rur
- * i status - w tym <b>"za malo sily"</b>. Wczesniej ten status rysowalismy
- * wlasnym napisem na srodku ekranu; gracz kazal to wyrzucic i zrobic to przez
- * Jade ("ten mod, co pokazuje, na co sie patrzysz").
+ * <p><b>What this gives.</b> The player looks at a machine and sees the same as
+ * in the window after a right click: current/required/maximum speed, SU draw,
+ * the number of elements inserted, the accumulator status (for FE machines), the
+ * pipe network state and the status - including <b>"not enough power"</b>.
+ * Previously we drew that status with our own text in the middle of the screen;
+ * the player told us to throw it out and do it through Jade ("that mod that
+ * shows what you are looking at").
  *
- * <p><b>Rejestracja bez znajomosci innych modow.</b> Dane ida przez
- * {@code VeloceModuleInfoSource} (rdzeniowy interfejs), a nie przez typy
- * Create/Mekanism/Alchemistry:
+ * <p><b>Registration without knowing other mods.</b> The data goes through
+ * {@code VeloceModuleInfoSource} (a core interface), and not through
+ * Create/Mekanism/Alchemistry types:
  * <ul>
- *   <li>serwer: provider danych dla <b>wszystkich</b> block entity
- *       ({@code BlockEntity.class}, tak samo jak robi to sam Jade) i pyta
- *       o dane tylko wtedy, gdy BE implementuje nasz interfejs
- *       ({@code shouldRequestData}) - dlatego nie ma tu ani jednego typu
- *       z modulu maszyn,</li>
- *   <li>klient: komponent dla wszystkich blokow z tym samym filtrem.</li>
+ *   <li>server: a data provider for <b>all</b> block entities
+ *       ({@code BlockEntity.class}, exactly as Jade itself does) and it asks
+ *       for data only when the BE implements our interface
+ *       ({@code shouldRequestData}) - which is why there is not a single type
+ *       from the machine modules here,</li>
+ *   <li>client: a component for all blocks with the same filter.</li>
  * </ul>
- * Dzieki temu plugin dziala takze, gdy z tych modow nie ma NIC (wtedy po prostu
- * nie ma maszyn, ktore moglby opisac).
+ * Thanks to that the plugin also works when there is NOTHING from those mods
+ * (in which case there simply are no machines it could describe).
  */
 @WailaPlugin
 public class VeloceJadePlugin implements IWailaPlugin {
 
-    /** Wspolny UID providerow (Jade wymaga unikalnego identyfikatora). */
+    /** The shared UID of the providers (Jade requires a unique identifier). */
     public static final ResourceLocation MODULE_INFO_UID =
             ResourceLocation.fromNamespaceAndPath("craftingveloce", "module_info");
 

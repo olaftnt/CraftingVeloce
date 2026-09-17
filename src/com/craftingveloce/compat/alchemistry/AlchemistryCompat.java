@@ -5,11 +5,11 @@ import com.craftingveloce.compat.VeloceMods;
 import net.neoforged.bus.api.IEventBus;
 
 /**
- * Bramka integracji z Alchemistry.
+ * Integration gate for Alchemistry.
  *
- * <p><b>Izolacja.</b> Ladowana ZAWSZE, takze bez Alchemistry - dlatego zero
- * typow Alchemistry w polach i sygnaturach. {@link #register(IEventBus)}
- * odwoluje sie do klas z obcymi typami, ale jest wolane tylko po
+ * <p><b>Isolation.</b> Always loaded, also without Alchemistry - hence zero
+ * Alchemistry types in fields and signatures. {@link #register(IEventBus)}
+ * refers to classes with foreign types, but it is only called after
  * {@link #isPresent()}.
  */
 public final class AlchemistryCompat {
@@ -17,12 +17,12 @@ public final class AlchemistryCompat {
     private AlchemistryCompat() {
     }
 
-    /** Czy Alchemistry jest obecne. Bezpieczne takze bez niego. */
+    /** Whether Alchemistry is present. Safe without it too. */
     public static boolean isPresent() {
         return VeloceMods.ALCHEMISTRY.isLoaded();
     }
 
-    /** Rejestruje integracje. Wolno wolac WYLACZNIE gdy {@link #isPresent()}. */
+    /** Registers the integration. May be called ONLY when {@link #isPresent()}. */
     public static void register(IEventBus modEventBus) {
         AlchemistryBlocks.register(modEventBus);
         AlchemistryBlockEntities.register(modEventBus);
@@ -30,7 +30,7 @@ public final class AlchemistryCompat {
         AlchemistryRecipeFamily.register(modEventBus);
         AlchemistryModule.register(modEventBus);
         registerCases();
-        // Kategorie przepisow Alchemistry dla JEI (same UID-y + nasze klocki).
+        // Alchemistry recipe categories for JEI (just the UIDs + our blocks).
         AlchemistryJeiCatalysts.register();
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             registerCaseRenderers(modEventBus);
@@ -38,22 +38,22 @@ public final class AlchemistryCompat {
     }
 
     /**
-     * Pozycje modulu do zakladki kreatywnej.
+     * Module entries for the creative tab.
      *
-     * <p>Zakladka buduje sie ZAWSZE (takze bez Alchemistry), wiec to wywolanie
-     * jest warunkowane obecnoscia moda w {@code CraftingVeloceMod}.
+     * <p>The tab is always built (also without Alchemistry), so this call is
+     * conditional on the mod being present in {@code CraftingVeloceMod}.
      */
     public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
         AlchemistryBlocks.addCreativeItems(output);
     }
 
-    /** Blok bazowy z moda po ID (nazwa w rejestrze, nie pole klasy). */
+    /** Base block from the mod by ID (the registry name, not a class field). */
     private static net.minecraft.world.level.block.Block block(String id) {
         return net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("alchemistry", id));
     }
 
-    /** Wiersze tabeli obudow: nasz modul -&gt; blok bazowy z moda. */
+    /** Rows of the casing table: our module -&gt; the base block from the mod. */
     private static void registerCases() {
         VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_COMBINER_MODULE.get(), () -> block("combiner"));
         VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_COMPACTOR_MODULE.get(), () -> block("compactor"));
@@ -66,7 +66,7 @@ public final class AlchemistryCompat {
 
     }
 
-    /** Renderer zawartosci obudowy dla block entity modulow - TYLKO klient. */
+    /** Casing contents renderer for the module block entities - CLIENT only. */
     private static void registerCaseRenderers(IEventBus modEventBus) {
         modEventBus.addListener(
                 net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class,

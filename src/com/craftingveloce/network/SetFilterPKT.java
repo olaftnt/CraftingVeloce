@@ -14,13 +14,13 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * C→S: ustaw (albo skasuj) filtr na bloku, ktory je ma.
+ * C->S: set (or clear) a filter on a block that has filters.
  *
- * <p>Jeden pakiet dla ekstraktora i dla Velocity Furnace, bo operacja jest
- * identyczna: "na pozycji X, filtr numer N, item Y". Rozgalezienie po typie
- * bloku robi po stronie serwera wspolny interfejs {@link VeloceFilterHost},
- * wiec dodanie kolejnego bloku z filtrami nie wymaga ani nowego pakietu,
- * ani nowej sciezki otwierania wyboru itemu.
+ * <p>A single packet for the extractor and for the Velocity Furnace, because the
+ * operation is identical: "at position X, filter number N, item Y". The dispatch
+ * by block type is done on the server side by the shared interface
+ * {@link VeloceFilterHost}, so adding another block with filters requires
+ * neither a new packet nor a new path for opening the item picker.
  */
 public record SetFilterPKT(BlockPos pos, int filterIndex, ItemStack filterItem) implements CustomPacketPayload {
     public static final CustomPacketPayload.Type<SetFilterPKT> TYPE =
@@ -44,8 +44,8 @@ public record SetFilterPKT(BlockPos pos, int filterIndex, ItemStack filterItem) 
             if (player.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5, pkt.pos().getZ() + 0.5) > 64.0) {
                 return;
             }
-            // Granice sprawdzamy TU, a nie w kazdym bloku z osobna - filtr
-            // numer 40 nie ma prawa wywalic block entity.
+            // We check the bounds HERE, not in each block separately - filter
+            // number 40 has no right to blow up a block entity.
             BlockEntity be = player.level().getBlockEntity(pkt.pos());
             if (be instanceof VeloceFilterHost host
                     && pkt.filterIndex() >= 0 && pkt.filterIndex() < host.filterCount()) {

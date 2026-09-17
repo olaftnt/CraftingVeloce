@@ -16,77 +16,78 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Trzyma chunki z blokami sieci w stanie zaladowanym.
+ * Keeps chunks with network blocks loaded.
  *
- * <p><b>Historia.</b> Ta klasa byla kiedys cache'em craftowalnosci: liczyla w
- * tle "ile da sie dorobic" dla kazdego itemu i podawala te liczby GUI. Okazalo
- * sie to zrodlem najgorszych problemow w modzie - liczenie jest rekurencyjne i
- * drogie, a przy kilku tysiacach receptur zadne "przeliczmy regularnie" nie
- * dalo sie utrzymac w budzecie ticku. Zostalo to usuniete: liczby liczy teraz
- * {@link VeloceAutoCrafter} na zadanie (widoczna strona terminala), z wlasnym
- * budzetem czasu.
+ * <p><b>History.</b> This class used to be a craftability cache: it computed in
+ * the background "how many more can be made" for every item and fed those numbers
+ * to the GUI. That turned out to be the source of the worst problems in the mod -
+ * the computation is recursive and expensive, and with several thousand recipes
+ * no "let us recompute regularly" could be kept within the tick budget. It was
+ * removed: the numbers are now computed on demand by
+ * {@link VeloceAutoCrafter} (the visible terminal page), with its own time
+ * budget.
  *
- * <p><b>Co zostalo.</b> Dokladnie jedna rzecz: force-load chunkow. Bez tego
- * ekstraktory i craftery przestalyby pracowac, gdy gracz odejdzie od bazy, a
- * terminale nie widzialyby zawartosci sieci.
+ * <p><b>What is left.</b> Exactly one thing: chunk force-loading. Without it
+ * extractors and crafters would stop working when the player walks away from the
+ * base, and terminals would not see the contents of the network.
  *
- * <p><b>Zasady, ktorych przestrzega ta klasa:</b>
+ * <p><b>Rules this class follows:</b>
  * <ol>
- *   <li><b>Raz na tick.</b> Kazdy terminal w sieci wola {@link #tickIdle}, ale
- *       praca idzie tylko raz na tick gry ({@code claimTick}).</li>
- *   <li><b>Karencja startowa.</b> Po wczytaniu swiata nie ruszamy chunkow od
- *       razu - ladowanie save'a to najbardziej obciazony moment w cyklu
- *       zycia serwera.</li>
- *   <li><b>Zamkniecie serwera.</b> Gdy serwer sie zamyka, przestajemy wymuszac
- *       i zwalniamy wszystko. Inaczej zapis swiata sie zawiesza (chunk wraca,
- *       jest rozladowywany i tak w kolko).</li>
+ *   <li><b>Once per tick.</b> Every terminal in the network calls {@link #tickIdle}, but
+ *       the work happens only once per game tick ({@code claimTick}).</li>
+ *   <li><b>Startup grace period.</b> After the world is loaded we do not touch chunks
+ *       right away - loading a save is the most loaded moment in the server
+ *       lifecycle.</li>
+ *   <li><b>Server shutdown.</b> When the server is shutting down, we stop forcing
+ *       and release everything. Otherwise the world save hangs (the chunk comes back,
+ *       is unloaded again, and so on in a loop).</li>
  * </ol>
  */
 public final class VeloceCraftingCache {
 
     /**
-     * Ile tickow po starcie swiata czekamy z pierwszym skanem.
+     * How many ticks after world start we wait before the first scan.
      *
-     * <p>Kluczowe: ladowanie save'a to najbardziej obciazony moment w cyklu
-     * zycia serwera (generowanie chunkow, wczytywanie encji, swiatlo). Jesli
-     * zaczniemy wtedy liczyc, dojdziemy do zawieszenia - co juz sie raz stalo
-     * przy 2118 zakolejkowanych itemach.
+     * <p>Crucial: loading a save is the most loaded moment in the server lifecycle
+     * (chunk generation, entity loading, lighting). If we started computing then,
+     * we would end up hanging - which already happened once with 2118 queued
+     * items.
      */
     private static final int STARTUP_GRACE_TICKS = 200;   // 10 s
 
     /**
-     * Maksymalna liczba CHUNKOW, ktore force-loadujemy dla jednej sieci.
+     * Maximum number of CHUNKS that we force-load for a single network.
      *
-     * <p>Bezpiecznik: rozlegla siec (setki rur) nie moze wymusic zaladowania
-     * calej mapy. Powyzej limitu ladujemy tylko chunki z wezlami
-     * (terminale, craftery, extractory) - to one musza dzialac.
+     * <p>A safety valve: an extensive network (hundreds of pipes) must not be able
+     * to force-load the entire map. Above the limit we load only chunks with nodes
+     * (terminals, crafters, extractors) - those are the ones that must work.
      *
-     * <p><b>Liczy CHUNKI, nie pozycje blokow.</b> To rozroznienie jest istotne:
-     * 218 rur stojacych w linii to 218 pozycji, ale az 14 chunkow - a siec
-     * rozciagnieta po bazie potrafi dac kilkadziesiat chunkow przy limicie
-     * wygladajacym na bezpieczny. Wczesniej limit liczyl pozycje, wiec
-     * przepuszczal dokladnie te przypadki, ktore mial blokowac.
+     * <p><b>It counts CHUNKS, not block positions.</b> This distinction matters:
+     * 218 pipes standing in a line are 218 positions, but as many as 14 chunks -
+     * and a network stretched across a base can easily produce several dozen chunks
+     * against a limit that looks safe. Previously the limit counted positions, so it
+     * let through exactly the cases it was supposed to block.
      */
     private static final int MAX_FORCED_CHUNKS = 64;
 
     /**
-     * Klucz cache: WYMIAR + identyfikator sieci.
+     * Cache key: DIMENSION + network identifier.
      *
-     * <p><b>BUG, ktory to naprawia (miedzywymiarowy).</b> Kluczem bylo samo UUID
-     * sieci, a to liczy sie z POZYCJI reprezentanta komponentu:
-     * {@code UUID.nameUUIDFromBytes(root.toShortString())}. Siec w Netherze
-     * stojaca na tych samych wspolrzednych co siec w Nadswiecie dostawala wiec
-     * IDENTYCZNY identyfikator - a {@code CACHES} jest mapa statyczna, wspolna
-     * dla wszystkich wymiarow. Obie sieci dzielily wiec JEDEN wpis:
+     * <p><b>The BUG this fixes (cross-dimensional).</b> The key used to be the
+     * network UUID alone, and that is computed from the POSITION of the component
+     * representative: {@code UUID.nameUUIDFromBytes(root.toShortString())}. A network
+     * in the Nether standing at the same coordinates as a network in the Overworld
+     * therefore got an IDENTICAL identifier - and {@code CACHES} is a static map,
+     * shared across all dimensions. Both networks thus shared ONE entry:
      * <ul>
-     *   <li>cache trzymal chunki tej sieci, ktora odezwala sie ostatnia,</li>
-     *   <li>force-loady szly do zlego wymiaru (albo w ogole nie dzialaly),</li>
-     *   <li>{@code retainOnly} jednego wymiaru kasowalo cache drugiego
-     *       - razem z jego force-loadami.</li>
+     *   <li>the cache held the chunks of whichever network reported last,</li>
+     *   <li>force-loads went to the wrong dimension (or did not work at all),</li>
+     *   <li>{@code retainOnly} of one dimension deleted the other's cache
+     *       - together with its force-loads.</li>
      * </ul>
      *
-     * <p>Wyrownane portale (baza w tym samym miejscu w obu wymiarach) to
-     * typowy uklad, wiec to nie jest teoria.
+     * <p>Aligned portals (a base in the same place in both dimensions) are a typical
+     * setup, so this is not a theory.
      */
     private record CacheKey(net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> dimension,
                             UUID networkId) {
@@ -99,48 +100,48 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Siec, ktorej dotyczy ten cache.
+     * The network this cache pertains to.
      *
-     * <p><b>NIE jest finalna i to jest celowe.</b> Przebudowa sieci tworzy NOWY
-     * obiekt {@link VelocePipeNetwork} pod TYM SAMYM UUID. Gdyby cache trzymal
-     * stara referencje, {@code maintainForcedChunks} liczylby chunki z sieci,
-     * ktora juz nie istnieje. Wczesniej obchodzono to kasujac cache przy kazdej
-     * przebudowie - a skasowanie cache zwalnia jego force-loady, wiec KAZDA
-     * przebudowa wykladowywala i ladowala chunki od nowa.
+     * <p><b>It is NOT final and that is deliberate.</b> A network rebuild creates a
+     * NEW {@link VelocePipeNetwork} object under the SAME UUID. If the cache held
+     * the old reference, {@code maintainForcedChunks} would count chunks from a
+     * network that no longer exists. Previously this was worked around by deleting
+     * the cache on every rebuild - and deleting the cache releases its force-loads,
+     * so EVERY rebuild unloaded and loaded the chunks all over again.
      */
     private volatile VelocePipeNetwork network;
 
-    /** Chunki, ktore ta siec trzyma zaladowane. */
+    /** Chunks this network keeps loaded. */
     private final Set<Long> forcedChunks = new HashSet<>();
 
     private boolean forceLoadInitialized = false;
 
-    /** Czy minol okres karencji po starcie swiata. */
+    /** Whether the grace period after world start has passed. */
     private boolean startupGracePassed = false;
 
     /**
-     * Tick, w ktorym ta sesja po raz pierwszy dotknela cache.
+     * The tick in which this session first touched the cache.
      *
-     * <p>UWAGA: {@code level.getGameTime()} po wczytaniu save'a ma juz tysiace
-     * tickow (swiat istnieje od dawna), wiec nie da sie na nim opierac karencji
-     * startowej - warunek "gameTime < 200" jest od razu falszywy i karencja
-     * nigdy nie dziala. Poprzednia wersja miala dokladnie ten blad.
-     * Mierzymy wiec czas od pierwszego ticku tej sesji.
+     * <p>NOTE: {@code level.getGameTime()} after loading a save already has thousands
+     * of ticks (the world has existed for a long time), so the startup grace period
+     * cannot be based on it - the condition "gameTime < 200" is immediately false and
+     * the grace period never works. The previous version had exactly this bug.
+     * We therefore measure time from the first tick of this session.
      */
     private long firstSeenTick = -1;
 
-    /** Ostatni tick gry, w ktorym zrobilismy krok. */
+    /** Last game tick in which we did a step. */
     private long lastTickedGameTime = Long.MIN_VALUE;
 
     /**
-     * Czy serwer sie zamyka.
+     * Whether the server is shutting down.
      *
-     * <p>KLUCZOWE dla zapisu swiata. Gdy serwer sie zamyka, Minecraft probuje
-     * rozladowac chunki. Jesli nasze force-loady dalej dzialaja, chunk wraca,
-     * jest znowu rozladowywany i tak w kolko - zapis swiata sie zawiesza.
+     * <p>CRUCIAL for the world save. When the server is shutting down, Minecraft
+     * tries to unload chunks. If our force-loads are still active, the chunk comes
+     * back, is unloaded again, and so on in a loop - the world save hangs.
      *
-     * <p>Dlatego przy zamknieciu: przestajemy wymuszac I zwalniamy wszystko,
-     * co trzymalismy.
+     * <p>That is why on shutdown: we stop forcing AND release everything we
+     * were holding.
      */
     private static volatile boolean shuttingDown = false;
 
@@ -151,8 +152,8 @@ public final class VeloceCraftingCache {
     public static VeloceCraftingCache get(ServerLevel level, VelocePipeNetwork network) {
         VeloceCraftingCache cache = CACHES.computeIfAbsent(
                 keyOf(level, network.getId()), id -> new VeloceCraftingCache(network));
-        // Siec mogla zostac przebudowana pod tym samym UUID - odswiezamy
-        // referencje, zamiast kasowac cache (co kosztowaloby force-loady).
+        // The network may have been rebuilt under the same UUID - we refresh the
+        // reference instead of deleting the cache (which would cost us force-loads).
         if (cache.network != network) {
             cache.network = network;
         }
@@ -160,12 +161,12 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Usuwa cache sieci i <b>zwalnia jej force-loady</b>.
+     * Removes a network's cache and <b>releases its force-loads</b>.
      *
-     * <p>Poprzednia wersja tylko usuwala wpis z mapy. Cache trzymal wtedy
-     * swoje chunki w globalnym loaderze na zawsze: siec znikala, a chunki
-     * zostawaly wymuszone do konca sesji. Przy stawianiu i burzeniu sieci
-     * (albo przy kazdej zmianie ukladu rur) to sie zbieralo.
+     * <p>The previous version only removed the entry from the map. The cache then
+     * kept its chunks in the global loader forever: the network disappeared, but the
+     * chunks stayed forced until the end of the session. When networks are placed and
+     * torn down (or on every change of the pipe layout) this accumulated.
      */
     public static void drop(ServerLevel level, UUID networkId) {
         VeloceCraftingCache cache = CACHES.remove(keyOf(level, networkId));
@@ -175,20 +176,19 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Zwalnia cache sieci, ktorych nie ma na liscie zywych.
+     * Releases caches of networks that are not on the list of live ones.
      *
-     * <p>Identyfikator sieci liczymy z reprezentanta komponentu, wiec przy
-     * podziale lub scaleniu sieci powstaje nowe UUID. Stary cache zostawal
-     * wtedy w mapie na zawsze - razem ze swoimi force-loadami, ktore nigdy
-     * nie byly zwalniane.
+     * <p>We compute the network identifier from the component representative, so
+     * splitting or merging networks produces a new UUID. The old cache then stayed in
+     * the map forever - together with its force-loads, which were never released.
      *
-     * @return ile nieaktualnych cache'y zwolniono
+     * @return how many stale caches were released
      */
     public static int retainOnly(ServerLevel level, java.util.Set<UUID> liveIds) {
         java.util.List<UUID> stale = new java.util.ArrayList<>();
-        // Tylko cache TEGO wymiaru. Wczesniej petla szla po wszystkich, wiec
-        // uzgadnianie w Nadswiecie kasowalo cache sieci w Netherze (ich UUID
-        // moga byc identyczne - patrz CacheKey).
+        // Only caches of THIS dimension. Previously the loop went over all of them, so
+        // reconciliation in the Overworld deleted the caches of networks in the Nether
+        // (their UUIDs may be identical - see CacheKey).
         for (Map.Entry<CacheKey, VeloceCraftingCache> e : CACHES.entrySet()) {
             if (e.getKey().dimension().equals(level.dimension())
                     && !liveIds.contains(e.getKey().networkId())) {
@@ -201,22 +201,22 @@ public final class VeloceCraftingCache {
         return stale.size();
     }
 
-    /** Liczba zywych cache'ow - do wykrywania wyciekow. */
+    /** Number of live caches - for leak detection. */
     public static int liveCount() {
         return CACHES.size();
     }
 
     /**
-     * Krok pracy, gdy nikt nie patrzy.
+     * A work step when nobody is looking.
      *
-     * <p>Robimy wtedy DOKLADNIE jedna rzecz: utrzymujemy force-loady chunkow
-     * z blokami sieci. To musi dzialac zawsze, bo bez tego ekstraktory i
-     * craftery przestaja pracowac, gdy gracz odejdzie.
+     * <p>We then do EXACTLY one thing: keep force-loads of chunks with network
+     * blocks. This must always work, because without it extractors and crafters stop
+     * working when the player walks away.
      *
-     * <p>Po co osobna metoda: dzieki niej wolajacy nie musi przygotowywac
-     * argumentow ({@code getAllEnabledItems} kopiuje zbior wszystkich
-     * craftowalnych itemow, {@code getPreferredRecipes} buduje mape) tylko po
-     * to, zeby {@code tick} wyszedl w pierwszej instrukcji.
+     * <p>Why a separate method: thanks to it the caller does not have to prepare
+     * arguments ({@code getAllEnabledItems} copies the set of all craftable items,
+     * {@code getPreferredRecipes} builds a map) only for {@code tick} to return on
+     * the first statement.
      */
     public void tickIdle(ServerLevel level) {
         if (claimTick(level)) {
@@ -238,19 +238,18 @@ public final class VeloceCraftingCache {
             return;
         }
 
-        // BUG, ktory tu byl: warunek `gameTime % 20 == 0` sprawdzal DOKLADNA
-        // rownosc z wielokrotnoscia 20. A tickIdle wolane jest tylko raz na
-        // tick (claimTick), przez tego terminala, ktory akurat trafil - wiec
-        // jesli terminal wola w tickach 1, 6, 11, 16, 21..., to w zycie NIGDY
-        // nie trafi w wielokrotnosc 20 i wymuszanie chunkow nie zdarzy sie
-        // ANI RAZU.
+        // The BUG that used to be here: the condition `gameTime % 20 == 0` checked
+        // EXACT equality with a multiple of 20. And tickIdle is called only once per
+        // tick (claimTick), by whichever terminal happened to win - so if the terminal
+        // calls on ticks 1, 6, 11, 16, 21..., it will NEVER hit a multiple of 20 and
+        // chunk forcing will not happen EVEN ONCE.
         //
-        // Objaw: "wymuszonych chunkow: 0" mimo ze terminal stoi i jest wykryty
-        // jako wezel - a bez force-loadu terminal i crafter przestaja pracowac,
-        // gdy gracz odejdzie od bazy.
+        // Symptom: "forced chunks: 0" even though the terminal is there and is detected
+        // as a node - and without a force-load the terminal and crafter stop working
+        // when the player walks away from the base.
         //
-        // Miara odstepu, a nie rownosc: dziala niezaleznie od fazy, w ktorej
-        // wolajacy trafia.
+        // Measure the interval, not equality: this works regardless of the phase in
+        // which the caller arrives.
         long now = level.getGameTime();
         if (!com.craftingveloce.util.VeloceTick.every(
                 now, lastMaintainTick, FORCE_MAINTAIN_INTERVAL_TICKS)) {
@@ -258,31 +257,31 @@ public final class VeloceCraftingCache {
         }
         lastMaintainTick = now;
         maintainForcedChunks(level);
-        // Wygasle bilety "gorących" chunkow trzeba zdjac, inaczej chunk
-        // uznany raz za czesto uzywany zostawal wymuszony na zawsze.
+        // Expired "hot" chunk tickets have to be removed, otherwise a chunk once
+        // considered frequently used stayed forced forever.
         com.craftingveloce.network.pipe.VeloceChunkLoader.expireHotTickets(level);
     }
 
     /**
-     * Co ile tickow utrzymujemy force-loady.
+     * How often we maintain the force-loads.
      *
-     * <p>Mierzone jako ODSTEP od ostatniego razu, a nie rownosc z wielokrotnoscia -
-     * patrz komentarz w {@link #tickIdle}.
+     * <p>Measured as an INTERVAL since the last time, not as equality with a multiple -
+     * see the comment in {@link #tickIdle}.
      */
     private static final long FORCE_MAINTAIN_INTERVAL_TICKS = 20L;
 
-    /** Tick ostatniego utrzymania force-loadow. */
+    /** Tick of the last force-load maintenance. */
     private long lastMaintainTick = Long.MIN_VALUE;
 
     /**
-     * Tick gry, w ktorym ostatnio zrobilismy krok pracy.
+     * The game tick in which we last did a work step.
      *
-     * <p><b>Po co.</b> Ten krok wolal kiedys kazdy terminal z osobna
-     * w sieci, co 5 tickow. Przy dwoch terminalach cache wykonywal dwa kroki
-     * w tym samym ticku. Blokada "raz na tick" trzyma go tam, gdzie ma byc,
-     * niezaleznie od liczby terminali.
+     * <p><b>Why.</b> This step used to be called by every terminal in the network
+     * separately, every 5 ticks. With two terminals the cache performed two steps in
+     * the same tick. The "once per tick" guard keeps it where it belongs, regardless
+     * of the number of terminals.
      *
-     * @return true gdy w tym ticku juz pracowalismy (wolajacy ma wyjsc)
+     * @return true when we have already worked in this tick (the caller should exit)
      */
     private boolean claimTick(ServerLevel level) {
         long now = level.getGameTime();
@@ -294,29 +293,29 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Utrzymuje chunki z blokami sieci w stanie zaladowanym.
+     * Keeps chunks with network blocks loaded.
      *
-     * <p>Dzieki temu crafter moze pracowac, a terminal zbierac dane, nawet gdy
-     * gracz jest daleko. Bez tego siec "gubi" zawartosc po wyjsciu z zasiegu
-     * symulacji i liczby w GUI sa nieaktualne.
+     * <p>Thanks to this the crafter can work and the terminal can gather data even
+     * when the player is far away. Without it the network "loses" its contents once
+     * out of simulation range and the numbers in the GUI are stale.
      *
-     * <p>Chunki sa zwalniane, gdy siec przestaje istniec (patrz {@link #release}).
+     * <p>Chunks are released when the network ceases to exist (see {@link #release}).
      */
     private void maintainForcedChunks(ServerLevel level) {
         if (shuttingDown) {
             return;
         }
-        // Podwojne zabezpieczenie. Gdyby shuttingDown i frozen kiedys sie
-        // rozjechaly, VeloceChunkLoader.retain() nie zabraloby referencji,
-        // ale petla ponizej i tak dopisalaby chunk do forcedChunks - a
-        // pozniejszy release() zdjalby wtedy referencje NALEZACA KOMUS INNEMU.
-        // Warunek lokalny jest tanszy niz ta klasa bledow.
+        // Double guard. If shuttingDown and frozen ever diverged,
+        // VeloceChunkLoader.retain() would not take the reference, but the loop
+        // below would still add the chunk to forcedChunks - and a later release()
+        // would then drop a reference BELONGING TO SOMEONE ELSE. A local condition
+        // is cheaper than that class of errors.
         if (com.craftingveloce.network.pipe.VeloceChunkLoader.isFrozen()) {
             return;
         }
 
-        // Mapa: chunk -> blok, ktory jest powodem trzymania (do raportu).
-        // Limit jest juz nalozony na CHUNKI w collectChunksToKeep.
+        // Map: chunk -> block that is the reason for keeping it (for the report).
+        // The limit is already applied to CHUNKS in collectChunksToKeep.
         Map<Long, BlockPos> wanted = collectChunksToKeep(level);
 
         releaseUnwantedChunks(level, wanted.keySet());
@@ -324,35 +323,35 @@ public final class VeloceCraftingCache {
         logForceLoad(added);
     }
 
-    /** Nazwa wlasciciela biletu dla tej sieci - widoczna w raporcie. */
+    /** Name of the ticket owner for this network - visible in the report. */
     private String ticketOwner() {
         return "net:" + network.getId().toString().substring(0, 8);
     }
 
     /**
-     * Chunki, ktore ta siec powinna trzymac w pamieci.
+     * Chunks this network should keep in memory.
      *
-     * <p><b>Trzymamy TYLKO chunki z wezlami.</b> Wczesniej ladowalismy kazdy
-     * chunk, w ktorym stala RURA - i to byl blad projektowy.
+     * <p><b>We keep ONLY chunks with nodes.</b> Previously we loaded every chunk in
+     * which a PIPE stood - and that was a design error.
      *
-     * <p>Rura to zwykly blok-lacznik. Nie ma wlasnego block entity z logika,
-     * ktora musi tykac, i nic nie traci, gdy jej chunk wypadnie z symulacji:
-     * polaczenia sieci trzymamy we WLASNYCH strukturach w pamieci
-     * ({@code VelocePipeNetwork.pipes}), a nie w swiecie. Rozladowanie chunku
-     * z rura nie rozrywa sieci ani nie gubi danych.
+     * <p>A pipe is an ordinary connector block. It has no block entity with logic
+     * that must tick, and it loses nothing when its chunk drops out of simulation:
+     * we keep the network connections in our OWN in-memory structures
+     * ({@code VelocePipeNetwork.pipes}), not in the world. Unloading a chunk with a
+     * pipe neither tears the network apart nor loses data.
      *
-     * <p>Trzymac trzeba natomiast chunki z tym, co faktycznie PRACUJE:
-     * terminalem, crafterem i extractorem. One maja block entity, ktore bez
-     * symulacji przestaje dzialac - i dokladnie po to jest ten mechanizm.
+     * <p>What does have to be kept, however, are chunks with what actually WORKS:
+     * a terminal, a crafter and an extractor. They have a block entity that stops
+     * working without simulation - and that is exactly what this mechanism is for.
      *
-     * <p>Skutek poprzedniej wersji widac bylo golym okiem: rura pociagnieta
-     * daleko od bazy, z jedna beczka na koncu, trzymala caly swoj chunk
-     * zaladowany - mimo ze w tym chunku nie bylo niczego, co wymaga symulacji.
-     * Przy dlugiej sieci (218 rur w logu) dawalo to kilkanascie chunkow
-     * sforsowanych "przy okazji", w dodatku bez ani jednej operacji na itemach.
+     * <p>The effect of the previous version was visible to the naked eye: a pipe run
+     * pulled far from the base, with a single barrel at the end, kept its whole chunk
+     * loaded - even though there was nothing in that chunk requiring simulation.
+     * With a long network (218 pipes in the log) this produced over a dozen chunks
+     * forced "along the way", and without a single operation on items at that.
      *
-     * <p>Wezly maja priorytet absolutny; limit {@link #MAX_FORCED_CHUNKS}
-     * ucina tylko przypadki skrajne (baza z setkami wezlow).
+     * <p>Nodes have absolute priority; the {@link #MAX_FORCED_CHUNKS} limit only
+     * truncates extreme cases (a base with hundreds of nodes).
      */
     private Map<Long, BlockPos> collectChunksToKeep(ServerLevel level) {
         List<BlockPos> nodes = new java.util.ArrayList<>(network.getTerminals());
@@ -360,9 +359,9 @@ public final class VeloceCraftingCache {
 
         Map<Long, BlockPos> chosen = new LinkedHashMap<>();
         for (BlockPos p : nodes) {
-            // Wezly OZDOBNE (np. klatka) nie trzymaja chunku - patrz
-            // VeloceNetworkNode.keepChunkLoaded. Sprawdzamy to PO bloku, bo
-            // decyduje o tym sam blok, a nie lista typow w tym miejscu.
+            // DECORATIVE nodes (e.g. a frame) do not keep the chunk - see
+            // VeloceNetworkNode.keepChunkLoaded. We check this AFTER the block,
+            // because the block itself decides it, not the type list here.
             if (!keepsChunkLoaded(level, p)) {
                 continue;
             }
@@ -378,11 +377,11 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Czy wezel na tej pozycji ma utrzymywany chunk.
+     * Whether the node at this position has its chunk kept.
      *
-     * <p>Nieczytelny wezel (chunk rozladowany) traktujemy jak "trzymaj": nie
-     * umiemy wtedy odczytac jego decyzji, a zaprzestanie trzymania
-     * uniemozliwiloby kiedykolwiek odczytanie go ponownie.
+     * <p>An unreadable node (chunk unloaded) is treated as "keep": we cannot read
+     * its decision then, and ceasing to keep it would make it impossible to ever
+     * read it again.
      */
     private static boolean keepsChunkLoaded(ServerLevel level, BlockPos pos) {
         BlockState state = com.craftingveloce.network.pipe.VeloceChunkLoader
@@ -395,24 +394,24 @@ public final class VeloceCraftingCache {
                 || node.keepChunkLoaded(state);
     }
 
-    /** Klucz chunku dla pozycji bloku. */
+    /** Chunk key for a block position. */
     private static long chunkKeyOf(BlockPos p) {
         return ChunkPos.asLong(p.getX() >> 4, p.getZ() >> 4);
     }
 
-    /** Stala kolejnosc pozycji - zeby wynik byl powtarzalny. */
+    /** Fixed position order - so that the result is repeatable. */
     private static final java.util.Comparator<BlockPos> POSITION_ORDER =
             java.util.Comparator.comparingInt((BlockPos p) -> p.getX())
                     .thenComparingInt((BlockPos p) -> p.getZ())
                     .thenComparingInt((BlockPos p) -> p.getY());
 
     /**
-     * Zwalnia to, czego juz nie chcemy ALBO czego loader juz nie trzyma.
+     * Releases what we no longer want OR what the loader no longer holds.
      *
-     * <p>Drugi warunek jest istotny: po rozladowaniu swiata loader zwalnia
-     * swoje chunki, a cache nadal ma je w ksiegowosci. Bez tego sprawdzenia
-     * uznalby, ze juz je trzyma, i NIGDY nie wymusilby ich ponownie.
-     * release() na nieistniejaca referencje jest bezpiecznym no-opem.
+     * <p>The second condition matters: after a world unload the loader releases its
+     * chunks, while the cache still has them in its bookkeeping. Without this check it
+     * would assume it already holds them and would NEVER force them again.
+     * release() on a non-existent reference is a safe no-op.
      */
     private void releaseUnwantedChunks(ServerLevel level, Set<Long> wanted) {
         String owner = ticketOwner();
@@ -425,19 +424,18 @@ public final class VeloceCraftingCache {
         }
     }
 
-    /** Laduje to, czego brakuje. Zwraca liczbe nowo wymuszonych chunkow. */
+    /** Loads what is missing. Returns the number of newly forced chunks. */
     private int retainWantedChunks(ServerLevel level, Map<Long, BlockPos> wanted) {
         int added = 0;
         String owner = ticketOwner();
         for (Map.Entry<Long, BlockPos> e : wanted.entrySet()) {
             long key = e.getKey();
-            // Bilet zgłaszamy ZAWSZE, nie tylko przy pierwszym dodaniu.
+            // We report the ticket ALWAYS, not only on the first addition.
             //
-            // retain() jest idempotentne dla tego samego wlasciciela (jeden
-            // bilet na wlasciciela), a zgloszenie przy kazdym przebiegu
-            // odtwarza bilet, gdyby zniknal - np. po rozladowaniu jednego
-            // wymiaru, gdzie ksiegowosc loadera jest czyszczona, a cache
-            // celowo jej nie czysci.
+            // retain() is idempotent for the same owner (one ticket per owner), and
+            // reporting on every pass recreates the ticket if it disappeared - e.g.
+            // after unloading one dimension, where the loader's bookkeeping is cleared
+            // while the cache deliberately does not clear its own.
             com.craftingveloce.network.pipe.VeloceChunkLoader.retain(
                     level, key, owner,
                     com.craftingveloce.network.pipe.VeloceChunkLoader.Reason.NETWORK,
@@ -462,14 +460,14 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Wchodzimy do swiata - znowu wolno wymuszac chunki.
+     * We are entering the world - forcing chunks is allowed again.
      *
-     * <p><b>Bez tego byl ciezki, cichy bug.</b> {@code releaseAll} ustawialo
-     * {@code shuttingDown = true} i NIKT tego nie cofal. W trybie single-player
-     * wystarczylo wyjsc do menu i wejsc ponownie (LevelEvent.Unload -> releaseAll),
-     * zeby force-loading chunkow przestal dzialac DO KONCA SESJI: ekstraktory,
-     * craftery i terminale w dalszych chunkach przestawaly byc tickowane,
-     * a liczby w GUI zostawaly stare.
+     * <p><b>Without this there was a heavy, silent bug.</b> {@code releaseAll} set
+     * {@code shuttingDown = true} and NOBODY ever reset it. In single-player it was
+     * enough to quit to the menu and enter again (LevelEvent.Unload -> releaseAll)
+     * for chunk force-loading to stop working UNTIL THE END OF THE SESSION:
+     * extractors, crafters and terminals in distant chunks stopped being ticked,
+     * and the numbers in the GUI stayed stale.
      */
     public static void onLevelLoaded() {
         shuttingDown = false;
@@ -477,44 +475,45 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Rozladowanie jednego swiata (np. wyjscie z Netheru).
+     * Unloading of a single world (e.g. leaving the Nether).
      *
-     * <p><b>Celowo NIE ustawia flagi "serwer sie zamyka".</b> Wczesniej ten
-     * przypadek szedl ta sama droga co zamkniecie serwera, wiec rozladowanie
-     * jednego wymiaru wylaczalo force-loading wszystkim pozostalym - i nic tego
-     * nie cofalo, bo {@code LevelEvent.Load} dla Nadswiata juz nie poleci.
+     * <p><b>Deliberately does NOT set the "server is shutting down" flag.</b>
+     * Previously this case went the same way as a server shutdown, so unloading one
+     * dimension disabled force-loading for all the remaining ones - and nothing reset
+     * it, because {@code LevelEvent.Load} for the Overworld would not fire again.
      *
-     * <p>Ksiegowosci {@code forcedChunks} NIE czyscimy: CACHES sa wspolne dla
-     * wszystkich wymiarow, a {@code releaseAll} zwalnia chunki TYLKO tego
-     * jednego swiata. Wyczyszczenie oznaczaloby, ze cache'e z innych wymiarow
-     * traca informacje o chunkach, ktore loader nadal trzyma - i przy nastepnym
-     * {@code maintainForcedChunks} doliczaly druga referencje. Uzgodnienie robi
-     * teraz sam {@code maintainForcedChunks} przez {@code isHeld()}.
+     * <p>We do NOT clear the {@code forcedChunks} bookkeeping: CACHES are shared
+     * across all dimensions, and {@code releaseAll} releases chunks of ONLY that one
+     * world. Clearing it would mean that caches from other dimensions lose information
+     * about chunks the loader still holds - and on the next
+     * {@code maintainForcedChunks} they would count a second reference.
+     * Reconciliation is now done by {@code maintainForcedChunks} itself through
+     * {@code isHeld()}.
      */
     public static void onLevelUnloaded(ServerLevel level) {
         int released = com.craftingveloce.network.pipe.VeloceChunkLoader.appliedCount(level);
-        // Cache'e tego wymiaru MUSZA zniknac razem z nim.
+        // Caches of this dimension MUST disappear together with it.
         //
-        // Trzymaja referencje do obiektu ServerLevel, ktory po wyjsciu do menu
-        // przestaje istniec - a przy ponownym wejsciu powstaje NOWY obiekt.
-        // Stary cache wymuszalby wtedy chunki na martwym swiecie.
+        // They hold a reference to the ServerLevel object, which ceases to exist after
+        // quitting to the menu - and on re-entry a NEW object is created. The old cache
+        // would then force chunks in a dead world.
         CACHES.keySet().removeIf(k -> k.dimension().equals(level.dimension()));
         com.craftingveloce.network.pipe.VeloceChunkLoader.releaseAll(level);
         VeloceLog.Network.detail(VeloceLog.Side.SERVER,
                 "level unloaded: released %d forced chunk(s), caches reconciled later", released);
     }
 
-    /** Zwalnia force-loady wszystkich sieci. Wolane przy zamykaniu serwera. */
+    /** Releases the force-loads of all networks. Called on server shutdown. */
     public static void releaseAll(ServerLevel level) {
         shuttingDown = true;
-        // Zamraza WSZYSTKIE force-loady, nie tylko te z cache. Bez tego
-        // awaryjne doladowanie chunku przy pobieraniu itemu (extractItem)
-        // omijalo blokade i zawieszalo zapis swiata.
+        // Freezes ALL force-loads, not just those from the cache. Without this the
+        // emergency chunk reload when extracting an item (extractItem) bypassed the
+        // guard and hung the world save.
         com.craftingveloce.network.pipe.VeloceChunkLoader.freeze();
         int released = 0;
-        // Tylko TEN wymiar: przy zatrzymaniu serwera ta metoda leci dla kazdego
-        // poziomu po kolei, a wczesniej pierwsze wywolanie czyscilo CALA mape -
-        // wiec pozostale wymiary nie zwalnialy juz niczego po stronie cache.
+        // Only THIS dimension: on server stop this method runs for every level in turn,
+        // and previously the first call cleared the WHOLE map - so the remaining
+        // dimensions no longer released anything on the cache side.
         java.util.List<CacheKey> mine = new java.util.ArrayList<>();
         for (Map.Entry<CacheKey, VeloceCraftingCache> e : CACHES.entrySet()) {
             if (e.getKey().dimension().equals(level.dimension())) {
@@ -524,8 +523,8 @@ public final class VeloceCraftingCache {
             }
         }
         mine.forEach(CACHES::remove);
-        // Sprzatanie na poziomie loadera: lapie tez chunki wymuszone poza
-        // naszymi zbiorami (np. awaryjne doladowanie przy pobieraniu itemu).
+        // Cleanup at the loader level: this also catches chunks forced outside our own
+        // sets (e.g. the emergency reload when extracting an item).
         com.craftingveloce.network.pipe.VeloceChunkLoader.releaseAll(level);
         VeloceLog.Network.success(VeloceLog.Side.SERVER,
                 "server stopping: released %d forced chunk(s) across %d network(s)",
@@ -533,19 +532,19 @@ public final class VeloceCraftingCache {
     }
 
     /**
-     * Krok utrzymania dla WSZYSTKICH sieci tego wymiaru.
+     * A maintenance step for ALL networks of this dimension.
      *
-     * <p><b>BUG, ktory to naprawia.</b> {@code tickIdle} bylo wolane WYLACZNIE
-     * przez terminal ({@code VeloceTomTerminalBlockEntity.tickCraftingCache}).
-     * Siec bez terminala - np. sam crafter z piecem i skrzyniami - nie
-     * utrzymywala wiec swoich chunkow ANI RAZU: crafter i piece przestawaly
-     * pracowac, gdy gracz odszedl, a wygaszanie "gorących" biletow nie
-     * dzialalo wcale. Czyli automatyka padala dokladnie w tej sytuacji, do
-     * ktorej istnieje.
+     * <p><b>The BUG this fixes.</b> {@code tickIdle} was called EXCLUSIVELY by the
+     * terminal ({@code VeloceTomTerminalBlockEntity.tickCraftingCache}). A network
+     * without a terminal - e.g. just a crafter with a furnace and chests - therefore
+     * did not maintain its chunks EVEN ONCE: the crafter and the furnaces stopped
+     * working when the player walked away, and the expiry of "hot" tickets did not
+     * work at all. In other words, the automation failed in exactly the situation it
+     * exists for.
      *
-     * <p>Teraz sterownikiem jest TICK POZIOMU, wiec dziala niezaleznie od tego,
-     * jakie bloki stoja w sieci. Terminal nie wola juz tego u siebie - jeden
-     * sterownik, jedno miejsce.
+     * <p>Now the driver is the LEVEL TICK, so it works regardless of which blocks
+     * stand in the network. The terminal no longer calls this itself - one driver,
+     * one place.
      */
     public static void tickAll(ServerLevel level) {
         if (shuttingDown) {
@@ -554,29 +553,29 @@ public final class VeloceCraftingCache {
         com.craftingveloce.network.pipe.VelocePipeNetworkManager manager =
                 com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level);
 
-        // CACHE MUSI POWSTAC DLA KAZDEJ ZNANEJ SIECI - inaczej nie ma czego
-        // utrzymywac i force-loady nie dzialaja WCALE.
+        // A CACHE MUST BE CREATED FOR EVERY KNOWN NETWORK - otherwise there is nothing
+        // to maintain and force-loads do not work AT ALL.
         //
-        // BUG, ktory to naprawia (zgloszenie gracza: "nie moge skraftowac ani
-        // glass, ani crushing wheela"; w logu "2 node(s) of the network could
-        // not be read (chunk not loaded)"): po przeniesieniu utrzymania
-        // force-loadow z terminala na tick poziomu zostala tylko petla po
-        // ISTNIEJACYCH cache'ach, a cache nie tworzyl juz NIKT. Mapa byla
-        // pusta, wiec chunki z piecem, crafterem i maszynami modulow
-        // rozladowywaly sie, gdy gracz odszedl do terminala - a wtedy siec ich
-        // nie widziala i nic nie bylo craftowalne, mimo ze GUI pokazywalo
-        // liczby policzone wczesniej, gdy chunki byly jeszcze zaladowane.
+        // The BUG this fixes (player report: "I cannot craft either glass or a
+        // crushing wheel"; in the log "2 node(s) of the network could not be read
+        // (chunk not loaded)"): after moving force-load maintenance from the terminal
+        // to the level tick, all that was left was a loop over EXISTING caches, and
+        // NOBODY created a cache anymore. The map was empty, so chunks with the
+        // furnace, the crafter and the module machines unloaded when the player walked
+        // away to the terminal - and then the network could not see them and nothing
+        // was craftable, even though the GUI showed numbers computed earlier, while
+        // the chunks were still loaded.
         java.util.Set<UUID> live = new java.util.HashSet<>();
         for (VelocePipeNetwork network : manager.knownNetworks()) {
             live.add(network.getId());
             get(level, network).tickIdle(level);
 
-            // Krok energii: pobor z obcych zrodel (maxRate = 20_000, jak kiedys w rurze)
+            // Energy step: draw from external sources (maxRate = 20_000, as once in the pipe)
             int energyRate = 20_000;
             var buffer = network.getEnergyBuffer();
             com.craftingveloce.network.pipe.VeloceEnergyPull.pull(level, network, buffer, energyRate);
 
-            // Rozdanie pradu do maszyn sieci (terminals = wszystkie wezly, w tym piec/moduly)
+            // Distribution of power to the network's machines (terminals = all nodes, including furnace/modules)
             if (buffer.getEnergyStored() > 0) {
                 for (BlockPos pos : network.getTerminals()) {
                     if (buffer.getEnergyStored() <= 0) {
@@ -599,8 +598,8 @@ public final class VeloceCraftingCache {
             }
         }
 
-        // Cache po sieciach, ktore zniknely z menedzera - zwolnij chunki,
-        // zeby nie zostaly wymuszone do konca sesji.
+        // Caches for networks that disappeared from the manager - release the chunks,
+        // so they are not left forced until the end of the session.
         for (CacheKey key : new java.util.ArrayList<>(CACHES.keySet())) {
             if (!key.dimension().equals(level.dimension()) || live.contains(key.networkId())) {
                 continue;
@@ -612,7 +611,7 @@ public final class VeloceCraftingCache {
         }
     }
 
-    /** Zwalnia wszystkie chunki trzymane przez te siec. */
+    /** Releases all chunks held by this network. */
     public void release(ServerLevel level) {
         String owner = ticketOwner();
         for (long key : forcedChunks) {

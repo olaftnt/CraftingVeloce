@@ -1,52 +1,53 @@
 package com.craftingveloce.block.entity;
 
 /**
- * Zrodlo "instant przepalania" dla auto-craftera.
+ * The "instant smelting" source for the auto-crafter.
  *
- * <p><b>Po co wspolny interfejs.</b> Crafter ma obslugiwac DWA rodzaje piecow
- * (paliwowy i elektryczny) i priorytetyzowac elektryczny. Bez wspolnego
- * interfejsu musialby znac oba typy i znac ich jednostki (burn ticks vs FE),
- * a kazdy nowy piec wymagalby zmian w crafterze.
+ * <p><b>Why a shared interface.</b> The crafter has to handle TWO kinds of
+ * furnaces (fuel-powered and electric) and prioritize the electric one. Without a
+ * shared interface it would have to know both types and their units (burn ticks
+ * vs FE), and every new furnace would require changes in the crafter.
  *
- * <p>Jednostka jest jedna: <b>OPERACJA</b> - jedno instantowe przepalenie.
- * Kazdy piec sam przelicza swoja energie na operacje:
+ * <p>There is one unit: an <b>OPERATION</b> - one instant smelt.
+ * Each furnace converts its own energy into operations by itself:
  * <ul>
- *   <li>paliwowy: {@code burnTicks / SMELT_HEAT_COST}</li>
- *   <li>elektryczny: {@code storedFe / FE_PER_SMELT}</li>
+ *   <li>fuel-powered: {@code burnTicks / SMELT_HEAT_COST}</li>
+ *   <li>electric: {@code storedFe / FE_PER_SMELT}</li>
  * </ul>
- * Dzieki temu crafter nie wie i nie musi wiedziec, czym piec jest zasilany.
+ * Thanks to that the crafter does not know, and does not need to know, what
+ * powers the furnace.
  */
 public interface VeloceHeatSource {
 
     /**
-     * Ile instantowych przepalen piec jeszcze uciagnie.
+     * How many instant smelts the furnace can still handle.
      *
-     * <p>Zero oznacza "nie zasilony" - crafter musi wtedy NIE uzywac receptur
-     * pieca dla tego zrodla.
+     * <p>Zero means "not powered" - the crafter must then NOT use the furnace's
+     * recipes for that source.
      */
     long availableOperations();
 
     /**
-     * Zabiera energie na {@code operations} przepalen.
+     * Takes energy for {@code operations} smelts.
      *
-     * <p>Wolajacy MUSI najpierw sprawdzic {@link #availableOperations()}.
-     * Implementacja i tak nie zejdzie ponizej zera, ale nie jest to miejsce
-     * na kontrole bledow.
+     * <p>The caller MUST check {@link #availableOperations()} first.
+     * The implementation will not go below zero anyway, but this is not the place
+     * for error checking.
      */
     void consumeOperations(long operations);
 
-    /** Czy piec jest w ogole zasilony (pali sie / ma FE). */
+    /** Whether the furnace is powered at all (it is burning / it has FE). */
     boolean isPowered();
 
     /**
-     * Priorytet przy wyborze zrodla. <b>Mniejszy = wazniejszy.</b>
+     * Priority when choosing a source. <b>Smaller = more important.</b>
      *
-     * <p>Crafter bierze zrodlo o najnizszym priorytecie, wiec piec elektryczny
-     * (0) wygrywa z paliwowym (1) - zgodnie z ustaleniem, ze elektryczny ma
-     * byc uzywany pierwszy, a paliwowy jest fallbackiem.
+     * <p>The crafter takes the source with the lowest priority, so the electric
+     * furnace (0) beats the fuel-powered one (1) - in line with the agreement that
+     * the electric one is to be used first and the fuel-powered one is the fallback.
      */
     int heatPriority();
 
-    /** Etykieta do logow i raportu (np. "Velocity Furnace"). */
+    /** Label for logs and reports (e.g. "Velocity Furnace"). */
     String heatSourceName();
 }

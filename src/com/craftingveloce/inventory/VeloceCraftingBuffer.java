@@ -7,22 +7,22 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * Bufor auto-craftera - pamiec podreczna na nadwyzke produkcji.
+ * Buffer of the auto-crafter - a cache for surplus production.
  *
- * <p>Gdy craftowanie daje wiecej niz gracz pobral (np. z 1 logu powstaje
- * 4 deski, a gracz chcial 1), nadwyzka zostaje tutaj i jest <b>normalnie
- * dostepna dla calej sieci</b> - mozna ja wyciagnac z terminala, extractorem,
- * hopperem, czymkolwiek.
+ * <p>When crafting yields more than the player took (e.g. 1 log produces
+ * 4 planks, but the player wanted 1), the surplus stays here and is
+ * <b>normally available to the whole network</b> - it can be pulled out from
+ * the terminal, with an extractor, a hopper, anything.
  *
- * <p>Pojemnosc: 4x wieksza niz podwojna skrzynia (54 sloty) = 216 slotow.
+ * <p>Capacity: 4x a double chest (54 slots) = 216 slots.
  *
- * <p>Bufor jest tylko do odczytu dla gracza przez GUI - nie ma opcji
- * manualnego wkladania. Automatyzacja (rury, hoppery, extractor) moze
- * z niego korzystac normalnie.
+ * <p>The buffer is read-only for the player through the GUI - there is no
+ * option for manual insertion. Automation (pipes, hoppers, the extractor) can
+ * use it normally.
  */
 public class VeloceCraftingBuffer implements Container {
 
-    /** 4x podwojna skrzynia: 54 * 4 = 216 slotow. */
+    /** 4x a double chest: 54 * 4 = 216 slots. */
     public static final int SIZE = 216;
 
     private final NonNullList<ItemStack> items = NonNullList.withSize(SIZE, ItemStack.EMPTY);
@@ -85,7 +85,7 @@ public class VeloceCraftingBuffer implements Container {
 
     @Override
     public void setChanged() {
-        // Block entity nadpisuje to, zeby zapisac NBT.
+        // The block entity overrides this in order to save NBT.
     }
 
     @Override
@@ -95,29 +95,29 @@ public class VeloceCraftingBuffer implements Container {
 
     @Override
     public void clearContent() {
-        // NIE items.clear().
+        // NOT items.clear().
         //
-        // NonNullList.clear() czysci liste BAZOWA, wiec jej rozmiar spada
-        // z SIZE (216) do zera - a getContainerSize() dalej zwraca SIZE.
-        // Kazde nastepne items.get(i) (czyli getItem, removeItem, insert,
-        // skan endpointu) rzucaloby IndexOutOfBoundsException.
+        // NonNullList.clear() clears the UNDERLYING list, so its size drops
+        // from SIZE (216) to zero - while getContainerSize() still returns SIZE.
+        // Every subsequent items.get(i) (that is getItem, removeItem, insert,
+        // the endpoint scan) would throw IndexOutOfBoundsException.
         //
-        // Poprawnie: wyzerowac zawartosc, zachowujac rozmiar.
+        // Correctly: zero out the contents while keeping the size.
         for (int i = 0; i < SIZE; i++) {
             items.set(i, ItemStack.EMPTY);
         }
         setChanged();
     }
 
-    /** Dostep do listy (NBT). */
+    /** Access to the list (NBT). */
     public NonNullList<ItemStack> getItems() {
         return items;
     }
 
     /**
-     * Wklada stack do bufora, stackujac z istniejacymi.
+     * Inserts a stack into the buffer, stacking with the existing ones.
      *
-     * @return pozostala czesc (EMPTY gdy wszystko sie zmiescilo)
+     * @return the remainder (EMPTY when everything fit)
      */
     public ItemStack insert(ItemStack stack) {
         if (stack.isEmpty()) {
@@ -126,7 +126,7 @@ public class VeloceCraftingBuffer implements Container {
         ItemStack remaining = stack.copy();
         int max = Math.min(64, remaining.getMaxStackSize());
 
-        // Najpierw dostackuj do istniejacych.
+        // First stack onto the existing ones.
         for (int i = 0; i < SIZE && !remaining.isEmpty(); i++) {
             ItemStack slot = items.get(i);
             if (!slot.isEmpty() && ItemStack.isSameItemSameComponents(slot, remaining)) {
@@ -138,7 +138,7 @@ public class VeloceCraftingBuffer implements Container {
                 }
             }
         }
-        // Potem puste sloty.
+        // Then the empty slots.
         for (int i = 0; i < SIZE && !remaining.isEmpty(); i++) {
             if (items.get(i).isEmpty()) {
                 int move = Math.min(max, remaining.getCount());
@@ -151,7 +151,7 @@ public class VeloceCraftingBuffer implements Container {
         return remaining;
     }
 
-    /** Liczba sztuk danego itemu w buforze. */
+    /** Number of units of the given item in the buffer. */
     public int count(net.minecraft.world.item.Item item) {
         int n = 0;
         for (ItemStack s : items) {
@@ -162,7 +162,7 @@ public class VeloceCraftingBuffer implements Container {
         return n;
     }
 
-    /** Laduje zawartosc z listy NBT. */
+    /** Loads the contents from an NBT list. */
     public void loadFrom(net.minecraft.nbt.ListTag list, net.minecraft.core.HolderLookup.Provider registries) {
         for (int i = 0; i < SIZE; i++) {
             items.set(i, ItemStack.EMPTY);
@@ -171,7 +171,7 @@ public class VeloceCraftingBuffer implements Container {
                 wrapList(list), items, registries);
     }
 
-    /** Zapisuje zawartosc do listy NBT. */
+    /** Saves the contents to an NBT list. */
     public net.minecraft.nbt.ListTag saveTo(net.minecraft.core.HolderLookup.Provider registries) {
         return ContainerHelper.saveAllItems(new net.minecraft.nbt.CompoundTag(), items, registries)
                 .getList("Items", net.minecraft.nbt.Tag.TAG_COMPOUND);

@@ -10,23 +10,24 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Jedno miejsce, ktore odpowiada na pytanie "jakie maszyny stoja w tej sieci".
+ * The single place that answers the question "which machines stand in this
+ * network".
  *
- * <p><b>Po co.</b> Kazdy rejestr zrodel ({@code VeloceHeatSources},
- * {@code VeloceProcessingSources}) zaczynal od tej samej petli: skopiuj
- * terminale, posortuj po pozycji, pomin niezaladowane chunki, odczytaj block
- * entity i wybierz interesujacy interfejs. Trzy kopie tej samej petli to trzy
- * miejsca, w ktorych mozna zapomniec o {@code isLoaded} albo o sortowaniu -
- * a wlasnie takie rozjazdy byly w tym projekcie zrodlem bledow "raz widzi,
- * raz nie widzi".
+ * <p><b>Why.</b> Every source registry ({@code VeloceHeatSources},
+ * {@code VeloceProcessingSources}) started with the same loop: copy the
+ * terminals, sort by position, skip unloaded chunks, read the block entity and
+ * pick out the interface of interest. Three copies of the same loop are three
+ * places where {@code isLoaded} or the sorting can be forgotten - and precisely
+ * such drift was the source of the "sometimes it sees it, sometimes it does
+ * not" bugs in this project.
  *
- * <p><b>Trzy rzeczy, ktore ta petla robi dobrze</b> (i ktore musza zostac):
+ * <p><b>Three things this loop does right</b> (and which must stay):
  * <ol>
- *   <li>{@code network == null} to pusta lista, nie wyjatek,</li>
- *   <li>sortowanie po {@link BlockPos#asLong()} daje powtarzalna kolejnosc
- *       ({@code getTerminals()} to zbior bez gwarancji kolejnosci),</li>
- *   <li>{@code level.isLoaded(pos)} pomija niewczytane chunki zamiast
- *       wczytywac je w trakcie ticku.</li>
+ *   <li>{@code network == null} is an empty list, not an exception,</li>
+ *   <li>sorting by {@link BlockPos#asLong()} gives a repeatable order
+ *       ({@code getTerminals()} is a set with no ordering guarantee),</li>
+ *   <li>{@code level.isLoaded(pos)} skips chunks that are not loaded instead
+ *       of loading them during a tick.</li>
  * </ol>
  */
 public final class VeloceNetworkSources {
@@ -34,7 +35,7 @@ public final class VeloceNetworkSources {
     private VeloceNetworkSources() {
     }
 
-    /** Maszyny danego typu stojace w sieci, w kolejnosci pozycji. */
+    /** Machines of the given type standing in the network, in position order. */
     public static <T> List<T> scan(ServerLevel level, VelocePipeNetwork network, Class<T> type) {
         List<T> out = new ArrayList<>();
         if (network == null) {

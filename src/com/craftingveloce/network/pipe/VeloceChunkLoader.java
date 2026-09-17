@@ -15,36 +15,36 @@ import java.util.WeakHashMap;
 import javax.annotation.Nullable;
 
 /**
- * Globalny, referencyjnie liczony wlasciciel force-loadowanych chunkow.
+ * Global, reference-counted owner of force-loaded chunks.
  *
- * <p><b>Dlaczego to istnieje.</b> {@code ServerLevel.setChunkForced(x, z, bool)}
- * to jeden GLOBALNY znacznik na chunk, a nie licznik. Wczesniej kazda siec
- * trzymala wlasny zbior {@code forcedChunks} i wolala {@code setChunkForced}
- * samodzielnie. Gdy dwie sieci dzielily ten sam chunk i mialy o nim rozne
- * zdanie (jedna go chciala, druga nie), dochodzilo do szarpaniny:
+ * <p><b>Why this exists.</b> {@code ServerLevel.setChunkForced(x, z, bool)}
+ * is one GLOBAL flag per chunk, not a counter. Previously every network kept
+ * its own {@code forcedChunks} set and called {@code setChunkForced} on its
+ * own. When two networks shared the same chunk and disagreed about it (one
+ * wanted it, the other did not), a tug of war ensued:
  *
  * <pre>
- *   siec A: setChunkForced(X, true)    -> chunk sie laduje
- *   siec B: setChunkForced(X, false)   -> chunk sie rozladowuje
- *   siec A: setChunkForced(X, true)    -> znowu...
+ *   network A: setChunkForced(X, true)    -> the chunk loads
+ *   network B: setChunkForced(X, false)   -> the chunk unloads
+ *   network A: setChunkForced(X, true)    -> again...
  * </pre>
  *
- * <p>W praktyce oznaczalo to ~41 000 cykli load/unload jednego chunka w ciagu
- * pieciu minut. Kazdy cykl odpalal przebudowe sieci, uniewaznienie cache
- * endpointow i zdarzenie do debug-loga, co zjadalo watek serwera i dawalo
- * dokladnie te lagi, ktore widac bylo w grze.
+ * <p>In practice that meant ~41,000 load/unload cycles of a single chunk over
+ * five minutes. Every cycle triggered a network rebuild, endpoint cache
+ * invalidation and a debug-log event, which ate the server thread and produced
+ * exactly the lag that was visible in game.
  *
- * <p><b>Bilety zamiast samego licznika.</b> Sam licznik referencji nie odpowiada
- * na dwa pytania, ktore sa potrzebne przy diagnozie: KTO trzyma ten chunk i PO
- * CO. Dlatego kazde zatrzymanie to bilet ({@link Ticket}) z wlascicielem,
- * powodem i pozycja bloku, ktory o to poprosil.
+ * <p><b>Tickets instead of a bare counter.</b> A reference counter alone does
+ * not answer the two questions needed for diagnosis: WHO holds this chunk and
+ * WHY. That is why every hold is a ticket ({@link Ticket}) with an owner,
+ * a reason and the position of the block that asked for it.
  *
- * <p><b>Czestotliwosc uzycia.</b> Chunk, po ktory operacje sieciowe siegaja bez
- * przerwy, jest trzymany DLUZEJ. Bez tego dochodzilo do cyklu: operacja
- * wymusza chunk, operacja sie konczy, chunk wypada, za chwile znowu trzeba go
- * wymusic. Kazde takie kolko to pelne wczytanie chunku z dysku. Licznik
- * {@code hits} pozwala odroznic chunk "uzywany raz na minute" od "uzywany
- * kilka razy na sekunde".
+ * <p><b>Frequency of use.</b> A chunk that network operations reach into
+ * without pause is held LONGER. Without this there was a cycle: an operation
+ * forces the chunk, the operation ends, the chunk drops out, and in a moment it
+ * has to be forced again. Every such round trip is a full chunk load from disk.
+ * The {@code hits} counter makes it possible to tell a chunk "used once a
+ * minute" from one "used several times per second".
  */
 public final class VeloceChunkLoader {
 
@@ -52,66 +52,66 @@ public final class VeloceChunkLoader {
     }
 
     /**
-     * Po co chunk jest trzymany.
+     * Why the chunk is held.
      *
-     * <p>Kolejnosc ma znaczenie tylko dla czytelnosci raportu - nie wplywa na
-     * dzialanie.
+     * <p>The order matters only for the readability of the report - it does not
+     * affect behaviour.
      */
     public enum Reason {
-        /** Siec rur: rury i wezly musza byc symulowane, gdy gracz odejdzie. */
+        /** Pipe network: pipes and nodes must be simulated when the player leaves. */
         NETWORK,
-        /** Operacja na itemach siegnela do chunku poza symulacja. */
+        /** An item operation reached into a chunk outside simulation. */
         OPERATION,
-        /** Rura, ktora wlasnie sie przebudowuje albo bada otoczenie. */
+        /** A pipe that is currently being rebuilt or examining its surroundings. */
         SCAN,
-        /** Nieznany powod - wpis awaryjny. */
+        /** Unknown reason - a fallback entry. */
         OTHER
     }
 
     /**
-     * Bilet: jeden wlasciciel trzymajacy jeden chunk.
+     * Ticket: one owner holding one chunk.
      *
-     * @param owner     kto trzyma (nazwa sieci, nazwa operacji)
-     * @param reason    po co
-     * @param ownerPos  blok, ktory o to poprosil (do raportu i teleportu)
-     * @param since     tick gry, od ktorego bilet dziala
+     * @param owner     who holds it (network name, operation name)
+     * @param reason    why
+     * @param ownerPos  the block that asked for it (for the report and teleport)
+     * @param since     the game tick from which the ticket is in effect
      */
     public record Ticket(String owner, Reason reason, BlockPos ownerPos, long since) {
     }
 
     /**
-     * Stan jednego chunku w ksiegowosci.
+     * The state of one chunk in the bookkeeping.
      *
-     * <p>Mutowalny celowo: bilety dochodza i odchodza, a licznik uzycia zyje
-     * dluzej niz pojedynczy bilet.
+     * <p>Mutable on purpose: tickets come and go, while the usage counter lives
+     * longer than a single ticket.
      */
     private static final class Entry {
-        /** Aktywne bilety. Ten sam wlasciciel moze miec tylko jeden. */
+        /** Active tickets. The same owner can have only one. */
         final Map<String, Ticket> tickets = new HashMap<>();
-        /** Ile razy siegnieto tu po dane - do decyzji o dluższym trzymaniu. */
+        /** How many times data was reached for here - for deciding on a longer hold. */
         int hits;
-        /** Do kiedy (gameTime) trzymamy ten chunk z powodu czestego uzycia. */
+        /** Until when (gameTime) we hold this chunk because of frequent use. */
         long holdUntilTick = Long.MIN_VALUE;
     }
 
-    /** level -> (chunk -> stan). Slabe klucze, zeby nie trzymac swiatow. */
+    /** level -> (chunk -> state). Weak keys, so as not to hold worlds. */
     private static final Map<ServerLevel, Map<Long, Entry>> REFS = new WeakHashMap<>();
 
-    /** Chcemy wiedziec, co realnie wymusilismy, zeby posprzatac przy zamknieciu. */
+    /** We want to know what we really forced, in order to clean up on shutdown. */
     private static final Map<ServerLevel, Set<Long>> APPLIED = new WeakHashMap<>();
 
     /**
-     * Czy swiat sie zamyka/zapisuje.
+     * Is the world shutting down/saving.
      *
-     * <p><b>Po co to.</b> Podczas zapisu swiata Minecraft rozladowuje chunki.
-     * Jesli w tym momencie cokolwiek je znowu wymusza, zapis nie moze sie
-     * skonczyc: chunk wraca, jest rozladowywany, wraca... W logu widac to jako
-     * tysiace cykli "chunk [x, z] loaded / unloaded" w trakcie "Saving worlds",
-     * czyli zawieszony zapis swiata.
+     * <p><b>Why this exists.</b> While saving the world, Minecraft unloads
+     * chunks. If at that moment anything forces them again, the save cannot
+     * finish: the chunk comes back, is unloaded, comes back... In the log this
+     * shows up as thousands of "chunk [x, z] loaded / unloaded" cycles during
+     * "Saving worlds", that is, a hung world save.
      *
-     * <p>Flaga zyje tutaj, bo {@link #retain} jest wspolnym wejsciem dla
-     * WSZYSTKICH force-loadow - takze tych awaryjnych z pobierania itemow,
-     * ktore wczesniej omijaly blokade w cache'u craftowalnosci.
+     * <p>The flag lives here, because {@link #retain} is the common entry point
+     * for ALL force-loads - including the fallback ones from item retrieval,
+     * which previously bypassed the guard in the craftability cache.
      */
     private static volatile boolean frozen = false;
 
@@ -119,12 +119,12 @@ public final class VeloceChunkLoader {
     // Bilety - utrzymywanie w pamieci
     // ------------------------------------------------------------------
 
-    /** Zamraza force-loady (serwer sie zamyka / zapisuje swiat). */
+    /** Freezes force-loads (the server is shutting down / saving the world). */
     public static void freeze() {
         frozen = true;
     }
 
-    /** Odmraza force-loady (weszlismy do swiata). */
+    /** Unfreezes force-loads (we have entered the world). */
     public static void unfreeze() {
         frozen = false;
     }
@@ -134,27 +134,27 @@ public final class VeloceChunkLoader {
     }
 
     /**
-     * Zgłasza, ze dany wlasciciel chce trzymac ten chunk.
+     * Reports that a given owner wants to hold this chunk.
      *
-     * @return true, jesli to wlasnie my fizycznie wymusilismy zaladowanie
+     * @return true if it was us who physically forced the load
      */
     public static boolean retain(ServerLevel level, long chunkKey) {
         return retain(level, chunkKey, "network", Reason.NETWORK, null);
     }
 
     /**
-     * Zgłasza zatrzymanie chunku, zapisujac KTO i PO CO.
+     * Reports a chunk hold, recording WHO and WHY.
      *
-     * <p>Ten sam wlasciciel moze zglosic sie wielokrotnie - bilet jest jeden,
-     * wiec licznik nie rosnie od samego powtarzania. Dzieki temu awaria w
-     * jednym miejscu nie zostawia chunku trzymanego na zawsze.
+     * <p>The same owner can report repeatedly - the ticket is one, so the count
+     * does not grow from mere repetition. Thanks to this, a failure in one place
+     * does not leave the chunk held forever.
      *
-     * @return true, jesli to wlasnie my fizycznie wymusilismy zaladowanie
+     * @return true if it was us who physically forced the load
      */
     public static boolean retain(ServerLevel level, long chunkKey, String owner,
                                  Reason reason, BlockPos ownerPos) {
         if (frozen) {
-            // Swiat sie zapisuje - wymuszenie chunku zawiesiloby zapis.
+            // The world is saving - forcing the chunk would hang the save.
             return false;
         }
         Entry entry = REFS.computeIfAbsent(level, k -> new HashMap<>())
@@ -163,28 +163,29 @@ public final class VeloceChunkLoader {
         entry.tickets.put(owner, new Ticket(owner, reason, ownerPos, level.getGameTime()));
 
         if (entry.tickets.size() > 1) {
-            return false;   // ktos inny juz trzyma - nic nie robimy
+            return false;   // someone else already holds it - we do nothing
         }
-        // CZY MY JUZ TO WYMUSILISMY?
+        // HAVE WE ALREADY FORCED THIS?
         //
-        // BUG, ktory tu byl: ten sam wlasciciel zglaszal sie co kilkadziesiat
-        // tickow (cache craftowalnosci odswieza sie w kolko) i ZA KAZDYM RAZEM
-        // lecielismy do setChunkForced(true). Dla wanilii powtorka na juz
-        // wymuszonym chunku jest no-opem, wiec chunk sie NIE przeladowywal -
-        // ale nasz wlasny licznik petli (watchForce) liczyl te wolania jako
-        // "wymuszenia" i po piatej powtorce w oknie 200 tickow wypisywal
+        // The BUG that was here: the same owner reported every few dozen ticks
+        // (the craftability cache refreshes over and over) and EVERY TIME we
+        // went to setChunkForced(true). For vanilla, a repeat on an
+        // already-forced chunk is a no-op, so the chunk was NOT reloaded - but
+        // our own loop counter (watchForce) counted those calls as "forcings"
+        // and after the fifth repeat within a 200-tick window printed
         // [FAIL] "... this is the load/unload loop signature".
         //
-        // Efekt: 78 straszących bledow w jednej sesji, wszystkie NIEPRAWDZIWE
-        // (trzy chunki po 26 razy), a prawdziwa petla utonelaby w tym szumie.
+        // Effect: 78 scary errors in one session, all of them UNTRUE (three
+        // chunks 26 times each), and a real loop would have drowned in that
+        // noise.
         //
-        // Pytamy wiec WANILIE o faktyczny stan (getForcedChunks to zwykla
-        // referencja do zbioru, O(1)), a nie wlasna ksiegowosc: jesli ktokolwiek
-        // (takze inny mod) zdjal to wymuszenie, wymuszamy ponownie i wtedy
-        // licznik naprawde ma cos do zaraportowania.
+        // So we ask VANILLA about the actual state (getForcedChunks is a plain
+        // reference to a set, O(1)), instead of our own bookkeeping: if anyone
+        // (including another mod) removed that forcing, we force again, and then
+        // the counter really has something to report.
         boolean weApplied = APPLIED.computeIfAbsent(level, k -> new HashSet<>()).contains(chunkKey);
         if (weApplied && level.getForcedChunks().contains(chunkKey)) {
-            return false;   // juz wymuszony - powtorka nic nie wnosi
+            return false;   // already forced - a repeat adds nothing
         }
         level.setChunkForced(ChunkPos.getX(chunkKey), ChunkPos.getZ(chunkKey), true);
         APPLIED.get(level).add(chunkKey);
@@ -193,21 +194,22 @@ public final class VeloceChunkLoader {
     }
 
     /**
-     * Wykrywa SYGNATURE PETLI load/unload i mowi o niej wprost.
+     * Detects the load/unload LOOP SIGNATURE and says so outright.
      *
-     * <p><b>Po co.</b> Petla wyglada w grze jako "chunk ciagle sie przeladowuje",
-     * ale w logu nie zostawiala po sobie sladu - chyba ze ktos celowo wlaczyl
-     * sledzenie. Bez tego zglaszane objawy ("wpada w petle") trzeba bylo
-     * odtwarzac z kodu, zamiast przeczytac je z loga.
+     * <p><b>Why.</b> In game a loop looks like "the chunk keeps reloading", but
+     * it left no trace in the log - unless someone deliberately enabled tracing.
+     * Without this, reported symptoms ("it falls into a loop") had to be
+     * reproduced from the code instead of being read from the log.
      *
-     * <p>Kazde FIZYCZNE wymuszenie tego samego chunku liczymy w oknie
-     * {@link #FORCE_THROTTLE_WINDOW_TICKS}. Po przekroczeniu progu logujemy
-     * RAZ na okno, podajac ostatniego wlasciciela i powod - czyli od razu
-     * wskazujemy, KTO kaze w kolko ladowac ten chunk.
+     * <p>We count every PHYSICAL forcing of the same chunk within a window of
+     * {@link #FORCE_THROTTLE_WINDOW_TICKS}. After crossing the threshold we log
+     * ONCE per window, giving the last owner and reason - that is, we point
+     * straight at WHO keeps ordering this chunk to be loaded.
      *
-     * <p>Wymuszenie to nie to samo co uzycie: {@code retain} dla istniejacego
-     * biletu nie robi nic, wiec ten licznik lapie dokladnie przelaczanie
-     * {@code setChunkForced}, a nie zwykle sieganie do juz zaladowanego chunku.
+     * <p>A forcing is not the same as a use: {@code retain} for an existing
+     * ticket does nothing, so this counter catches exactly the flipping of
+     * {@code setChunkForced}, not an ordinary reach into an already loaded
+     * chunk.
      */
     private static void watchForce(ServerLevel level, long chunkKey, String owner,
                                    Reason reason, BlockPos ownerPos) {
@@ -230,19 +232,19 @@ public final class VeloceChunkLoader {
     }
 
     /**
-     * Wykrywa petle WCZYTAN BEZ WYMUSZENIA i mowi o niej wprost.
+     * Detects a loop of LOADS WITHOUT FORCING and says so outright.
      *
-     * <p><b>Po co osobny licznik.</b> {@code watchForce} pilnuje wylacznie
-     * {@code setChunkForced}, a prawdziwa petla load/unload moze dzialac
-     * wylacznie na {@code getChunk(..., true)} - czyli na wczytaniach "na czas
-     * operacji", bez zadnego wymuszenia. Dokladnie taka petla przeszla przez
-     * nasz system niezauwazona: magazyn z nieaktualnym cache kazal wczytywac
-     * ten sam chunk 220 razy w 22 sekundy, a licznik wymuszen milczal, bo
-     * {@code isHeld()} bylo fałszem.
+     * <p><b>Why a separate counter.</b> {@code watchForce} watches only
+     * {@code setChunkForced}, while a real load/unload loop can run purely on
+     * {@code getChunk(..., true)} - that is, on loads "for the operation",
+     * without any forcing. Exactly such a loop went through our system unnoticed:
+     * a storage with a stale cache ordered the same chunk to be loaded 220 times
+     * in 22 seconds, while the forcing counter stayed silent, because
+     * {@code isHeld()} was false.
      *
-     * <p>Liczymy wiec wczytania per chunk i po przekroczeniu progu mowimy
-     * KTO i PO CO je robi. To ta sama idea co przy wymuszeniach, tylko dla
-     * drugiej sciezki.
+     * <p>So we count loads per chunk and, after crossing the threshold, we say
+     * WHO is doing them and WHY. It is the same idea as with forcings, only for
+     * the other path.
      */
     public static void noteOpLoad(ServerLevel level, long chunkKey, BlockPos pos, String reason) {
         Map<Long, ForceWatch> watch = OP_LOAD_WATCH.computeIfAbsent(level, k -> new HashMap<>());
@@ -256,32 +258,32 @@ public final class VeloceChunkLoader {
         w.count++;
         if (w.count == FORCE_THROTTLE_LIMIT) {
             VeloceLog.Network.failure(VeloceLog.Side.SERVER,
-                    "chunk %s wczytany %d razy w %d tickow BEZ wymuszenia (%s @%s)"
-                            + " - to petla load/unload; najczestsza przyczyna: magazyn"
-                            + " z nieaktualnym cache, ktorego nie da sie odczytac",
+                    "chunk %s loaded %d times within %d ticks WITHOUT forcing (%s @%s)"
+                            + " - this is a load/unload loop; the most common cause: a storage"
+                            + " with a stale cache that cannot be read",
                     new ChunkPos(chunkKey), w.count, FORCE_THROTTLE_WINDOW_TICKS,
                     reason, pos);
         }
     }
 
     /**
-     * Wykrywa CYKL: chunk rozladowany i zaraz znowu wczytany.
+     * Detects a CYCLE: a chunk unloaded and loaded again right away.
      *
-     * <p><b>Po co trzeci licznik.</b> Mielismy juz licznik wymuszen
-     * ({@code setChunkForced}) i licznik wczytan "na czas operacji"
-     * ({@code getChunk(..., true)}). A prawdziwa petla load/unload przeszla
-     * przez oba niezauwazona, bo powstawala z czegos trzeciego: ze zwyklego
-     * ODCZYTU bloku w niezaladowanym chunku ({@code getBlockEntity} /
-     * {@code getBlockState} na serwerze sam wczytuje chunk).
+     * <p><b>Why a third counter.</b> We already had a forcing counter
+     * ({@code setChunkForced}) and a counter of loads "for the operation"
+     * ({@code getChunk(..., true)}). And a real load/unload loop slipped past
+     * both unnoticed, because it arose from a third thing: from an ordinary
+     * READ of a block in an unloaded chunk ({@code getBlockEntity} /
+     * {@code getBlockState} on the server loads the chunk by itself).
      *
-     * <p>Ten licznik nie pyta "kto wczytal", tylko "czy to juz cykl": jesli
-     * ten sam chunk wraca w ciagu kilku tickow po rozladowaniu, to znaczy,
-     * ze ktos go wczytuje w kolko. Wtedy logujemy to RAZEM ZE STOSEM
-     * WYWOLAN - bo w stosie widac dokladnie te metode, ktora go wczytala
-     * (wczytanie jest synchroniczne, wiec nasza ramka jest na stosie).
+     * <p>This counter does not ask "who loaded it", only "is this already a
+     * cycle": if the same chunk comes back within a few ticks after unloading,
+     * that means someone is loading it over and over. We then log it TOGETHER
+     * WITH THE CALL STACK - because the stack shows exactly the method that
+     * loaded it (loading is synchronous, so our frame is on the stack).
      *
-     * <p>Bez tego trzeba bylo czytac logi i zgadywac - tak jak przy dwoch
-     * poprzednich podejsciach do tego samego objawu.
+     * <p>Without this one had to read logs and guess - as with the two previous
+     * approaches to the same symptom.
      */
     public static void noteChunkEvent(ServerLevel level, long chunkKey, boolean loaded) {
         long now = level.getGameTime();
@@ -292,10 +294,10 @@ public final class VeloceChunkLoader {
         }
         Long lastUnload = unloaded.remove(chunkKey);
         if (lastUnload == null || now < lastUnload || now - lastUnload > RELOAD_SUSPICION_TICKS) {
-            return;   // normalne wczytanie, nie cykl
+            return;   // a normal load, not a cycle
         }
         if (isHeld(level, chunkKey)) {
-            return;   // nasz wlasny force-load - to normalne
+            return;   // our own force-load - that is normal
         }
         Map<Long, ForceWatch> watch = RELOAD_WATCH.computeIfAbsent(level, k -> new HashMap<>());
         ForceWatch w = watch.get(chunkKey);
@@ -307,25 +309,25 @@ public final class VeloceChunkLoader {
         w.count++;
         if (w.count == 3) {
             VeloceLog.Network.error(VeloceLog.Side.SERVER,
-                    new Throwable("petla load/unload"),
-                    "chunk %s wrocil %d tickow po rozladowaniu (%d raz w oknie %d tickow) BEZ"
-                            + " force-loadu - to petla load/unload. W stosie ponizej widac,"
-                            + " KTO go wczytuje (szukaj ramki com.craftingveloce):",
+                    new Throwable("load/unload loop"),
+                    "chunk %s came back %d ticks after unloading (%d times in a window of %d ticks)"
+                            + " WITHOUT a force-load - this is a load/unload loop. The stack below"
+                            + " shows WHO is loading it (look for a com.craftingveloce frame):",
                     new ChunkPos(chunkKey), now - lastUnload, w.count,
                     FORCE_THROTTLE_WINDOW_TICKS);
         }
     }
 
-    /** Ile tickow po rozladowaniu uznajemy wczytanie za podejrzane. */
+    /** How many ticks after unloading we consider a load suspicious. */
     private static final long RELOAD_SUSPICION_TICKS = 10L;
 
-    /** Okno, w ktorym liczymy wymuszenia tego samego chunku. */
+    /** The window in which we count forcings of the same chunk. */
     private static final long FORCE_THROTTLE_WINDOW_TICKS = 200L;
 
-    /** Po ilu wymuszeniach w oknie uznajemy, ze to juz petla. */
+    /** After how many forcings in the window we consider it a loop. */
     private static final int FORCE_THROTTLE_LIMIT = 5;
 
-    /** Licznik wymuszen jednego chunku w biezacym oknie. */
+    /** Counter of forcings of one chunk in the current window. */
     private static final class ForceWatch {
         long windowStart;
         int count;
@@ -334,31 +336,32 @@ public final class VeloceChunkLoader {
     private static final Map<ServerLevel, Map<Long, ForceWatch>> FORCE_WATCH = new WeakHashMap<>();
 
     /**
-     * Licznik wczytan BEZ wymuszenia, per chunk - patrz {@link #noteOpLoad}.
+     * Counter of loads WITHOUT forcing, per chunk - see {@link #noteOpLoad}.
      *
-     * <p>Slabe klucze na swiaty (jak pozostale mapy sledzenia) + przycinanie
-     * w {@link #pruneTrackingMaps}, zeby dluga sesja nie rosla w pamieci.
+     * <p>Weak keys for worlds (like the other tracking maps) plus pruning in
+     * {@link #pruneTrackingMaps}, so that a long session does not grow in
+     * memory.
      */
     private static final Map<ServerLevel, Map<Long, ForceWatch>> OP_LOAD_WATCH = new WeakHashMap<>();
 
-    /** Tick ostatniego rozladowania chunku - do wykrywania cyklu. */
+    /** Tick of the last chunk unload - for cycle detection. */
     private static final Map<ServerLevel, Map<Long, Long>> RECENT_UNLOAD = new WeakHashMap<>();
 
-    /** Licznik podejrzanych powrotow chunku, per chunk. */
+    /** Counter of suspicious chunk returns, per chunk. */
     private static final Map<ServerLevel, Map<Long, ForceWatch>> RELOAD_WATCH = new WeakHashMap<>();
 
     /**
-     * Zwalnia bilet jednego wlasciciela.
+     * Releases the ticket of one owner.
      *
-     * <p>Chunk jest realnie rozladowywany dopiero, gdy nie ma ZADNEGO biletu
-     * i nie jest trzymany z powodu czestego uzycia. To wlasnie ta regula ucina
-     * petle szarpania miedzy sieciami.
+     * <p>The chunk is really unloaded only when there is NO ticket at all and it
+     * is not held because of frequent use. It is exactly this rule that cuts off
+     * the tug-of-war loop between networks.
      */
     public static void release(ServerLevel level, long chunkKey) {
         release(level, chunkKey, "network");
     }
 
-    /** Zwalnia bilet konkretnego wlasciciela. */
+    /** Releases the ticket of a specific owner. */
     public static void release(ServerLevel level, long chunkKey, String owner) {
         Map<Long, Entry> byChunk = REFS.get(level);
         if (byChunk == null) {
@@ -369,12 +372,12 @@ public final class VeloceChunkLoader {
             return;
         }
         entry.tickets.remove(owner);
-        // Bilety innych wlascicieli zostaja - chunk jest nadal komus potrzebny.
+        // Tickets of other owners stay - someone still needs the chunk.
         if (!entry.tickets.isEmpty()) {
             return;
         }
-        // Brak biletow, ale chunk byl czesto uzywany - trzymamy go jeszcze
-        // przez HOLD_TICKS, zeby nie wchodzic w cykl ladowania.
+        // No tickets, but the chunk was used often - we hold it for another
+        // HOLD_TICKS, so as not to enter a loading cycle.
         if (entry.holdUntilTick != Long.MIN_VALUE
                 && level.getGameTime() < entry.holdUntilTick) {
             return;
@@ -386,14 +389,14 @@ public final class VeloceChunkLoader {
         }
     }
 
-    /** Fizycznie zdejmuje wymuszenie i sprzata ksiegowosc. */
+    /** Physically removes the forcing and cleans up the bookkeeping. */
     private static void unforce(ServerLevel level, long chunkKey) {
-        // Zdejmujemy wymuszenie TYLKO wtedy, gdy to my je nalozylismy.
+        // We remove the forcing ONLY when it was us who applied it.
         //
-        // setChunkForced(false) nie zna pojecia wlasciciela - zdjeloby wymuszenie
-        // nalozone przez kogos innego (np. gracza przez /forceload albo inny mod).
-        // Bez tego warunku nasza ksiegowosc mowila "to nasze", a wanilia tracila
-        // cudze wymuszenie.
+        // setChunkForced(false) knows no notion of ownership - it would remove a
+        // forcing applied by someone else (e.g. a player through /forceload or
+        // another mod). Without this condition our bookkeeping said "this is
+        // ours" while vanilla lost someone else's forcing.
         Set<Long> applied = APPLIED.get(level);
         if (applied != null && applied.contains(chunkKey)) {
             level.setChunkForced(ChunkPos.getX(chunkKey), ChunkPos.getZ(chunkKey), false);
@@ -409,35 +412,35 @@ public final class VeloceChunkLoader {
     // ------------------------------------------------------------------
 
     /**
-     * Ile tickow trzymamy chunk po uzyciu, zanim pozwolimy mu wypasc.
+     * How many ticks we hold a chunk after use, before letting it drop out.
      *
-     * <p>Jedna minuta. Krotkie operacje sieciowe (wyciagniecie stacka, wlozenie
-     * do skrzyni) zdarzaja sie seriami - bez tego kazda z nich konczylaby sie
-     * rozladowaniem chunku i kolejnym wczytaniem z dysku.
+     * <p>One minute. Short network operations (pulling a stack, inserting into a
+     * chest) happen in bursts - without this each of them would end with a chunk
+     * unload and another load from disk.
      */
     private static final long HOLD_TICKS = 1200L;
 
     /**
-     * Od ilu uzyc chunk uznajemy za "goracy".
+     * From how many uses we consider a chunk "hot".
      *
-     * <p>Trzy uzycia w oknie {@link #HOT_WINDOW_TICKS} to juz seria, a nie
-     * przypadkowa pojedyncza operacja.
+     * <p>Three uses within a window of {@link #HOT_WINDOW_TICKS} is already a
+     * burst, not a chance single operation.
      */
     private static final int HOT_THRESHOLD = 3;
 
-    /** Dlugosc okna, w ktorym liczymy uzycia. */
+    /** Length of the window in which we count uses. */
     private static final long HOT_WINDOW_TICKS = 200L;
 
-    /** chunk -> (ostatni tick, w ktorym liczono) - do wygaszania licznika. */
+    /** chunk -> (the last tick in which it was counted) - for letting the counter expire. */
     private static final Map<ServerLevel, Map<Long, Long>> HIT_WINDOW = new WeakHashMap<>();
 
     /**
-     * Odnotowuje, ze ktos wlasnie siegnal do tego chunku.
+     * Records that someone just reached into this chunk.
      *
-     * <p>Wolane przy kazdej operacji na zawartosci chunku. Gdy uzyc jest duzo
-     * w krotkim czasie, chunk dostaje dluzsze trzymanie - to jest wlasnie
-     * "inteligentna lista priorytetow": czesto uzywane chunki zostaja w pamieci,
-     * a te dotkniete raz moga wypasc.
+     * <p>Called on every operation on the contents of a chunk. When there are
+     * many uses in a short time, the chunk gets a longer hold - this is exactly
+     * the "smart priority list": frequently used chunks stay in memory, while
+     * those touched once may drop out.
      */
     public static void noteUse(ServerLevel level, long chunkKey) {
         if (frozen) {
@@ -450,7 +453,7 @@ public final class VeloceChunkLoader {
         Map<Long, Long> windows = HIT_WINDOW.computeIfAbsent(level, k -> new HashMap<>());
         Long lastCounted = windows.get(chunkKey);
         if (lastCounted == null || now < lastCounted || now - lastCounted > HOT_WINDOW_TICKS) {
-            // Nowe okno - licznik zaczyna od nowa.
+            // A new window - the counter starts over.
             entry.hits = 1;
             windows.put(chunkKey, now);
         } else {
@@ -459,8 +462,8 @@ public final class VeloceChunkLoader {
 
         if (entry.hits >= HOT_THRESHOLD) {
             entry.holdUntilTick = now + HOLD_TICKS;
-            // Goracy chunk MUSI byc realnie wymuszony - inaczej "trzymanie"
-            // jest tylko wpisem w ksiegowosci.
+            // A hot chunk MUST be really forced - otherwise the "hold" is only
+            // an entry in the bookkeeping.
             if (entry.tickets.isEmpty()) {
                 retain(level, chunkKey, "hot", Reason.OPERATION, null);
             }
@@ -468,17 +471,17 @@ public final class VeloceChunkLoader {
     }
 
     /**
-     * Zwalnia wygasle bilety "goracych" chunkow.
+     * Releases expired tickets of "hot" chunks.
      *
-     * <p>Wolane raz na sekunde z ticku serwera. Bez tego chunk uznany kiedys za
-     * goracy zostawal wymuszony na zawsze.
+     * <p>Called once per second from the server tick. Without this a chunk once
+     * deemed hot stayed forced forever.
      */
     public static void expireHotTickets(ServerLevel level) {
         long now = level.getGameTime();
 
-        // Sprzatanie map pomocniczych robimy PRZED wyjsciem z pustym REFS -
-        // inaczej po zwolnieniu wszystkich biletow mapy nie bylyby czyszczone
-        // nigdy, bo metoda konczylaby sie wczesniej.
+        // We do the cleanup of the auxiliary maps BEFORE returning on an empty
+        // REFS - otherwise, after all tickets are released, the maps would never
+        // be cleared, because the method would return earlier.
         pruneTrackingMaps(level, now);
 
         Map<Long, Entry> byChunk = REFS.get(level);
@@ -491,8 +494,9 @@ public final class VeloceChunkLoader {
             if (entry.holdUntilTick == Long.MIN_VALUE) {
                 continue;
             }
-            // now < holdUntilTick przy cofnietym czasie swiata: wtedy uznajemy,
-            // ze jeszcze trzymamy - inaczej zwolnilibysmy chunk natychmiast.
+            // now < holdUntilTick with a rewound world time: we then consider
+            // that we still hold it - otherwise we would release the chunk
+            // immediately.
             if (now >= entry.holdUntilTick) {
                 entry.holdUntilTick = Long.MIN_VALUE;
                 entry.hits = 0;
@@ -516,25 +520,25 @@ public final class VeloceChunkLoader {
     // ------------------------------------------------------------------
 
     /**
-     * Usuwa wpisy o chunkach, ktorych okna dawno wygasly.
+     * Removes entries about chunks whose windows expired long ago.
      *
-     * <p><b>BUG (wyciek pamieci), ktory to naprawia.</b> Obie mapy pomocnicze
-     * - {@code HIT_WINDOW} (licznik uzyc) i {@code FORCE_WATCH} (licznik
-     * wymuszen) - sa kluczowane numerem chunku i dostawaly wpis przy KAZDYM
-     * chunku, ktorego kiedykolwiek dotknelismy. Nie byly czyszczone wcale:
-     * jedyne miejsce, ktore je usuwalo, to {@code releaseAll} przy wyjsciu
-     * ze swiata. Efekt: na dlugiej sesji z siecia siegajaca wielu chunkow
-     * (albo z graczem, ktory polata po swiecie) rosla liczba martwych wpisow -
-     * setki tysiecy przy dlugiej grze.
+     * <p><b>The BUG (a memory leak) this fixes.</b> Both auxiliary maps -
+     * {@code HIT_WINDOW} (the use counter) and {@code FORCE_WATCH} (the forcing
+     * counter) - are keyed by chunk number and got an entry for EVERY chunk we
+     * ever touched. They were not cleared at all: the only place that removed
+     * them was {@code releaseAll} on leaving the world. Effect: in a long session
+     * with a network spanning many chunks (or with a player who flies around the
+     * world) the number of dead entries grew - hundreds of thousands over a long
+     * game.
      *
-     * <p>Wpis jest bezuzyteczny, gdy okno, ktorego dotyczyl, minelo: licznik
-     * uzyc i tak zaczyna sie od nowa, a licznik wymuszen sluzy tylko do
-     * raportu. Dlatego wyrzucamy je raz na sekunde, razem z wygaszaniem
-     * gorących biletow - czyli tam, gdzie to sprzatanie ma naturalne miejsce.
+     * <p>An entry is useless once the window it referred to has passed: the use
+     * counter starts over anyway, and the forcing counter only serves the report.
+     * That is why we discard them once a second, together with expiring hot
+     * tickets - that is, where this cleanup has its natural place.
      *
-     * <p>Przypadek {@code now < zapisanyTick} (cofniety czas swiata) traktujemy
-     * tak samo jak wygasniecie: nie da sie go ocenic, a trzymanie takiego
-     * wpisu na zawsze jest gorsze niz zgubienie licznika.
+     * <p>The case {@code now < storedTick} (a rewound world time) is treated the
+     * same as expiry: it cannot be assessed, and keeping such an entry forever is
+     * worse than losing the counter.
      */
     private static void pruneTrackingMaps(ServerLevel level, long now) {
         Map<Long, Long> windows = HIT_WINDOW.get(level);
@@ -569,8 +573,8 @@ public final class VeloceChunkLoader {
                 RELOAD_WATCH.remove(level);
             }
         }
-        // Ten sam sposob przycinania dla licznika wczytan bez wymuszenia -
-        // bez tego dluga sesja trzymalaby wpis po kazdym dotknietym chunku.
+        // The same pruning approach for the counter of loads without forcing -
+        // without it a long session would hold an entry for every touched chunk.
         Map<Long, ForceWatch> opLoads = OP_LOAD_WATCH.get(level);
         if (opLoads != null) {
             opLoads.entrySet().removeIf(e -> now < e.getValue().windowStart
@@ -581,7 +585,7 @@ public final class VeloceChunkLoader {
         }
     }
 
-    /** Diagnostyka: ile wpisow trzymaja mapy pomocnicze (do wykrywania wyciekow). */
+    /** Diagnostics: how many entries the auxiliary maps hold (for leak detection). */
     public static String trackingMapSizes(ServerLevel level) {
         Map<Long, Long> windows = HIT_WINDOW.get(level);
         Map<Long, ForceWatch> watch = FORCE_WATCH.get(level);
@@ -594,15 +598,16 @@ public final class VeloceChunkLoader {
                 + ", refs=" + (refs == null ? 0 : refs.size());
     }
 
-    /** Opis jednego trzymanego chunku - do raportu na czacie. */
+    /** Description of one held chunk - for the chat report. */
     public record HeldChunk(long chunkKey, int x, int z, List<Ticket> tickets, int hits) {
     }
 
     /**
-     * Lista wszystkich chunkow, ktore ta instancja loadera realnie wymusila.
+     * The list of all chunks that this loader instance really forced.
      *
-     * <p>Zwraca dane z ksiegowosci loadera, a nie z cache'y - dzieki temu widac
-     * TAKZE chunki wymuszone awaryjnie, poza normalnym utrzymywaniem sieci.
+     * <p>It returns data from the loader's bookkeeping rather than from caches -
+     * thanks to this you can see ALSO chunks forced as a fallback, outside the
+     * normal network upkeep.
      */
     public static List<HeldChunk> listHeld(ServerLevel level) {
         List<HeldChunk> out = new ArrayList<>();
@@ -619,28 +624,28 @@ public final class VeloceChunkLoader {
             out.add(new HeldChunk(key, ChunkPos.getX(key), ChunkPos.getZ(key), tickets,
                     entry == null ? 0 : entry.hits));
         }
-        // Stabilna kolejnosc, zeby raport nie skakal miedzy wywolaniami.
+        // A stable order, so that the report does not jump between calls.
         out.sort((a, b) -> a.x() != b.x() ? Integer.compare(a.x(), b.x())
                 : Integer.compare(a.z(), b.z()));
         return out;
     }
 
     /**
-     * Block entity TYLKO jesli chunk jest zaladowany - inaczej {@code null},
-     * BEZ wczytywania chunku.
+     * The block entity ONLY if the chunk is loaded - otherwise {@code null},
+     * WITHOUT loading the chunk.
      *
-     * <p><b>Po co to istnieje.</b> Na serwerze {@code Level.getBlockEntity(pos)}
-     * NIE jest bezpiecznym odczytem "tylko jesli jest": on WCZYTUJE chunk
-     * (bajtkod wanilii: getBlockEntity -> getChunkAt -> getChunk(x, z) ->
-     * ChunkStatus.FULL, requireChunk = TRUE). To samo dotyczy
+     * <p><b>Why this exists.</b> On the server {@code Level.getBlockEntity(pos)}
+     * is NOT a safe "only if present" read: it LOADS the chunk (vanilla
+     * bytecode: getBlockEntity -> getChunkAt -> getChunk(x, z) ->
+     * ChunkStatus.FULL, requireChunk = TRUE). The same applies to
      * {@code getBlockState(pos)}.
      *
-     * <p>Z tego wyniknela prawdziwa petla load/unload: nasz raport diagnostyczny
-     * opisywal bloki w chunku, ktory wlasnie sie rozladowal, a sam opis
-     * wczytywal go z powrotem. Dlatego kazdy odczyt pozycji, ktora moze byc
-     * w niezaladowanym chunku (a wiec kazda pozycja z sieci rur), MUSI isc
-     * przez te metody - wtedy regula jest w jednym miejscu, a nie w kilkunastu
-     * warunkach do zapamietania.
+     * <p>This is what produced a real load/unload loop: our diagnostic report
+     * described blocks in a chunk that had just unloaded, and the description
+     * itself loaded it back. That is why every read of a position that may be in
+     * an unloaded chunk (and therefore every position from the pipe network) MUST
+     * go through these methods - then the rule is in one place, instead of a
+     * dozen or so conditions to remember.
      */
     @Nullable
     public static net.minecraft.world.level.block.entity.BlockEntity blockEntityIfLoaded(
@@ -648,7 +653,7 @@ public final class VeloceChunkLoader {
         return level.isLoaded(pos) ? level.getBlockEntity(pos) : null;
     }
 
-    /** Block state TYLKO jesli chunk jest zaladowany - inaczej {@code null}. */
+    /** The block state ONLY if the chunk is loaded - otherwise {@code null}. */
     @Nullable
     public static net.minecraft.world.level.block.state.BlockState blockStateIfLoaded(
             net.minecraft.world.level.Level level, BlockPos pos) {
@@ -656,12 +661,12 @@ public final class VeloceChunkLoader {
     }
 
     /**
-     * Czy ten chunk jest przez nas realnie wymuszony na tym swiecie.
+     * Is this chunk really forced by us in this world.
      *
-     * <p>Potrzebne do uzgodnienia ksiegowosci: cache moze myslec, ze trzyma
-     * chunk, ktory loader zdazyl juz zwolnic (np. przy rozladowaniu swiata).
-     * Bez tego sprawdzenia albo nie wymusilbysmy go ponownie, albo - gorzej -
-     * doliczylibysmy druga referencje do chunku, ktora nigdy nie zniknie.
+     * <p>Needed for reconciling the bookkeeping: a cache may think it holds a
+     * chunk that the loader has already released (e.g. on a world unload).
+     * Without this check we would either not force it again, or - worse - count
+     * a second reference to the chunk that will never disappear.
      */
 
     public static boolean isHeld(ServerLevel level, long chunkKey) {
@@ -669,30 +674,30 @@ public final class VeloceChunkLoader {
         return applied != null && applied.contains(chunkKey);
     }
 
-    /** Diagnostyka: ile chunkow realnie trzymamy na tym swiecie. */
+    /** Diagnostics: how many chunks we really hold in this world. */
     public static int appliedCount(ServerLevel level) {
         Set<Long> applied = APPLIED.get(level);
         return applied == null ? 0 : applied.size();
     }
 
     /**
-     * Ile BLOKUJACYCH wczytan chunkow wolno wykonac w jednym ticku.
+     * How many BLOCKING chunk loads may be performed in one tick.
      *
-     * <p>Wkladanie do sieci musi byc synchroniczne (patrz
-     * {@link ConnectedEndpointInfo#insertItemLeftover} - inaczej dochodzi do
-     * duplikacji), ale NIE moze byc nieograniczone. Jedno wczytanie chunku z
-     * dysku to kilka-kilkadziesiat milisekund, a wkladanie idzie w petli po
-     * wszystkich magazynach sieci - bez limitu seria odlozen do odleglych
-     * skrzyn rozjechalaby tick i zamrozila serwer.
+     * <p>Inserting into the network must be synchronous (see
+     * {@link ConnectedEndpointInfo#insertItemLeftover} - otherwise duplication
+     * occurs), but it CANNOT be unlimited. A single chunk load from disk takes
+     * a few to a few dozen milliseconds, and inserting loops over all storages
+     * of the network - without a limit, a burst of deposits into distant chests
+     * would blow the tick and freeze the server.
      *
-     * <p>Po wyczerpaniu budzetu wkladanie jest ODMAWIANE (stos wraca do
-     * wolajacego, ktory zatrzymuje itemy u gracza). To jest bezpieczne: nic
-     * nie ginie i nic sie nie duplikuje, gracz dostaje komunikat, a kolejny
-     * tick znowu ma pelny budzet.
+     * <p>Once the budget is exhausted, inserting is REFUSED (the stack returns
+     * to the caller, which keeps the items with the player). That is safe:
+     * nothing is lost and nothing is duplicated, the player gets a message, and
+     * the next tick has a full budget again.
      */
     public static final int MAX_OP_LOADS_PER_TICK = 4;
 
-    /** Budzet liczony OSOBNO dla kazdego swiata - inaczej Nether zjadalby limit Overworldu. */
+    /** The budget is counted SEPARATELY for each world - otherwise the Nether would eat the Overworld's limit. */
     private static final class OpLoadBudget {
         long tick = Long.MIN_VALUE;
         int used;
@@ -701,17 +706,18 @@ public final class VeloceChunkLoader {
     private static final Map<ServerLevel, OpLoadBudget> OP_BUDGET = new WeakHashMap<>();
 
     /**
-     * Rezerwuje jedno synchroniczne wczytanie chunku na ten tick.
+     * Reserves one synchronous chunk load for this tick.
      *
-     * @return {@code true} gdy wolno wczytac; {@code false} gdy budzet na ten
-     *         tick jest wyczerpany (wtedy NIE wczytujemy i nie wkladamy)
+     * @return {@code true} when loading is allowed; {@code false} when the
+     *         budget for this tick is exhausted (then we do NOT load and do not
+     *         insert)
      */
     public static boolean tryReserveOpLoad(ServerLevel level) {
         OpLoadBudget budget = OP_BUDGET.computeIfAbsent(level, l -> new OpLoadBudget());
         long now = level.getGameTime();
         if (budget.tick != now) {
-            // Nowy tick - budzet od nowa. Uzywamy gameTime, a nie licznika
-            // wlasnego, zeby nie trzeba bylo podpinac zadnego hooka ticku.
+            // A new tick - the budget starts over. We use gameTime rather than
+            // our own counter, so that no tick hook has to be wired up.
             budget.tick = now;
             budget.used = 0;
         }
@@ -723,28 +729,27 @@ public final class VeloceChunkLoader {
     }
 
     /**
-     * Zwalnia "sieroty": chunki wymuszone, ktorych nikt juz nie pilnuje.
+     * Releases "orphans": forced chunks that nobody watches any more.
      *
-     * <p><b>Skad sie biora.</b> {@code ServerLevel.setChunkForced()} jest
-     * zapisywany przez Minecraft TRWALE, w danych swiata. Nasza ksiegowosc
-     * ({@code APPLIED}, {@code REFS}) zyje tylko w pamieci i resetuje sie przy
-     * restarcie. Jesli wiec kiedykolwiek wymusilismy chunk i swiat zostal
-     * zapisany, a potem stracilismy o nim wiedze, taki chunk zostaje
-     * wymuszony NA ZAWSZE.
+     * <p><b>Where they come from.</b> {@code ServerLevel.setChunkForced()} is
+     * saved by Minecraft PERSISTENTLY, in the world data. Our bookkeeping
+     * ({@code APPLIED}, {@code REFS}) lives only in memory and resets on
+     * restart. So if we ever forced a chunk and the world was saved, and then we
+     * lost knowledge of it, that chunk stays forced FOREVER.
      *
-     * <p>Dokladnie to sie stalo: starsza wersja kodu wymuszala chunk KAZDEJ
-     * rury. Po restarcie widzielismy "wymuszonych chunkow: 0", a gra trzymala
-     * kilkadziesiat chunkow wzdloz calej sieci - i nic nie moglo ich zwolnic,
-     * bo nie byly niczyje.
+     * <p>Exactly that happened: an older version of the code forced the chunk of
+     * EVERY pipe. After a restart we saw "forced chunks: 0", while the game held
+     * several dozen chunks along the whole network - and nothing could release
+     * them, because they belonged to nobody.
      *
-     * <p><b>Jak je rozpoznajemy.</b> Bierzemy liste chunkow, ktore NAPRAWDE
-     * wymusil swiat ({@code level.getForcedChunks()}), odejmujemy te, ktore
-     * mamy w swojej ksiegowosci, i zostawiamy tylko te, ktore leza w obrebie
-     * naszej sieci. Chunk wymuszony poza nasza siecia mogl zostac ustawiony
-     * przez {@code /forceload} gracza - tego NIE ruszamy.
+     * <p><b>How we recognize them.</b> We take the list of chunks that the world
+     * REALLY forced ({@code level.getForcedChunks()}), subtract the ones in our
+     * bookkeeping, and keep only those lying within our network. A chunk forced
+     * outside our network may have been set by the player's {@code /forceload} -
+     * we do NOT touch that.
      *
-     * @param candidateChunks chunki nalezace do naszych sieci
-     * @return ile sierot zwolniono
+     * @param candidateChunks chunks belonging to our networks
+     * @return how many orphans were released
      */
     public static int releaseOrphans(ServerLevel level, Set<Long> candidateChunks) {
         if (frozen) {
@@ -754,28 +759,28 @@ public final class VeloceChunkLoader {
         List<Long> orphans = new ArrayList<>();
         for (long key : level.getForcedChunks()) {
             if (applied != null && applied.contains(key)) {
-                continue;   // nasz, swiadomie trzymany
+                continue;   // ours, deliberately held
             }
             if (!candidateChunks.contains(key)) {
-                continue;   // poza nasza siecia - mogl byc /forceload gracza
+                continue;   // outside our network - could be the player's /forceload
             }
             orphans.add(key);
         }
         for (long key : orphans) {
             level.setChunkForced(ChunkPos.getX(key), ChunkPos.getZ(key), false);
             VeloceLog.Network.success(VeloceLog.Side.SERVER,
-                    "zwolniono SIEROTE: chunk[%d, %d] byl wymuszony bez wlasciciela "
-                            + "(pozostalosc po starszej wersji)",
+                    "released ORPHAN: chunk[%d, %d] was forced without an owner "
+                            + "(a leftover from an older version)",
                     ChunkPos.getX(key), ChunkPos.getZ(key));
         }
         if (!orphans.isEmpty()) {
             VeloceLog.Network.success(VeloceLog.Side.SERVER,
-                    "sprzatnieto %d sierocych force-loadow", orphans.size());
+                    "cleaned up %d orphaned force-load(s)", orphans.size());
         }
         return orphans.size();
     }
 
-    /** Ile chunkow jest wymuszonych w tym swiecie (stan gry, nie nasz). */
+    /** How many chunks are forced in this world (the game state, not ours). */
     public static int gameForcedCount(ServerLevel level) {
         int n = 0;
         for (long ignored : level.getForcedChunks()) {
@@ -784,7 +789,7 @@ public final class VeloceChunkLoader {
         return n;
     }
 
-    /** Zwalnia wszystko, co kiedykolwiek wymusilismy na tym swiecie. */
+    /** Releases everything we ever forced in this world. */
     public static void releaseAll(ServerLevel level) {
         Set<Long> applied = APPLIED.get(level);
         int released = applied == null ? 0 : applied.size();

@@ -14,69 +14,71 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * Liczby "ile da sie jeszcze dorobic" dla WIDOCZNYCH itemow.
+ * The "how many more can be made" numbers for VISIBLE items.
  *
- * <p><b>Po co osobna klasa.</b> Terminal mial cala te mechanike w sobie:
- * zbieranie widocznych itemow, sygnature strony (zeby nie pytac co tick),
- * i sklejanie odpowiedzi z dwoch zrodel (natychmiastowej odpowiedzi i tla).
- * Kontroler potrzebuje dokladnie tego samego, a kopiowanie tego drugi raz
- * gwarantowaloby, ze po kilku zmianach liczby zaczna sie w obu ekranach
- * roznic. Trzymamy to wiec w jednym miejscu i oba ekrany maja wlasna
- * instancje.
+ * <p><b>Why a separate class.</b> The terminal had this whole mechanic inside itself:
+ * collecting visible items, a page signature (so it does not ask every tick), and
+ * stitching the answer together from two sources (the immediate answer and the
+ * background). The controller needs exactly the same thing, and copying it a second
+ * time would guarantee that after a few changes the numbers would start to differ
+ * between the two screens. So we keep it in one place and both screens have their
+ * own instance.
  *
- * <p><b>Skad te liczby.</b> Serwer liczy je na zadanie, dla podanej listy
- * itemow, jednym wspoldzielonym budzetem czasu ({@code countCraftableBatch})
- * i odsyla gotowe wartosci. Tlo (cache) przelicza reszte sieci, ale gracz nie
- * musi na to czekac, zeby zobaczyc aktualne liczby tam, gdzie patrzy.
+ * <p><b>Where these numbers come from.</b> The server computes them on demand, for
+ * the given list of items, within one shared time budget ({@code countCraftableBatch})
+ * and sends back ready values. The background (cache) recomputes the rest of the
+ * network, but the player does not have to wait for that to see current numbers
+ * where they are looking.
  */
 public final class VeloceCraftableCounts {
 
-    /** item -> ile sztuk da sie dorobic (zolta liczba "+N"). */
+    /** item -> how many more can be made (the yellow "+N" number). */
     private final Map<Item, Long> counts = new HashMap<>();
 
-    /** Itemy z ostatniego zadania - zeby wiedziec, ktore wpisy odswiezyc. */
+    /** Items from the last request - so we know which entries to refresh. */
     private final Set<Item> lastRequested = new HashSet<>();
 
     /**
-     * Sygnatura ostatnio zamowionej strony.
+     * Signature of the last requested page.
      *
-     * <p>Pozwala wykryc zmiane zawartosci ekranu (inna zakladka, przewiniecie)
-     * i zamowic liczby dla nowej strony, bez wysylania zadania co tick.
+     * <p>It lets us detect a change of screen contents (a different tab, scrolling)
+     * and request numbers for the new page, without sending a request every tick.
      */
     private int lastSignature;
 
-    /** Czy juz zamowiono liczby po otwarciu ekranu. */
+    /** Whether numbers have already been requested after the screen was opened. */
     private boolean initialRequestSent;
 
     /**
-     * Czy ostatnia odpowiedz byla NIEPELNA.
+     * Whether the last answer was INCOMPLETE.
      *
-     * <p>Serwer liczy partie we wspolnym budzecie czasu i przerywa, gdy sie
-     * skonczy - w logu widac to jako "45 item(s) -> 3 result(s) (complete=false)".
-     * Przy takiej odpowiedzi czesc itemow nie dostala nowej liczby i trzymala
-     * stara. Bez ponowienia dzialo sie to Az DO ZMIANY WIDOKU, bo zapytanie
-     * wychodzi tylko przy zmianie sygnatury - czyli liczba mogla zostac
-     * zamrozona na wartosci z poczatku sesji (zgloszenie gracza: "wyjme
-     * polowe piasku, a dalej pokazuje 25").
+     * <p>The server computes a batch within a shared time budget and stops when it
+     * runs out - in the log this shows up as "45 item(s) -> 3 result(s) (complete=false)".
+     * With such an answer some items did not get a new number and kept the old one.
+     * Without a retry this persisted UNTIL THE VIEW CHANGED, because the request only
+     * goes out when the signature changes - meaning a number could get frozen at the
+     * value from the start of the session (player report: "I take out half the sand,
+     * and it still shows 25").
      */
     private boolean partial;
 
-    /** Co ile tickow ponawiac, gdy odpowiedz byla niepelna. */
+    /** How many ticks to wait before retrying when the answer was incomplete. */
     private static final int RETRY_INTERVAL_TICKS = 10;
     private int retryCooldown;
 
     /**
-     * Czy zamowic liczby JESZCZE RAZ w pierwszym ticku po otwarciu ekranu.
+     * Whether to request the numbers ONE MORE TIME in the first tick after the screen
+     * is opened.
      *
-     * <p><b>Po co.</b> {@code init()} leci, zanim wanilia zdazy wypelnic sloty
-     * siatki (przy przywracanej frazie widzielismy to w logu: zadanie na 45
-     * pozycji, a liczby pojawialy sie tylko na czesci). Pierwsze zadanie idzie
-     * wiec od razu (zeby gracz nie czekal), a drugie - juz po wypelnieniu
-     * slotow - w najblizszym ticku.
+     * <p><b>Why.</b> {@code init()} runs before vanilla manages to fill the grid slots
+     * (with a restored phrase we saw this in the log: a request for 45 positions, while
+     * numbers appeared for only some of them). So the first request goes out right away
+     * (so the player does not wait), and the second one - after the slots are filled -
+     * in the nearest tick.
      */
     private boolean repeatFirstRequest;
 
-    /** Probka nazw itemow do logu diagnostycznego (max {@code limit}). */
+    /** A sample of item names for the diagnostic log (at most {@code limit}). */
     private static String sample(List<Item> items, int limit) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < items.size() && i < limit; i++) {
@@ -92,12 +94,12 @@ public final class VeloceCraftableCounts {
         return sb.toString();
     }
 
-    /** Liczba do dorobienia dla tego itemu; 0 gdy brak wpisu. */
+    /** How many more can be made for this item; 0 when there is no entry. */
     public long get(Item item) {
         return counts.getOrDefault(item, 0L);
     }
 
-    /** Wpisuje wartosci policzone gdzie indziej (np. migawka tla z serwera). */
+    /** Puts in values computed elsewhere (e.g. a background snapshot from the server). */
     public void putAll(Map<Item, Long> craftable) {
         if (craftable != null && !craftable.isEmpty()) {
             counts.putAll(craftable);
@@ -105,25 +107,26 @@ public final class VeloceCraftableCounts {
     }
 
     /**
-     * Zamawia liczby dla itemow widocznych na ekranie.
+     * Requests numbers for the items visible on the screen.
      *
-     * @param pos          pozycja bloku, ktorego siec ma byc przeliczona
-     * @param slots        sloty ekranu
-     * @param isPlayerSlot czy dany slot nalezy do gracza (pomijamy takie)
-     * @param force        true = wyslij nawet gdy sygnatura sie nie zmienila
+     * @param pos          position of the block whose network is to be computed
+     * @param slots        screen slots
+     * @param isPlayerSlot whether the given slot belongs to the player (we skip those)
+     * @param force        true = send even when the signature has not changed
      */
     public void request(BlockPos pos, List<Slot> slots,
                         Predicate<Slot> isPlayerSlot, boolean force) {
         if (pos == null || slots == null) {
             return;
         }
-        // HashSet do wykrywania duplikatow: to leci co tick, a contains() na
-        // liscie bylby skanem O(n) przy kazdym slocie - czyli O(n^2) na tick.
+        // HashSet for duplicate detection: this runs every tick, and contains() on a
+        // list would be an O(n) scan for every slot - that is, O(n^2) per tick.
         List<Item> visible = new ArrayList<>();
         Set<Item> seen = new HashSet<>();
         int signature = 1;
-        // Liczniki do logu: bez nich nie da sie stwierdzic, CZY i CO klient
-        // w ogole objal zadaniem (gracz podejrzewal, ze request nie leci).
+        // Counters for the log: without them it is impossible to tell WHETHER and WHAT
+        // the client actually covered with the request (the player suspected the request
+        // was not going out at all).
         int totalSlots = 0;
         int playerSlots = 0;
         int emptySlots = 0;
@@ -141,13 +144,13 @@ public final class VeloceCraftableCounts {
             Item item = slot.getItem().getItem();
             if (seen.add(item)) {
                 visible.add(item);
-                // Sygnatura: sklad i kolejnosc widocznych itemow.
+                // Signature: the composition and order of visible items.
                 signature = signature * 31 + item.hashCode();
             }
-            // Twardy limit: serwer odrzuca zadania wieksze niz MAX_ITEMS.
-            // Widoczna strona to kilkadziesiat pozycji, ale przy nietypowym
-            // ukladzie slotow moze byc wiecej - lepiej wyslac obcieta liste
-            // niz taka, ktora serwer odrzuci w calosci.
+            // Hard limit: the server rejects requests larger than MAX_ITEMS.
+            // A visible page is a few dozen positions, but with an unusual slot
+            // layout there may be more - better to send a truncated list than
+            // one that the server rejects as a whole.
             if (visible.size() >= com.craftingveloce.network.RequestCraftableCountsPKT.MAX_ITEMS) {
                 break;
             }
@@ -155,13 +158,13 @@ public final class VeloceCraftableCounts {
         if (visible.isEmpty()) {
             com.craftingveloce.util.VeloceLog.Gui.detail(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,
-                    "craftable counts: NIC do policzenia (slots=%d, gracza=%d, puste=%d)",
+                    "craftable counts: NOTHING to compute (slots=%d, player=%d, empty=%d)",
                     totalSlots, playerSlots, emptySlots);
             return;
         }
-        // Ponawiamy, dopoki poprzednia odpowiedz byla niepelna - inaczej itemy
-        // z ogona listy nigdy nie doczekalyby sie przeliczenia. Z throttlem,
-        // bo kazde zadanie kosztuje serwer do 25 ms.
+        // We retry as long as the previous answer was incomplete - otherwise the items
+        // from the tail of the list would never get recomputed. With a throttle,
+        // because every request costs the server up to 25 ms.
         boolean retry = this.partial && --this.retryCooldown <= 0;
         boolean firstRepeat = this.repeatFirstRequest;
         this.repeatFirstRequest = false;
@@ -172,11 +175,10 @@ public final class VeloceCraftableCounts {
         lastSignature = signature;
         initialRequestSent = true;
 
-        // KOLEJNOSC MA ZNACZENIE: serwer liczy partie w podanej kolejnosci
-        // i przerywa, gdy skonczy sie budzet. Itemy BEZ policzonej liczby ida
-        // wiec PIERWSZE - tylko klient wie, czego mu brakuje. Bez tego po
-        // kazdym ponowieniu liczone byly te same pozycje, a reszta trzymala
-        // stare (albo zadne) wartosci.
+        // ORDER MATTERS: the server computes the batch in the given order and stops
+        // when the budget runs out. Items WITHOUT a computed number therefore go
+        // FIRST - only the client knows what it is missing. Without this, after every
+        // retry the same positions were computed and the rest kept old (or no) values.
         int unknown = 0;
         for (Item it : visible) {
             if (!counts.containsKey(it)) {
@@ -188,7 +190,7 @@ public final class VeloceCraftableCounts {
         com.craftingveloce.util.VeloceLog.Gui.detail(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
                 "asking for craftable counts: %d item(s), %d without a value "
-                        + "(first=%s, retry=%s; slots=%d, gracza=%d, puste=%d) -> %s",
+                        + "(first=%s, retry=%s; slots=%d, player=%d, empty=%d) -> %s",
                 visible.size(), unknown, firstRepeat, retry,
                 totalSlots, playerSlots, emptySlots, sample(visible, 8));
 
@@ -198,7 +200,7 @@ public final class VeloceCraftableCounts {
                 new com.craftingveloce.network.RequestCraftableCountsPKT(pos, visible));
     }
 
-    /** Po otwarciu ekranu sygnatura startuje od nowa. */
+    /** After the screen is opened the signature starts from scratch. */
     public void resetRequestState() {
         initialRequestSent = false;
         partial = false;
@@ -207,19 +209,19 @@ public final class VeloceCraftableCounts {
     }
 
     /**
-     * Odpowiedz serwera z liczbami dla widocznych itemow.
+     * The server's answer with numbers for the visible items.
      *
-     * <p>Aktualizujemy TYLKO te itemy, o ktore pytalismy. Gdybysmy nadpisali
-     * cala mape, tlo (cache) i natychmiastowa odpowiedz nadpisywalyby sie
-     * nawzajem i liczby by migotaly.
+     * <p>We update ONLY the items we asked about. If we overwrote the whole map, the
+     * background (cache) and the immediate answer would overwrite each other and the
+     * numbers would flicker.
      *
-     * <p>Usuwamy tez wpisy dla pytanych itemow, ktorych nie ma w wyniku.
-     * Serwer od pewnego czasu przysyla takze ZERA (konkretna odpowiedz "nie da
-     * sie juz nic zrobic"), ale czyszczenie zostaje jako zabezpieczenie dla
-     * odpowiedzi bez tych zer.
+     * <p>We also remove entries for requested items that are absent from the result.
+     * The server has been sending ZEROS for a while now (an explicit answer "nothing
+     * more can be done"), but the cleanup stays as a safeguard for answers without
+     * those zeros.
      */
     public void update(Map<Item, Long> craftable, boolean complete) {
-        // Niepelna odpowiedz = trzeba dopytac (patrz pole partial).
+        // An incomplete answer = we need to ask again (see the partial field).
         this.partial = !complete;
 
         if (complete) {
@@ -228,23 +230,22 @@ public final class VeloceCraftableCounts {
             }
             counts.putAll(craftable);
         } else {
-            // Serwer nie przezyl wszystkiego (siec jeszcze nie gotowa albo
-            // budzet sie skonczyl). Tylko dokladamy to, co przyszlo - NIE
-            // kasujemy poprzednich wartosci. Bez tego liczby znikaly i nie
-            // wracaly.
+            // The server did not get through everything (the network is not ready yet
+            // or the budget ran out). We only add what came in - we do NOT delete
+            // previous values. Without this the numbers disappeared and never came back.
             counts.putAll(craftable);
         }
         reportState(complete);
     }
 
     /**
-     * Log stanu PO scaleniu odpowiedzi: ile ZADANYCH itemow ma wartosc, ile ma
-     * zero, a ilu brakuje.
+     * Logs the state AFTER merging the answer: how many REQUESTED items have a value,
+     * how many have zero, and how many are missing.
      *
-     * <p>Rozroznia dwie zupelnie rozne przyczyny "brak liczby": brak wpisu =
-     * item nie zostal policzony (zadanie go nie objelo), zero = policzony
-     * i naprawde nie da sie go zrobic. Wczesniej log byl PRZED scaleniem, wiec
-     * pokazywal stan sprzed odpowiedzi i wprowadzal w blad.
+     * <p>It distinguishes two completely different causes of "no number": a missing
+     * entry = the item was not computed (the request did not cover it), zero = it was
+     * computed and it really cannot be made. Previously the log ran BEFORE the merge,
+     * so it showed the state from before the answer and was misleading.
      */
     private void reportState(boolean complete) {
         int withValue = 0;

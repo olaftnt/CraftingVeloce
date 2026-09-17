@@ -23,41 +23,43 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Buduje testowa siec Veloce do sprawdzania zachowania na niezaladowanych chunkach.
+ * Builds a test Veloce network for checking behaviour on unloaded chunks.
  *
- * <p><b>Po co to.</b> Ręczne stawianie 1000 rur, zeby przetestowac rozladowywanie
- * chunkow, jest niepraktyczne - a bez dlugiej sieci nie da sie w ogole wejsc
- * w sytuacje, w ktorej magazyn jest poza symulacja. Ta komenda stawia caly
- * uklad jednym poleceniem, a na koncu wypisuje gotowe komendy do tepania.
+ * <p><b>Why this exists.</b> Manually placing 1000 pipes just to test chunk
+ * unloading is impractical - and without a long network you cannot even get into
+ * the situation where storage is outside the simulation. This command places the
+ * whole layout with a single command and at the end prints ready-to-use teleport
+ * commands.
  *
- * <p><b>Uklad:</b>
+ * <p><b>Layout:</b>
  * <pre>
- *   [terminal] --- 1000 rur na polnoc --- [baryłka]
- *      start                                  koniec
+ *   [terminal] --- 1000 pipes to the north --- [barrel]
+ *      start                                    end
  * </pre>
  *
- * <p><b>Dlaczego baryłka, a nie skrzynia.</b> Baryłka ({@code barrel}) jest
- * pojemnikiem bez dodatkowej logiki, wiec idealnie nadaje sie na "prosty
- * magazyn, ktory ma sie rozladowywac". Skrzynia vanilla laczy sie w podwojna,
- * co zmienialoby pozycje endpointu.
+ * <p><b>Why a barrel and not a chest.</b> A barrel ({@code barrel}) is a container
+ * with no extra logic, so it is perfect as a "simple storage that is supposed to
+ * unload". A vanilla chest merges into a double chest, which would change the
+ * endpoint position.
  *
- * <p><b>Dlaczego chunki sa ladowane na chwile.</b> Rury musza sie ze soba
- * polaczyc, a to wymaga symulacji. Komenda najpierw stawia caly uklad przy
- * zaladowanych chunkach, a potem pozwala im wypasc - dopiero wtedy test ma sens.
+ * <p><b>Why the chunks are loaded for a moment.</b> The pipes have to connect to
+ * each other and that requires simulation. The command first places the whole
+ * layout with the chunks loaded and then lets them drop - only then does the test
+ * make sense.
  */
 public final class CVTestNetworkCommand {
 
     private CVTestNetworkCommand() {
     }
 
-    /** Domyslna dlugosc sieci w blokach. */
+    /** Default network length in blocks. */
     private static final int DEFAULT_LENGTH = 1000;
 
     /**
-     * Ile chunkow przy forsie zostawiamy wokol trasy.
+     * How many chunks around the route we leave under force.
      *
-     * <p>To nie jest force-load - tylko chwilowe wymuszenie, zeby WSZYSTKIE rury
-     * zdazyly sie polaczyc i zeby siec zapisala sie w NBT w komplecie.
+     * <p>This is not a force-load - only a temporary force so that ALL pipes manage
+     * to connect and the network is saved to NBT in one piece.
      */
     private static final int BUILD_CHUNK_MARGIN = 1;
 
@@ -77,44 +79,46 @@ public final class CVTestNetworkCommand {
                             .executes(ctx -> teleport(ctx, true)))
                         .then(Commands.literal("end")
                             .executes(ctx -> teleport(ctx, false))))
-                    // Przypomnienie komend tepania - bez przebudowy sieci.
+                    // Teleport command reminder - without rebuilding the network.
                     .then(Commands.literal("where")
                         .executes(CVTestNetworkCommand::where))
                 ));
     }
 
     // ------------------------------------------------------------------
-    // Budowa
+    // Building
     // ------------------------------------------------------------------
 
     private static int build(CommandContext<CommandSourceStack> context, int length) {
         CommandSourceStack source = context.getSource();
         ServerLevel level = source.getLevel();
 
-        // Zaczynamy na POSADZCE gracza, a nie w jego oczach - latwiej trafic
-        // i nie trzeba sie potem cofac, gdy cos wisi w powietrzu.
+        // We start on the player's FLOOR, not at their eyes - it is easier to hit
+        // and you do not have to step back afterwards when something ends up
+        // hanging in the air.
         BlockPos origin = source.getPlayer() != null
                 ? source.getPlayer().blockPosition()
                 : BlockPos.containing(source.getPosition());
 
-        // Uklad biegnie na polnoc, zeby nie zalezec od kierunku patrzenia
-        // (ten sam test zawsze wychodzi tak samo).
+        // The layout runs north so that it does not depend on the look direction
+        // (the same test always comes out the same).
         Direction forward = Direction.NORTH;
 
         BlockPos startPos = origin;
         BlockPos endPos = origin.relative(forward, length);
 
-        // Poziom posadzki: polozmy ja, zeby bylo po czym chodzic i zeby
-        // baryłka/terminal nie wisialy w powietrzu.
+        // Floor level: let us lay it down so there is something to walk on and so
+        // the barrel/terminal does not hang in the air.
         List<BlockPos> floor = new ArrayList<>();
         for (int i = 0; i <= length; i++) {
             floor.add(origin.relative(forward, i));
         }
 
-        // 1. Wymuszenie chunkow na czas budowy.
+        // 1. Forcing chunks for the duration of the build.
         //
-        // Bez tego rury w dalszych chunkach nie polaczylyby sie (nie ma
-        // symulacji), a siec zapisalaby sie w NBT jako lancuch bez zwiazkow.
+        // Without this the pipes in the further chunks would not connect (there is
+        // no simulation) and the network would be saved to NBT as a chain without
+        // links.
         List<ChunkPos> touched = new ArrayList<>();
         for (BlockPos p : floor) {
             ChunkPos cp = new ChunkPos(p);
@@ -123,15 +127,15 @@ public final class CVTestNetworkCommand {
             }
         }
 
-        // BUDZET CZASU NA TE FAZE.
+        // TIME BUDGET FOR THIS PHASE.
         //
-        // 1000 blokow w linii to ~63 chunki, a wymuszenie chunku to wczytanie
-        // go z dysku (superflat: kilka-kilkanascie ms). Bez limitu jedna
-        // komenda zamrozilaby serwer na ponad sekunde - dokladnie ta klasa
-        // bledu, ktora w tym modzie juz raz wystapila.
+        // 1000 blocks in a line is ~63 chunks, and forcing a chunk means loading it
+        // from disk (superflat: a few to a dozen or so ms). Without a limit a single
+        // command would freeze the server for over a second - exactly the class of
+        // bug that has already happened once in this mod.
         //
-        // Dlatego faza wymuszania ma twardy budzet. Jesli sie nie zmiesci,
-        // MOWIMY o tym wprost i przerywamy, zamiast zamulac gre.
+        // That is why the forcing phase has a hard budget. If it does not fit, we
+        // SAY so plainly and abort, instead of bogging the game down.
         long buildDeadline = System.nanoTime() + 400_000_000L;   // 400 ms
         int forced = 0;
         for (ChunkPos cp : touched) {
@@ -141,36 +145,37 @@ public final class CVTestNetworkCommand {
                     level.setChunkForced(done.x, done.z, false);
                 }
                 source.sendFailure(Component.literal(
-                        "§cBudowa przerwana: " + touched.size()
-                                + " chunkow nie zmiescilo sie w budzecie czasu."));
+                        "§cBuild aborted: " + touched.size()
+                                + " chunks did not fit in the time budget."));
                 source.sendSuccess(() -> Component.literal(
-                        "§7Sprobuj krocej: §f/cv testnet build 500§7, "
-                                + "albo rozbij na kilka komend."), false);
+                        "§7Try shorter: §f/cv testnet build 500§7, "
+                                + "or split it into several commands."), false);
                 return 0;
             }
             level.setChunkForced(cp.x, cp.z, true);
             forced++;
         }
 
-        // 2. Posadzka + rury + konce.
+        // 2. Floor + pipes + ends.
         int pipes = 0;
         for (int i = 0; i <= length; i++) {
             BlockPos p = origin.relative(forward, i);
-            // Posadzka pod rura - zeby dalo sie chodzic i tepac.
+            // Floor under the pipe - so you can walk and teleport.
             level.setBlock(p.below(), Blocks.STONE.defaultBlockState(), 3);
 
             if (i == 0) {
-                // Terminal na starcie.
+                // Terminal at the start.
                 //
-                // UWAGA: setBlock omija getStateForPlacement, wiec defaultBlockState()
-                // daje DOMYSLNY FACING. Ustawiamy go recznie tak, zeby przod
-                // terminala NIE byl zwrocony w strone rur - inaczej
-                // canConnectFrom() odrzuci polaczenie i siec nie powstanie
-                // (dokladnie ten blad naprawialismy w canConnectFrom).
+                // NOTE: setBlock bypasses getStateForPlacement, so
+                // defaultBlockState() gives the DEFAULT FACING. We set it manually
+                // so that the front of the terminal is NOT turned towards the pipes
+                // - otherwise canConnectFrom() rejects the connection and the
+                // network never forms (exactly the bug we fixed in
+                // canConnectFrom).
                 //
-                // Rury ida na NORTH, terminal stoi na poludnie od nich, wiec
-                // przodem (czyli w swoja "niepodlaczalna" strone) obracamy go
-                // na SOUTH - wtedy strona polaczalna patrzy na NORTH, na rury.
+                // The pipes run NORTH, the terminal stands south of them, so we
+                // turn its front (that is, its "non-connectable" side) to SOUTH -
+                // then the connectable side faces NORTH, towards the pipes.
                 BlockState terminalState = VeloceRegistry.VELOCE_TOM_TERMINAL.get()
                         .defaultBlockState();
                 if (terminalState.hasProperty(
@@ -181,7 +186,7 @@ public final class CVTestNetworkCommand {
                 }
                 level.setBlock(p, terminalState, 3);
             } else if (i == length) {
-                // Baryłka na koncu - prosty magazyn, ktory MA sie rozladowywac.
+                // Barrel at the end - simple storage that IS supposed to unload.
                 level.setBlock(p, Blocks.BARREL.defaultBlockState(), 3);
             } else {
                 placePipe(level, p);
@@ -189,8 +194,9 @@ public final class CVTestNetworkCommand {
             }
         }
 
-        // 3. Domkniecie polaczen: przechodzimy jeszcze raz i przeliczamy stan
-        //    kazdej rury oraz sasiadow, zeby siec byla spojna w NBT.
+        // 3. Closing the connections: we walk through once more and recompute the
+        //    state of every pipe and its neighbours so the network is coherent in
+        //    NBT.
         for (int i = 0; i <= length; i++) {
             BlockPos p = origin.relative(forward, i);
             BlockState st = level.getBlockState(p);
@@ -199,70 +205,71 @@ public final class CVTestNetworkCommand {
             }
         }
 
-        // 4. Przebudowa sieci od zera, zeby menedzer zobaczyl caly lancuch.
+        // 4. Rebuild the network from scratch so the manager sees the whole chain.
         var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level);
         manager.clearPendingRebuilds();
         var net = manager.scanAndBuildNetwork(level, origin.relative(forward, 1), null);
 
-        // 5. Zwolnienie chunkow - od tej chwili gra rzadzi sie swoimi zasadami.
+        // 5. Releasing the chunks - from this moment the game follows its own rules.
         //
-        // To jest istota testu: chunkow NIE trzymamy na sile. Zostana tylko te
-        // z wezlami (terminal), a reszta ma wypasc.
+        // This is the essence of the test: we do NOT hold the chunks by force. Only
+        // those with nodes (the terminal) will remain, and the rest are supposed to
+        // drop.
         for (ChunkPos cp : touched) {
             level.setChunkForced(cp.x, cp.z, false);
         }
 
-        // 6. Raport + komendy do tepania.
+        // 6. Report + teleport commands.
         int nodes = net == null ? 0 : net.getTerminals().size();
         int endpoints = net == null ? 0 : net.getEndpoints().size();
         final int pipeCount = pipes;
         final int chunkCount = touched.size();
         final String netLabel = net == null
-                ? "§cBRAK"
+                ? "§cNONE"
                 : net.getId().toString().substring(0, 8);
 
         source.sendSuccess(() -> Component.literal(
-                "§6=== [CraftingVeloce] Testowa siec zbudowana ==="), false);
+                "§6=== [CraftingVeloce] Test network built ==="), false);
         source.sendSuccess(() -> Component.literal(
-                "§7Rur: §f" + pipeCount + " §7| dlugosc: §f" + length
-                        + " §7| chunki: §f" + chunkCount), false);
+                "§7Pipes: §f" + pipeCount + " §7| length: §f" + length
+                        + " §7| chunks: §f" + chunkCount), false);
         source.sendSuccess(() -> Component.literal(
-                "§7Sieci: §f" + netLabel
-                        + " §7| wezly: §f" + nodes + " §7| magazyny: §f" + endpoints), false);
+                "§7Networks: §f" + netLabel
+                        + " §7| nodes: §f" + nodes + " §7| storage: §f" + endpoints), false);
         if (net != null && endpoints == 0) {
             source.sendSuccess(() -> Component.literal(
-                    "§eUwaga: baryłka nie zostala wykryta jako magazyn. "
-                            + "Sprawdz, czy siec sie polaczyla (§f/cv debug§e na rurze)."), false);
+                    "§eNote: the barrel was not detected as storage. "
+                            + "Check whether the network connected (§f/cv debug§e on the pipe)."), false);
         }
         if (source.getPlayer() != null) {
             rememberPositions(source.getPlayer(), origin, endPos);
         }
 
-        // SZCZEGOLOWY ZAPIS DO KONSOLI - co postawilismy i w jakim stanie
-        // sa chunki. Na czacie tylko potwierdzenie, bo kilkadziesiat linii
-        // raportu jest nieczytelne w oknie czatu i znika po chwili.
+        // DETAILED WRITE TO THE CONSOLE - what we placed and what state the chunks
+        // are in. On the chat only a confirmation, because a few dozen lines of
+        // report are unreadable in the chat window and vanish after a moment.
         com.craftingveloce.debug.ChunkTrace.event("BUILD",
-                "start=%s koniec=%s dlugosc=%d rur=%d chunkow=%d",
+                "start=%s end=%s length=%d pipes=%d chunks=%d",
                 origin.toShortString(), endPos.toShortString(), length, pipeCount, chunkCount);
         com.craftingveloce.debug.ChunkTrace.event("BUILD",
-                "terminal@%s baryłka@%s siec=%s wezlow=%d magazynow=%d",
+                "terminal@%s barrel@%s network=%s nodes=%d storage=%d",
                 origin.toShortString(), endPos.toShortString(), netLabel, nodes, endpoints);
         if (net != null) {
-            com.craftingveloce.debug.ChunkTrace.snapshotChunks("PO BUDOWIE", level, net);
-            com.craftingveloce.debug.ChunkTrace.snapshotStock("PO BUDOWIE", level, net);
+            com.craftingveloce.debug.ChunkTrace.snapshotChunks("AFTER BUILD", level, net);
+            com.craftingveloce.debug.ChunkTrace.snapshotStock("AFTER BUILD", level, net);
         }
         com.craftingveloce.debug.ChunkTrace.event("BUILD",
-                "chunki wymuszone na czas budowy ZWOLNIONE - teraz obowiazuja "
-                        + "normalne zasady (terminal trzyma, baryłka ma wypasc)");
+                "chunks forced for the duration of the build RELEASED - from now on the "
+                        + "normal rules apply (the terminal holds, the barrel is supposed to drop)");
 
         printTeleportHints(source, origin, endPos);
 
         source.sendSuccess(() -> Component.literal(
-                "§7Wpisz §f/cv chunk§7, zeby wlaczyc monitor rozladowan."), false);
+                "§7Type §f/cv chunk§7 to enable the unload monitor."), false);
         return 1;
     }
 
-    /** Stawia rure z poprawnymi polaczeniami. */
+    /** Places a pipe with correct connections. */
     private static void placePipe(ServerLevel level, BlockPos pos) {
         BlockState state = VeloceRegistry.VELOCE_PIPE.get().defaultBlockState();
         level.setBlock(pos, state, 3);
@@ -273,35 +280,35 @@ public final class CVTestNetworkCommand {
     }
 
     // ------------------------------------------------------------------
-    // Sprzatanie i teleport
+    // Cleanup and teleport
     // ------------------------------------------------------------------
 
     /**
-     * Usuwa zbudowana siec testowa.
+     * Removes the built test network.
      *
-     * <p>Kasujemy wylacznie bloki, ktore same postawilismy i tylko miedzy
-     * zapamietanym startem a koncem - zeby nie zmiotlo przypadkiem prawdziwej
-     * bazy gracza stojacej obok.
+     * <p>We delete only the blocks that we placed ourselves, and only between the
+     * remembered start and end - so that it does not accidentally wipe out a real
+     * player base standing next to it.
      */
     private static int clear(CommandContext<CommandSourceStack> context) {
         CommandSourceStack source = context.getSource();
         ServerLevel level = source.getLevel();
         ServerPlayer player = source.getPlayer();
         if (player == null) {
-            source.sendFailure(Component.literal("§cTa komenda wymaga gracza."));
+            source.sendFailure(Component.literal("§cThis command requires a player."));
             return 0;
         }
         BlockPos start = readStartTag(player);
         BlockPos end = readEndTag(player);
         if (start == null || end == null) {
             source.sendFailure(Component.literal(
-                    "§cNie znam pozycji testu. Zbuduj siec: §f/cv testnet"));
+                    "§cI do not know the test position. Build a network: §f/cv testnet"));
             return 0;
         }
 
         int removed = 0;
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        // Trasa jest zawsze w linii prostej, wiec idziemy po niej krok po kroku.
+        // The route is always a straight line, so we walk it step by step.
         int steps = (int) Math.sqrt(start.distSqr(end)) + 1;
         for (int i = 0; i <= steps; i++) {
             cursor.set(start.getX(), start.getY(), start.getZ() + (start.getZ() > end.getZ() ? -i : i));
@@ -312,7 +319,7 @@ public final class CVTestNetworkCommand {
                 level.removeBlock(cursor.immutable(), false);
                 removed++;
             }
-            // Posadzka, ktora polozylismy pod rura.
+            // The floor we laid under the pipe.
             BlockPos below = cursor.below();
             if (level.getBlockState(below).is(Blocks.STONE)) {
                 level.removeBlock(below, false);
@@ -321,49 +328,49 @@ public final class CVTestNetworkCommand {
         }
         int total = removed;
         source.sendSuccess(() -> Component.literal(
-                "§6Usunieto §f" + total + " §6blokow testowej sieci."), false);
+                "§6Removed §f" + total + " §6blocks of the test network."), false);
         return 1;
     }
 
     private static int teleport(CommandContext<CommandSourceStack> context, boolean start) {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null) {
-            context.getSource().sendFailure(Component.literal("§cTa komenda wymaga gracza."));
+            context.getSource().sendFailure(Component.literal("§cThis command requires a player."));
             return 0;
         }
-        // Zapamietana pozycja jest zapisywana w samym graczu (persistent data),
-        // wiec dziala tez po wyjsciu i ponownym wejsciu do swiata - a wlasnie
-        // tak wyglada test ("zresetuj gierke").
+        // The remembered position is stored on the player itself (persistent data),
+        // so it also works after leaving and re-entering the world - and that is
+        // exactly what the test looks like ("restart the game").
         BlockPos target = start ? readStartTag(player) : readEndTag(player);
         if (target == null) {
             context.getSource().sendFailure(Component.literal(
-                    "§cNie znam pozycji testu. Zbuduj siec: §f/cv testnet"));
+                    "§cI do not know the test position. Build a network: §f/cv testnet"));
             return 0;
         }
         player.teleportTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
         context.getSource().sendSuccess(() -> Component.literal(
-                "§7Teleport na " + (start ? "§astart" : "§ckoniec") + "§7."), false);
+                "§7Teleport to the " + (start ? "§astart" : "§cend") + "§7."), false);
         return 1;
     }
 
-    /** Klucz w danych gracza, gdzie trzymamy pozycje startu testu. */
+    /** Key in the player data where we keep the test start position. */
     private static final String TAG_START = "VeloceTestStart";
     private static final String TAG_END = "VeloceTestEnd";
 
-    /** Zapisuje pozycje testu w graczu (przezywa wyjscie do menu). */
+    /** Saves the test positions on the player (survives leaving to the menu). */
     private static void rememberPositions(ServerPlayer player, BlockPos start, BlockPos end) {
         var data = player.getPersistentData();
         data.putLong(TAG_START, start.asLong());
         data.putLong(TAG_END, end.asLong());
     }
 
-    /** Pozycja startu testu zapamietana w graczu (null gdy brak). */
+    /** Test start position remembered on the player (null when absent). */
     public static BlockPos readStartTag(ServerPlayer player) {
         var data = player.getPersistentData();
         return data.contains(TAG_START) ? BlockPos.of(data.getLong(TAG_START)) : null;
     }
 
-    /** Pozycja konca testu zapamietana w graczu (null gdy brak). */
+    /** Test end position remembered on the player (null when absent). */
     public static BlockPos readEndTag(ServerPlayer player) {
         var data = player.getPersistentData();
         return data.contains(TAG_END) ? BlockPos.of(data.getLong(TAG_END)) : null;
@@ -372,28 +379,28 @@ public final class CVTestNetworkCommand {
     private static int where(CommandContext<CommandSourceStack> context) {
         ServerPlayer player = context.getSource().getPlayer();
         if (player == null) {
-            context.getSource().sendFailure(Component.literal("§cTa komenda wymaga gracza."));
+            context.getSource().sendFailure(Component.literal("§cThis command requires a player."));
             return 0;
         }
         BlockPos start = readStartTag(player);
         BlockPos end = readEndTag(player);
         if (start == null || end == null) {
             context.getSource().sendFailure(Component.literal(
-                    "§cNie znam pozycji testu. Zbuduj siec: §f/cv testnet"));
+                    "§cI do not know the test position. Build a network: §f/cv testnet"));
             return 0;
         }
         printTeleportHints(context.getSource(), start, end);
         return 1;
     }
 
-    /** Wypisuje dwie krotkie, klikalne komendy do tepania. */
+    /** Prints two short, clickable teleport commands. */
     private static void printTeleportHints(CommandSourceStack source, BlockPos start, BlockPos end) {
-        source.sendSuccess(() -> Component.literal("§6--- Tepanie (kliknij, aby wykonac) ---"), false);
+        source.sendSuccess(() -> Component.literal("§6--- Teleport (click to run) ---"), false);
         source.sendSuccess(() -> tpLine("START", start, "§a"), false);
-        source.sendSuccess(() -> tpLine("KONIEC", end, "§c"), false);
+        source.sendSuccess(() -> tpLine("END", end, "§c"), false);
     }
 
-    /** Jedna linia z klikalna komenda /tp. */
+    /** A single line with a clickable /tp command. */
     private static MutableComponent tpLine(String label, BlockPos pos, String color) {
         String coords = pos.getX() + " " + (pos.getY() + 1) + " " + pos.getZ();
         return Component.literal("  " + color + label + "§7: §f/tp " + coords)
@@ -401,6 +408,6 @@ public final class CVTestNetworkCommand {
                         .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
                                 "/tp @s " + coords))
                         .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                Component.literal("Kliknij, aby sie teleportowac"))));
+                                Component.literal("Click to teleport there"))));
     }
 }

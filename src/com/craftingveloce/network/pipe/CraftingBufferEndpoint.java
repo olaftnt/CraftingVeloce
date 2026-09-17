@@ -10,18 +10,18 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
- * Endpoint sieci reprezentujacy bufor auto-craftera.
+ * A network endpoint representing the auto-crafter's buffer.
  *
- * <p>Bufor nie jest zwyklym inventory w swiecie (to pamiec podreczna bloku),
- * wiec standardowe skanowanie go nie znajdzie. Ten endpoint sprawia, ze
- * nadwyzka produkcji jest <b>normalnie czescia sieci</b>:
+ * <p>The buffer is not an ordinary inventory in the world (it is the block's
+ * scratch memory), so the standard scan will not find it. This endpoint makes
+ * the production surplus <b>a normal part of the network</b>:
  * <ul>
- *   <li>widac ja w terminalu (licznik stocku),</li>
- *   <li>mozna ja wyciagnac terminalem, rura, hopperem, extractorem.</li>
+ *   <li>it is visible in the terminal (the stock counter),</li>
+ *   <li>it can be pulled out with the terminal, a pipe, a hopper, an extractor.</li>
  * </ul>
  *
- * <p>Dziedziczy po {@link ConnectedEndpointInfo}, zeby korzystac z gotowego
- * cache'owania licznikow - nadpisujemy tylko odczyt i ekstrakcje.
+ * <p>It extends {@link ConnectedEndpointInfo} in order to reuse the ready-made
+ * counter caching - we only override the read and the extraction.
  */
 public class CraftingBufferEndpoint extends ConnectedEndpointInfo {
 
@@ -29,11 +29,11 @@ public class CraftingBufferEndpoint extends ConnectedEndpointInfo {
         super(pos, accessSide, Type.CRAFTING_BUFFER);
     }
 
-    /** Bufor spod tego endpointu, albo null gdy blok zniknal. */
+    /** The buffer behind this endpoint, or null when the block is gone. */
     private VeloceCraftingBuffer buffer(ServerLevel level) {
-        // Bez wczytywania chunku: ten bufor bywa wolany przy KAZDEJ probie
-        // wyciagniecia/wlozenia, wiec getBlockEntity na rozladowanym chunku
-        // zrobilby petle load/unload (patrz VeloceChunkLoader.blockEntityIfLoaded).
+        // Without loading the chunk: this buffer tends to be called on EVERY
+        // insert/extract attempt, so getBlockEntity on an unloaded chunk would
+        // create a load/unload loop (see VeloceChunkLoader.blockEntityIfLoaded).
         BlockEntity be = com.craftingveloce.network.pipe.VeloceChunkLoader
                 .blockEntityIfLoaded(level, getPos());
         if (be instanceof VeloceCraftingTableBlockEntity crafter) {
@@ -94,7 +94,7 @@ public class CraftingBufferEndpoint extends ConnectedEndpointInfo {
     public ItemStack insertItemLeftover(ServerLevel level, ItemStack stack) {
         VeloceCraftingBuffer buf = buffer(level);
         if (buf == null) {
-            return stack;   // brak bufora - nic nie przyjeto
+            return stack;   // no buffer - nothing was accepted
         }
         ItemStack leftover = buf.insert(stack);
         refreshIfLoaded(level);

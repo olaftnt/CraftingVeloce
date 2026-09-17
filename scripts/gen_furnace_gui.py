@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-"""Generuje tla GUI dla obu piecow - W STYLU EKSTRAKTORA.
+"""Generates the GUI backgrounds for both furnaces - IN THE EXTRACTOR'S STYLE.
 
-Poprzednia wersja rysowala ciemny panel w stylu moda (fiolet/ender). Efekt
-byl taki, ze piece wygladaly jak z innej gry niz reszta moda - ekstraktor
-uzywa klasycznego, waniliowego GUI. Ten skrypt odtwarza DOKLADNIE ten styl,
-wyprobowany z tekstury ekstraktora:
+The previous version drew a dark panel in the mod's style (purple/ender). The
+effect was that the furnaces looked like they came from a different game than
+the rest of the mod - the extractor uses a classic, vanilla GUI. This script
+reproduces EXACTLY that style, sampled from the extractor's texture:
 
     panel           #c6c6c6
-    skos jasny      #ffffff   (gorna i lewa krawedz panelu)
-    skos ciemny     #373737   (prawa i dolna krawedz panelu)
-    cien wewnetrzny #8b8b8b   (1 px przy prawej i dolnej krawedzi)
-    wnetrze slotu   #8b8b8b
-    ramka slotu     #373737 (gora+lewo) / #ffffff (dol+prawo)
+    light bevel     #ffffff   (the panel's top and left edge)
+    dark bevel      #373737   (the panel's right and bottom edge)
+    inner shadow    #8b8b8b   (1 px along the right and bottom edge)
+    slot interior   #8b8b8b
+    slot frame      #373737 (top+left) / #ffffff (bottom+right)
 
-Uklad jest ten sam co w ekstraktorze: panel 212 x 166, ekwipunek gracza
-w x=26, etykiety w x=26. Dzieki temu oba ekrany czyta sie jak jedna rodzina.
+The layout is the same as in the extractor: a 212 x 166 panel, the player
+inventory at x=26, the labels at x=26. Thanks to that both screens read as one
+family.
 
-Uruchomienie:
+Usage:
     python3 scripts/gen_furnace_gui.py
 """
 
@@ -26,9 +27,9 @@ from PIL import Image, ImageDraw
 
 OUT = os.path.join("assets", "craftingveloce", "textures", "gui")
 
-# Wymiary panelu - DOKLADNIE jak ekstraktor (i jak waniliowy kontener).
+# Panel dimensions - EXACTLY like the extractor (and like a vanilla container).
 W, H = 212, 166
-CANVAS = 256  # rozmiar pliku, jak w ekstraktorze
+CANVAS = 256  # file size, as in the extractor
 
 PANEL = (0xC6, 0xC6, 0xC6)
 BEVEL_LIGHT = (0xFF, 0xFF, 0xFF)
@@ -36,75 +37,78 @@ BEVEL_DARK = (0x37, 0x37, 0x37)
 SHADOW = (0x8B, 0x8B, 0x8B)
 SLOT_BG = (0x8B, 0x8B, 0x8B)
 
-# Pozycje slotow - MUSZA sie zgadzac z menu (VeloceVelocityFurnaceMenu).
-# UWAGA: kazda stala w OSOBNEJ linii. Build.py czyta je wyrazeniem regularnym,
-# zeby porownac z menu i z ekranem - zapis krotkowy (A, B = 1, 2) tego nie
-# pozwala, a bez tego porownania uklad GUI moze sie rozjechac niezauwazony.
+# Slot positions - they MUST match the menu (VeloceVelocityFurnaceMenu).
+# NOTE: one constant per LINE. Build.py reads them with a regular expression
+# so that it can compare them against the menu and the screen - the short form
+# (A, B = 1, 2) does not allow that, and without that comparison the GUI layout
+# can drift apart unnoticed.
 FILTER_X = 63
 FILTER_Y = 18
-FUEL_X = 134     # kolumna plomien+paliwo, jeden skok slotu za filtrami
+FUEL_X = 134     # flame+fuel column, one slot step past the filters
 FUEL_Y = 36
 PLAYER_X = 26
 PLAYER_Y = 84
 
-# Pozycje elementow rysowanych dynamicznie przez ekrany.
-# JEDNO zrodlo: ekrany uzywaja tych samych liczb (sprawdza to build.py).
-FLAME_X = 135    # plomien NAD slotem paliwa (wyrownany z gornym rzedem filtrow)
+# Positions of the elements the screens draw dynamically.
+# ONE source: the screens use the same numbers (build.py checks this).
+FLAME_X = 135    # the flame ABOVE the fuel slot (aligned with the top filter row)
 FLAME_Y = 19
-# Uwaga: samego plomienia NIE rysujemy w teksturze. Ekran sklada go
-# z dwoch sprite'ow wanilii (wygaszony obrys + zapalona czesc), dokladnie
-# tak, jak robi to waniliowy piec - patrz VeloceVelocityFurnaceScreen.
-BATTERY_X = 66          # bateria POZIOMA, wycentrowana (grupa 80 px z slotem)
+# Note: we do NOT draw the flame itself in the texture. The screen assembles it
+# from two vanilla sprites (an extinguished outline + the lit part), exactly as
+# the vanilla furnace does - see VeloceVelocityFurnaceScreen.
+BATTERY_X = 66          # HORIZONTAL battery, centred (an 80 px group with the slot)
 BATTERY_Y = 32
 BATTERY_W = 56
 BATTERY_H = 14
-NUB_W = 2               # biegun baterii (po prawej stronie korpusu)
+NUB_W = 2               # the battery's terminal (on the right side of the body)
 NUB_H = 6
-BATTERY_SLOT_X = 130    # slot na itemek z energia - po prawej od baterii
+BATTERY_SLOT_X = 130    # the slot for the energy item - to the right of the battery
 BATTERY_SLOT_Y = 32
 
 
 def panel(draw):
-    """Panel w stylu waniliowego kontenera: wypukla ramka + cien wewnatrz."""
+    """A panel in the vanilla container style: a raised frame + an inner shadow."""
     draw.rectangle([0, 0, W - 1, H - 1], fill=PANEL)
-    # Jasny skos: gora i lewo.
+    # Light bevel: top and left.
     draw.line([(0, 0), (W - 1, 0)], fill=BEVEL_LIGHT)
     draw.line([(0, 0), (0, H - 1)], fill=BEVEL_LIGHT)
-    # Ciemny skos: dol i prawo.
+    # Dark bevel: bottom and right.
     draw.line([(W - 1, 0), (W - 1, H - 1)], fill=BEVEL_DARK)
     draw.line([(0, H - 1), (W - 1, H - 1)], fill=BEVEL_DARK)
-    # Cien wewnetrzny tuz przy ciemnym skosie - to on daje efekt wglebienia.
+    # The inner shadow right next to the dark bevel - it is what gives the
+    # recessed effect.
     draw.line([(W - 2, 1), (W - 2, H - 2)], fill=SHADOW)
     draw.line([(1, H - 2), (W - 2, H - 2)], fill=SHADOW)
 
 
 def slot(draw, sx, sy):
-    """Slot 16x16 w dokladnie waniliowym wzorze (wyprobowanym z ekstraktora).
+    """A 16x16 slot in exactly the vanilla pattern (sampled from the extractor).
 
-    Ramka nie jest symetryczna: gora i lewo ciemne, dol i prawo jasne - dzieki
-    temu slot wyglada na wciety, a nie namalowany.
+    The frame is not symmetric: top and left dark, bottom and right light -
+    thanks to that the slot looks recessed rather than painted on.
     """
     draw.rectangle([sx, sy, sx + 15, sy + 15], fill=SLOT_BG)
-    # UWAGA NA DLUGOSCI: prawa i dolna krawedz maja DOKLADNIE po 16 px.
-    # Wersja z koncowka w (sx+16, sy+16) byla o piksel za dluga i ten piksel
-    # nadpisywal potem narożnik - ramka wychodzila z bialym kleksem
-    # w prawym dolnym rogu. Wyprobowane z tekstury ekstraktora.
-    draw.line([(sx - 1, sy - 1), (sx + 15, sy - 1)], fill=BEVEL_DARK)   # gora, 17 px
-    draw.line([(sx - 1, sy - 1), (sx - 1, sy + 15)], fill=BEVEL_DARK)   # lewo, 17 px
-    draw.line([(sx + 16, sy), (sx + 16, sy + 15)], fill=BEVEL_LIGHT)    # prawo, 16 px
-    draw.line([(sx, sy + 16), (sx + 15, sy + 16)], fill=BEVEL_LIGHT)    # dol, 16 px
-    # Narozniki domykajace ramke (bez nich ramka nie spotyka sie z tlem).
+    # MIND THE LENGTHS: the right and bottom edge are EXACTLY 16 px each.
+    # The version ending at (sx+16, sy+16) was one pixel too long and that
+    # pixel then overwrote the corner - the frame came out with a white blob in
+    # the bottom-right corner. Sampled from the extractor's texture.
+    draw.line([(sx - 1, sy - 1), (sx + 15, sy - 1)], fill=BEVEL_DARK)   # top, 17 px
+    draw.line([(sx - 1, sy - 1), (sx - 1, sy + 15)], fill=BEVEL_DARK)   # left, 17 px
+    draw.line([(sx + 16, sy), (sx + 16, sy + 15)], fill=BEVEL_LIGHT)    # right, 16 px
+    draw.line([(sx, sy + 16), (sx + 15, sy + 16)], fill=BEVEL_LIGHT)    # bottom, 16 px
+    # Corners that close the frame (without them the frame does not meet the
+    # background).
     draw.point((sx + 16, sy - 1), fill=SLOT_BG)
     draw.point((sx - 1, sy + 16), fill=SLOT_BG)
     draw.point((sx + 16, sy + 16), fill=SLOT_BG)
 
 
 def minus(draw, cx, cy):
-    """Krotka kreska na srodku slotu.
+    """A short dash in the middle of the slot.
 
-    Slot baterii ma z gory wiadomo, po co jest, wiec rysujemy w nim "minus"
-    (jak w innych modach) - gracz widzi, ze to miejsce na WLOZENIE itemu,
-    a nie np. na wynik.
+    The battery slot's purpose is known up front, so we draw a "minus" in it
+    (as other mods do) - the player sees that this is a place to PUT an item in,
+    and not, say, for an output.
     """
     draw.rectangle([cx - 3, cy - 1, cx + 2, cy], fill=BEVEL_DARK)
 
@@ -118,10 +122,10 @@ def player_inventory(draw):
 
 
 def recess(draw, x0, y0, x1, y1):
-    """Wciete pole (pod plomien albo pasek energii).
+    """A recessed field (for the flame or the energy bar).
 
-    Ta sama logika co slot, tylko o dowolnym rozmiarze - pole ma wygladac na
-    wglebienie, a nie na doklejony prostokat.
+    The same logic as the slot, only of any size - the field has to look like a
+    recess rather than a glued-on rectangle.
     """
     draw.rectangle([x0, y0, x1, y1], fill=SLOT_BG)
     draw.line([(x0 - 1, y0 - 1), (x1 + 1, y0 - 1)], fill=BEVEL_DARK)
@@ -134,39 +138,41 @@ def recess(draw, x0, y0, x1, y1):
 
 
 def velocity_furnace():
-    """Piec paliwowy: 6 filtrow + slot paliwa + okno plomienia."""
+    """Fuel furnace: 6 filters + a fuel slot + the flame window."""
     img = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     panel(d)
 
-    # Filtry paliwa: 3 kolumny x 2 rzedy - ten sam start co filtry ekstraktora.
+    # Fuel filters: 3 columns x 2 rows - the same start as the extractor's filters.
     for i in range(6):
         slot(d, FILTER_X + (i % 3) * 18, FILTER_Y + (i // 3) * 18)
-    # Realny slot paliwa.
+    # The actual fuel slot.
     slot(d, FUEL_X, FUEL_Y)
 
-    # Plomienia NIE malujemy: ekran rysuje go sprite'ami z waniliowego pieca
-    # (obrys + zapalona czesc). Malowanie tu czegokolwiek pod nim tylko by
-    # psulo wyglad - i tak bylo: wlasne wglebienie wygladalo jak slot.
+    # We do NOT paint the flame: the screen draws it with sprites from the
+    # vanilla furnace (the outline + the lit part). Painting anything under it
+    # here would only spoil the look - and so it did: our own recess looked
+    # like a slot.
 
     player_inventory(d)
     return img
 
 
 def electric_furnace():
-    """Piec elektryczny: bateria pozioma + slot na itemek z energia."""
+    """Electric furnace: a horizontal battery + a slot for the energy item."""
     img = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     panel(d)
 
-    # Korpus baterii - ekran wypelnia go OD LEWEJ DO PRAWEJ.
+    # The battery body - the screen fills it FROM LEFT TO RIGHT.
     recess(d, BATTERY_X, BATTERY_Y, BATTERY_X + BATTERY_W - 1, BATTERY_Y + BATTERY_H - 1)
-    # Biegun po prawej - bez niego to bylby zwykly pasek, a nie bateria.
+    # The terminal on the right - without it this would be an ordinary bar
+    # rather than a battery.
     nub_x = BATTERY_X + BATTERY_W
     nub_y = BATTERY_Y + (BATTERY_H - NUB_H) // 2
     recess(d, nub_x, nub_y, nub_x + NUB_W - 1, nub_y + NUB_H - 1)
 
-    # Slot na itemek z energia, z "minusem" w tle.
+    # The slot for the energy item, with a "minus" in the background.
     slot(d, BATTERY_SLOT_X, BATTERY_SLOT_Y)
     minus(d, BATTERY_SLOT_X + 8, BATTERY_SLOT_Y + 8)
 
@@ -175,13 +181,13 @@ def electric_furnace():
 
 
 def self_check(img):
-    """Sprawdza WYGENEROWANY obraz: czy ramki slotow sa dokladnie tam, gdzie
-    deklaruja stale tego pliku.
+    """Checks the GENERATED image: whether the slot frames are exactly where
+    this file's constants declare them to be.
 
-    <p>Po co: te same liczby zyja w TRZECH miejscach (ten generator, menu i
-    ekran). Raz juz sie rozjechaly - slot paliwa stal w innym miejscu, niz
-    mowilo menu, i nachodzil na napis "Inventory". Latwiej sprawdzic piksele
-    niz wierzyc, ze ktos pamietal o wszystkich trzech.
+    <p>Why: the same numbers live in THREE places (this generator, the menu and
+    the screen). They already drifted apart once - the fuel slot stood in a
+    different place than the menu said, and it overlapped the "Inventory" label.
+    It is easier to check pixels than to trust that someone remembered all three.
     """
     DARK = (0x37, 0x37, 0x37, 255)
     LIGHT = (0xFF, 0xFF, 0xFF, 255)
@@ -199,31 +205,32 @@ def self_check(img):
     for i in range(6):
         x, y = FILTER_X + (i % 3) * 18, FILTER_Y + (i // 3) * 18
         if not slot_ok(x, y):
-            bad.append(f"filtr {i} @ {x},{y}")
+            bad.append(f"filter {i} @ {x},{y}")
     if not slot_ok(FUEL_X, FUEL_Y):
-        bad.append(f"paliwo @ {FUEL_X},{FUEL_Y}")
+        bad.append(f"fuel @ {FUEL_X},{FUEL_Y}")
     for row in range(3):
         for col in range(9):
             if not slot_ok(PLAYER_X + col * 18, PLAYER_Y + row * 18):
-                bad.append(f"ekwipunek r{row}c{col}")
+                bad.append(f"inventory r{row}c{col}")
     for col in range(9):
         if not slot_ok(PLAYER_X + col * 18, PLAYER_Y + 58):
             bad.append(f"hotbar c{col}")
 
-    # Miejsce plomienia musi byc czyste - plomien rysuje ekran, sprite'ami wanilii.
+    # The flame's place must be clean - the screen draws the flame, with vanilla
+    # sprites.
     dirty = sum(1 for y in range(FLAME_Y, FLAME_Y + 14)
                 for x in range(FLAME_X, FLAME_X + 14)
                 if img.getpixel((x, y)) != PANEL)
     if dirty:
-        bad.append(f"miejsce plomienia zabrudzone ({dirty} px)")
+        bad.append(f"flame place is soiled ({dirty} px)")
 
     if bad:
-        raise SystemExit("BLAD: tekstura nie zgadza sie ze stalymi: " + ", ".join(bad))
-    print("  samokontrola: ramki slotow i miejsce plomienia OK")
+        raise SystemExit("ERROR: the texture does not match the constants: " + ", ".join(bad))
+    print("  self-check: slot frames and the flame place OK")
 
 
 def self_check_electric(img):
-    """Piec elektryczny: tylko slot baterii (reszte rysuje ekran)."""
+    """Electric furnace: only the battery slot (the screen draws the rest)."""
     DARK = (0x37, 0x37, 0x37, 255)
     LIGHT = (0xFF, 0xFF, 0xFF, 255)
     BG = (0x8B, 0x8B, 0x8B, 255)
@@ -236,26 +243,26 @@ def self_check_electric(img):
 
     bad = []
     if not slot_ok(BATTERY_SLOT_X, BATTERY_SLOT_Y):
-        bad.append(f"slot baterii @ {BATTERY_SLOT_X},{BATTERY_SLOT_Y}")
-    # Tlo slotu (poza kreska) + sama kreska na srodku.
+        bad.append(f"battery slot @ {BATTERY_SLOT_X},{BATTERY_SLOT_Y}")
+    # The slot background (apart from the dash) + the dash itself in the middle.
     if img.getpixel((BATTERY_SLOT_X + 3, BATTERY_SLOT_Y + 3)) != BG:
-        bad.append("slot baterii: brak tla")
+        bad.append("battery slot: no background")
     if img.getpixel((BATTERY_SLOT_X + 8, BATTERY_SLOT_Y + 8)) != DARK:
-        bad.append("slot baterii: brak kreski (minus)")
+        bad.append("battery slot: no dash (minus)")
     for row in range(3):
         for col in range(9):
             if not slot_ok(PLAYER_X + col * 18, PLAYER_Y + row * 18):
-                bad.append(f"ekwipunek r{row}c{col}")
+                bad.append(f"inventory r{row}c{col}")
     for col in range(9):
         if not slot_ok(PLAYER_X + col * 18, PLAYER_Y + 58):
             bad.append(f"hotbar c{col}")
-    # Korpus baterii musi byc wglebieniem (tlo slotu), a nie panelem.
+    # The battery body must be a recess (the slot background), not the panel.
     if img.getpixel((BATTERY_X + 2, BATTERY_Y + 2)) != BG:
-        bad.append("korpus baterii nie jest wglebieniem")
+        bad.append("the battery body is not a recess")
 
     if bad:
-        raise SystemExit("BLAD: tekstura pieca elektrycznego sie nie zgadza: " + ", ".join(bad))
-    print("  samokontrola (elektryczny): slot baterii, korpus i ekwipunek OK")
+        raise SystemExit("ERROR: the electric furnace texture does not match: " + ", ".join(bad))
+    print("  self-check (electric): battery slot, body and inventory OK")
 
 
 def main():
@@ -264,19 +271,19 @@ def main():
                       ("electric_furnace", electric_furnace())):
         path = os.path.join(OUT, name + ".png")
         img.save(path)
-        print("zapisano:", path, img.size)
+        print("saved:", path, img.size)
         if name == "velocity_furnace":
             self_check(img)
         else:
             self_check_electric(img)
 
     print()
-    print("Pozycje do zgodnosci w ekranach:")
-    print(f"  plomien:   x={FLAME_X} y={FLAME_Y} (14x14)")
-    print(f"  bateria:   x={BATTERY_X} y={BATTERY_Y} w={BATTERY_W} h={BATTERY_H}"
-          f" (biegun {NUB_W}x{NUB_H} po prawej)")
-    print(f"  slot bat.: x={BATTERY_SLOT_X} y={BATTERY_SLOT_Y} (16x16)")
-    print(f"  ekwipunek: x={PLAYER_X} y={PLAYER_Y}, hotbar y={PLAYER_Y + 58}")
+    print("Positions to keep in sync in the screens:")
+    print(f"  flame:     x={FLAME_X} y={FLAME_Y} (14x14)")
+    print(f"  battery:   x={BATTERY_X} y={BATTERY_Y} w={BATTERY_W} h={BATTERY_H}"
+          f" (terminal {NUB_W}x{NUB_H} on the right)")
+    print(f"  bat. slot: x={BATTERY_SLOT_X} y={BATTERY_SLOT_Y} (16x16)")
+    print(f"  inventory: x={PLAYER_X} y={PLAYER_Y}, hotbar y={PLAYER_Y + 58}")
 
 
 if __name__ == "__main__":

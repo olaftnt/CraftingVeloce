@@ -6,28 +6,28 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.nbt.CompoundTag;
 
 /**
- * Status maszyny: pracuje / za malo sily / za malo energii.
+ * Machine status: working / not enough force / not enough energy.
  *
- * <p>Jedyne, co pokazuje Jade (gracz: "zostaw tylko powered/working, czyli
- * zasilane dziala albo nie ma wystarczajacej predkosci"). Korzysta z tego takze
- * okno maszyny, zeby napis byl ten sam w obu miejscach.
+ * <p>The only thing Jade shows (player: "leave just powered/working, that is,
+ * whether the powered one works or does not have enough speed"). The machine
+ * window also uses this, so that the text is the same in both places.
  */
 public final class VeloceModuleStatus {
 
     private VeloceModuleStatus() {
     }
 
-    /** Czy to maszyna na energie (a nie kinetyczna). */
+    /** Whether this is an energy machine (and not a kinetic one). */
     public static boolean isEnergy(CompoundTag info) {
         return info.contains("energy");
     }
 
-    /** Czy maszyna ma to, czego potrzebuje do pracy. */
+    /** Whether the machine has what it needs to work. */
     public static boolean working(CompoundTag info) {
         return isEnergy(info) ? info.getBoolean("powered") : info.getBoolean("enoughSpeed");
     }
 
-    /** Napis statusu - jedyna linia, jaka dokladamy w Jade. */
+    /** The status text - the only line we add in Jade. */
     public static MutableComponent message(CompoundTag info) {
         if (working(info)) {
             return Component.translatable("gui.craftingveloce.module.info.ok")

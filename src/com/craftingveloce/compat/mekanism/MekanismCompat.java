@@ -5,24 +5,24 @@ import com.craftingveloce.compat.VeloceMods;
 import net.neoforged.bus.api.IEventBus;
 
 /**
- * Bramka integracji z Mekanism.
+ * Gate for the Mekanism integration.
  *
- * <p><b>Izolacja.</b> Ladowana ZAWSZE, takze bez Mekanism - zero typow
- * Mekanism w polach i sygnaturach. {@link #register(IEventBus)} siega do klas
- * z obcymi typami, ale tylko po {@link #isPresent()}.
+ * <p><b>Isolation.</b> ALWAYS loaded, even without Mekanism - zero Mekanism
+ * types in fields and signatures. {@link #register(IEventBus)} reaches into
+ * classes with foreign types, but only after {@link #isPresent()}.
  */
 public final class MekanismCompat {
 
     private MekanismCompat() {
     }
 
-    /** Czy Mekanism jest obecny. Bezpieczne takze bez niego. */
+    /** Whether Mekanism is present. Safe even without it. */
     public static boolean isPresent() {
         return VeloceMods.MEKANISM.isLoaded();
     }
 
     /**
-     * Rejestruje integracje. Wolno wolac WYLACZNIE gdy {@link #isPresent()}.
+     * Registers the integrations. May be called EXCLUSIVELY when {@link #isPresent()}.
      */
     public static void register(IEventBus modEventBus) {
         MekanismBlocks.register(modEventBus);
@@ -31,7 +31,7 @@ public final class MekanismCompat {
         MekanismRecipeFamily.register(modEventBus);
         MekanismModule.register(modEventBus);
         registerCases();
-        // Kategorie przepisow Mekanism dla JEI (same UID-y + nasze klocki).
+        // Mekanism recipe categories for JEI (just the UIDs + our blocks).
         MekanismJeiCatalysts.register();
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             registerCaseRenderers(modEventBus);
@@ -39,23 +39,23 @@ public final class MekanismCompat {
     }
 
     /**
-     * Pozycje modulu do zakladki kreatywnej.
+     * Module entries for the creative tab.
      *
-     * <p>Zakladka buduje sie ZAWSZE (takze bez Mekanism), wiec to wywolanie
-     * jest warunkowane obecnoscia moda w {@code CraftingVeloceMod} - inaczej
-     * samo budowanie zakladki zaladowaloby klase z obcym typem.
+     * <p>The tab is ALWAYS built (also without Mekanism), so this call is
+     * conditioned on the mod being present in {@code CraftingVeloceMod} -
+     * otherwise building the tab alone would load a class with a foreign type.
      */
     public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
         MekanismBlocks.addCreativeItems(output);
     }
 
-    /** Blok bazowy z moda po ID (nazwa w rejestrze, nie pole klasy). */
+    /** Base block from the mod by ID (registry name, not a class field). */
     private static net.minecraft.world.level.block.Block block(String id) {
         return net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("mekanism", id));
     }
 
-    /** Wiersze tabeli obudow: nasz modul -&gt; blok bazowy z moda. */
+    /** Casing table rows: our module -&gt; base block from the mod. */
     private static void registerCases() {
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_COMBINER_MODULE.get(), () -> block("combiner"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_CRUSHER_MODULE.get(), () -> block("crusher"));
@@ -83,7 +83,7 @@ public final class MekanismCompat {
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_CHEMICAL_INFUSING_MODULE.get(), () -> block("chemical_infuser"));
     }
 
-    /** Renderer zawartosci obudowy dla block entity modulow - TYLKO klient. */
+    /** Casing contents renderer for the module block entities - CLIENT ONLY. */
     private static void registerCaseRenderers(IEventBus modEventBus) {
         modEventBus.addListener(
                 net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class,

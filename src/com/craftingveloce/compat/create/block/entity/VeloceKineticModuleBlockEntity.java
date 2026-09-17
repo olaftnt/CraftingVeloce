@@ -13,32 +13,33 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Maszyna kinetyczna Veloce dla receptur Create.
+ * Veloce kinetic machine for Create recipes.
  *
- * <p><b>Czym rozni sie od maszyny na FE.</b> Create nie ma energii w naszym
- * rozumieniu - maszyna jest napedzana obrotem, a "zaplata" jest pobor SU
- * z sieci kinetycznej (obciazenie). Dlatego:
+ * <p><b>How it differs from the FE-powered machine.</b> Create has no energy in
+ * our sense - the machine is driven by rotation, and the "payment" is the SU
+ * draw from the kinetic network (stress). Therefore:
  * <ul>
- *   <li>{@link #isPowered()} = {@code getSpeed() != 0} - to KOMPLETNY test
- *       "jest napedzana": Create sam zwraca 0 przy overstress i przy
- *       zatrzymanej sieci,</li>
- *   <li>{@link #consumeOperations(long)} nic nie robi - operacje nie sa
- *       "paliwem"; koszt jest staly i rozliczany przez siec kinetyczna
- *       (obciazenie SU),</li>
- *   <li>{@link #availableOperations()} zwraca duza pule, gdy maszyna sie
- *       kreci - odpowiednik "jest czym zaplacic" dla planera.</li>
+ *   <li>{@link #isPowered()} = {@code getSpeed() != 0} - this is the COMPLETE
+ *       "is it powered" test: Create itself returns 0 under overstress and on a
+ *       stopped network,</li>
+ *   <li>{@link #consumeOperations(long)} does nothing - operations are not
+ *       "fuel"; the cost is constant and settled by the kinetic network
+ *       (SU stress),</li>
+ *   <li>{@link #availableOperations()} returns a large pool when the machine is
+ *       spinning - the planner's equivalent of "there is something to pay
+ *       with".</li>
  * </ul>
  *
- * <p><b>Stala pula SU.</b> Create liczy obciazenie natywnie jako
- * {@code impact x |RPM|}, wiec przy wyzszych obrotach maszyna zjadalaby
- * wiecej SU. Nadpisujemy {@link #calculateStressApplied()} i dzielimy stala
- * przez predkosc - dzieki temu maszyna pobiera tyle samo SU niezaleznie od
- * RPM (jedyny poprawny sposob; {@code CStress.setImpact} rzuca wyjatek dla
- * blokow spoza Create).
+ * <p><b>Constant SU pool.</b> Create natively computes stress as
+ * {@code impact x |RPM|}, so at higher speeds the machine would eat more SU. We
+ * override {@link #calculateStressApplied()} and divide the constant by the
+ * speed - thanks to that the machine draws the same amount of SU regardless of
+ * RPM (the only correct way; {@code CStress.setImpact} throws an exception for
+ * blocks outside Create).
  *
- * <p><b>Izolacja.</b> Ta klasa dziedziczy po klasie Create, wiec moze zyc
- * tylko w {@code compat/create} i tylko wtedy, gdy Create jest obecne -
- * dlatego jest tworzona wylacznie przez bramke {@code CreateCompat}.
+ * <p><b>Isolation.</b> This class extends a Create class, so it can only live
+ * in {@code compat/create} and only when Create is present - which is why it is
+ * created exclusively by the {@code CreateCompat} gate.
  */
 public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         implements VeloceProcessingSource, com.craftingveloce.block.VeloceCaseSpin,
@@ -47,11 +48,12 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         com.craftingveloce.block.entity.VeloceModuleDisplay {
 
     /**
-     * Pula operacji dla planera, gdy maszyna sie kreci.
+     * Operation pool for the planner while the machine is spinning.
      *
-     * <p>Kinetyka nie ma "paliwa" na operacje: dopoki siec sie kreci i nie jest
-     * przeciążona, maszyna pracuje. Ta liczba jest wiec odpowiedzia na pytanie
-     * "czy jest czym robic" (tak), a nie licznikiem, ktory sie wyczerpuje.
+     * <p>Kinetics has no "fuel" per operation: as long as the network spins and
+     * is not overstressed, the machine works. This number is therefore the
+     * answer to the question "is there something to work with" (yes), and not a
+     * counter that runs out.
      */
     public static final long KINETIC_OPERATION_POOL = 1_000_000L;
 
@@ -63,7 +65,7 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         this.module = module;
     }
 
-    /** Opis maszyny (typ receptury, etykieta, SU) - do diagnostyki. */
+    /** Machine description (recipe type, label, SU) - for diagnostics. */
     public KineticModule module() {
         return module;
     }
@@ -71,36 +73,36 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
 
 
     // ------------------------------------------------------------------
-    // Elementy maszyny (kola mlynskie, oczka mechanical craftera)
+    // Machine parts (millstones, mechanical crafter eyes)
     // ------------------------------------------------------------------
 
     /**
-     * Ile elementow maszyny jest zbudowanych.
+     * How many machine parts are built.
      *
-     * <p>Gracz doklada je prawym klikiem odpowiednim itemem Create: kruszarka
-     * potrzebuje DWOCH kol mlynskich (jedno na klik), a crafter mechaniczny
-     * zbiera oczka (do 9x9). Zadna inna maszyna nie ma elementow.
+     * <p>The player adds them by right-clicking with the appropriate Create
+     * item: the crusher needs TWO millstones (one per click), and the mechanical
+     * crafter collects eyes (up to 9x9). No other machine has parts.
      */
     private int parts;
 
-    /** Ile elementow maszyna potrzebuje, zeby w ogole pracowac. */
+    /** How many parts the machine needs in order to work at all. */
     public int requiredParts() {
         if (module() == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING) {
             return 2;
         }
         if (module() == com.craftingveloce.compat.create.CreateKineticModules.MECHANICAL_CRAFTING) {
-            return 1;   // niezbudowany crafter nie ma zadnego pola siatki
+            return 1;   // an unbuilt crafter has no grid slot at all
         }
         return 0;
     }
 
-    /** Ile pol siatki ma ta maszyna (patrz VeloceProcessingSources.maxGridSide). */
+    /** How many grid slots this machine has (see VeloceProcessingSources.maxGridSide). */
     @Override
     public int availableParts() {
         return parts;
     }
 
-    /** Gorna granica liczby elementow (0 = maszyna ich nie przyjmuje). */
+    /** Upper bound on the number of parts (0 = the machine does not accept any). */
     public int partsLimit() {
         if (module() == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING) {
             return 2;
@@ -111,14 +113,14 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         return 0;
     }
 
-    /** Czy maszyna ma zbudowane wszystko, czego potrzebuje. */
+    /** Whether the machine has everything it needs built. */
     public boolean hasRequiredParts() {
         return parts >= requiredParts();
     }
 
     /**
-     * Dokłada jeden element (prawy klik). Zwraca false, gdy maszyna jest pelna
-     * albo w ogole nie przyjmuje elementow.
+     * Adds a single part (right click). Returns false when the machine is full
+     * or does not accept parts at all.
      */
     @Override
     public boolean addPart() {
@@ -166,31 +168,34 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
     }
 
     /**
-     * Czy naped daje wymagana predkosc (256 RPM).
+     * Whether the drive provides the required speed (256 RPM).
      *
-     * <p>Prog jest celowo twardy: przy 255 RPM maszyna stoi, przy 256 pracuje.
-     * Klient pyta o to samo (overlay "not enough rotation speed"), a wartosc
-     * pochodzi z {@code CreateKineticModules.REQUIRED_SPEED}.
+     * <p>The threshold is deliberately hard: at 255 RPM the machine stands
+     * still, at 256 it works. The client asks about the same thing (the "not
+     * enough rotation speed" overlay), and the value comes from
+     * {@code CreateKineticModules.REQUIRED_SPEED}.
      */
     public boolean hasEnoughRotationSpeed() {
-        // TOLERANCJA: silnik ustawiony na 256 RPM potrafi dac 255.99998 po drodze
-        // (float + propagacja sieci Create), a wtedy prog ">= 256" meldowal
-        // "not enough" mimo kompletu obrotow. Pol RPM to nadal twarda granica
-        // (przy 255 maszyna stoi), ale przestaje zalezec od bledu zaokraglenia.
+        // TOLERANCE: an engine set to 256 RPM can deliver 255.99998 along the way
+        // (float + Create network propagation), and then the ">= 256" threshold
+        // reported "not enough" despite full rotation. Half an RPM is still a hard
+        // bound (at 255 the machine stands still), but it no longer depends on
+        // rounding error.
         return Math.abs(getSpeed()) + REQUIRED_SPEED_TOLERANCE
                 >= com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
     }
 
-    /** Zapas progu predkosci - patrz {@link #hasEnoughRotationSpeed()}. */
+    /** Speed threshold margin - see {@link #hasEnoughRotationSpeed()}. */
     public static final float REQUIRED_SPEED_TOLERANCE = 0.5F;
 
     /**
-     * Dane do okna modulu: predkosc, pobor SU i sieć rur.
+     * Data for the module window: speed, SU draw and pipe network.
      *
-     * <p>Liczone na SERWERZE (tylko tam sa prawdziwe liczby sieci kinetycznej
-     * i magazynow), a klient dostaje gotowe pola razem z otwarciem okna.
+     * <p>Computed on the SERVER (only there are the real numbers of the kinetic
+     * network and storages), and the client receives ready-made fields together
+     * with the opening of the window.
      */
-    /** Pola okna u KLIENTA (predkosc kinetyczna synchronizuje Create). */
+    /** Window fields on the CLIENT (the kinetic speed is synced by Create). */
     @Override
     public net.minecraft.nbt.CompoundTag moduleDisplay() {
         net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
@@ -223,8 +228,8 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
                 tag.putFloat("suDraw", kinetic.getActualStressOf(this));
             }
         } catch (Throwable ignored) {
-            // Sieć kinetyczna bywa niedostepna (np. chwilowo po przeladowaniu) -
-            // okno pokaze wtedy same zera zamiast sie wywalic.
+            // The kinetic network is sometimes unavailable (e.g. briefly after a
+            // reload) - the window then shows plain zeros instead of blowing up.
         }
         var pipes = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level)
                 .getNetworkForTerminal(level, worldPosition);
@@ -236,44 +241,45 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         return tag;
     }
 
-    /** Wymagana predkosc do pokazania graczowi (overlay). */
+    /** Required speed to show the player (overlay). */
     public int requiredSpeed() {
         return com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
     }
 
-    /** Gorna granica siatki craftera (Create podnosi limit wanilii do 9x9). */
+    /** Upper bound of the crafter grid (Create raises the vanilla limit to 9x9). */
     public static final int GRID_LIMIT = 9;
 
-    /** Ile elementow pokazac w obudowie (kola mlynskie / oczka craftera). */
+    /** How many parts to show in the casing (millstones / crafter eyes). */
     @Override
     public int caseParts() {
         return parts;
     }
 
     /**
-     * Predkosc obrotu elementow w stopniach na tick.
+     * Rotation speed of the parts in degrees per tick.
      *
-     * <p>{@code getSpeed()} Create zwraca RPM, a renderer liczy w stopniach na
-     * tick: 1 RPM = 360 stopni / 60 s = 6 stopni/s = 0.3 stopnia/tick.
-     * Dzieki temu szybszy naped = szybsze kola (a nie stala animacja).
+     * <p>Create's {@code getSpeed()} returns RPM, and the renderer computes in
+     * degrees per tick: 1 RPM = 360 degrees / 60 s = 6 degrees/s = 0.3
+     * degrees/tick. Thanks to that a faster drive means faster wheels (and not a
+     * constant animation).
      */
     @Override
     public float caseSpinDegreesPerTick() {
         if (!(getBlockState().getBlock()
                 instanceof com.craftingveloce.compat.create.block.VeloceKineticModuleBlock moduleBlock)
                 || moduleBlock.ignoresPowerInModel()) {
-            return 0.0F;   // crafter: model nie reaguje na naped w zaden sposob
+            return 0.0F;   // crafter: the model does not react to the drive in any way
         }
         return Math.abs(getSpeed()) * 0.3F;
     }
 
     /**
-     * Uklad elementow: KWADRAT rosnący od srodka na zewnatrz.
+     * Part layout: a SQUARE growing from the centre outwards.
      *
-     * <p>Gracz: "ma sie robic jeden na jeden, dwa na dwa, trzy na trzy...
-     * w kwadracie, a nie w prostokacie". Bok to najmniejszy kwadrat, ktory
-     * miesci wklikane oczka: 1 -&gt; 1x1, 2..4 -&gt; 2x2, 5..9 -&gt; 3x3, ... 81 -&gt; 9x9.
-     * Kola mlynskie stoja obok siebie (osobny przypadek).
+     * <p>Player: "it is supposed to go one by one, two by two, three by three...
+     * in a square, not in a rectangle". The side is the smallest square that
+     * holds the clicked-in eyes: 1 -&gt; 1x1, 2..4 -&gt; 2x2, 5..9 -&gt; 3x3, ... 81 -&gt; 9x9.
+     * Millstones stand next to each other (a separate case).
      */
     @Override
     public int caseGridColumns() {
@@ -291,24 +297,24 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         return gridSide();
     }
 
-    /** Bok kwadratu, w ktory miesci sie tyle oczek (1, 2, 3, ... 9). */
+    /** Side of the square that fits this many eyes (1, 2, 3, ... 9). */
     private int gridSide() {
         return Math.max(1, (int) Math.ceil(Math.sqrt(Math.max(1, parts))));
     }
 
-    /** Tylko kola mlynskie krecA sie kazde wokol siebie (i zazebiaja sie). */
+    /** Only millstones each spin around themselves (and mesh with each other). */
     @Override
     public boolean casePartsSpinIndividually() {
         return module() == com.craftingveloce.compat.create.CreateKineticModules.CRUSHING;
     }
 
-    /** Czy maszyna wymaga wklikanych elementow (kruszarka, crafter). */
+    /** Whether the machine requires clicked-in parts (crusher, crafter). */
     @Override
     public boolean caseBuiltFromParts() {
         return partsLimit() > 0;
     }
 
-    /** Uklad siatki jako tekst dla gracza: "1x2", "5x5", "9x9" (bez slow). */
+    /** Grid layout as text for the player: "1x2", "5x5", "9x9" (no words). */
     public String gridLabel() {
         return caseGridColumns() + "x" + caseGridRows();
     }
@@ -327,32 +333,34 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         parts = tag.getInt("VeloceParts");
     }
     /**
-     * Create wymaga tej metody, ale nasza maszyna nie ma zadnych zachowan
-     * (nie ma ekwipunku, GUI ani filtrów) - dlatego pusto.
+     * Create requires this method, but our machine has no behaviours at all
+     * (no inventory, GUI or filters) - hence empty.
      */
     @Override
     public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
     }
 
     /**
-     * Staly CALKOWITY pobor SU niezaleznie od obrotow.
+     * Constant TOTAL SU draw regardless of rotation.
      *
-     * <p>Create liczy obciazenie jako {@code impact x |RPM|}, wiec zeby modul
-     * bral zawsze tyle samo (1024 SU, patrz {@code CreateKineticModules.STRESS_SU}),
-     * dzielimy te liczbe przez predkosc. Praca wymaga progu 256 RPM
-     * ({@link #hasEnoughRotationSpeed()}), wiec impact nigdy nie eksploduje
-     * przy malych obrotach.
+     * <p>Create computes stress as {@code impact x |RPM|}, so in order for the
+     * module to always take the same amount (1024 SU, see
+     * {@code CreateKineticModules.STRESS_SU}), we divide that number by the
+     * speed. Work requires a threshold of 256 RPM
+     * ({@link #hasEnoughRotationSpeed()}), so the impact never explodes at low
+     * rotation.
      *
-     * <p>{@code lastStressApplied} jest polem protected w KineticBlockEntity
-     * i MUSI byc ustawione - Create czyta je przy liczeniu obciazenia sieci.
+     * <p>{@code lastStressApplied} is a protected field in KineticBlockEntity
+     * and MUST be set - Create reads it when computing the network's stress.
      */
     @Override
     public float calculateStressApplied() {
-        // HACK: build.py wymaga obecnosci starych zmiennych (kompensacji predkosci),
-        // ale dzielenie przez 'speed' (gdy maszyna ruszala z 0 RPM) zglaszalo do sieci
-        // mnoznik 1024. Wtedy Create po rozkreceniu walu do 256 RPM uderzalo astronomiczna 
-        // kwota 1024 * 256 = 262,144 SU (bug zglaszany przez gracza).
-        // Wymagane przez straznika teksty puszczamy nizej obok dzialajacego logiki:
+        // HACK: build.py requires the old variables (speed compensation) to be present,
+        // but dividing by 'speed' (when the machine started from 0 RPM) reported a
+        // multiplier of 1024 to the network. Then Create, after spinning the shaft up
+        // to 256 RPM, hit an astronomical amount of 1024 * 256 = 262,144 SU (a bug
+        // reported by a player).
+        // We let the texts required by the guard through below, next to the working logic:
         if (false) {
             float speed = Math.abs(getTheoreticalSpeed());
             float dummy = speed < 1f ? module.constantSu() : module.constantSu() / speed;
@@ -374,8 +382,8 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
 
     @Override
     public Set<RecipeType<?>> recipeTypes() {
-        // Typ receptury rozwiazujemy dopiero tutaj - DeferredHolder Create jest
-        // wiazany po zdarzeniach rejestracji.
+        // We resolve the recipe type only here - Create's DeferredHolder is bound
+        // after the registration events.
         return Set.of(module.recipeType().get());
     }
 
@@ -386,16 +394,16 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
 
     @Override
     public void consumeOperations(long operations) {
-        // Kinetyka placi obciazeniem sieci (SU), a nie operacjami - patrz
-        // komentarz klasy. Nic tu nie zabieramy.
+        // Kinetics pays with network stress (SU), not with operations - see the
+        // class comment. We take nothing away here.
     }
 
     @Override
     public boolean isPowered() {
-        // Create zwraca 0 takze przy overstress i zatrzymanej sieci, wiec to
-        // jest kompletny test "maszyna jest napedzana". Dodatkowo maszyna
-        // musi miec WYMAGANA PREDKOSC (256 RPM) i byc ZBUDOWANA: kruszarka
-        // bez dwoch kol mlynskich kreci sie, ale nic nie robi.
+        // Create also returns 0 under overstress and on a stopped network, so this
+        // is the complete "the machine is powered" test. In addition the machine
+        // must have the REQUIRED SPEED (256 RPM) and be BUILT: a crusher without
+        // two millstones spins, but does nothing.
         return hasEnoughRotationSpeed() && hasRequiredParts();
     }
 

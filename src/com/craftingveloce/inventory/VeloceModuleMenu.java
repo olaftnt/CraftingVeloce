@@ -11,23 +11,23 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
- * Menu maszyny Veloce - DOKLADNIE jak w piecu.
+ * Menu of a Veloce machine - EXACTLY like in the furnace.
  *
- * <p>Maszyna nie ma wlasnych slotow, wiec menu ma tylko ekwipunek gracza (te
- * same wspolrzedne co piec i ekstraktor: x=26, y=84/142). Dzieki temu okno to
- * zwykly {@code AbstractContainerScreen} z tekstura pieca - bez wlasnego
- * rysowania i bez pakietow.
+ * <p>The machine has no slots of its own, so the menu only has the player's
+ * inventory (the same coordinates as the furnace and the extractor: x=26,
+ * y=84/142). Thanks to that the window is a plain {@code AbstractContainerScreen}
+ * with the furnace texture - without its own rendering and without packets.
  *
- * <p>Pola do okna czytamy z block entity u klienta (tak samo robi piec:
- * {@code VeloceElectricFurnaceMenu.getEnergy()}). Predkosc kinetyczna jest
- * synchronizowana przez Create, energia przez nasz block entity.
+ * <p>We read the fields for the window from the client's block entity (the
+ * furnace does the same: {@code VeloceElectricFurnaceMenu.getEnergy()}). Kinetic
+ * speed is synchronized by Create, energy by our block entity.
  */
 public class VeloceModuleMenu extends AbstractContainerMenu {
 
     private static final int PLAYER_X = 26;
     private static final int PLAYER_Y = 84;
 
-    /** Slot baterii - zgodnie z wglebieniem w teksturze pieca. */
+    /** Battery slot - aligned with the recess in the furnace texture. */
     private static final int BATTERY_SLOT_X = 130;
     private static final int BATTERY_SLOT_Y = 32;
 
@@ -40,8 +40,8 @@ public class VeloceModuleMenu extends AbstractContainerMenu {
         BlockEntity be = playerInv.player.level().getBlockEntity(pos);
         this.module = be instanceof VeloceModuleDisplay display ? display : null;
 
-        // Slot baterii - te same wspolrzedne co w piecu (130, 32). Tylko
-        // maszyny na energie: kinetyczne nie maja czego ladowac.
+        // Battery slot - the same coordinates as in the furnace (130, 32). Only
+        // energy machines: kinetic ones have nothing to charge.
         if (be instanceof com.craftingveloce.block.entity.VeloceFeModuleBlockEntity fe) {
             this.addSlot(new Slot(fe.getBatterySlot(), 0,
                     BATTERY_SLOT_X, BATTERY_SLOT_Y) {
@@ -69,7 +69,7 @@ public class VeloceModuleMenu extends AbstractContainerMenu {
         }
     }
 
-    /** Pola do okna (puste, gdy block entity jeszcze nie ma). */
+    /** Fields for the window (empty when the block entity is not there yet). */
     public CompoundTag display() {
         return module == null ? new CompoundTag() : module.moduleDisplay();
     }
@@ -78,7 +78,7 @@ public class VeloceModuleMenu extends AbstractContainerMenu {
         return pos;
     }
 
-    /** Shift-klik: z ekwipunku do slotu baterii (tylko itemy z energia). */
+    /** Shift-click: from the inventory into the battery slot (only energy items). */
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
         Slot slot = this.slots.get(index);

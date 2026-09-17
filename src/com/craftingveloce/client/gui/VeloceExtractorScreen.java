@@ -26,7 +26,7 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
 
     private final NonNullList<ItemStack> clientFilters = NonNullList.withSize(9, ItemStack.EMPTY);
 
-    /** Lustrzane odbicie flag auto-craftingu z serwera (per slot filtra). */
+    /** Mirrored copy of the auto-crafting flags from the server (per filter slot). */
     private final java.util.List<Boolean> clientAllowCrafting =
             new java.util.ArrayList<>(java.util.Collections.nCopies(9, Boolean.TRUE));
 
@@ -81,9 +81,10 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
                 if (!filterItem.isEmpty()) {
                     graphics.renderFakeItem(filterItem, slotX, slotY);
 
-                    // Kolor mowi, czy extractor moze dla tego itemu zamawiac
-                    // craft: zielony = tak, czerwony = tylko to, co jest w sieci.
-                    // Bez tego prawy klik przelaczal cos, czego nie bylo widac.
+                    // The colour says whether the extractor may order a
+                    // craft for this item: green = yes, red = only what is
+                    // already in the network. Without it, a right click
+                    // toggled something that was not visible.
                     boolean canCraft = clientAllowCrafting.get(index);
                     int overlay = canCraft ? 0x5500AA00 : 0x55AA0000;
                     RenderSystem.disableDepthTest();
@@ -97,25 +98,27 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
                         boolean canCraft = clientAllowCrafting.get(index);
                         java.util.List<Component> lines = new java.util.ArrayList<>();
                         lines.add(filterItem.getHoverName());
-                        // Sam stan: ON albo OFF. Gracz nie chcial dopisku
-                        // "(network stock only)" - kolor ikony i tak mowi, ze
-                        // przy OFF extractor bierze tylko to, co jest w sieci.
+                        // The state alone: ON or OFF. The player did not want the
+                        // "(network stock only)" note - the icon colour already
+                        // says that with OFF the extractor takes only what is in
+                        // the network.
                         lines.add(Component.translatable(canCraft
                                         ? "gui.craftingveloce.extractor.craftingOn"
                                         : "gui.craftingveloce.extractor.craftingOff")
                                 .withStyle(canCraft
                                         ? net.minecraft.ChatFormatting.GREEN
                                         : net.minecraft.ChatFormatting.RED));
-                        // Instrukcja w DWÓCH linijkach: lewy i prawy klik robia
-                        // dwie rozne rzeczy, a zlepione w jedno zdanie czytaly
-                        // sie jak sciana tekstu.
+                        // The instructions in TWO lines: left and right click do
+                        // two different things, and glued into one sentence they
+                        // read like a wall of text.
                         lines.add(Component.translatable("gui.craftingveloce.extractor.leftClick")
                                 .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
                         lines.add(Component.translatable("gui.craftingveloce.extractor.rightClick")
                                 .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
                         graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
                     } else {
-                        // Pusty filtr to tylko "Empty filter" - bez instrukcji.
+                        // An empty filter is just "Empty filter" - without
+                        // instructions.
                         graphics.renderComponentTooltip(this.font, java.util.List.of(
                                 Component.translatable("gui.craftingveloce.extractor.filterEmpty")),
                                 mouseX, mouseY);
@@ -128,17 +131,18 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
     }
 
     /**
-     * Obsluga klikniec w 9 slotow filtra.
+     * Handles clicks in the 9 filter slots.
      *
-     * <p>Ustalone zachowanie:
+     * <p>Established behaviour:
      * <ul>
-     *   <li><b>Prawy klik na ZAJETYM slocie</b> - przelacza auto-crafting dla
-     *       tego itemu (czy extractor ma zamawiac craft, czy brac tylko to, co
-     *       juz jest w sieci). Sam wybor itemu zostaje bez zmian.</li>
-     *   <li><b>Lewy klik na ZAJETYM slocie</b> - kasuje filtr.</li>
-     *   <li><b>Lewy klik na PUSTYM slocie</b> - otwiera wybor itemu.</li>
-     *   <li><b>Klik z itemem na kursorze</b> - od razu ustawia ten item jako
-     *       filtr (bez zuzywania go z kursora).</li>
+     *   <li><b>Right click on an OCCUPIED slot</b> - toggles auto-crafting for
+     *       this item (whether the extractor should order a craft, or take only
+     *       what is already in the network). The item selection itself stays
+     *       unchanged.</li>
+     *   <li><b>Left click on an OCCUPIED slot</b> - clears the filter.</li>
+     *   <li><b>Left click on an EMPTY slot</b> - opens the item picker.</li>
+     *   <li><b>Click with an item on the cursor</b> - immediately sets that item
+     *       as the filter (without consuming it from the cursor).</li>
      * </ul>
      */
     @Override
@@ -148,7 +152,8 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
             ItemStack carried = this.menu.getCarried();
             boolean occupied = !clientFilters.get(filterIndex).isEmpty();
 
-            // Kursor z itemem ma zawsze priorytet: przestaw filtr na ten item.
+            // The cursor with an item always has priority: move the filter to
+            // this item.
             if (!carried.isEmpty()) {
                 ItemStack single = carried.copy();
                 single.setCount(1);
@@ -160,12 +165,12 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
 
             if (occupied) {
                 if (mouseButton == 1) {
-                    // Prawy klik na zajetym = przelacz auto-crafting.
+                    // Right click on an occupied slot = toggle auto-crafting.
                     clientAllowCrafting.set(filterIndex, !clientAllowCrafting.get(filterIndex));
                     PacketDistributor.sendToServer(
                             new ExtractorToggleCraftingPKT(this.menu.getPos(), filterIndex));
                 } else {
-                    // Lewy klik na zajetym = skasuj filtr.
+                    // Left click on an occupied slot = clear the filter.
                     clientFilters.set(filterIndex, ItemStack.EMPTY);
                     PacketDistributor.sendToServer(
                             new SetFilterPKT(this.menu.getPos(), filterIndex, ItemStack.EMPTY));
@@ -173,7 +178,7 @@ public class VeloceExtractorScreen extends AbstractContainerScreen<VeloceExtract
                 return;
             }
 
-            // Pusty slot + lewy klik = wybor itemu.
+            // Empty slot + left click = item picker.
             if (mouseButton == 0) {
                 PacketDistributor.sendToServer(
                         new OpenFilterPKT(this.menu.getPos(), filterIndex));

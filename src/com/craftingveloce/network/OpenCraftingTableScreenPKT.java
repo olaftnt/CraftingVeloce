@@ -16,13 +16,13 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * S→C: otwiera GUI crafting table (auto-craftera).
+ * S→C: opens the crafting table (auto-crafter) GUI.
  *
- * <p>Niesie dwa zbiory informacji:
+ * <p>It carries two sets of information:
  * <ul>
- *   <li>{@code enabledItems} - itemy z wlaczonym auto-craftingiem</li>
- *   <li>{@code preferredRecipes} - item -> id receptury o najwyzszym priorytecie
- *       (dla itemow z wieloma recepturami; wybor shift+scroll)</li>
+ *   <li>{@code enabledItems} - items with auto-crafting enabled</li>
+ *   <li>{@code preferredRecipes} - item -> id of the highest priority recipe
+ *       (for items with multiple recipes; selection with shift+scroll)</li>
  * </ul>
  */
 public record OpenCraftingTableScreenPKT(BlockPos pos, Set<Item> enabledItems,
@@ -47,7 +47,7 @@ public record OpenCraftingTableScreenPKT(BlockPos pos, Set<Item> enabledItems,
             buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(e.getKey()));
             buf.writeResourceLocation(e.getValue());
         }
-        // Zawartosc bufora (pamiec podreczna produkcji) - pokazywana w GUI.
+        // Buffer contents (production cache) - displayed in the GUI.
         buf.writeInt(pkt.bufferContents.size());
         for (ItemStack st : pkt.bufferContents) {
             ItemStack.OPTIONAL_STREAM_CODEC.encode(buf, st);

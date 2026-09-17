@@ -26,7 +26,7 @@ public class VelocePipeNetwork {
     private final Set<BlockPos> terminals = new HashSet<>();
     private final Map<BlockPos, ConnectedEndpointInfo> endpoints = new HashMap<>();
 
-    /** Bufor energii sieci rur. */
+    /** Energy buffer of the pipe network. */
     private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer =
             new net.neoforged.neoforge.energy.EnergyStorage(100_000, 100_000, 100_000);
 
@@ -36,42 +36,42 @@ public class VelocePipeNetwork {
     private final Set<BlockPos> pipes = new HashSet<>();
 
     /**
-     * CACHE liczb "ile da sie dorobic" - JEDEN na siec, wspolny dla terminala
-     * i kontrolera.
+     * CACHE of the "how many more can be made" numbers - ONE per network,
+     * shared by the terminal and the controller.
      *
-     * <p>Gracz: "cyferki ladują sie powoli od lewej do prawej ... chcialbym,
-     * zeby sie keszowaly na serwerze dla tego terminala ... klient przy
-     * otwarciu GUI instant dostaje gotowy kesz, a dopiero potem odpala sie
-     * logika liczenia widocznego". Cache zyje przy SIECI (nie przy terminalu
-     * ani kontrolerze), bo oba GUI pokazuja praktycznie te same dane - dwa
-     * osobne kesze rozjechalyby sie.
+     * <p>Player: "the numbers load slowly from left to right ... I would like
+     * them to be cached on the server for this terminal ... the client gets a
+     * ready cache instantly when the GUI opens, and only then does the logic
+     * for counting what is visible kick in". The cache lives with the NETWORK
+     * (not with the terminal or the controller), because both GUIs show
+     * practically the same data - two separate caches would drift apart.
      *
-     * <p>Wypelnia go kazde liczenie, ktore juz sie odbywa (widoczna strona
-     * terminala/kontrolera) - cache sam sie doucza, bez osobnego budowania
-     * w tle i bez obciazania serwera.
+     * <p>It is filled by every count that already happens (the visible page of
+     * the terminal/controller) - the cache teaches itself, without separate
+     * background building and without loading the server.
      */
     private final Map<Item, Long> craftableMemo = new HashMap<>();
 
     /**
-     * Itemy, dla ktorych gracz woli PRZEPALANIE od craftingu.
+     * Items for which the player prefers SMELTING over crafting.
      *
-     * <p><b>To PREFERENCJA, nie filtr.</b> Mowi tylko, ktora droga jest
-     * pierwsza w kolejnosci - druga nadal zostaje dostepna, gdyby pierwszej
-     * zabraklo (brak skladnikow albo brak ciepla).
+     * <p><b>This is a PREFERENCE, not a filter.</b> It only says which route
+     * comes first - the second one is still available if the first one runs
+     * out (no ingredients or no heat).
      *
-     * <p>Trzymamy to na SIECI, a nie na pojedynczym piecu czy crafterze:
-     * gracz wybiera "crafting albo furnace", a nie "ten konkretny piec".
-     * Przy okazji siec jest jedynym miejscem, ktore autokrafter ma zawsze
-     * pod reka, wiec planer nie musi niczego dodatkowo wyszukiwac.
+     * <p>We keep this on the NETWORK, not on a single furnace or crafter: the
+     * player chooses "crafting or furnace", not "that particular furnace".
+     * Incidentally, the network is the one place the autocrafter always has at
+     * hand, so the planner does not have to look anything up additionally.
      */
     private final Set<Item> preferFurnace = new HashSet<>();
 
-    /** Czy dla tego itemu przepalanie ma byc probowane PRZED craftingiem. */
+    /** Whether smelting should be attempted BEFORE crafting for this item. */
     public boolean prefersFurnace(Item item) {
         return preferFurnace.contains(item);
     }
 
-    /** Ustawia preferencje dla itemu (true = piec pierwszy). */
+    /** Sets the preference for an item (true = furnace first). */
     public void setPrefersFurnace(Item item, boolean value) {
         if (value) {
             preferFurnace.add(item);
@@ -80,37 +80,37 @@ public class VelocePipeNetwork {
         }
     }
 
-    /** Kopia zbioru - dla GUI (zeby nikt nie pisal po zywej mapie). */
+    /** Copy of the set - for the GUI (so nobody writes to the live map). */
     public Set<Item> getFurnacePreferred() {
         return Set.copyOf(preferFurnace);
     }
     private final Set<ChunkPos> trackedChunks = new HashSet<>();
 
     /**
-     * Cache zagregowanego stanu sieci.
+     * Cache of the aggregated network state.
      *
-     * <p>Kilku odbiorcow (cache craftowalnosci, GUI terminala, pakiety,
-     * wyswietlacze) pyta o ten sam stan w tym samym ticku. Bez tego cache
-     * kazdy z nich zamawial wlasny pelny skan wszystkich inwentarzy.
+     * <p>Several consumers (the craftability cache, the terminal GUI, packets,
+     * displays) ask for the same state in the same tick. Without this cache
+     * each of them ordered its own full scan of all inventories.
      */
     private Map<Item, Long> aggregateCache;
 
-    /** Tick, w ktorym policzono {@link #aggregateCache}. */
+    /** The tick in which {@link #aggregateCache} was computed. */
     private long aggregateCacheTick = Long.MIN_VALUE;
 
-    /** Jak dlugo agregat jest uznawany za swiezy, w tickach. */
+    /** How long the aggregate is considered fresh, in ticks. */
     private static final int AGGREGATE_TTL_TICKS = 10;
 
-    /** Powyzej tego czasu pojedynczy skan jest raportowany jako wolny. */
+    /** Above this time a single scan is reported as slow. */
     private static final long SLOW_ENDPOINT_NS = 20_000_000L;
 
     /**
-     * Budzet na przeskanowanie WSZYSTKICH endpointow w jednym przebiegu.
+     * Budget for scanning ALL endpoints in one pass.
      *
-     * <p>Po jego wyczerpaniu pozostale endpointy uzywaja zapamietanych liczb
-     * (starych, ale nie znikaja z GUI). Skanowanie jest i tak throttlowane do
-     * raz na 10 tickow na inwentarz - to jest bezpiecznik na pojedynczy wolny
-     * magazyn, ktory inaczej zablokowalby tick.
+     * <p>After it is exhausted the remaining endpoints use the remembered
+     * numbers (stale, but they do not disappear from the GUI). Scanning is
+     * throttled to once per 10 ticks per inventory anyway - this is a fuse for
+     * a single slow storage that would otherwise block the tick.
      */
     private static final long SCAN_BUDGET_NS = 20_000_000L;
 
@@ -127,15 +127,15 @@ public class VelocePipeNetwork {
     }
 
     /**
-     * Wezly sieci: terminale, craftery ORAZ extractory.
+     * Network nodes: terminals, crafters AND extractors.
      *
-     * <p><b>Uwaga na nazwe.</b> Metoda nazywa sie "terminals" historycznie, ale
-     * zwraca WSZYSTKIE bloki-wezly, nie tylko terminale. W raportach liczba
-     * "Terminals: 2" oznaczala wiec czesto crafter + extractor, a nie dwa
-     * terminale - co mylilo takze przy diagnozie.
+     * <p><b>Mind the name.</b> The method is called "terminals" historically,
+     * but it returns ALL node blocks, not only terminals. In reports the count
+     * "Terminals: 2" therefore often meant crafter + extractor, and not two
+     * terminals - which was confusing during diagnosis as well.
      *
-     * <p>To wlasnie te bloki maja dzialajace block entity, wiec ich chunki sa
-     * trwale force-loadowane (patrz {@code VeloceCraftingCache}).
+     * <p>It is exactly these blocks that have working block entities, so their
+     * chunks are permanently force-loaded (see {@code VeloceCraftingCache}).
      */
     public Set<BlockPos> getTerminals() {
         return terminals;
@@ -166,20 +166,21 @@ public class VelocePipeNetwork {
     }
 
     /**
-     * Czysci zapamietane liczby wszystkich endpointow.
+     * Clears the remembered numbers of all endpoints.
      *
-     * <p>Wywolywane gdy zmienil sie uklad sieci (podlaczenie/odlaczenie
-     * inventory, zaladowanie chunka). Bez tego endpoint usunietej skrzyni
-     * nadal raportowalby swoja dawna zawartosc.
+     * <p>Called when the network layout changed (inventory connected or
+     * disconnected, chunk loaded). Without it the endpoint of a removed chest
+     * would still report its former contents.
      */
     public void invalidateEndpointCache(ServerLevel level) {
         for (ConnectedEndpointInfo ep : endpoints.values()) {
-            // invalidateCache(), a nie samo getCachedCounts().clear():
-            // czyszczenie bez zwolnienia throttlingu oznaczalo, ze przez
-            // kolejne 10 tickow endpoint raportowal ZERO itemow.
+            // invalidateCache(), not just getCachedCounts().clear():
+            // clearing without releasing the throttling meant that for the
+            // next 10 ticks the endpoint reported ZERO items.
             //
-            // level jest potrzebny, zeby NIE czyscic liczb dla chunku poza
-            // symulacja - tam nie ma jak ich odtworzyc (patrz invalidateCache).
+            // level is needed so we do NOT clear the numbers for a chunk
+            // outside the simulation - there is no way to recreate them there
+            // (see invalidateCache).
             ep.invalidateCache(level);
         }
         aggregateCache = null;
@@ -187,17 +188,18 @@ public class VelocePipeNetwork {
     }
 
     /**
-     * Wklada item do pierwszego magazynu sieci, ktory go przyjmie.
+     * Inserts an item into the first storage of the network that accepts it.
      *
-     * <p><b>Pomija bufory crafterow.</b> Bufor to pamiec robocza na wyniki
-     * posrednie auto-craftingu, a nie magazyn gracza - wrzucenie tam itemu
-     * mieszaloby planowanie (planer widzi bufor jako czesc stocku, wiec
-     * item gracza udawalby material wyprodukowany przez crafter).
+     * <p><b>Skips crafter buffers.</b> A buffer is working memory for the
+     * intermediate results of auto-crafting, not a player storage - putting an
+     * item there would muddle the planning (the planner sees the buffer as part
+     * of the stock, so a player item would pretend to be material produced by
+     * the crafter).
      *
-     * <p>Ekstraktory nie sa endpointami sieci, wiec nie trzeba ich osobno
-     * wykluczac - one tylko wydaja.
+     * <p>Extractors are not network endpoints, so they do not have to be
+     * excluded separately - they only output.
      *
-     * @return to, czego NIE udalo sie wlozic (EMPTY gdy wszystko przyjete)
+     * @return what could NOT be inserted (EMPTY when everything was accepted)
      */
     public ItemStack insertIntoStorage(ServerLevel level, ItemStack stack) {
         if (stack.isEmpty()) {
@@ -209,48 +211,50 @@ public class VelocePipeNetwork {
                 break;
             }
             if (endpoint.getType() == ConnectedEndpointInfo.Type.CRAFTING_BUFFER) {
-                continue;   // bufor craftera to nie magazyn
+                continue;   // a crafter buffer is not a storage
             }
-            // Kazdy endpoint oddaje RESZTE, wiec czesciowe przyjecie nie ginie.
+            // Every endpoint returns the LEFTOVER, so a partial acceptance is not lost.
             remaining = endpoint.insertItemLeftover(level, remaining);
         }
         return remaining;
     }
 
     /**
-     * Suma zawartosci sieci, odswiezana z throttlingiem (raz na
-     * {@link ConnectedEndpointInfo#SCAN_INTERVAL_TICKS} tickow na inwentarz).
+     * The total contents of the network, refreshed with throttling (once per
+     * {@link ConnectedEndpointInfo#SCAN_INTERVAL_TICKS} ticks per inventory).
      *
-     * <p>To wariant domyslny, uzywany przez wszystko co tylko CZYTA stan:
-     * cache w tle, GUI, wyswietlacze, podpowiedzi. Wczesniej kazde takie
-     * zapytanie skanowalo od zera wszystkie inwentarze sieci, a ze cache
-     * pytal o to co kilka tickow, watek serwera spalil sie na samym czytaniu.
+     * <p>This is the default variant, used by everything that only READS the
+     * state: the background cache, the GUI, displays, tooltips. Previously
+     * every such query scanned all network inventories from scratch, and since
+     * the cache asked about it every few ticks, the server thread burned
+     * itself out on pure reading.
      */
     /**
-     * Pozycje OBCYCH zrodel energii podpietych do tej sieci.
+     * Positions of FOREIGN energy sources attached to this network.
      *
-     * <p>Wypelnia je skan sieci (sasiad z capability {@code EnergyStorage.BLOCK},
-     * ktory NIE jest naszym blokiem). Nasze maszyny sciagaja z nich prad, ale
-     * tylko one moga to robic - i tylko gdy maja wolne miejsce.
+     * <p>They are filled in by the network scan (a neighbour with the
+     * {@code EnergyStorage.BLOCK} capability that is NOT our block). Our
+     * machines draw power from them, but only they may do so - and only when
+     * they have free space.
      */
     private final java.util.Set<BlockPos> energyEndpoints = new java.util.HashSet<>();
 
-    /** Skan znalazl obce zrodlo energii - zapamietaj. */
+    /** The scan found a foreign energy source - remember it. */
     public void addEnergyEndpoint(BlockPos pos) {
         energyEndpoints.add(pos.immutable());
     }
 
-    /** Pozycje obcych zrodel energii w tej sieci. */
+    /** Positions of the foreign energy sources in this network. */
     public java.util.Set<BlockPos> getEnergyEndpoints() {
         return java.util.Set.copyOf(energyEndpoints);
     }
 
-    /** Skan od nowa wypelnia liste (topologia sie zmienila). */
+    /** The scan fills the list from scratch (the topology changed). */
     public void clearEnergyEndpoints() {
         energyEndpoints.clear();
     }
 
-    /** Dopisuje swiezo policzone liczby do cache'u sieci (nadpisuje starsze). */
+    /** Appends freshly computed numbers to the network cache (overwrites older ones). */
     public void rememberCraftable(Map<Item, Long> counts) {
         if (counts == null || counts.isEmpty()) {
             return;
@@ -259,14 +263,14 @@ public class VelocePipeNetwork {
     }
 
     /**
-     * Po UDANYM crafcie: liczba "ile jeszcze moge zrobic" maleje o to, co
-     * wlasnie zeszlo z sieci.
+     * After a SUCCESSFUL craft: the "how many more can I make" number decreases
+     * by what just left the network.
      *
-     * <p>Gracz: "jak craftuje item z automatu, to ta liczba sie nie zmniejsza -
-     * zrob z niej -1, a jesli craftuje stack to -64". Bez tego GUI pokazywalo
-     * stale liczby, dopoki ktos nie wymusil przeliczenia.
+     * <p>Player: "when I craft an item from the autocrafter, that number does
+     * not decrease - make it -1, and if I craft a stack then -64". Without this
+     * the GUI showed stale numbers until someone forced a recount.
      *
-     * <p>Wpis, ktorego nie ma w cache, zostaje bez zmian - nie zgadujemy.
+     * <p>An entry that is not in the cache stays unchanged - we do not guess.
      */
     public void noteCrafted(Item item, long amount) {
         if (item == null || amount <= 0) {
@@ -280,16 +284,16 @@ public class VelocePipeNetwork {
         craftableMemo.put(item, Math.max(0L, left));
     }
 
-    /** Migawka cache'u - to leci do klienta NATYCHMIST po otwarciu GUI. */
+    /** Snapshot of the cache - this goes to the client IMMEDIATELY after the GUI opens. */
     public Map<Item, Long> getCraftableMemo() {
         return new HashMap<>(craftableMemo);
     }
 
     /**
-     * Kasuje cache, gdy zmienilo sie cos, co zmienia wynik.
+     * Clears the cache when something that changes the result changed.
      *
-     * <p>Wolane przy zmianach sieci (magazyn, maszyna, wlaczniki auto-craftingu,
-     * przeladowanie chunkow) - inaczej gracz widzialby stare liczby.
+     * <p>Called on network changes (storage, machine, auto-crafting toggles,
+     * chunk reloads) - otherwise the player would see stale numbers.
      */
     public void clearCraftableMemo() {
         craftableMemo.clear();
@@ -300,20 +304,21 @@ public class VelocePipeNetwork {
     }
 
     /**
-     * @param force gdy true, skanuje inwentarze nawet jesli robil to chwile
-     *              temu. Uzywane TYLKO przed operacja, ktora musi widziec
-     *              stan na zywo (pobranie itemu, planowanie prawdziwego
-     *              craftu) - nigdy w petli tla.
+     * @param force when true, scans the inventories even if it did so a moment
+     *              ago. Used ONLY before an operation that must see the live
+     *              state (pulling an item, planning a real craft) - never in a
+     *              background loop.
      */
     public Map<Item, Long> getAllItemCounts(ServerLevel level, boolean force) {
         long now = level.getGameTime();
 
-        // Agregat jest cache'owany na poziomie sieci. Bez tego kazdy z kilku
-        // odbiorcow (cache w tle, GUI, wyswietlacze, pakiety) zamawial wlasny
-        // pelny skan tej samej sieci - w tym samym ticku.
-        // `now >= aggregateCacheTick` - jak w ConnectedEndpointInfo: przy
-        // cofnietym czasie swiata roznica bylaby ujemna, wiec warunek
-        // "mlodsze niz TTL" bylby spelniony i agregat nigdy by sie nie odswiezyl.
+        // The aggregate is cached at the network level. Without it each of the
+        // several consumers (the background cache, the GUI, displays, packets)
+        // ordered its own full scan of the same network - in the same tick.
+        // `now >= aggregateCacheTick` - as in ConnectedEndpointInfo: with a
+        // rewound world time the difference would be negative, so the
+        // "younger than TTL" condition would hold and the aggregate would
+        // never refresh.
         if (!force && aggregateCache != null
                 && now >= aggregateCacheTick
                 && now - aggregateCacheTick < AGGREGATE_TTL_TICKS) {
@@ -324,26 +329,28 @@ public class VelocePipeNetwork {
         Map<Item, Long> total = new HashMap<>();
         int skipped = 0;
 
-        // UWAGA: nie ma tu juz przechodzenia po "polaczonych sieciach".
+        // NOTE: there is no longer any iteration over "linked networks" here.
         //
-        // Bylo to resztka po starym modelu, w ktorym sieci sie scalaly i dzielily
-        // (byla nawet klasa VeloceNetworkGraph, ktorej juz nie ma - komentarz
-        // sie do niej odwolywal). Plaska struktura zalatwia to inaczej: gracz
-        // laczy rury, wiec powstaje JEDEN komponent i jedna siec. Lista
-        // `linked` nie byla NIGDY wypelniana (setLinkedNetworks nie mial ani
-        // jednego wolajacego), wiec ta petla byla martwa - a gdyby ktos ja
-        // kiedys ozywil, dwie sieci wskazujace na siebie dalyby nieskonczona
-        // rekurencje i StackOverflowError w ticku. Usuniete razem z polem.
+        // It was a leftover from the old model in which networks merged and
+        // split (there was even a class VeloceNetworkGraph that no longer
+        // exists - the comment referred to it). The flat structure handles
+        // this differently: the player joins pipes, so ONE component and one
+        // network come into being. The `linked` list was NEVER filled (setLinkedNetworks
+        // did not have a single caller), so this loop was dead - and if anyone
+        // ever revived it, two networks pointing at each other would produce
+        // infinite recursion and a StackOverflowError in the tick. Removed
+        // together with the field.
 
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {
-            // BUDZET SKANU. To byla ostatnia niezbudzetowana ciezka operacja
-            // na watku serwera: przeskanowanie JEDNEGO wolnego inwentarza
-            // (np. ogromnej sieci Refined Storage) blokowalo tick bez limitu.
+            // SCAN BUDGET. This was the last unbudgeted heavy operation on the
+            // server thread: scanning ONE slow inventory (e.g. a huge Refined
+            // Storage network) blocked the tick without a limit.
             //
-            // Po wyczerpaniu budzetu NIE skanujemy kolejnych endpointow - ale
-            // nadal sumujemy ich ZAPAMIETANE liczby, wiec nic nie znika z GUI.
-            // Wyjatkiem jest force=true (przed realnym pobraniem itemu), gdzie
-            // liczy sie poprawnosc, a nie czas - i to jest sciezka gracza.
+            // After the budget is exhausted we do NOT scan further endpoints -
+            // but we still sum their REMEMBERED numbers, so nothing disappears
+            // from the GUI. The exception is force=true (before a real item
+            // pull), where correctness matters more than time - and that is the
+            // player path.
             if (!force && System.nanoTime() - scanStart > SCAN_BUDGET_NS) {
                 skipped++;
             } else {
@@ -355,7 +362,7 @@ public class VelocePipeNetwork {
                 }
                 long epNanos = System.nanoTime() - epStart;
                 if (epNanos > SLOW_ENDPOINT_NS) {
-                    // Nazwany winowajca zamiast "siec jest wolna".
+                    // A named culprit instead of "the network is slow".
                     VeloceLog.Network.failure(VeloceLog.Side.SERVER,
                             "slow endpoint scan: %d ms for %s (type=%s)",
                             epNanos / 1_000_000L, endpoint.getPos(), endpoint.getType());
@@ -384,30 +391,30 @@ public class VelocePipeNetwork {
     }
 
     /**
-     * Ile sztuk KONKRETNIE TEGO itemu przyjmie cala siec.
+     * How many units of SPECIFICALLY THIS item the whole network will accept.
      *
-     * <p>To jest wlasciwe pytanie, gdy chcemy odlozyc item - a nie "ile jest
-     * wolnych slotow". Roznica jest realna: skrzynia wypelniona niedopelnionymi
-     * stosami kamienia ma ZERO pustych slotow, ale przyjmie jeszcze setki
-     * kamieni. Licznik pustych slotow raportowal ja jako pelna i terminal
-     * pokazywal "network full" na stale.
+     * <p>This is the right question when we want to deposit an item - and not
+     * "how many slots are free". The difference is real: a chest filled with
+     * partial stacks of stone has ZERO empty slots, but it will still accept
+     * hundreds of stones. The empty-slot counter reported it as full and the
+     * terminal showed "network full" permanently.
      *
-     * <p>Miejsce w niedopelnionych stosach liczymy PER TYP, wiec kamien i ziemia
-     * maja osobne odpowiedzi - tak jak powinno byc.
+     * <p>We count the room in partial stacks PER TYPE, so stone and dirt get
+     * separate answers - as it should be.
      *
-     * @return liczba sztuk (0 = naprawde nie wejdzie ani jedna) albo {@code -1}
-     *         gdy nie wiemy. <b>0 to dowod, -1 to brak wiedzy</b> - wolajacy
-     *         nie moze traktowac ich zamiennie.
+     * @return the number of units (0 = truly not a single one will fit) or
+     *         {@code -1} when we do not know. <b>0 is proof, -1 is lack of
+     *         knowledge</b> - the caller must not treat them interchangeably.
      */
     public long capacityFor(ServerLevel level, Item item) {
         long total = 0;
         for (ConnectedEndpointInfo ep : endpoints.values()) {
             if (level != null && !level.isLoaded(ep.getPos())) {
-                return -1;   // niezaladowany chunk - jego pojemnosc jest nieaktualna
+                return -1;   // unloaded chunk - its capacity is stale
             }
             long cap = ep.capacityFor(item);
             if (cap < 0) {
-                return -1;   // nieznana pojemnosc - nie zgadujemy
+                return -1;   // unknown capacity - we do not guess
             }
             total += cap;
         }
@@ -426,7 +433,7 @@ public class VelocePipeNetwork {
         return ItemStack.EMPTY;
     }
 
-    /** Zapis cache'u liczb do NBT sieci - ma przezyc restart swiata. */
+    /** Saves the number cache to the network NBT - it must survive a world restart. */
     public void saveCraftableMemo(CompoundTag netTag) {
         CompoundTag memo = new CompoundTag();
         for (Map.Entry<Item, Long> entry : craftableMemo.entrySet()) {
@@ -436,7 +443,7 @@ public class VelocePipeNetwork {
         netTag.put("CraftableMemo", memo);
     }
 
-    /** Odczyt cache'u liczb z NBT sieci (po wczytaniu swiata). */
+    /** Reads the number cache from the network NBT (after loading the world). */
     public void restoreCraftableMemo(CompoundTag netTag) {
         craftableMemo.clear();
         CompoundTag memo = netTag.getCompound("CraftableMemo");
@@ -475,8 +482,8 @@ public class VelocePipeNetwork {
         }
         tag.put("Endpoints", endList);
 
-        // Preferencja "piec czy crafting" musi przetrwac restart swiata -
-        // inaczej gracz ustawialby ja po kazdym wejsciu.
+        // The "furnace or crafting" preference must survive a world restart -
+        // otherwise the player would have to set it after every join.
         ListTag prefList = new ListTag();
         for (Item it : preferFurnace) {
             ResourceLocation rl = BuiltInRegistries.ITEM.getKey(it);
@@ -507,7 +514,7 @@ public class VelocePipeNetwork {
 
         ListTag endList = tag.getList("Endpoints", Tag.TAG_COMPOUND);
 
-        // Preferencje: nazwy itemow po identyfikatorach rejestru.
+        // Preferences: item names by registry identifiers.
         for (Tag el : tag.getList("PreferFurnace", Tag.TAG_STRING)) {
             ResourceLocation rl = ResourceLocation.tryParse(el.getAsString());
             if (rl == null) {
@@ -520,9 +527,9 @@ public class VelocePipeNetwork {
         }
         for (int j = 0; j < endList.size(); j++) {
             ConnectedEndpointInfo ep = ConnectedEndpointInfo.fromNbt(endList.getCompound(j));
-            // null = wpis nieczytelny (zly side albo nieznany typ). POMIJAMY go,
-            // zamiast wywalac wczytywanie calego zapisu swiata - pojedynczy
-            // popsuty endpoint nie moze blokowac wejscia do gry.
+            // null = unreadable entry (wrong side or unknown type). We SKIP it,
+            // instead of blowing up the loading of the whole world save - a
+            // single broken endpoint must not block entering the game.
             if (ep != null) {
                 net.endpoints.put(ep.getPos(), ep);
             }

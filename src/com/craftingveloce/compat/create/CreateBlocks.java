@@ -11,15 +11,15 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * Bloki modulu Create.
+ * Create module blocks.
  *
- * <p>Id blokow maja prefiks moda ({@code veloce_create_*}) - bez tego dwa
- * moduly moga wybrac te sama nazwe i jeden blok nadpisalby drugi (pilnuje tego
- * {@code validate_module_block_ids}).
+ * <p>Block ids carry the mod prefix ({@code veloce_create_*}) - without it two
+ * modules could pick the same name and one block would overwrite the other (this is
+ * enforced by {@code validate_module_block_ids}).
  *
- * <p>Rejestracja plain {@code DeferredRegister} - NIE uzywamy
- * {@code Create.registrate()} ani {@code CreateRegistrate}: to narzedzie Create
- * dla wlasnych blokow i dla moda spoza Create potrafi rzucic wyjatkiem.
+ * <p>Registration via a plain {@code DeferredRegister} - we do NOT use
+ * {@code Create.registrate()} or {@code CreateRegistrate}: that is a Create tool
+ * for its own blocks and for a mod outside Create it can throw an exception.
  */
 public final class CreateBlocks {
 
@@ -31,7 +31,7 @@ public final class CreateBlocks {
     public static final DeferredRegister.Items ITEMS =
             DeferredRegister.createItems(com.craftingveloce.CraftingVeloceMod.MODID);
 
-    /** Mlyn: receptury {@code create:milling}. */
+    /** Millstone: {@code create:milling} recipes. */
     public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_MILLSTONE_MODULE =
             BLOCKS.register("veloce_create_millstone_module",
                     () -> block(CreateKineticModules.MILLING));
@@ -39,14 +39,14 @@ public final class CreateBlocks {
             ITEMS.registerSimpleBlockItem("veloce_create_millstone_module",
                     VELOCE_MILLSTONE_MODULE);
 
-    /** Piła: receptury {@code create:cutting}. */
+    /** Saw: {@code create:cutting} recipes. */
     public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_SAW_MODULE =
             BLOCKS.register("veloce_create_saw_module",
                     () -> block(CreateKineticModules.CUTTING));
     public static final DeferredItem<BlockItem> VELOCE_SAW_MODULE_ITEM =
             ITEMS.registerSimpleBlockItem("veloce_create_saw_module", VELOCE_SAW_MODULE);
 
-    /** Kruszarka: receptury {@code create:crushing} (wyniki losowe). */
+    /** Crusher: {@code create:crushing} recipes (random outputs). */
     public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_CRUSHING_MODULE =
             BLOCKS.register("veloce_create_crushing_module",
                     () -> block(CreateKineticModules.CRUSHING));
@@ -54,7 +54,7 @@ public final class CreateBlocks {
             ITEMS.registerSimpleBlockItem("veloce_create_crushing_module",
                     VELOCE_CRUSHING_MODULE);
 
-    /** Mechanical crafter: receptury {@code create:mechanical_crafting}. */
+    /** Mechanical crafter: {@code create:mechanical_crafting} recipes. */
     public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_MECHANICAL_CRAFTER_MODULE =
             BLOCKS.register("veloce_create_mechanical_crafter_module",
                     () -> block(CreateKineticModules.MECHANICAL_CRAFTING));
@@ -62,28 +62,28 @@ public final class CreateBlocks {
             ITEMS.registerSimpleBlockItem("veloce_create_mechanical_crafter_module",
                     VELOCE_MECHANICAL_CRAFTER_MODULE);
 
-    /** Prasa: receptury {@code create:pressing} (na Basenie). */
+    /** Press: {@code create:pressing} recipes (on a Basin). */
     public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_PRESS_MODULE =
             BLOCKS.register("veloce_create_press_module",
                     () -> block(CreateKineticModules.PRESSING));
     public static final DeferredItem<BlockItem> VELOCE_PRESS_MODULE_ITEM =
             ITEMS.registerSimpleBlockItem("veloce_create_press_module", VELOCE_PRESS_MODULE);
 
-    /** Mixer: receptury {@code create:mixing} (na Basenie). */
+    /** Mixer: {@code create:mixing} recipes (on a Basin). */
     public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_MIXER_MODULE =
             BLOCKS.register("veloce_create_mixer_module",
                     () -> block(CreateKineticModules.MIXING));
     public static final DeferredItem<BlockItem> VELOCE_MIXER_MODULE_ITEM =
             ITEMS.registerSimpleBlockItem("veloce_create_mixer_module", VELOCE_MIXER_MODULE);
 
-    /** Deployer: receptury {@code create:deploying}. */
+    /** Deployer: {@code create:deploying} recipes. */
     public static final DeferredBlock<VeloceKineticModuleBlock> VELOCE_DEPLOYER_MODULE =
             BLOCKS.register("veloce_create_deployer_module",
                     () -> block(CreateKineticModules.DEPLOYING));
     public static final DeferredItem<BlockItem> VELOCE_DEPLOYER_MODULE_ITEM =
             ITEMS.registerSimpleBlockItem("veloce_create_deployer_module", VELOCE_DEPLOYER_MODULE);
 
-    /** Jedna linia na maszyne: blok + fabryka BE + typ BE z tego modulu. */
+    /** One line per machine: block + BE factory + BE type from this module. */
     private static VeloceKineticModuleBlock block(KineticModule module) {
         return new VeloceKineticModuleBlock(module,
                 (pos, state) -> CreateBlockEntities.create(module, pos, state),
@@ -108,15 +108,15 @@ public final class CreateBlocks {
     }
 
     /**
-     * Pozycje do zakladki kreatywnej - wolane TYLKO gdy Create jest obecne
-     * (zakladka buduje sie zawsze, takze bez tego moda).
+     * Items for the creative tab - called ONLY when Create is present
+     * (the tab is always built, also without that mod).
      */
     public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
         output.accept(VELOCE_MILLSTONE_MODULE_ITEM.get());
         output.accept(VELOCE_SAW_MODULE_ITEM.get());
-        // Maszyny z elementami ida do zakladki WYPELNIONE (gracz nie chce pustych).
+        // Machines with components go to the assembled tab (the player does not want empty ones).
         output.accept(VELOCE_CRUSHING_MODULE.get().filledStack());
-        // Maszyny z elementami ida do zakladki WYPELNIONE (gracz nie chce pustych).
+        // Machines with components go to the assembled tab (the player does not want empty ones).
         output.accept(VELOCE_MECHANICAL_CRAFTER_MODULE.get().filledStack());
         output.accept(VELOCE_PRESS_MODULE_ITEM.get());
         output.accept(VELOCE_MIXER_MODULE_ITEM.get());

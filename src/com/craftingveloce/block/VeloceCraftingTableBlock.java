@@ -36,22 +36,22 @@ import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
- * Veloce Crafting Table - auto-crafter postawiony w obudowie Integrale.
+ * Veloce Crafting Table - an auto-crafter placed in an Integrale casing.
  *
- * <p><b>Wyglad.</b> Blok ma model obudowy ({@code veloce_integrale_frame}),
- * a w srodku klient renderuje stol craftingu (patrz {@code VeloceCaseContents}
- * i {@code VeloceCaseRenderer}). Dzieki temu WSZYSTKIE nasze klocki wygladaja
- * tak samo: obudowa + klocek bazowy w srodku (stol, pulpit, dozownik,
- * obserwator, piec).
+ * <p><b>Appearance.</b> The block has a casing model ({@code veloce_integrale_frame}),
+ * and inside, the client renders a crafting table (see {@code VeloceCaseContents}
+ * and {@code VeloceCaseRenderer}). Thanks to that ALL our blocks look
+ * the same: casing + base block inside (table, controller, dispenser,
+ * observer, furnace).
  *
- * <p><b>Historia.</b> Byl tu kiedys dodatkowy stan {@code facade} i osobny
- * przedmiot "rama + stol", ktory powstawal przy zamianie klatki na stol. Po
- * ujednoliceniu wygladu bylo to ZBEDNYM DUPLIKATEM: zwykly stol craftingu
- * wyglada dokladnie tak samo, wiec gracz dostawal dwa identyczne przedmioty.
+ * <p><b>History.</b> There used to be an additional {@code facade} state here and a separate
+ * item "frame + table", which was created when a frame was converted into a table. After
+ * unifying the appearance it was a POINTLESS DUPLICATE: a plain crafting table
+ * looks exactly the same, so the player received two identical items.
  *
- * <p><b>Bez wlasnego ekwipunku.</b> Craftowanie odbywa sie bezposrednio na
- * sieci (patrz {@code VeloceAutoCrafter}) - nic nie przechodzi przez fizyczny
- * blok, poza buforem nadwyzki produkcji.
+ * <p><b>No inventory of its own.</b> Crafting happens directly on the
+ * network (see {@code VeloceAutoCrafter}) - nothing passes through a physical
+ * block, apart from the buffer for production surplus.
  */
 public class VeloceCraftingTableBlock extends BaseEntityBlock
         implements EntityBlock, IInventoryCable, VeloceNetworkNode {
@@ -109,7 +109,7 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
     @Override
     public void onRemove(BlockState state, Level world, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!state.is(newState.getBlock())) {
-            // Drop bufora nadwyzki - zeby itemy nie zniknely przy zniszczeniu bloku.
+            // Drop the surplus buffer - so that items do not vanish when the block is destroyed.
             if (!world.isClientSide && world.getBlockEntity(pos) instanceof VeloceCraftingTableBlockEntity ctBE) {
                 int dropped = 0;
                 for (int i = 0; i < ctBE.getBuffer().getContainerSize(); i++) {
@@ -127,7 +127,7 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
         }
     }
 
-    /** Wyrzuca cala zawartosc bufora na ziemie. */
+    /** Drops the entire contents of the buffer onto the ground. */
     private static void dropBuffer(Level world, BlockPos pos, VeloceCraftingTableBlockEntity be) {
         var buffer = be.getBuffer();
         for (int i = 0; i < buffer.getContainerSize(); i++) {
@@ -162,12 +162,12 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
     }
 
     /**
-     * Bufor craftera jest endpointem sieci.
+     * The crafter's buffer is a network endpoint.
      *
-     * <p>Dzieki temu nadwyzka produkcji (np. 3 deski z 1 logu, gdy gracz
-     * chcial 1) jest widoczna dla calej sieci i mozna ja wyciagnac terminalem,
-     * rura czy hopperem. Wczesniej rozpoznawalo to reczne {@code instanceof}
-     * w petli BFS - teraz mowi o tym sam wezel.
+     * <p>Thanks to that the production surplus (e.g. 3 planks from 1 log, when the player
+     * wanted 1) is visible to the whole network and can be pulled out with a terminal,
+     * a pipe or a hopper. Previously this was recognized by a manual {@code instanceof}
+     * in the BFS loop - now the node itself declares it.
      */
     @Override
     public boolean exposesCraftingBuffer(BlockState state) {
@@ -193,7 +193,7 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
         return CODEC;
     }
 
-    /** Wlasciwosci zaslepek obudowy: po jednej na kazda strone swiata. */
+    /** Casing cap properties: one per each side of the world. */
     @Override
     protected void createBlockStateDefinition(
             net.minecraft.world.level.block.state.StateDefinition.Builder<
@@ -202,14 +202,14 @@ public class VeloceCraftingTableBlock extends BaseEntityBlock
         com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
     }
 
-    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    /** On placement we immediately close the sides from which a cable comes in. */
     @Override
     public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
         return com.craftingveloce.block.VeloceIntegraleFrame.withPlacementClosures(
                 context.getLevel(), context.getClickedPos(), defaultBlockState());
     }
 
-    /** Domkniecie blachy na scianie, przy ktorej stoi rura Veloce. */
+    /** Closing the plate on the wall next to which a Veloce pipe stands. */
     @Override
     protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
                                      BlockState facingState, net.minecraft.world.level.LevelAccessor world,

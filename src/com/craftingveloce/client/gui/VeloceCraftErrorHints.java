@@ -12,34 +12,33 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Powody nieudanych prob z terminala - pokazywane w tooltipie itemu.
+ * Reasons for failed attempts from the terminal - shown in the item tooltip.
  *
- * <p><b>Problem, ktory to rozwiazuje.</b> Serwer meldowal powod na PASKU AKCJI,
- * ktorego w GUI terminala nie widac - gracz klikal item i nie dzialo sie nic
- * widocznego. Teraz powod trafia do tooltipa DOKLADNIE tego itemu, ktory probowal
- * wytworzyc ("Cannot craft: no furnace in the network", "Cannot craft: missing
- * iron ingot"...), wiec odpowiedz jest tam, gdzie gracz patrzy.
+ * <p><b>The problem this solves.</b> The server reported the reason on the ACTION BAR,
+ * which is not visible in the terminal GUI - the player clicked an item and nothing
+ * visible happened. Now the reason goes into the tooltip of EXACTLY the item that the
+ * player tried to craft ("Cannot craft: no furnace in the network", "Cannot craft: missing
+ * iron ingot"...), so the answer is where the player is looking.
  *
- * <p><b>Klucz to ITEM, nie stos.</b> Tak samo jak liczniki sieci i jak grupowana
- * jest lista terminala - inaczej ten sam item z innym NBT nie znalazlby swojego
- * komunikatu.
+ * <p><b>The key is the ITEM, not the stack.</b> Just like the network counters and how
+ * the terminal list is grouped - otherwise the same item with different NBT would not
+ * find its message.
  *
- * <p><b>Wpisy wygasaja</b> ({@link #LIFETIME_MS}): powod sprzed pol godziny
- * prawie zawsze przestal obowiazywac, a tooltip, ktory klamie, jest gorszy niz
- * brak tooltipa.
+ * <p><b>Entries expire</b> ({@link #LIFETIME_MS}): a reason from half an hour ago has
+ * almost always stopped applying, and a tooltip that lies is worse than no tooltip.
  */
 public final class VeloceCraftErrorHints {
 
-    /** Jak dlugo trzymamy powod, zanim uznamy go za nieaktualny. */
+    /** How long we keep a reason before we consider it outdated. */
     private static final long LIFETIME_MS = 30_000L;
 
-    /** Jeden zapamietany powod wraz z czasem zapisu. */
+    /** One remembered reason together with the time it was stored. */
     private record Hint(String reason, String detail, long stamp) {
     }
 
     private final Map<Item, Hint> hints = new HashMap<>();
 
-    /** Zapisuje powod nieudanej proby dla tego itemu. */
+    /** Stores the reason of a failed attempt for this item. */
     public void record(ItemStack stack, String reason, String detail) {
         if (stack.isEmpty()) {
             return;
@@ -48,10 +47,10 @@ public final class VeloceCraftErrorHints {
     }
 
     /**
-     * Dopisuje czerwona linie z powodem, jesli ten item niedawno sie nie udal.
+     * Appends a red line with the reason if this item failed recently.
      *
-     * <p>Nieaktualny wpis usuwamy przy okazji - to jedyne miejsce, ktore wie,
-     * ze powod jest jeszcze potrzebny.
+     * <p>We remove an outdated entry along the way - this is the only place that
+     * knows the reason is still needed.
      */
     public void appendTo(List<Component> tooltip, ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
@@ -69,7 +68,7 @@ public final class VeloceCraftErrorHints {
                 stack.getHoverName().getString()).withStyle(ChatFormatting.RED));
     }
 
-    /** Czysci pamiec - wolane przy zamykaniu ekranu. */
+    /** Clears the memory - called when the screen is closed. */
     public void clear() {
         hints.clear();
     }

@@ -86,7 +86,7 @@ public class VeloceRegistry {
                     (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceExtractorMenu(windowId, inv, data.readBlockPos())
             ));
 
-    // 3b. Velocity Furnace (zrodlo ciepla dla auto-craftera)
+    // 3b. Velocity Furnace (heat source for the auto-crafter)
     public static final DeferredBlock<com.craftingveloce.block.VeloceVelocityFurnaceBlock> VELOCITY_FURNACE =
             BLOCKS.register("velocity_furnace",
                     () -> new com.craftingveloce.block.VeloceVelocityFurnaceBlock(
@@ -113,7 +113,7 @@ public class VeloceRegistry {
                             (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceVelocityFurnaceMenu(
                                     windowId, inv, data.readBlockPos())));
 
-    // 3c. Velocity Electric Furnace (zrodlo ciepla na Forge Energy)
+    // 3c. Velocity Electric Furnace (heat source running on Forge Energy)
     public static final DeferredBlock<com.craftingveloce.block.VeloceBrewingStandBlock> BREWING_STAND =
             BLOCKS.register("brewing_stand",
                     () -> new com.craftingveloce.block.VeloceBrewingStandBlock(
@@ -181,7 +181,7 @@ public class VeloceRegistry {
                     (pos, state) -> new com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity(pos, state),
                     VELOCE_CRAFTING_TABLE.get()));
 
-    // 6. Veloce Controller (monitoring sieci + filtrowanie itemow)
+    // 6. Veloce Controller (network monitoring + item filtering)
     public static final DeferredBlock<com.craftingveloce.block.VeloceControllerBlock> VELOCE_CONTROLLER = BLOCKS.register(
             "veloce_controller",
             com.craftingveloce.block.VeloceControllerBlock::new
@@ -199,7 +199,7 @@ public class VeloceRegistry {
             ));
 
 
-    // 7. Veloce Threshold Sensor (redstone zalezny od stanu sieci)
+    // 7. Veloce Threshold Sensor (redstone driven by network state)
     public static final DeferredBlock<com.craftingveloce.block.VeloceThresholdSensorBlock> THRESHOLD_SENSOR =
             BLOCKS.register("threshold_sensor",
                     com.craftingveloce.block.VeloceThresholdSensorBlock::new);
@@ -221,7 +221,7 @@ public class VeloceRegistry {
                             (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceThresholdSensorMenu(
                                     windowId, inv, data.readBlockPos())));
 
-    // 9. Veloce Integrale (ozdobna klatka: tylko krawedzie, pusty srodek)
+    // 9. Veloce Integrale (decorative cage: edges only, hollow centre)
     public static final DeferredBlock<com.craftingveloce.block.VeloceIntegraleBlock> VELOCE_INTEGRALE =
             BLOCKS.register("veloce_integrale",
                     () -> new com.craftingveloce.block.VeloceIntegraleBlock(
@@ -239,7 +239,7 @@ public class VeloceRegistry {
             () -> new com.craftingveloce.item.VeloceIntegraleItem(
                     VELOCE_INTEGRALE.get(), new Item.Properties()));
 
-    // Okno maszyny (prawy klik) - zwykly kontener, jak piec.
+    // Machine window (right click) - a plain container, like a furnace.
     public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>,
             net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceModuleMenu>> VELOCE_MODULE_MENU =
             MENU_TYPES.register("veloce_module_menu",
@@ -247,7 +247,7 @@ public class VeloceRegistry {
                             (windowId, inv, data) -> new com.craftingveloce.inventory.VeloceModuleMenu(
                                     windowId, inv, data.readBlockPos())));
 
-    // Okno maszyny KINETYCZNEJ (Create) - osobny typ, bez slotu baterii.
+    // KINETIC (Create) machine window - a separate type, without the battery slot.
     public static final DeferredHolder<net.minecraft.world.inventory.MenuType<?>,
             net.minecraft.world.inventory.MenuType<com.craftingveloce.inventory.VeloceKineticMenu>> VELOCE_KINETIC_MENU =
             MENU_TYPES.register("veloce_kinetic_menu",
@@ -269,14 +269,15 @@ public class VeloceRegistry {
 
     private static <T extends BlockEntity> BlockEntityType<T> createBEType(
             BlockEntityFactory<T> factory, Block... blocks) {
-        // Standardowe API NeoForge, zamiast refleksji.
+        // Standard NeoForge API, instead of reflection.
         //
-        // Wczesniej szukalismy tu konstruktora BlockEntityType przez refleksje
-        // i bralismy PIERWSZY trójargumentowy, a kolejnosc zwracana przez
-        // getDeclaredConstructors() nie jest gwarantowana przez specyfikacje.
-        // Do tego dochodzil dynamiczny Proxy. To dzialalo przypadkiem i moglo
-        // peknac przy kazdej aktualizacji Minecrafta/NeoForge - a wtedy mod
-        // nie wstaje wcale. Builder.of() jest publicznym API i robi to samo.
+        // Previously we looked up the BlockEntityType constructor here via
+        // reflection and took the FIRST three-argument one, while the order
+        // returned by getDeclaredConstructors() is not guaranteed by the
+        // specification. On top of that there was a dynamic Proxy. It worked by
+        // accident and could break with any Minecraft/NeoForge update - and then
+        // the mod would not start at all. Builder.of() is public API and does
+        // the same thing.
         return BlockEntityType.Builder.of(factory::create, blocks).build(null);
     }
 

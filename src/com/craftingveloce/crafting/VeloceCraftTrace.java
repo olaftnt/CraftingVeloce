@@ -17,24 +17,24 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * PELNY slad jednej proby craftowania - dla diagnostyki "pokazuje, ze moge,
- * a nie moge".
+ * The COMPLETE trace of one crafting attempt - for diagnosing "it says I can,
+ * but I cannot".
  *
- * <p><b>Po co osobny mechanizm.</b> Zwykly log moda jest filtrowany configiem
- * (poziomami), wiec akurat wtedy, gdy cos nie dziala, brakuje najwazniejszych
- * linii. Ten slad loguje sie ZAWSZE (surowe INFO), ale TYLKO w obrebie jednej
- * akcji gracza - patrz {@link #begin(String)}. Dzieki temu:
+ * <p><b>Why a separate mechanism.</b> The mod's regular log is filtered by config
+ * (levels), so exactly when something is broken, the most important lines are
+ * missing. This trace always logs (raw INFO), but ONLY within a single player
+ * action - see {@link #begin(String)}. Thanks to that:
  * <ul>
- *   <li>gracz klika "wyciagnij item" i dostaje kompletny opis decyzji,</li>
- *   <li>automaty w tle (extractor, bufory) NIE zasmiecaja loga - ich sciezka
- *       nie zaczyna sladu.</li>
+ *   <li>the player clicks "extract item" and gets a complete description of the decision,</li>
+ *   <li>background automations (extractor, buffers) do NOT clutter the log - their path
+ *       does not start a trace.</li>
  * </ul>
  *
- * <p><b>Format.</b> Kazda linia ma prefiks {@code [Veloce][CRAFT-TRACE][#N]},
- * gdzie N to numer akcji. Wystarczy skopiowac wszystkie linie z jednym N.
+ * <p><b>Format.</b> Every line has the prefix {@code [Veloce][CRAFT-TRACE][#N]},
+ * where N is the action number. It is enough to copy all lines with the same N.
  *
- * <p>Slad jest per watek (ThreadLocal), bo craftowanie gracza leci w calosci
- * na watku serwera.
+ * <p>The trace is per thread (ThreadLocal), because player crafting runs entirely
+ * on the server thread.
  */
 public final class VeloceCraftTrace {
 
@@ -44,12 +44,12 @@ public final class VeloceCraftTrace {
     private static final AtomicLong IDS = new AtomicLong();
     private static final ThreadLocal<Long> CURRENT = new ThreadLocal<>();
 
-    /** Czy w tym watku trwa wlasnie sledzona akcja. */
+    /** Whether a traced action is currently running on this thread. */
     public static boolean active() {
         return CURRENT.get() != null;
     }
 
-    /** Otwiera slad i zwraca jego numer. */
+    /** Opens a trace and returns its number. */
     public static long begin(String what) {
         long id = IDS.incrementAndGet();
         CURRENT.set(id);
@@ -57,7 +57,7 @@ public final class VeloceCraftTrace {
         return id;
     }
 
-    /** Zamyka slad (bezpiecznie wolac zawsze - bez aktywnego sladu nic nie robi). */
+    /** Closes the trace (safe to call always - does nothing without an active trace). */
     public static void end(String result) {
         Long id = CURRENT.get();
         if (id == null) {
@@ -67,7 +67,7 @@ public final class VeloceCraftTrace {
         CURRENT.remove();
     }
 
-    /** Linia sladu (tylko w obrebie aktywnej akcji). */
+    /** A trace line (only within an active action). */
     public static void log(String fmt, Object... args) {
         Long id = CURRENT.get();
         if (id == null) {
@@ -83,10 +83,10 @@ public final class VeloceCraftTrace {
     }
 
     /**
-     * Wyjatek w obrebie sledzonej akcji - ze stosem, pod tym samym numerem.
+     * An exception within a traced action - with a stack trace, under the same number.
      *
-     * <p>Bez tego wyjatek z modulu by lecial "obok" sladu i nie byloby widac,
-     * w ktorym kroku przerwal cala probe.
+     * <p>Without this, an exception from a module would fly "beside" the trace and it
+     * would not be visible at which step it aborted the whole attempt.
      */
     public static void exception(String context, Throwable thrown) {
         Long id = CURRENT.get();
@@ -94,95 +94,96 @@ public final class VeloceCraftTrace {
             return;
         }
         com.craftingveloce.CraftingVeloceMod.LOGGER.warn(
-                "[Veloce][CRAFT-TRACE][#" + id + "] WYJATEK w " + context + ": " + thrown,
+                "[Veloce][CRAFT-TRACE][#" + id + "] EXCEPTION in " + context + ": " + thrown,
                 thrown);
     }
 
     // ------------------------------------------------------------------
-    // Zrzuty - po jednej metodzie na jedno pytanie
+    // Dumps - one method per question
     // ------------------------------------------------------------------
 
     /**
-     * Co siec MA do zrobienia tego itemu: moduly (czy stoi maszyna, czy ma
-     * prad, ile receptur), piec (zrodla, ile operacji, czy zasilone), craftery.
+     * What the network HAS for this item: modules (whether the machine is there,
+     * whether it has power, how many recipes), furnace (sources, how many
+     * operations, whether powered), crafters.
      */
     public static void dumpEnvironment(ServerLevel level, VelocePipeNetwork network, Item item) {
         if (!active()) {
             return;
         }
-        log("--- SRODOWISKO sieci ---");
-        log("siec: %s, terminale(wezly)=%d, endpointy=%d",
-                network == null ? "BRAK" : network.getId(),
+        log("--- NETWORK ENVIRONMENT ---");
+        log("network: %s, terminals(nodes)=%d, endpoints=%d",
+                network == null ? "NONE" : network.getId(),
                 network == null ? 0 : network.getTerminals().size(),
                 network == null ? 0 : network.getEndpoints().size());
         if (network == null) {
             return;
         }
 
-        log("moduly przetwarzania (id | maszyna stoi | zasilona | receptur na ten item):");
+        log("processing modules (id | machine present | powered | recipes for this item):");
         for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
             boolean available = module.available(level, network);
             boolean powered = module.powered(level, network);
             int recipes = module.recipesAnywhere(level, item).size();
-            log("  - %-10s available=%-5s powered=%-5s recipes=%d  typy=%s",
+            log("  - %-10s available=%-5s powered=%-5s recipes=%d  types=%s",
                     module.id(), available, powered, recipes, typeNames(module.recipeTypes()));
         }
 
         List<VeloceHeatSource> heat = VeloceHeatSources.allIn(level, network);
-        log("piec: zrodel=%d, hasAny=%s, hasPower=%s, suma operacji=%d",
+        log("furnace: sources=%d, hasAny=%s, hasPower=%s, total operations=%d",
                 heat.size(), VeloceHeatSources.hasAnyHeatSource(level, network),
                 VeloceHeatSources.hasPower(level, network),
                 VeloceHeatSources.totalOperations(level, network));
         for (VeloceHeatSource source : heat) {
-            log("  - %s: operacji=%d, zasilone=%s",
+            log("  - %s: operations=%d, powered=%s",
                     source.heatSourceName(), source.availableOperations(),
                     source.isPowered());
         }
 
         List<VeloceProcessingSource> machines = VeloceProcessingSources.allIn(level, network);
-        log("maszyny modulow: %d", machines.size());
+        log("module machines: %d", machines.size());
         for (VeloceProcessingSource machine : machines) {
-            log("  - %s: typy=%s, operacji=%d, zasilona=%s",
+            log("  - %s: types=%s, operations=%d, powered=%s",
                     machine.sourceName(), typeNames(machine.recipeTypes()),
                     machine.availableOperations(), machine.isPowered());
         }
 
-        log("craftery: %d, item w zbiorze wlaczonych=%s",
+        log("crafters: %d, item in the set of enabled=%s",
                 VeloceCraftingRegistry.crafters(level, network).size(),
                 VeloceCraftingRegistry.getAllEnabledItems(level, network).contains(item));
     }
 
     /**
-     * Wszystkie receptury na ten item, per zrodlo, ze skladnikami i liczbami
-     * sztuk. To odpowiada na pytanie "czy w ogole wiemy, jak to zrobic".
+     * All recipes for this item, per source, with ingredients and item counts.
+     * This answers the question "do we even know how to make this".
      */
     public static void dumpRecipes(ServerLevel level, VelocePipeNetwork network, Item item) {
         if (!active()) {
             return;
         }
-        log("--- RECEPTURY na %s (%s) ---", name(item), id(item));
-        dumpOne("waniliowe (crafting/stonecutting/smithing)",
+        log("--- RECIPES for %s (%s) ---", name(item), id(item));
+        dumpOne("vanilla (crafting/stonecutting/smithing)",
                 VeloceRecipeRegistry.getRecipesFor(level, item));
-        dumpOne("piec", VeloceRecipeRegistry.getFurnaceRecipesFor(level, item));
+        dumpOne("furnace", VeloceRecipeRegistry.getFurnaceRecipesFor(level, item));
         for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
-            dumpOne("modul " + module.id(), module.recipesAnywhere(level, item));
+            dumpOne("module " + module.id(), module.recipesAnywhere(level, item));
         }
     }
 
     private static void dumpOne(String label, List<ProcessingEntry> recipes) {
-        log("  %s: %d receptur(y)", label, recipes.size());
+        log("  %s: %d recipe(s)", label, recipes.size());
         for (ProcessingEntry recipe : recipes) {
             log("    * %s [%s] -> %s", recipe.id(), VeloceRecipeFinder.typeName(recipe.type()),
                     results(recipe));
             for (int i = 0; i < recipe.ingredients().size(); i++) {
                 Ingredient ing = recipe.ingredients().get(i);
-                log("        skladnik %d x%d: %s", i + 1, recipe.ingredientCount(i),
+                log("        ingredient %d x%d: %s", i + 1, recipe.ingredientCount(i),
                         ingredientOptions(ing));
             }
         }
     }
 
-    /** Stock dla itemu i jego skladnikow (z receptur powyzej), z limitem linii. */
+    /** Stock for the item and its ingredients (from the recipes above), with a line limit. */
     public static void dumpStock(Map<Item, Long> stock, Item item, List<ProcessingEntry> recipes) {
         if (!active()) {
             return;
@@ -191,8 +192,8 @@ public final class VeloceCraftTrace {
         for (long value : stock.values()) {
             total += value;
         }
-        log("--- STOCK: %d roznych itemow, %d sztuk razem ---", stock.size(), total);
-        log("  szukany %s: %d sztuk", name(item), stock.getOrDefault(item, 0L));
+        log("--- STOCK: %d distinct item(s), %d unit(s) total ---", stock.size(), total);
+        log("  requested %s: %d unit(s)", name(item), stock.getOrDefault(item, 0L));
         int lines = 0;
         for (ProcessingEntry recipe : recipes) {
             for (int i = 0; i < recipe.ingredients().size(); i++) {
@@ -201,12 +202,12 @@ public final class VeloceCraftTrace {
                         continue;
                     }
                     long have = stock.getOrDefault(option.getItem(), 0L);
-                    log("  skladnik %s: %d sztuk (potrzeba %d)", name(option.getItem()), have,
+                    log("  ingredient %s: %d unit(s) (need %d)", name(option.getItem()), have,
                             recipe.ingredientCount(i));
                 }
             }
             if (lines > 60) {
-                log("  ... (dalsze skladniki pomijam - limit linii)");
+                log("  ... (skipping further ingredients - line limit)");
                 break;
             }
         }
@@ -228,7 +229,7 @@ public final class VeloceCraftTrace {
     private static String ingredientOptions(Ingredient ing) {
         ItemStack[] options = ing.getItems();
         if (options.length == 0) {
-            return "(brak opcji - pusty tag)";
+            return "(no options - empty tag)";
         }
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < options.length && i < 6; i++) {
@@ -238,7 +239,7 @@ public final class VeloceCraftTrace {
             sb.append(id(options[i].getItem()));
         }
         if (options.length > 6) {
-            sb.append(" | ... (").append(options.length).append(" opcji)");
+            sb.append(" | ... (").append(options.length).append(" option(s))");
         }
         return sb.toString();
     }

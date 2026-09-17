@@ -13,19 +13,21 @@ import net.minecraft.world.item.Item;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * C→S: ustaw preferencje "crafting czy piec" dla jednego itemu w sieci.
+ * C->S: sets the "crafting or furnace" preference for a single item in the
+ * network.
  *
- * <p><b>Co to zmienia.</b> Item moze miec jednoczesnie recepture craftingowa
- * (crafter) i przepalania (piec). Ta preferencja mowi tylko, KTORA droga ma
- * byc probowana pierwsza - druga zostaje dostepna, jesli pierwszej zabraknie
- * skladnikow albo ciepla. To nie jest filtr i nie blokuje niczego.
+ * <p><b>What this changes.</b> An item may have both a crafting recipe
+ * (crafter) and a smelting recipe (furnace). This preference only says WHICH
+ * route should be tried first - the other one stays available if the first runs
+ * out of ingredients or heat. It is not a filter and it blocks nothing.
  *
- * <p><b>Dlaczego per siec, a nie per piec.</b> Gracz wybiera "wolę crafting"
- * albo "wolę furnace", a nie konkretny piec z sieci. Preferencja jest wiec
- * trzymana w sieci (VelocePipeNetwork) i przetrwa restart swiata.
+ * <p><b>Why per network and not per furnace.</b> The player chooses "I prefer
+ * crafting" or "I prefer furnace", not a specific furnace in the network. The
+ * preference is therefore held in the network (VelocePipeNetwork) and survives
+ * a world restart.
  *
- * <p>Klient wysyla STAN DOCELOWY, nie "przelacz" - dzieki temu dwuklik nie
- * zostawia serwera i klienta w roznych stanach.
+ * <p>The client sends the TARGET STATE, not a "toggle" - thanks to that a double
+ * click does not leave the server and the client in different states.
  */
 public record ControllerPreferKindPKT(BlockPos pos, Item item, boolean preferFurnace)
         implements CustomPacketPayload {
@@ -60,7 +62,7 @@ public record ControllerPreferKindPKT(BlockPos pos, Item item, boolean preferFur
             if (!(context.player() instanceof ServerPlayer player)) {
                 return;
             }
-            // Bezpiecznik odleglosci - tak samo jak w pozostalych pakietach.
+            // Distance guard - exactly as in the other packets.
             if (player.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
                     pkt.pos().getZ() + 0.5) > 64.0) {
                 return;
@@ -75,13 +77,13 @@ public record ControllerPreferKindPKT(BlockPos pos, Item item, boolean preferFur
                 return;
             }
             network.setPrefersFurnace(pkt.item(), pkt.preferFurnace());
-            // Zmiana musi trafic do zapisu swiata (preferencja ma przetrwac restart).
+            // The change has to reach the world save (the preference must survive a restart).
             manager.setDirty();
             com.craftingveloce.util.VeloceLog.Craft.success(
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
-                    "preferencja dla %s: %s",
+                    "preference for %s: %s",
                     pkt.item(),
-                    pkt.preferFurnace() ? "FURNACE pierwszy" : "CRAFTING pierwszy");
+                    pkt.preferFurnace() ? "FURNACE first" : "CRAFTING first");
         });
     }
 }

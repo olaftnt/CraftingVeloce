@@ -22,22 +22,23 @@ import net.minecraft.world.phys.BlockHitResult;
 import javax.annotation.Nullable;
 
 /**
- * Maszyna modulu Mekanism zasilana FE - jeden blok dla wszystkich rodzin.
+ * A FE-powered Mekanism module machine - one block for every family.
  *
- * <p><b>Czym to jest.</b> Wlasny blok Veloce (nie kopia maszyny Mekanism),
- * ktory stoi w sieci rur, przyjmuje FE kablem (capability {@code EnergyStorage})
- * i pozwala auto-crafterowi wykonywac receptury swojego typu. Mechanika jest
- * natychmiastowa - operacje rozlicza crafter, a maszyna jest akumulatorem
- * energii, dlatego nie ma GUI ani tickera z postepem.
+ * <p><b>What this is.</b> A Veloce block of our own (not a copy of a Mekanism
+ * machine) that stands in the pipe network, accepts FE through a cable
+ * (the {@code EnergyStorage} capability) and lets the auto-crafter perform
+ * recipes of its type. The mechanics are instantaneous - the crafter settles
+ * the operations, and the machine is an energy accumulator, which is why it has
+ * no GUI and no ticker with progress.
  *
- * <p><b>Jedna klasa, cztery maszyny.</b> Kruszarka, wzbogacanie, laczenie
- * i pilowanie roznia sie wylacznie danymi ({@link FeModule}), wiec dziela ten
- * sam blok i ten sam block entity. Dodanie kolejnej maszyny o tym samym
- * ksztalcie (1-2 itemy -> item) to jeden wiersz w {@code FeModule.ALL}.
+ * <p><b>One class, four machines.</b> Crusher, enrichment, combining and sawing
+ * differ only in data ({@link FeModule}), so they share the same block and the
+ * same block entity. Adding another machine with the same shape (1-2 items ->
+ * item) is one row in {@code FeModule.ALL}.
  *
- * <p><b>Izolacja.</b> Klasa zyje w {@code compat/mekanism} i laduje sie tylko
- * przy obecnym Mekanism - mimo to nie zawiera ZADNEGO typu Mekanism: maszyna
- * jest w calosci nasza, a Mekanism dostarcza wylacznie receptury.
+ * <p><b>Isolation.</b> The class lives in {@code compat/mekanism} and loads only
+ * when Mekanism is present - despite that it contains NO Mekanism type: the
+ * machine is entirely ours, and Mekanism only supplies the recipes.
  */
 public class VeloceFeModuleBlock extends BaseEntityBlock
         implements EntityBlock, VeloceNetworkNode {
@@ -54,7 +55,7 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
         this.blockEntityFactory = blockEntityFactory;
     }
 
-    /** Opis maszyny (typ receptury, koszt FE, etykieta). */
+    /** Machine description (recipe type, FE cost, label). */
     public FeModule module() {
         return module;
     }
@@ -65,7 +66,7 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
                 new VeloceFeModuleBlock(module, blockEntityFactory, properties));
     }
 
-    /** Tick po stronie serwera: dobieranie pradu z itemu w slocie baterii. */
+    /** Server-side tick: drawing power from the item in the battery slot. */
     @Override
     public <T extends BlockEntity> net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(
             Level level, BlockState state, net.minecraft.world.level.block.entity.BlockEntityType<T> type) {
@@ -89,25 +90,26 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
         return RenderShape.MODEL;
     }
 
-    /** Maszyna nie ma przodu ani tylu - laczy sie z rura z kazdej strony. */
+    /** The machine has no front or back - it connects to a pipe on every side. */
     @Override
     public boolean canConnectFrom(BlockState state, Direction towardPipe) {
         return true;
     }
 
     /**
-     * Klikniecie pokazuje stan akumulatora na pasku akcji.
+     * Clicking shows the accumulator status on the action bar.
      *
-     * <p>Maszyna jest natychmiastowa i nie ma GUI (brak postepu i slotow), ale
-     * gracz musi moc sprawdzic, czy dochodzi do niej prad - bez tego jedynym
-     * objawem "brak pradu" byloby to, ze automat nic nie robi.
+     * <p>The machine is instantaneous and has no GUI (no progress and no slots),
+     * but the player has to be able to check whether power is reaching it -
+     * without that, the only symptom of "no power" would be the automation doing
+     * nothing.
      */
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
                                                net.minecraft.world.entity.player.Player player,
                                                net.minecraft.world.phys.BlockHitResult hit) {
-        // Prawy klik otwiera zwykle okno kontenera - DOKLADNIE jak w piecu
-        // (menu + ekran z ta sama tekstura). Zadnych pakietow.
+        // Right-click opens an ordinary container window - EXACTLY as in a
+        // furnace (menu + screen with the same texture). No packets.
         if (!world.isClientSide && player instanceof net.minecraft.server.level.ServerPlayer) {
             player.openMenu(new net.minecraft.world.SimpleMenuProvider(
                             (id, inv, p) -> new com.craftingveloce.inventory.VeloceModuleMenu(
@@ -119,11 +121,11 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
     }
 
     /**
-     * Zgloszenie do sieci przy postawieniu.
+     * Reporting to the network on placement.
      *
-     * <p>Bez tego postawienie maszyny obok istniejacej rury nie odswiezyloby
-     * sieci i crafter by jej nie widzial - dokladnie ten blad, ktory mialy
-     * piece, zanim dostaly ten hook.
+     * <p>Without this, placing the machine next to an existing pipe would not
+     * refresh the network and the crafter would not see it - exactly the bug the
+     * furnaces had before they got this hook.
      */
     @Override
     public void setPlacedBy(Level world, BlockPos pos, BlockState state,
@@ -141,7 +143,7 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
         VeloceNodeBlocks.onNodeRemoved(world, pos);
     }
 
-    /** Wlasciwosci zaslepek obudowy: po jednej na kazda strone swiata. */
+    /** Casing cap properties: one for each side of the world. */
     @Override
     protected void createBlockStateDefinition(
             net.minecraft.world.level.block.state.StateDefinition.Builder<
@@ -150,14 +152,14 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
         com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
     }
 
-    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    /** On placement we immediately close off the sides a cable arrives from. */
     @Override
     public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
         return com.craftingveloce.block.VeloceIntegraleFrame.withPlacementClosures(
                 context.getLevel(), context.getClickedPos(), defaultBlockState());
     }
 
-    /** Domkniecie blachy na scianie, przy ktorej stoi rura Veloce. */
+    /** Closing the sheet metal on the face a Veloce pipe stands against. */
     @Override
     protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
                                      BlockState facingState, net.minecraft.world.level.LevelAccessor world,

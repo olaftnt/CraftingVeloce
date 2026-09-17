@@ -11,14 +11,15 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * C→S: zapisuje konfiguracje czujnika progu (prog + tryb).
+ * C->S: saves the threshold sensor configuration (threshold + mode).
  *
- * <p>Jedna wiadomosc na oba ustawienia, bo gracz zmienia je w tym samym oknie
- * i serwer i tak potrzebuje ich razem - osobne pakiety znacznie tylko wiecej
- * sciezek do utrzymania.
+ * <p>One message for both settings, because the player changes them in the same
+ * window and the server needs them together anyway - separate packets would only
+ * mean more code paths to maintain.
  *
- * <p>Filtr leci osobno, wspolnym pakietem {@link SetFilterPKT} - czujnik ma
- * jeden filtr, wiec obsluguje go ten sam mechanizm co ekstraktor i piec.
+ * <p>The filter travels separately, in the shared {@link SetFilterPKT} packet -
+ * the sensor has one filter, so it is handled by the same mechanism as the
+ * extractor and the furnace.
  */
 public record SensorConfigPKT(BlockPos pos, long threshold, boolean highMode)
         implements CustomPacketPayload {
@@ -46,15 +47,15 @@ public record SensorConfigPKT(BlockPos pos, long threshold, boolean highMode)
             if (!(context.player() instanceof ServerPlayer player)) {
                 return;
             }
-            // Nie ustawiamy progu czujnikowi na drugim koncu swiata.
+            // We do not set the threshold on a sensor at the other end of the world.
             if (player.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
                     pkt.pos().getZ() + 0.5) > 64.0) {
                 return;
             }
             if (player.level().getBlockEntity(pkt.pos())
                     instanceof VeloceThresholdSensorBlockEntity sensor) {
-                // Kolejnosc bez znaczenia - oba settery tylko znacza block
-                // entity jako zmienione i dosylaja stan.
+                // The order does not matter - both setters only mark the block
+                // entity as changed and resend the state.
                 sensor.setThreshold(pkt.threshold());
                 sensor.setMode(pkt.highMode()
                         ? VeloceThresholdSensorBlockEntity.Mode.HIGH

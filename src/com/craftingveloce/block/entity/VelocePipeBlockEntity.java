@@ -78,17 +78,19 @@ public class VelocePipeBlockEntity extends PlatformBlockEntity implements Tickab
         if (level == null || level.isClientSide) return;
 
         long time = level.getGameTime();
-        // Sprawdzanie okresowe z ROZPROSZENIEM po pozycji - kazda rura ma wlasna
-        // faze, wiec sciana rur nie robi pracy w jednym ticku.
+        // The periodic check with SPREADING over the position - every pipe has its
+        // own phase, so a wall of pipes does not do its work in a single tick.
         //
-        // BUG, ktory tu byl: `Math.abs(worldPosition.hashCode()) % 20`.
-        // Math.abs(Integer.MIN_VALUE) zostaje UJEMNE (-2147483648), wiec dla
-        // rury o takim hashu faza wychodzila ujemna i NIGDY nie zrownala sie
-        // z nieujemnym `time % 20`. Taka rura nie wykrywalaby podlaczonego
-        // inwentarza ani sieci kabli - w praktyce "nie widzi" skrzyni obok.
+        // The BUG that was here: `Math.abs(worldPosition.hashCode()) % 20`.
+        // Math.abs(Integer.MIN_VALUE) stays NEGATIVE (-2147483648), so for a pipe
+        // with such a hash the phase came out negative and NEVER equaled the
+        // non-negative `time % 20`. Such a pipe would not detect a connected
+        // inventory or cable network - in practice it "does not see" the chest
+        // next to it.
         //
-        // VeloceTick.everySpread uzywa Math.floorMod, wiec faza jest zawsze
-        // poprawna, i mierzy ODSTEP od ostatniego razu zamiast rownosci.
+        // VeloceTick.everySpread uses Math.floorMod, so the phase is always
+        // correct, and it measures the INTERVAL since the last time instead of
+        // equality.
         if (com.craftingveloce.util.VeloceTick.everySpread(time, lastPeriodicTick, 20, worldPosition)) {
             lastPeriodicTick = time;
             updateInventories();
@@ -96,7 +98,7 @@ public class VelocePipeBlockEntity extends PlatformBlockEntity implements Tickab
         }
     }
 
-    /** Tick ostatniej okresowej pracy tej rury. */
+    /** Tick of the last periodic work of this pipe. */
     private long lastPeriodicTick = Long.MIN_VALUE;
 
     private void updateInventories() {

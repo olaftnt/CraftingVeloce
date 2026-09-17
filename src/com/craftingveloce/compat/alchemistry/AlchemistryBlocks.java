@@ -12,15 +12,15 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 /**
- * Bloki modulu Alchemistry.
+ * Alchemistry module blocks.
  *
- * <p>Id blokow maja prefiks moda ({@code veloce_alchemistry_*}), bo nazwy typu
- * "combiner" istnieja w kilku modach naraz - bez prefiksu dwa moduly moglyby
- * wybrac to samo id i jeden blok nadpisalby drugi (pilnuje tego
- * {@code validate_module_block_ids} w build.py).
+ * <p>Block ids carry the mod prefix ({@code veloce_alchemistry_*}), because
+ * names like "combiner" exist in several mods at once - without the prefix two
+ * modules could pick the same id and one block would overwrite the other
+ * ({@code validate_module_block_ids} in build.py guards this).
  *
- * <p>Rejestracja plain {@code DeferredRegister}; klasa laduje sie tylko przy
- * obecnym Alchemistry.
+ * <p>Registration is a plain {@code DeferredRegister}; the class loads only when
+ * Alchemistry is present.
  */
 public final class AlchemistryBlocks {
 
@@ -32,7 +32,7 @@ public final class AlchemistryBlocks {
     public static final DeferredRegister.Items ITEMS =
             DeferredRegister.createItems(com.craftingveloce.CraftingVeloceMod.MODID);
 
-    /** Compactor: receptury {@code alchemistry:compactor}. */
+    /** Compactor: {@code alchemistry:compactor} recipes. */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_COMPACTOR_MODULE =
             BLOCKS.register("veloce_alchemistry_compactor_module",
                     () -> block(AlchemistryFeModules.COMPACTOR));
@@ -40,7 +40,7 @@ public final class AlchemistryBlocks {
             ITEMS.registerSimpleBlockItem("veloce_alchemistry_compactor_module",
                     VELOCE_COMPACTOR_MODULE);
 
-    /** Combiner: receptury {@code alchemistry:combiner} (N skladnikow). */
+    /** Combiner: {@code alchemistry:combiner} recipes (N ingredients). */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_COMBINER_MODULE =
             BLOCKS.register("veloce_alchemistry_combiner_module",
                     () -> block(AlchemistryFeModules.COMBINER));
@@ -48,7 +48,7 @@ public final class AlchemistryBlocks {
             ITEMS.registerSimpleBlockItem("veloce_alchemistry_combiner_module",
                     VELOCE_COMBINER_MODULE);
 
-    /** Fission: receptury {@code alchemistry:fission} (1 item -> 2 itemy). */
+    /** Fission: {@code alchemistry:fission} recipes (1 item -> 2 items). */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_FISSION_MODULE =
             BLOCKS.register("veloce_alchemistry_fission_module",
                     () -> block(AlchemistryFeModules.FISSION));
@@ -56,7 +56,7 @@ public final class AlchemistryBlocks {
             ITEMS.registerSimpleBlockItem("veloce_alchemistry_fission_module",
                     VELOCE_FISSION_MODULE);
 
-    /** Fusion: receptury {@code alchemistry:fusion} (2 itemy -> 1 item). */
+    /** Fusion: {@code alchemistry:fusion} recipes (2 items -> 1 item). */
     public static final DeferredBlock<VeloceFeModuleBlock> VELOCE_FUSION_MODULE =
             BLOCKS.register("veloce_alchemistry_fusion_module",
                     () -> block(AlchemistryFeModules.FUSION));
@@ -86,7 +86,7 @@ public final class AlchemistryBlocks {
                     VELOCE_ATOMIZER_MODULE);
 
 
-    /** Jedna linia na maszyne: blok rdzenia + fabryka BE z tego modulu. */
+    /** One line per machine: the core block + the BE factory from this module. */
     private static VeloceFeModuleBlock block(FeModule module) {
         return new VeloceFeModuleBlock(module, AlchemistryBlockEntities.factory(module),
                 properties());
@@ -109,8 +109,8 @@ public final class AlchemistryBlocks {
     }
 
     /**
-     * Pozycje do zakladki kreatywnej - wolane TYLKO gdy Alchemistry jest
-     * obecne (zakladka buduje sie zawsze, takze bez tego moda).
+     * Entries for the creative tab - called ONLY when Alchemistry is present
+     * (the tab always builds, also without that mod).
      */
     public static void addCreativeItems(net.minecraft.world.item.CreativeModeTab.Output output) {
         output.accept(VELOCE_COMPACTOR_MODULE_ITEM.get());

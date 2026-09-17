@@ -5,21 +5,22 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
 /**
- * Nakladki na slotach: ile sztuk jest na stanie i ile da sie dorobic.
+ * Slot overlays: how many units are in stock and how many can be crafted.
  *
- * <p><b>Po co osobna klasa.</b> Terminal rysowal te dwie liczby poprawnie,
- * a kontroler mial wlasna, uproszczona wersje - bez skalowania czcionki i bez
- * tego samego zakotwiczenia. Efekt byl taki, jak zglosil gracz: liczby
- * w kontrolerze wychodzily poza ikonke albo ich nie bylo widac.
+ * <p><b>Why a separate class.</b> The terminal drew these two numbers
+ * correctly, while the controller had its own simplified version - without font
+ * scaling and without the same anchoring. The effect was what the player
+ * reported: the numbers in the controller stuck out past the icon or were not
+ * visible at all.
  *
- * <p>Zamiast poprawiac druga kopie, oba ekrany korzystaja z TEGO kodu. Liczby
- * wygladaja wiec identycznie w terminalu i w kontrolerze, bo to doslownie ta
- * sama funkcja rysujaca - a nie dwie, ktore maja sie zgadzac.
+ * <p>Instead of fixing the second copy, both screens use THIS code. The numbers
+ * therefore look identical in the terminal and in the controller, because it is
+ * literally the same drawing function - and not two that are supposed to agree.
  *
- * <p>Uklad (ustalony wczesniej i celowo niezmieniony):
+ * <p>Layout (established earlier and deliberately unchanged):
  * <ul>
- *   <li><b>stan</b> - bialy, prawy dolny rog slotu,</li>
- *   <li><b>do dorobienia</b> - pomaranczowy, lewy gorny rog, z "+" gdy sie zmiesci.</li>
+ *   <li><b>stock</b> - white, bottom right corner of the slot,</li>
+ *   <li><b>craftable</b> - orange, top left corner, with a "+" when it fits.</li>
  * </ul>
  */
 public final class VeloceSlotOverlay {
@@ -27,32 +28,32 @@ public final class VeloceSlotOverlay {
     private VeloceSlotOverlay() {
     }
 
-    /** Skala czcionki w nakladce. Waniliowy rozmiar nie zmiescilby sie w slocie. */
+    /** Font scale in the overlay. The vanilla size would not fit in the slot. */
     private static final float SCALE = 0.6f;
 
-    /** Ile znakow miesci sie w nakladce na slocie. */
+    /** How many characters fit in the overlay on a slot. */
     private static final int MAX_OVERLAY_CHARS = 5;
 
-    /** Kolor stanu - bialy, jak liczba stosu w wanilii. */
+    /** The stock colour - white, like the stack count in vanilla. */
     private static final int COLOR_STOCK = 0xFFFFFF;
 
-    /** Kolor "do dorobienia" - pomaranczowy, zeby odroznic od stanu. */
+    /** The "craftable" colour - orange, to tell it apart from stock. */
     private static final int COLOR_CRAFTABLE = 0xFFA500;
 
     /**
-     * Skrocona liczba: 1K, 1.2K, 1M, 1.2M, 1B.
+     * Abbreviated number: 1K, 1.2K, 1M, 1.2M, 1B.
      *
-     * <p><b>Regula zyje w JEDNYM miejscu</b>
-     * ({@link com.craftingveloce.util.VeloceFormat#compact(long)}) - tutaj
-     * zostaje tylko nazwa uzywana przez GUI. Wczesniej ta metoda miala wlasna
-     * kopie formatowania obok {@code VeloceFormat}, a dwie kopie tej samej
-     * reguly zawsze sie w koncu rozjezdzaja.
+     * <p><b>The rule lives in ONE place</b>
+     * ({@link com.craftingveloce.util.VeloceFormat#compact(long)}) - here only
+     * the name used by the GUI remains. Previously this method had its own copy
+     * of the formatting next to {@code VeloceFormat}, and two copies of the same
+     * rule always end up drifting apart eventually.
      */
     public static String formatCount(long number) {
         return com.craftingveloce.util.VeloceFormat.compact(number);
     }
 
-    /** Stan magazynu: bialy, prawy dolny rog slotu. Zero nie jest rysowane. */
+    /** Stock: white, bottom right corner of the slot. Zero is not drawn. */
     public static void drawStock(GuiGraphics graphics, Font font, long count, int x, int y) {
         if (count <= 0) {
             return;
@@ -69,13 +70,14 @@ public final class VeloceSlotOverlay {
     }
 
     /**
-     * Liczba sztuk, ktore da sie DOROBIC (np. "+12"), lewy gorny rog slotu.
+     * The number of units that can be CRAFTED (e.g. "+12"), top left corner of
+     * the slot.
      *
-     * <p>Plus tylko wtedy, gdy zmiesci sie w 5 znakach RAZEM z liczba.
-     * Slot ma miejsce na 5 znakow: "+1234" wchodzi, "+12.3K" nie - wiec
-     * pokazujemy samo "12.3K". Dzieki temu liczba nigdy nie wychodzi poza
-     * ikonke, a plus nadal odroznia "da sie dorobic" od zwyklego stanu,
-     * dopoki jest miejsce.
+     * <p>The plus only when it fits within 5 characters TOGETHER with the
+     * number. The slot has room for 5 characters: "+1234" fits, "+12.3K" does
+     * not - so we show just "12.3K". Thanks to that the number never goes past
+     * the icon, and the plus still distinguishes "can be crafted" from plain
+     * stock, as long as there is room.
      */
     public static void drawCraftable(GuiGraphics graphics, Font font, long craftable, int x, int y) {
         if (craftable <= 0) {

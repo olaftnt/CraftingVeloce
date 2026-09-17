@@ -11,17 +11,18 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
- * S-&gt;C: powod nieudanej proby wyciagniecia/wytworzenia itemu w terminalu.
+ * S-&gt;C: the reason an attempt to withdraw/craft an item in the terminal failed.
  *
- * <p><b>Dlaczego pakiet, a nie pasek akcji.</b> Do tej pory serwer wysylal
- * "Cannot craft: ..." przez {@code displayClientMessage(..., true)}, czyli na
- * PASEK AKCJI - a ten jest widoczny tylko poza GUI. Gracz stojacy w terminalu
- * nie widzial wiec NIC: klikal item, ktorego nie da sie zrobic, i nie wiedzial
- * dlaczego. Teraz powod jedzie do klienta razem z itemem, ktorego dotyczyl, i
- * ląduje w TOOLTIPIE tego itemu (patrz {@code VeloceCraftErrorHints}).
+ * <p><b>Why a packet and not the action bar.</b> Until now the server sent
+ * "Cannot craft: ..." through {@code displayClientMessage(..., true)}, that is,
+ * to the ACTION BAR - and that is only visible outside a GUI. A player standing
+ * in the terminal therefore saw NOTHING: they clicked an item that cannot be
+ * made and did not know why. Now the reason travels to the client together with
+ * the item it concerned, and lands in the TOOLTIP of that item (see
+ * {@code VeloceCraftErrorHints}).
  *
- * <p>Wysylamy KLUCZ powodu i detal, a nie gotowy tekst: tlumaczenie robi klient,
- * wiec komunikat jest w jezyku gracza.
+ * <p>We send the reason KEY and the detail, not the finished text: the client
+ * does the translation, so the message is in the player's language.
  */
 public record TerminalCraftErrorPKT(BlockPos terminalPos, ItemStack itemStack,
                                     String reason, String detail) implements CustomPacketPayload {

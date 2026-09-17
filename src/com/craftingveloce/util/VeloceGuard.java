@@ -7,47 +7,48 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Osłona dla okresowej pracy moda wolanej z ticku poziomu.
+ * Guard for the mod's periodic work invoked from the level tick.
  *
- * <p><b>Po co.</b> Trzy rzeczy dzieja sie w kazdym ticku swiata: krok sieci rur,
- * rozglaszanie stanow crafterow i utrzymanie force-loadow. Kazda z nich siega
- * do kodu, ktory nie jest nasz: block entity Toma, Refined Storage, kontenery
- * wanilii. Wystarczy jeden wyjatek z obcej biblioteki (zly capability, kontener
- * zwracajacy null), zeby przerwac tick poziomu - a wtedy Minecraft konczy sie
- * crashem "Exception ticking world", bez wskazania, ze to nasza robota.
+ * <p><b>Why it exists.</b> Three things happen on every world tick: the pipe
+ * network step, broadcasting crafter states and keeping force-loads alive. Each
+ * of them reaches into code that is not ours: Tom's block entities, Refined
+ * Storage, vanilla containers. A single exception from a foreign library (a bad
+ * capability, a container returning null) is enough to abort the level tick -
+ * and then Minecraft dies with an "Exception ticking world" crash, with no
+ * indication that it was our doing.
  *
- * <p><b>Dlaczego to nie ukrywa bledow.</b> Wyjatek NIE jest polykany po cichu:
- * leci do loga ZAWSZE (takze przy wylogowaniu moda w configu) i to z pelnym
- * stack trace, z nazwa operacji i z informacja, ze bez tej osłony serwer by
- * polegl. Tlumimy tylko POWTARZANIE tego samego bledu - inaczej zawieszona
- * operacja zapchalaby log tysiacami identycznych wpisow i ukryla prawdziwa
- * przyczyne.
+ * <p><b>Why this does not hide errors.</b> The exception is NOT swallowed
+ * silently: it always goes to the log (also when the mod is configured to log
+ * less) with a full stack trace, the operation name and a note that without
+ * this guard the server would have died. We only throttle REPEATING the same
+ * error - otherwise a stuck operation would flood the log with thousands of
+ * identical entries and hide the real cause.
  *
- * <p><b>Dlaczego tylko tick poziomu.</b> Dla ticku block entity wanilia sama
- * robi czytelny raport ("Ticking block entity" + nazwa bloku), wiec jest tam
- * lepszy mechanizm niz nasz. Dla ticku poziomu nie ma - i dlatego ta osłona
- * istnieje dokladnie tutaj.
+ * <p><b>Why only the level tick.</b> For block entity ticks vanilla itself
+ * produces a readable report ("Ticking block entity" plus the block name), so
+ * there is a better mechanism than ours. For the level tick there is none - and
+ * that is exactly why this guard lives here.
  */
 public final class VeloceGuard {
 
-    /** Kanalu nie filtrujemy configiem: to sytuacja, w ktorej serwer mialby paść. */
+    /** This channel is not filtered by config: this is the case where the server would crash. */
     private static final Logger LOGGER = LoggerFactory.getLogger("craftingveloce");
 
-    /** Minimalny odstep (w tickach) miedzy logami tego samego bledu. */
+    /** Minimum gap (in ticks) between logs of the same error. */
     private static final long LOG_THROTTLE_TICKS = 200L;
 
     /**
-     * Ostatni tick, w ktorym logowalismy dany blad.
+     * Last tick in which we logged a given error.
      *
-     * <p>Mapa jest ograniczona Z KONSTRUKCJI: klucze to kilka stalych nazw
-     * operacji podawanych w kodzie, nie dane ze swiata.
+     * <p>The map is bounded BY CONSTRUCTION: the keys are a handful of constant
+     * operation names passed in code, not world data.
      */
     private static final Map<String, Long> LAST_LOG = new HashMap<>();
 
     private VeloceGuard() {
     }
 
-    /** Uruchamia prace; wyjatek loguje i tlumi, zeby nie zabic ticku swiata. */
+    /** Runs the work; an exception is logged and throttled so it does not kill the world tick. */
     public static void run(String what, long gameTime, Runnable task) {
         try {
             task.run();
@@ -58,10 +59,10 @@ public final class VeloceGuard {
                 return;
             }
             LAST_LOG.put(what, gameTime);
-            LOGGER.error("[Veloce] operacja '{}' zakonczyla sie wyjatkiem - pomijam ja w tym "
-                    + "ticku, zeby nie zabic swiata. Zglos to jako blad w modzie.", what, t);
-            LOGGER.error("[Veloce] (ten sam blad nie bedzie powtarzany czesciej niz raz "
-                    + "na {} tickow)", LOG_THROTTLE_TICKS);
+            LOGGER.error("[Veloce] operation '{}' threw an exception - skipping it for this "
+                    + "tick so the world does not die. Please report this as a mod bug.", what, t);
+            LOGGER.error("[Veloce] (the same error will not be repeated more often than once "
+                    + "per {} ticks)", LOG_THROTTLE_TICKS);
         }
     }
 }

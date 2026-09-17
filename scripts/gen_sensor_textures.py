@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
-"""Tekstury Veloce Threshold Sensor: blok (off/on) + tlo GUI.
+"""Veloce Threshold Sensor textures: the block (off/on) + the GUI background.
 
-BLOCK: baza jest waniliowy `observer` - to blok redstone, wiec tematycznie
-pasuje idealnie. Jego wlasna czerwona dioda (2x2 piksele) staje sie nasza
-kontrolka: przygaszona, gdy sensor nie wystawia pradu, i rozjarzona, gdy
-wystawia. Reszta korpusu zostaje bez zmian, wiec blok nadal wyglada jak
-minecraftowy.
+BLOCK: the base is the vanilla `observer` - it is a redstone block, so it fits
+thematically perfectly. Its own red diode (2x2 pixels) becomes our indicator:
+dimmed when the sensor is not outputting power, and glowing when it is. The rest
+of the body is left unchanged, so the block still looks like Minecraft.
 
-GUI: panel w stylu ekstraktora (212x166) + JEDEN slot itemu w wysrodkowanym
-wierszu. Wiersz (slot, pole liczby, "+", "-", guzik trybu) rysuje ekran, wiec
-w teksturze nie ma po nim zadnych wglebien - i nie ma juz kwadratu na tekst
-stanu, ktory zostawal pusty i wygladal jak blad grafiki. To wlasnie ten
-kwadrat zglosil gracz.
+GUI: a panel in the extractor's style (212x166) + ONE item slot in a centred
+row. The row (slot, number field, "+", "-", mode button) is drawn by the
+screen, so there are no recesses for it in the texture - and there is no longer
+the square for the status text, which stayed empty and looked like a graphics
+bug. That square was exactly what a player reported.
 
-Uruchomienie:
+Usage:
     python3 scripts/gen_sensor_textures.py
 """
 
@@ -23,54 +22,55 @@ import sys
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import gen_furnace_gui as style  # noqa: E402  (wspolny styl panelu i slotow)
+import gen_furnace_gui as style  # noqa: E402  (shared panel and slot style)
 
 VANILLA = "/tmp/matref"
 BLOCK_OUT = os.path.join("assets", "craftingveloce", "textures", "block")
 GUI_OUT = os.path.join("assets", "craftingveloce", "textures", "gui")
 
-# Dioda w waniliowym observerze - dokladnie te piksele.
+# The diode in the vanilla observer - exactly these pixels.
 LAMP = [(7, 7), (8, 7), (7, 8), (8, 8)]
 
 LAMP_OFF = (0x5A, 0x0A, 0x06)
 LAMP_ON = (0xFF, 0x3B, 0x2A)
 LAMP_GLOW = (0xFF, 0x8A, 0x70)
 
-# Pozycja slotu itemu - MUSI sie zgadzac z menu i ekranem.
-# UWAGA: kazda stala w OSOBNEJ linii. Build.py czyta je wyrazeniem regularnym,
-# zeby porownac generator z menu (zapis krotkowy "A, B = 1, 2" tego nie pozwala
-# i wlasnie dlatego ta para byla poza kontrola).
+# The item slot's position - it MUST match the menu and the screen.
+# NOTE: one constant per LINE. Build.py reads them with a regular expression so
+# that it can compare the generator against the menu (the short form
+# "A, B = 1, 2" does not allow that, and that is precisely why this pair was
+# outside the checks).
 FILTER_SLOT_X = 41
 FILTER_SLOT_Y = 41
 
-# Granice calego wiersza - do samokontroli "wiersz jest czystym panelem".
-# Te same liczby ma menu (ROW_Y=39, ROW_H=20, MODE_X=151, BTN_W=20); tutaj sa
-# tylko po to, zeby sprawdzic PIKSELI, a nie zeby ich uzywac do rysowania.
+# The bounds of the whole row - for the "the row is a clean panel" self-check.
+# The menu has the same numbers (ROW_Y=39, ROW_H=20, MODE_X=151, BTN_W=20); they
+# are here only to check PIXELS, not to be used for drawing.
 ROW_TOP = 38
 ROW_BOTTOM = 60
 ROW_RIGHT = 171
 
 
 def sensor_block(on):
-    """Blok czujnika: waniliowy observer z podswietlona albo przygaszona dioda."""
+    """The sensor block: a vanilla observer with a lit or dimmed diode."""
     src = Image.open(os.path.join(VANILLA, "observer_front.png")).convert("RGBA")
     img = src.copy()
     px = img.load()
 
-    # Diody w observer_front nie ma (jest w _back), wiec wycinamy dla niej
-    # male wglebienie i wstawiamy wlasna kontrolke.
+    # There is no diode in observer_front (it is in _back), so we cut a small
+    # recess for it and insert our own indicator.
     for (x, y) in LAMP:
         px[x, y] = (0x14, 0x10, 0x10, 255)
     if on:
         for (x, y) in LAMP:
             px[x, y] = LAMP_ON + (255,)
         px[7, 7] = LAMP_GLOW + (255,)
-        # Jasniejsza obwodka - dioda ma sprawiac wrazenie, ze swieci.
+        # A brighter outline - the diode is meant to give the impression of glowing.
         for (x, y) in ((6, 7), (9, 7), (7, 6), (7, 9)):
             if 0 <= x < 16 and 0 <= y < 16:
                 px[x, y] = (0x7A, 0x1A, 0x12, 255)
     else:
-        # Przygaszona, ale widoczna - gracz ma wiedziec, gdzie jest kontrolka.
+        # Dimmed, but visible - the player has to know where the indicator is.
         px[7, 7] = LAMP_OFF + (255,)
         px[8, 7] = (0x40, 0x08, 0x05, 255)
         px[7, 8] = (0x40, 0x08, 0x05, 255)
@@ -79,13 +79,13 @@ def sensor_block(on):
 
 
 def sensor_gui():
-    """Tlo GUI: panel jak ekstraktor + JEDEN slot itemu. Nic wiecej."""
+    """The GUI background: a panel like the extractor + ONE item slot. Nothing more."""
     img = Image.new("RGBA", (style.CANVAS, style.CANVAS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     style.panel(d)
 
-    # Slot itemu (widmo - ikone rysuje ekran). Reszta wiersza to widgety
-    # Minecrafta (pole tekstowe i guziki), ktore rysuja sie same.
+    # The item slot (a ghost - the screen draws the icon). The rest of the row
+    # are Minecraft widgets (a text field and buttons) that draw themselves.
     style.slot(d, FILTER_SLOT_X, FILTER_SLOT_Y)
 
     style.player_inventory(d)
@@ -93,13 +93,13 @@ def sensor_gui():
 
 
 def self_check(img):
-    """Sprawdza WYGENEROWANE piksele: ramka slotu tam, gdzie mowi stala,
-    i ZADNEGO wglebienia po starym tekscie stanu.
+    """Checks the GENERATED pixels: the slot frame where the constant says,
+    and NO recess left over from the old status text.
 
-    <p>Po co: gracz zglosil "dziwny kwadrat, w ktorym tekst sie nie miescil" -
-    to bylo wglebienie pod napis stanu, ktorego juz nie rysujemy. Łatwo je
-    przywrocic przypadkiem, kopiujac stary fragment generatora, a w grze
-    wyglada to jak blad grafiki.
+    <p>Why: a player reported "a weird square where the text did not fit" - it
+    was the recess for the status label, which we no longer draw. It is easy to
+    bring it back by accident when copying an old fragment of the generator, and
+    in game it looks like a graphics bug.
     """
     DARK = (0x37, 0x37, 0x37, 255)
     LIGHT = (0xFF, 0xFF, 0xFF, 255)
@@ -115,37 +115,38 @@ def self_check(img):
 
     bad = []
     if not slot_ok(FILTER_SLOT_X, FILTER_SLOT_Y):
-        bad.append(f"slot itemu @ {FILTER_SLOT_X},{FILTER_SLOT_Y}")
+        bad.append(f"item slot @ {FILTER_SLOT_X},{FILTER_SLOT_Y}")
     for row in range(3):
         for col in range(9):
             if not slot_ok(style.PLAYER_X + col * 18, style.PLAYER_Y + row * 18):
-                bad.append(f"ekwipunek r{row}c{col}")
+                bad.append(f"inventory r{row}c{col}")
     for col in range(9):
         if not slot_ok(style.PLAYER_X + col * 18, style.PLAYER_Y + 58):
             bad.append(f"hotbar c{col}")
 
-    # Obszar, gdzie kiedys bylo wglebienie pod tekst stanu - ma byc CZYSTY panel.
+    # The area where the recess for the status text used to be - it must be a
+    # CLEAN panel.
     dirty = [(x, y) for y in range(58, 79) for x in range(26, 177)
              if img.getpixel((x, y)) != PANEL]
     if dirty:
-        bad.append(f"stary kwadrat na tekst wrocil ({len(dirty)} px, np. {dirty[0]})")
+        bad.append(f"the old square for the text is back ({len(dirty)} px, e.g. {dirty[0]})")
 
-    # Caly wiersz (slot + pole + guziki) ma byc czystym panelem poza ramka
-    # slotu: pole tekstowe i guziki rysuja sie same, wiec zadnych wglebien
-    # ani ramek nie może tam byc.
+    # The whole row (slot + field + buttons) must be a clean panel apart from
+    # the slot frame: the text field and the buttons draw themselves, so there
+    # must be no recesses or frames there.
     row = [(x, y) for y in range(ROW_TOP, ROW_BOTTOM + 1)
            for x in range(FILTER_SLOT_X - 1, ROW_RIGHT + 1)
            if not inside_slot_frame(x, y) and img.getpixel((x, y)) != PANEL]
     if row:
-        bad.append(f"wiersz nie jest czystym panelem ({len(row)} px, np. {row[0]})")
+        bad.append(f"the row is not a clean panel ({len(row)} px, e.g. {row[0]})")
 
     if bad:
-        raise SystemExit("BLAD: tekstura nie zgadza sie ze stalymi: " + ", ".join(bad))
-    print("  samokontrola: slot itemu, ekwipunek, brak kwadratu i czysty wiersz - OK")
+        raise SystemExit("ERROR: the texture does not match the constants: " + ", ".join(bad))
+    print("  self-check: item slot, inventory, no square and a clean row - OK")
 
 
 def inside_slot_frame(x, y):
-    """Czy piksel nalezy do ramki slotu (razem z 1 px obwodki)."""
+    """Whether a pixel belongs to the slot frame (including the 1 px border)."""
     return (FILTER_SLOT_X - 1 <= x <= FILTER_SLOT_X + 16
             and FILTER_SLOT_Y - 1 <= y <= FILTER_SLOT_Y + 16)
 
@@ -158,19 +159,19 @@ def main():
         for name, on in (("threshold_sensor", False), ("threshold_sensor_on", True)):
             path = os.path.join(BLOCK_OUT, name + ".png")
             sensor_block(on).save(path)
-            print("zapisano:", path)
+            print("saved:", path)
     else:
-        print("pomijam tekstury bloku - brak waniliowego wzorca", VANILLA)
+        print("skipping the block textures - no vanilla reference", VANILLA)
 
     gui = sensor_gui()
     self_check(gui)
     path = os.path.join(GUI_OUT, "threshold_sensor.png")
     gui.save(path)
-    print("zapisano:", path)
+    print("saved:", path)
 
     print()
-    print("Pozycje do zgodnosci w menu i ekranie:")
-    print(f"  slot itemu:  x={FILTER_SLOT_X} y={FILTER_SLOT_Y}")
+    print("Positions to keep in sync in the menu and the screen:")
+    print(f"  item slot:  x={FILTER_SLOT_X} y={FILTER_SLOT_Y}")
 
 
 if __name__ == "__main__":

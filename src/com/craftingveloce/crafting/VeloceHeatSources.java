@@ -9,43 +9,45 @@ import java.util.Comparator;
 import java.util.List;
 
 /**
- * Zasilone zrodla ciepla (piece) podlaczone do sieci.
+ * Powered heat sources (furnaces) connected to the network.
  *
- * <p><b>Po co osobna klasa.</b> To samo pytanie zadaje sobie trzech klientow:
+ * <p><b>Why a separate class.</b> Three clients ask themselves the same
+ * question:
  * <ul>
- *   <li>auto-crafter - "czym moge przepalic?" (bierze pierwsze z listy),</li>
- *   <li>kontroler - "czy moge pokazac receptury pieca jako dostepne?",</li>
- *   <li>diagnostyka - "dlaczego receptury pieca sa niedostepne?".</li>
+ *   <li>auto-crafter - "what can I smelt with?" (takes the first from the list),</li>
+ *   <li>controller - "can I show furnace recipes as available?",</li>
+ *   <li>diagnostics - "why are furnace recipes unavailable?".</li>
  * </ul>
- * Bez wspolnego miejsca kazdy z nich musialby sam przechodzic liste wezlow,
- * sprawdzac typ block entity i pytac o zasilanie - czyli dokladnie to, co
- * juz raz sie rozjechalo przy rozpoznawaniu wezlow.
+ * Without a shared place, each of them would have to walk the node list itself,
+ * check the block entity type and ask about power - that is, exactly what
+ * already drifted apart once during node recognition.
  *
- * <p><b>Sortowanie.</b> Lista jest posortowana po {@link VeloceHeatSource#heatPriority()}
- * (mniejszy = wazniejszy), wiec wolajacy, ktory chce po prostu "nastepne
- * zrodlo", bierze element 0 - i dostaje piec elektryczny przed paliwowym.
+ * <p><b>Sorting.</b> The list is sorted by
+ * {@link VeloceHeatSource#heatPriority()} (smaller = more important), so a
+ * caller that simply wants "the next source" takes element 0 - and gets the
+ * electric furnace before the fuel one.
  */
 public final class VeloceHeatSources {
 
     private VeloceHeatSources() {
     }
 
-    /** Wszystkie zrodla ciepla w sieci - takze te bez paliwa/pradu. */
+    /** All heat sources in the network - including those without fuel/power. */
     public static List<VeloceHeatSource> allIn(ServerLevel level, VelocePipeNetwork network) {
-        // Skanowanie sieci zyje w VeloceNetworkSources - jedna petla dla
-        // wszystkich rejestrow zrodel (pieca, maszyn modulow). Trzy kopie tej
-        // samej petli to trzy miejsca na zapomnienie o isLoaded/sortowaniu.
+        // The network scan lives in VeloceNetworkSources - one loop for all
+        // source registries (furnace, module machines). Three copies of the
+        // same loop are three places to forget about isLoaded/sorting.
         List<VeloceHeatSource> out = VeloceNetworkSources.scan(level, network, VeloceHeatSource.class);
         out.sort(Comparator.comparingInt(VeloceHeatSource::heatPriority));
         return out;
     }
 
     /**
-     * Zasilone zrodla ciepla, w kolejnosci uzycia (najwazniejsze pierwsze).
+     * Powered heat sources, in order of use (most important first).
      *
-     * <p>Pusta lista oznacza: receptury pieca NIE sa dostepne. To jest jedyne
-     * miejsce, ktore odpowiada na to pytanie - kontroler i crafter MUSZA
-     * patrzec tutaj, zeby nie rozjechaly sie w ocenie.
+     * <p>An empty list means: furnace recipes are NOT available. This is the
+     * only place that answers that question - the controller and the crafter
+     * MUST look here, so that they do not drift apart in their assessment.
      */
     public static List<VeloceHeatSource> poweredIn(ServerLevel level, VelocePipeNetwork network) {
         List<VeloceHeatSource> out = new ArrayList<>();
@@ -58,17 +60,18 @@ public final class VeloceHeatSources {
     }
 
     /**
-     * Czy sieć ma COKOLWIEK, co moze przepalac - nawet bez paliwa.
+     * Whether the network has ANYTHING that can smelt - even without fuel.
      *
-     * <p>Rozroznienie ma znaczenie dla kontrolera: brak pieca to "nie ma
-     * receptur pieca", a piec bez paliwa to "jest receptura, ale piec stoi".
-     * To dwie rozne informacje dla gracza i dwie rozne podpowiedzi.
+     * <p>The distinction matters for the controller: no furnace means "there
+     * are no furnace recipes", while a furnace without fuel means "the recipe
+     * exists, but the furnace is idle". Those are two different pieces of
+     * information for the player and two different hints.
      */
     public static boolean hasAnyHeatSource(ServerLevel level, VelocePipeNetwork network) {
         return !allIn(level, network).isEmpty();
     }
 
-    /** Czy w sieci jest zasilony piec - czyli czy receptury pieca sa realnie uzywalne. */
+    /** Whether the network has a powered furnace - that is, whether furnace recipes are actually usable. */
     public static boolean hasPower(ServerLevel level, VelocePipeNetwork network) {
         for (VeloceHeatSource heat : allIn(level, network)) {
             if (heat.isPowered()) {
@@ -79,11 +82,11 @@ public final class VeloceHeatSources {
     }
 
     /**
-     * Ile przepalen siec moze teraz wykonac LACZNIE.
+     * How many smelting operations the network can perform RIGHT NOW in TOTAL.
      *
-     * <p>To jest budzet dla planera: nie ma sensu planowac stu przepalen, gdy
-     * piec uciagnie trzy. Wolajacy nie musi przy tym wiedziec, czy cieplo
-     * pochodzi z pradu, czy z wegla.
+     * <p>This is the budget for the planner: there is no point planning a
+     * hundred smelts when the furnace can handle three. The caller does not
+     * need to know whether the heat comes from power or from coal.
      */
     public static long totalOperations(ServerLevel level, VelocePipeNetwork network) {
         long total = 0;
@@ -94,41 +97,43 @@ public final class VeloceHeatSources {
     }
 
     /**
-     * Zabiera cieplo na {@code operations} przepalen, z najlepszego zrodla.
+     * Takes heat for {@code operations} smelts, from the best source.
      *
-     * <p><b>Fallback w trakcie.</b> Bierzemy z jednego zrodla tyle, ile ono ma
-     * (ale nie wiecej niz potrzeba), a reszte dobieramy z kolejnych. Dzieki
-     * temu zuzycie 5 przepalen przy elektrycznym majacym 3 nie konczy sie
-     * niepowodzeniem - 3 ida z pradu, 2 z paliwa, dokladnie tak, jak opisuje
-     * specyfikacja ("dopiero gdy zabraknie pradu, fallback na paliwowy").
+     * <p><b>Fallback along the way.</b> We take from one source as much as it
+     * has (but no more than needed), and draw the rest from the next ones.
+     * Thanks to that, consuming 5 smelts with an electric furnace holding 3
+     * does not fail - 3 come from power, 2 from fuel, exactly as the
+     * specification describes ("only when power runs out, fall back to fuel").
      *
-     * <p><b>Wydajnosc:</b> to wygodny wariant dla wolajacego, ktory nie ma
-     * jeszcze listy zrodel - pobiera ja sam. Sciezka wykonania planu (gorąca,
-     * wolana raz na kazda przepalona sztuke) uzywa {@link #consumeFrom} z lista
-     * pobrana RAZ, zeby nie skanowac sieci setki razy w jednym ticku.
+     * <p><b>Performance:</b> this is the convenient variant for a caller that
+     * does not yet have a source list - it fetches one itself. The plan
+     * execution path (hot, called once per smelted unit) uses
+     * {@link #consumeFrom} with a list fetched ONCE, so that it does not scan
+     * the network hundreds of times in a single tick.
      *
-     * @return {@code true} gdy udalo sie zabrac CALOSC; przy {@code false}
-     *         nie zabieramy niczego (wolajacy ma wtedy przerwac operacje)
+     * @return {@code true} when the WHOLE amount could be taken; on
+     *         {@code false} we take nothing (the caller must then abort the
+     *         operation)
      */
     public static boolean consume(ServerLevel level, VelocePipeNetwork network, long operations) {
         return consumeFrom(allIn(level, network), operations);
     }
 
     /**
-     * Zabiera cieplo z JUZ POBIERANEJ listy zrodel.
+     * Takes heat from an ALREADY FETCHED source list.
      *
-     * <p><b>Po co osobna metoda.</b> {@link #consume} jest wolane raz na KAZDA
-     * przepalona sztuke w petli wykonania planu, a kazde wywolanie robilo DWA
-     * pelne przejscia po terminalach sieci z sortowaniem (raz przez
-     * {@code totalOperations}, raz przez {@code poweredIn}). Przy planie na
-     * kilkaset przepalen (jeden w pelni naladowany piec elektryczny to 125
-     * operacji) dawalo to setki skanow i sortowan w JEDNYM ticku.
+     * <p><b>Why a separate method.</b> {@link #consume} is called once for
+     * EVERY smelted unit in the plan execution loop, and each call did TWO full
+     * passes over the network terminals with sorting (once through
+     * {@code totalOperations}, once through {@code poweredIn}). With a plan of
+     * several hundred smelts (a single fully charged electric furnace is 125
+     * operations) that meant hundreds of scans and sorts in ONE tick.
      *
-     * <p>Lista zrodel nie zmienia sie w trakcie jednego wykonania planu, wiec
-     * wolajacy pobiera ja RAZ i podaje tutaj. Semantyka jest identyczna jak
-     * w {@link #consume}: suma liczona po wszystkich zrodlach, ale zabieramy
-     * wylacznie z zasilonych, w kolejnosci priorytetu (elektryczny przed
-     * paliwowym - patrz {@link #allIn}).
+     * <p>The source list does not change during a single plan execution, so the
+     * caller fetches it ONCE and passes it here. The semantics are identical to
+     * {@link #consume}: the total is summed over all sources, but we take only
+     * from powered ones, in priority order (electric before fuel - see
+     * {@link #allIn}).
      */
     public static boolean consumeFrom(List<VeloceHeatSource> sources, long operations) {
         if (operations <= 0) {
@@ -147,7 +152,7 @@ public final class VeloceHeatSources {
                 break;
             }
             if (!heat.isPowered()) {
-                continue;   // dokladnie to samo, co filtrowalo poweredIn()
+                continue;   // exactly the same thing poweredIn() filtered on
             }
             long take = Math.min(left, Math.max(0L, heat.availableOperations()));
             if (take <= 0) {

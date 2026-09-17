@@ -3,15 +3,15 @@ package com.craftingveloce.compat.mekanism;
 import com.craftingveloce.compat.VeloceJeiCatalysts;
 
 /**
- * Kategorie przepisow Mekanism, ktore obsluguja nasze moduly na energie.
+ * Mekanism recipe categories that our energy modules handle.
  *
- * <p>Wypelnia spis dla JEI ({@link VeloceJeiCatalysts}) - bez dotykania JEI i bez
- * typow Mekanism (same UID-y i nasze klocki).
+ * <p>Fills the list for JEI ({@link VeloceJeiCatalysts}) - without touching JEI
+ * and without Mekanism types (just UIDs and our blocks).
  *
- * <p>UID kategorii to identyfikatory typow przepisow Mekanism
- * ({@code RecipeTypeRegistryObject.getId()}), czyli {@code mekanism:crushing},
- * {@code mekanism:enriching}, {@code mekanism:combining} i {@code mekanism:sawing}.
- * Dodajemy tylko te cztery - dokladnie te, ktore liczy
+ * <p>The category UIDs are the identifiers of Mekanism recipe types
+ * ({@code RecipeTypeRegistryObject.getId()}), that is {@code mekanism:crushing},
+ * {@code mekanism:enriching}, {@code mekanism:combining} and {@code mekanism:sawing}.
+ * We add only those four - exactly the ones computed by
  * {@code MekanismRecipeFamily}.
  */
 public final class MekanismJeiCatalysts {
@@ -19,7 +19,7 @@ public final class MekanismJeiCatalysts {
     private MekanismJeiCatalysts() {
     }
 
-    /** Dopisuje nasze moduly Mekanism do kategorii JEI z Mekanism. */
+    /** Appends our Mekanism modules to the JEI categories from Mekanism. */
     public static void register() {
         VeloceJeiCatalysts.register("mekanism:crushing",
                 () -> MekanismBlocks.VELOCE_CRUSHER_MODULE_ITEM.get());

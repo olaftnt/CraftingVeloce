@@ -37,14 +37,14 @@ import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 /**
- * Veloce Controller - blok monitorujacy siec logistyczna.
+ * Veloce Controller - a block that monitors the logistics network.
  *
- * <p>Otwiera liste wszystkich itemow w sieci z rozbudowanym filtrowaniem:
+ * <p>It opens the list of all items in the network with extensive filtering:
  * <ul>
- *   <li>kolory tla pokazuja, gdzie item jest dostepny (hotbar / crafting / stock)</li>
- *   <li>przyciski "show all / available / not available" filtruja widok</li>
- *   <li>itemy nieprodukowane przez craftery mozna znalezc i zaplanowac
- *       dla nich maszyne (extractor + skrzynia), zeby staly sie dostepne</li>
+ *   <li>background colours show where an item is available (hotbar / crafting / stock)</li>
+ *   <li>the "show all / available / not available" buttons filter the view</li>
+ *   <li>items not produced by crafters can be found and a machine planned for
+ *       them (extractor + chest), so that they become available</li>
  * </ul>
  */
 public class VeloceControllerBlock extends BaseEntityBlock
@@ -75,15 +75,18 @@ public class VeloceControllerBlock extends BaseEntityBlock
     }
 
     /**
-     * Kontroler MUSI tykac, bo to on mierzy przeplyw itemow w sieci.
+     * The controller MUST tick, because it is the one measuring the item flow in
+     * the network.
      *
-     * <p>{@code VeloceFlowTracker} potrzebuje regularnych migawek, zeby
-     * powiedziec, ile sztuk na sekunde przybywa, a ile ucieka. Bez tickera
-     * mialby dane tylko wtedy, gdy ktos stoi i patrzy na GUI - czyli dokladnie
-     * nic, bo tempo potrzebuje historii SPRZED otwarcia okna.
+     * <p>{@code VeloceFlowTracker} needs regular snapshots in order to say how
+     * many units per second arrive and how many leave. Without a ticker it would
+     * have data only when someone is standing and looking at the GUI - that is,
+     * exactly nothing, because a rate needs the history from BEFORE the window
+     * was opened.
      *
-     * <p>Koszt jest maly i rozlozony: migawka leci raz na 5 sekund, a nie co
-     * tick, i korzysta z cache'u licznikow sieci.
+     * <p>The cost is small and spread out: a snapshot goes off once every
+     * 5 seconds, not every tick, and it uses the cache of the network's
+     * counters.
      */
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level world, BlockState state,
@@ -164,7 +167,7 @@ public class VeloceControllerBlock extends BaseEntityBlock
         return CODEC;
     }
 
-    /** Wlasciwosci zaslepek obudowy: po jednej na kazda strone swiata. */
+    /** Properties of the casing caps: one for each side of the world. */
     @Override
     protected void createBlockStateDefinition(
             net.minecraft.world.level.block.state.StateDefinition.Builder<
@@ -173,14 +176,14 @@ public class VeloceControllerBlock extends BaseEntityBlock
         com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
     }
 
-    /** Przy postawieniu od razu zamykamy strony, z ktorych dochodzi kabel. */
+    /** On placement we immediately close the sides the cable comes in from. */
     @Override
     public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
         return com.craftingveloce.block.VeloceIntegraleFrame.withPlacementClosures(
                 context.getLevel(), context.getClickedPos(), defaultBlockState());
     }
 
-    /** Domkniecie blachy na scianie, przy ktorej stoi rura Veloce. */
+    /** Closing the plate on the wall where a Veloce pipe stands. */
     @Override
     protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
                                      BlockState facingState, net.minecraft.world.level.LevelAccessor world,

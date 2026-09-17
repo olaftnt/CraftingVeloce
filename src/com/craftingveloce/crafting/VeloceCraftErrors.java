@@ -4,18 +4,20 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
 /**
- * Teksty "dlaczego sie nie udalo" - jedno zrodlo dla kazdego miejsca, ktore
- * pokazuje powod nieudanego craftu.
+ * The "why it failed" texts - a single source for every place that shows the
+ * reason for a failed craft.
  *
- * <p><b>Po co osobna klasa.</b> Powod ({@code reason}) i detal ({@code detail})
- * pochodza z planera i sa KLUCZAMI TLUMACZEN, a nie gotowym tekstem. Ten sam
- * powod pokazuje dzis tooltip itemu w terminalu, a wczesniej pokazywal go pasek
- * akcji - gdyby kazde miejsce sklejalo komunikat samo, klucze rozjechalyby sie
- * przy pierwszej zmianie (a rozjazd widac tylko w grze, jako surowy napis
+ * <p><b>Why a separate class.</b> The reason ({@code reason}) and the detail
+ * ({@code detail}) come from the planner and are TRANSLATION KEYS, not ready
+ * text. The same reason is shown today by the item tooltip in the terminal,
+ * while previously it was shown by the action bar - if every place glued the
+ * message together itself, the keys would drift apart at the first change (and
+ * the drift is only visible in game, as the raw string
  * "craftingveloce.craft.error.noFurnace").
  *
- * <p>Klient dostaje z serwera sam powod i detal, a tlumaczy je u SIEBIE - dzieki
- * temu tekst jest w jezyku gracza, a nie serwera.
+ * <p>The client receives just the reason and the detail from the server and
+ * translates them ON ITS OWN - thanks to that the text is in the player's
+ * language, not the server's.
  */
 public final class VeloceCraftErrors {
 
@@ -23,12 +25,13 @@ public final class VeloceCraftErrors {
     }
 
     /**
-     * Klucz komunikatu z detalem dla danego powodu planera.
+     * The message key with the detail for a given planner reason.
      *
-     * <p>Nie kazdy powod ma miejsce na detal: {@code noBase} i {@code extract}
-     * mowia "brakuje X" / "nie udalo sie wziac X", wiec maja osobne warianty,
-     * a {@code noModule} i {@code moduleUnpowered} maja to miejsce juz w sobie
-     * (podstawiamy tam nazwe modulu albo maszyny).
+     * <p>Not every reason has room for a detail: {@code noBase} and
+     * {@code extract} say "X is missing" / "failed to take X", so they have
+     * separate variants, while {@code noModule} and {@code moduleUnpowered}
+     * already have that room built in (we substitute the module or machine name
+     * there).
      */
     public static String detailKey(String reason) {
         return switch (reason) {
@@ -41,8 +44,8 @@ public final class VeloceCraftErrors {
     }
 
     /**
-     * Komunikat bledu: najpierw powod z serwera, a dopiero gdy go nie ma -
-     * ogolne "nie ma tego itemu w sieci".
+     * The error message: first the reason from the server, and only when there
+     * is none - the generic "this item is not in the network".
      */
     public static MutableComponent message(String reason, String detail, String itemName) {
         if (!reason.isEmpty()) {
