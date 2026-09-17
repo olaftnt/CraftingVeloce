@@ -2,6 +2,11 @@
 # the one under test, so the exact one is named here. This is also the form used to
 # replay a red draw from module-brewing-sweep.txt.
 #
+# The recipe id is the ROUTE, not just the result: vanilla reaches Mundane
+# from water through nine different ingredients, so "brewing_mundane" alone
+# could not identify a recipe. When only one route reaches a result the id is
+# just that result ("brewing_awkward"); when several do, the route is added.
+#
 # The id is QUOTED. Brigadier's word() and unquoted string() readers both reject
 # ':', so an unquoted craftingveloce:brewing_mundane does not parse at all - the
 # command never runs, and a script watching for the recipe name sees only the parse
@@ -10,9 +15,9 @@
 #
 # Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-brewing-named -PveloceKeepOpen
 
-/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane"
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_redstone"
 expect: building and waiting
-expect: brewing_mundane
+expect: brewing_mundane_from_redstone
 
 /cv testmodule fe 1000000
 expect: FE set to

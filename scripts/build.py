@@ -2000,63 +2000,109 @@ def validate_brewing_stand():
 
 def validate_brewing_proxy():
     """
-    Brewing recipes MUST live in the PROXY domain - inputs and results alike.
+    Brewing recipes must be DISCOVERED from the game and expressed in the PROXY domain.
 
-    Vanilla brewing has no RecipeType, so a potion STATE is represented in the
-    network by its own ordinary item (a proxy registered through
-    VelocePotionMapper). Everything the planner touches - the item it is asked
-    about, the ingredient it consumes, the result it produces - therefore has to
-    be a proxy item.
+    Two independent things are checked, because either one alone reads as "brewing
+    works" while the other is broken.
 
-    The bug this guard exists for: the results were MIXED. `brewing_awkward`
+    <b>Discovery.</b> The module used to carry twenty-one hand-written mixes, so it
+    knew only the potions somebody had typed out: the rest of the vanilla tree was
+    invisible and a brewing recipe added by another mod could never be planned at
+    all - even though the stand would brew it, because the stand asks the game. The
+    module must ask the same source (`level.potionBrewing()`), and it must do so by
+    PROBING (`hasMix`) rather than by reading a list: vanilla keeps its potion mixes
+    private with no getter, so probing is the only complete way to find them.
+    `getRecipes()` is required as well - it is what exposes a mod's own brewing
+    recipes, whose inputs need not be potions.
+
+    <b>Proxy domain.</b> Vanilla brewing has no RecipeType, so a potion STATE is
+    represented in the network by its own ordinary item (a proxy registered through
+    VelocePotionMapper). Everything the planner touches - the ingredient it consumes,
+    the result it produces - therefore has to be a proxy item.
+
+    The bug the proxy half exists for: the results were MIXED. `brewing_awkward`
     produced a real `minecraft:potion` stack while `addMix` produced proxies and
-    demanded the awkward PROXY as an input. The chain broke at the first step, so
-    no downstream potion was ever craftable, and `producible()` advertised the
-    generic `minecraft:potion` item as craftable. In game that reads as "crafting
-    potions is completely broken; zero recipes evaluate".
-
-    Note what is checked: the RESULT EXPRESSION of every recipe builder call, not
-    the presence of a word - a word-level check would pass again the moment
-    somebody reintroduces one real-potion result.
+    demanded the awkward PROXY as an input. The chain broke at the first step, so no
+    downstream potion was ever craftable, and `producible()` advertised the generic
+    `minecraft:potion` item as craftable. In game that reads as "crafting potions is
+    completely broken; zero recipes evaluate".
     """
     path = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceBrewingModule.java"
     if not os.path.exists(path):
         fail("brewing proxy:\n  no VeloceBrewingModule")
-    text = open(path, encoding="utf-8").read()
+    code = _strip_comments(open(path, encoding="utf-8").read())
     problems = []
 
-    # A real potion can never be a recipe token: its identity lives in the
-    # PotionContents component, while the planner compares plain items.
+    # --- 1. the recipes come from the game, not from this file ---
+    for needle, why in (
+        ("potionBrewing()", "does not read level.potionBrewing() - the mixes would come "
+                            "from a list in this file instead of from the game, and a "
+                            "brewing recipe added by another mod would be invisible"),
+        ("hasMix(", "never probes hasMix - vanilla keeps its potion-mix list private, so "
+                    "probing is the only way to discover those recipes"),
+        ("getRecipes()", "never reads PotionBrewing.getRecipes() - a mod's own brewing "
+                         "recipes accept inputs that need not be potions and would be lost"),
+    ):
+        if needle not in code:
+            problems.append("VeloceBrewingModule " + why)
+
+    # ...and the closed list must not creep back. A glass bottle is the only ingredient
+    # written down: filling a bottle is not a brewing mix and is not in PotionBrewing,
+    # so unlike everything else it cannot be discovered.
+    hardcoded = re.findall(r"Ingredient\.of\(Items\.[A-Z_]+\)", code)
+    if sorted(hardcoded) != ["Ingredient.of(Items.GLASS_BOTTLE)"]:
+        problems.append(
+            "VeloceBrewingModule names brewing ingredients in code "
+            f"({', '.join(sorted(hardcoded)) or 'none'}) - the mixes must come from the "
+            "game. Only the glass bottle belongs here, because filling a bottle is not "
+            "a brewing mix")
+
+    # --- 2. the results are proxies, never real potions ---
     #
-    # Checked as a CODE USE ("PotionContents."), not as a bare word: the class is
-    # also named in the explanatory comments above, and a word-level check would
-    # flag those docs (it did on the first run of this very guard).
-    if "PotionContents." in text:
-        problems.append("VeloceBrewingModule builds a real potion (PotionContents) - "
-                        "recipe results must be proxy items")
+    # Checked as a CODE USE, on comment-stripped source: the class is named in the
+    # documentation above, and a word-level check fired on exactly those docs when
+    # this guard was first written.
+    inputs_body = _method_body(code, "private static List<ItemStack> candidateInputs(")
+    if not inputs_body or "PotionContents." not in inputs_body:
+        problems.append("candidateInputs does not build the potion states to probe "
+                        "(no PotionContents.createItemStack) - the probe would ask about "
+                        "the wrong stacks and find nothing")
+    # PotionContents is legitimate ONLY there. Anywhere else it means a real potion was
+    # built somewhere that should have used a proxy - the exact bug this half guards.
+    elsewhere = code.replace(inputs_body, "")
+    if "PotionContents." in elsewhere:
+        problems.append("VeloceBrewingModule builds a real potion (PotionContents.) "
+                        "outside candidateInputs - recipe results must be proxy items")
 
-    # Every ProcessingEntry.single(...) result is the expression on the line after
-    # the id. Allowed forms: proxy("..."), waterBottle(), or a stack made from a
-    # variable that getProxy() already resolved (toProxy).
-    results = re.findall(
-        r"ProcessingEntry\.single\(\s*\n\s*ResourceLocation[^\n]*\n\s*([^\n]+?),?\s*\n",
-        text)
-    if not results:
-        problems.append("no brewing recipe results found (the regexp found nothing - "
-                        "if the builder call shape changed, update this guard)")
-    for result in results:
-        expr = result.strip().rstrip(",")
-        if "potion(" in expr or "Items.POTION" in expr:
-            problems.append(f"a brewing recipe result is a REAL potion, not a proxy: {expr}")
-    if not any("proxy(" in r or "waterBottle()" in r for r in results):
-        problems.append("no brewing recipe result is built through the proxy helper")
+    emit_body = _method_body(code, "private boolean emit(")
+    if not emit_body:
+        problems.append("no emit() method (the recipe-results-are-proxies check has "
+                        "nothing to inspect - if the builder call shape changed, update "
+                        "this guard)")
+    else:
+        if "proxyOrNull(" not in emit_body:
+            problems.append("emit() does not resolve its input/result through "
+                            "proxyOrNull() - a potion with no proxy would be approximated "
+                            "with minecraft:potion and every such potion would collide")
+        # Up to the first line that starts with a closing paren - the call's closing
+        # paren sits on its own line. An earlier, stricter pattern expecting
+        # `);` missed the real shape (`));`, because add() wraps the builder),
+        # so the guard failed on a correct module instead of passing a wrong one.
+        call = re.search(r"ProcessingEntry\.single\((.*?)\n\s*\)", emit_body, re.S)
+        if not call:
+            problems.append("emit() does not build a ProcessingEntry.single(...) (the "
+                            "regexp found nothing - update this guard if the shape changed)")
+        else:
+            args = call.group(1)
+            if "new ItemStack(resultProxy)" not in args:
+                problems.append("the recipe result is not built from the resolved proxy "
+                                f"item: {args.strip().splitlines()[-1].strip()}")
+            if "PotionContents" in args or "mix.result()" in args:
+                problems.append("a brewing recipe result is a REAL potion, not a proxy")
 
-    # The awkward recipe is the specific link that was broken.
-    if 'proxy("awkward")' not in text:
-        problems.append("brewing_awkward does not output the awkward PROXY "
-                        "(the rest of the potion chain consumes it as an input)")
-
-    # The proxy registry must exist and be able to answer both directions.
+    # The proxy registry must exist and be able to answer both directions, and to say
+    # "unknown" - a module that cannot tell a missing proxy apart from a present one
+    # has to guess, and guessing here means handing the player the wrong potion.
     mapper = "neoforge/src/main/java/com/craftingveloce/util/VelocePotionMapper.java"
     if not os.path.exists(mapper):
         problems.append("no VelocePotionMapper")
@@ -2064,6 +2110,7 @@ def validate_brewing_proxy():
         mapper_text = open(mapper, encoding="utf-8").read()
         for need, what in (("registerProxy(", "proxy registration"),
                            ("public static Item getProxy(", "potion -> proxy lookup"),
+                           ("public static Item proxyOrNull(", "the unknown-potion answer"),
                            ("public static ItemStack toRealPotion(", "proxy -> potion conversion"),
                            ("public static boolean isProxy(", "the proxy predicate")):
             if need not in mapper_text:
@@ -2089,8 +2136,8 @@ def validate_brewing_proxy():
 
     if problems:
         fail("brewing proxy domain:\n  " + "\n  ".join(problems))
-    print(f"    OK (brewing proxy: {len(results)} recipe result(s) in the proxy domain, "
-          f"{len(registered)} proxies registered, water bypass present)")
+    print(f"    OK (brewing proxy: mixes discovered via potionBrewing()+hasMix()+getRecipes(), "
+          f"results in the proxy domain, {len(registered)} proxies registered, water bypass present)")
 
 
 # Which foreign JAR holds the textures of a namespace, and how its file names start.

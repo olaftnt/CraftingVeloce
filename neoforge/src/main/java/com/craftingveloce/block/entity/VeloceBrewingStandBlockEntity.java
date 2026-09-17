@@ -281,7 +281,18 @@ public static void serverTick(net.minecraft.world.level.Level level, BlockPos po
         for (int i = 0; i < 3; i++) {
             ItemStack bottle = container.getItem(i);
             if (!bottle.isEmpty() && brewing.hasMix(bottle, ingredient)) {
-                container.setItem(i, brewing.mix(bottle, ingredient));
+                // ARGUMENT ORDER IS INVERTED BETWEEN THE TWO METHODS, and it is not a
+                // typo here. Vanilla declares:
+                //     hasMix (input, ingredient)   - input first
+                //     mix    (ingredient, input)   - INGREDIENT first
+                // and mix() finds the bottle by reading POTION_CONTENTS from its SECOND
+                // argument. Passing the bottle first therefore makes mix() look for
+                // potion contents on the ingredient, find none, and return the
+                // INGREDIENT unchanged - the stand silently swaps the potion for the
+                // redstone. The old draw-based tests could not see this: auto-crafting
+                // goes through VeloceAutoCrafter, which inserts recipe.primaryResult()
+                // itself and never calls doBrew, so only brewing BY HAND was broken.
+                container.setItem(i, brewing.mix(ingredient, bottle));
             }
         }
         ingredient.shrink(1);
