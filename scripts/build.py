@@ -39,6 +39,10 @@ MODS = ("/Users/olafalencynowicz/Library/Application Support/ModrinthApp/"
 DEPLOYED = os.path.join(MODS, "craftingveloce-1.0.0.jar")
 JAR_NAME = "craftingveloce-1.0.0.jar"
 STAGING = "craftingveloce_jar_root"
+
+# The flat src/ tree became a Gradle module, so every guard that reads
+# sources goes through this root instead of hardcoding "src".
+SRC_ROOT = "neoforge/src/main/java"
 BUILD_OUT = "/tmp/craftingveloce_build"
 
 # Directory for compile-time dependencies (compileOnly). It is in .gitignore
@@ -197,7 +201,7 @@ def validate_packet_docs():
     header against the table cell. A name without fields is a document that
     lies halfway.
     """
-    handler = os.path.join("src/com/craftingveloce/network/VelocePacketHandler.java")
+    handler = os.path.join("neoforge/src/main/java/com/craftingveloce/network/VelocePacketHandler.java")
     readme = "README.md"
     if not os.path.exists(handler) or not os.path.exists(readme):
         return
@@ -211,7 +215,7 @@ def validate_packet_docs():
     # Signatures: the record header against the third column of the table row.
     mismatches = []
     for name in registered:
-        path = os.path.join("src/com/craftingveloce/network", name + ".java")
+        path = os.path.join("neoforge/src/main/java/com/craftingveloce/network", name + ".java")
         if not os.path.exists(path):
             continue
         _, body = _record_components(path)
@@ -247,7 +251,7 @@ def validate_lang_keys():
     lang = json.load(open(lang_path, encoding="utf-8"))
     prefixes = {k.split(".")[0] for k in lang}
     used = set()
-    for root, _, files in os.walk("src"):
+    for root, _, files in os.walk(SRC_ROOT):
         for name in files:
             if not name.endswith(".java"):
                 continue
@@ -345,7 +349,7 @@ def validate_helper_docs():
     literally.
     """
     readme = "README.md"
-    src = "src/com/craftingveloce/client/ClientTerminalHelper.java"
+    src = "neoforge/src/main/java/com/craftingveloce/client/ClientTerminalHelper.java"
     if not os.path.exists(readme) or not os.path.exists(src):
         return
     doc = open(readme, encoding="utf-8").read()
@@ -408,7 +412,7 @@ def validate_filter_labels():
     ("All", "Active", "None").
     """
     lang_path = os.path.join("assets/craftingveloce/lang/en_us.json")
-    screen = "src/com/craftingveloce/client/gui/VeloceControllerScreen.java"
+    screen = "neoforge/src/main/java/com/craftingveloce/client/gui/VeloceControllerScreen.java"
     if not os.path.exists(lang_path) or not os.path.exists(screen):
         return
     text = open(screen, encoding="utf-8").read()
@@ -457,19 +461,19 @@ def validate_gui_layout():
         return out
 
     paths = {
-        "menu": "src/com/craftingveloce/inventory/VeloceVelocityFurnaceMenu.java",
-        "ekran": "src/com/craftingveloce/client/gui/VeloceVelocityFurnaceScreen.java",
+        "menu": "neoforge/src/main/java/com/craftingveloce/inventory/VeloceVelocityFurnaceMenu.java",
+        "ekran": "neoforge/src/main/java/com/craftingveloce/client/gui/VeloceVelocityFurnaceScreen.java",
         "generator": "scripts/gen_furnace_gui.py",
     }
     # The battery and its slot live in the ELECTRIC furnace menu and in its screen.
-    paths["menu_el"] = "src/com/craftingveloce/inventory/VeloceElectricFurnaceMenu.java"
-    paths["ekran_el"] = "src/com/craftingveloce/client/gui/VeloceElectricFurnaceScreen.java"
+    paths["menu_el"] = "neoforge/src/main/java/com/craftingveloce/inventory/VeloceElectricFurnaceMenu.java"
+    paths["ekran_el"] = "neoforge/src/main/java/com/craftingveloce/client/gui/VeloceElectricFurnaceScreen.java"
     # Sensor: the menu places the item slot, and the GUI generator paints the
     # frame underneath it. It is the same pair as in the furnace - and this
     # very pair was outside the check as long as the generator wrote it as a
     # one-liner ("FILTER_X, FILTER_Y = 26, 18"), which a regular expression
     # does not see.
-    paths["menu_s"] = "src/com/craftingveloce/inventory/VeloceThresholdSensorMenu.java"
+    paths["menu_s"] = "neoforge/src/main/java/com/craftingveloce/inventory/VeloceThresholdSensorMenu.java"
     paths["gen_s"] = "scripts/gen_sensor_textures.py"
     names = ["FILTER_X", "FILTER_Y", "FUEL_X", "FUEL_Y", "PLAYER_X", "PLAYER_Y",
              "FLAME_X", "FLAME_Y",
@@ -521,7 +525,7 @@ def validate_sensor_row():
     sees: horizontal margins, vertical margins in the working area
     (title -> inventory) and the slot centred in the row.
     """
-    path = "src/com/craftingveloce/inventory/VeloceThresholdSensorMenu.java"
+    path = "neoforge/src/main/java/com/craftingveloce/inventory/VeloceThresholdSensorMenu.java"
     if not os.path.exists(path):
         return
     text = open(path, encoding="utf-8").read()
@@ -596,8 +600,8 @@ def validate_node_blocks():
     # Core blocks AND module blocks: a machine from compat/ is also a network
     # node (otherwise the crafter would not see it), and it is easy to forget
     # exactly in a module that is only just being written.
-    block_dirs = ["src/com/craftingveloce/block"]
-    block_dirs += sorted(glob.glob("src/com/craftingveloce/compat/*/block"))
+    block_dirs = ["neoforge/src/main/java/com/craftingveloce/block"]
+    block_dirs += sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/compat/*/block"))
     files = []
     for block_dir in block_dirs:
         if not os.path.isdir(block_dir):
@@ -609,7 +613,7 @@ def validate_node_blocks():
         return
     nodes, hooked = [], []
     for path in files:
-        name = os.path.relpath(path, "src/com/craftingveloce")
+        name = os.path.relpath(path, "neoforge/src/main/java/com/craftingveloce")
         text = open(path, encoding="utf-8").read()
         is_interface = re.search(r"class\s+\w+[^{]*\bimplements\b[^{]*\bVeloceNetworkNode\b",
                                  text) is not None
@@ -654,7 +658,7 @@ def validate_recipe_model():
          VeloceRecipeRegistry.isVanillaSpecial (narrowed to the minecraft
          namespace), and not directly through recipe.isSpecial().
     """
-    src_root = "src"
+    src_root = SRC_ROOT
     if not os.path.isdir(src_root):
         return
     family_list = re.compile(
@@ -717,7 +721,7 @@ def foreign_packages_used():
     forces them.
     """
     used = set()
-    for path in glob.glob("src/**/*.java", recursive=True):
+    for path in glob.glob("neoforge/src/main/java/**/*.java", recursive=True):
         if any(x in path for x in EXCLUDED_SRC):
             continue
         for name in _imports_of(path):
@@ -811,7 +815,7 @@ def validate_core_isolation():
         "jade": ("snownee.jade",),
     }
     core, cross, checked = [], [], 0
-    for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
+    for path in glob.glob("neoforge/src/main/java/com/craftingveloce/**/*.java", recursive=True):
         rel = path.replace(os.sep, "/")
         foreign = [n for n in _imports_of(path)
                    if any(n == p or n.startswith(p + ".") for p in FOREIGN_PACKAGES)]
@@ -1011,7 +1015,7 @@ def validate_module_block_ids():
     """
     problems = []
     checked = 0
-    for path in sorted(glob.glob("src/com/craftingveloce/compat/*/*Blocks.java")):
+    for path in sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/compat/*/*Blocks.java")):
         rel = path.replace(os.sep, "/")
         mod = rel.split("/compat/", 1)[1].split("/", 1)[0]
         text = open(path, encoding="utf-8").read()
@@ -1039,7 +1043,7 @@ def validate_create_kinetics():
     the build guards it.
     """
     problems, checked = [], 0
-    for path in sorted(glob.glob("src/com/craftingveloce/compat/*/block/*.java")):
+    for path in sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/compat/*/block/*.java")):
         text = open(path, encoding="utf-8").read()
         if "extends KineticBlock" not in text:
             continue
@@ -1069,9 +1073,9 @@ def validate_number_format():
     {@code compact}/{@code rate}/{@code feCompact}.
     """
     pattern = re.compile(r"%\.[0-9]+f")
-    allowed = os.path.join("src", "com", "craftingveloce", "util", "VeloceFormat.java")
+    allowed = os.path.join(SRC_ROOT, "com", "craftingveloce", "util", "VeloceFormat.java")
     bad = []
-    for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
+    for path in glob.glob("neoforge/src/main/java/com/craftingveloce/**/*.java", recursive=True):
         if path == allowed or any(x in path for x in EXCLUDED_SRC):
             continue
         if pattern.search(open(path, encoding="utf-8").read()):
@@ -1100,7 +1104,7 @@ def validate_module_recipe_access():
     guards it.
     """
     problems, checked = [], 0
-    for path in sorted(glob.glob("src/com/craftingveloce/compat/*/*Module.java")):
+    for path in sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/compat/*/*Module.java")):
         text = open(path, encoding="utf-8").read()
         start = text.find("recipesAnywhere")
         if start < 0:
@@ -1142,7 +1146,7 @@ def validate_auto_crafter_ingredient_rule():
 
     That is why both places MUST ask a common rule ({@code hasOptions}).
     """
-    path = "src/com/craftingveloce/crafting/VeloceAutoCrafter.java"
+    path = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceAutoCrafter.java"
     if not os.path.exists(path):
         return
     text = open(path, encoding="utf-8").read()
@@ -1277,7 +1281,7 @@ def validate_block_models():
 # Create.asResource(name) from build("sawing", ...), Mekanism:
 # RecipeTypeRegistryObject.getId(), Alchemistry: RecipeType.create("alchemistry", ...)).
 JEI_CATEGORIES = {
-    "src/com/craftingveloce/compat/VeloceJeiCatalysts.java": {
+    "neoforge/src/main/java/com/craftingveloce/compat/VeloceJeiCatalysts.java": {
         "minecraft:crafting": "VELOCE_CRAFTING_TABLE_ITEM",
         # Verified against the JEI JAR: mezz.jei.api.constants.RecipeTypes.BREWING
         # exists and its UID is minecraft:brewing. Brewing has no vanilla
@@ -1285,7 +1289,7 @@ JEI_CATEGORIES = {
         # on a brewing recipe.
         "minecraft:brewing": "BREWING_STAND_ITEM",
     },
-    "src/com/craftingveloce/compat/create/CreateJeiCatalysts.java": {
+    "neoforge/src/main/java/com/craftingveloce/compat/create/CreateJeiCatalysts.java": {
         "create:milling": "VELOCE_MILLSTONE_MODULE_ITEM",
         "create:sawing": "VELOCE_SAW_MODULE_ITEM",
         "create:crushing": "VELOCE_CRUSHING_MODULE_ITEM",
@@ -1294,7 +1298,7 @@ JEI_CATEGORIES = {
         "create:mixing": "VELOCE_MIXER_MODULE_ITEM",
         "create:deploying": "VELOCE_DEPLOYER_MODULE_ITEM",
     },
-    "src/com/craftingveloce/compat/mekanism/MekanismJeiCatalysts.java": {
+    "neoforge/src/main/java/com/craftingveloce/compat/mekanism/MekanismJeiCatalysts.java": {
         "mekanism:crushing": "VELOCE_CRUSHER_MODULE_ITEM",
         "mekanism:enriching": "VELOCE_ENRICHMENT_MODULE_ITEM",
         "mekanism:combining": "VELOCE_COMBINER_MODULE_ITEM",
@@ -1319,7 +1323,7 @@ JEI_CATEGORIES = {
         "mekanism:oxidizing": "VELOCE_OXIDIZING_MODULE_ITEM",
         "mekanism:chemical_infusing": "VELOCE_CHEMICAL_INFUSING_MODULE_ITEM",
     },
-    "src/com/craftingveloce/compat/alchemistry/AlchemistryJeiCatalysts.java": {
+    "neoforge/src/main/java/com/craftingveloce/compat/alchemistry/AlchemistryJeiCatalysts.java": {
         "alchemistry:compactor": "VELOCE_COMPACTOR_MODULE_ITEM",
         "alchemistry:combiner": "VELOCE_COMBINER_MODULE_ITEM",
         "alchemistry:fission": "VELOCE_FISSION_MODULE_ITEM",
@@ -1341,9 +1345,9 @@ def validate_jade_info():
     the network.
     """
     problems = []
-    plugin = "src/com/craftingveloce/compat/jade/VeloceJadePlugin.java"
-    data_provider = "src/com/craftingveloce/compat/jade/VeloceModuleDataProvider.java"
-    component = "src/com/craftingveloce/compat/jade/VeloceModuleComponentProvider.java"
+    plugin = "neoforge/src/main/java/com/craftingveloce/compat/jade/VeloceJadePlugin.java"
+    data_provider = "neoforge/src/main/java/com/craftingveloce/compat/jade/VeloceModuleDataProvider.java"
+    component = "neoforge/src/main/java/com/craftingveloce/compat/jade/VeloceModuleComponentProvider.java"
     for path, what in ((plugin, "Jade plugin"), (data_provider, "Jade data"),
                        (component, "Jade tooltip")):
         if not os.path.exists(path):
@@ -1360,7 +1364,7 @@ def validate_jade_info():
     client = _method_body(plugin_text, "public void registerClient(")
     if client is None or "registerBlockComponent(" not in client:
         problems.append("the Jade plugin does not register the tooltip component")
-    for path in sorted(glob.glob("src/com/craftingveloce/compat/jade/*.java")):
+    for path in sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/compat/jade/*.java")):
         for name in _imports_of(path):
             if name.startswith(("com.craftingveloce.compat.create",
                                 "com.craftingveloce.compat.mekanism",
@@ -1416,13 +1420,13 @@ def validate_terminal_craft_error():
          (VeloceCraftErrors), and not from a second, hand-written switch.
     """
     problems = []
-    pkt = "src/com/craftingveloce/network/TerminalCraftErrorPKT.java"
-    pull = "src/com/craftingveloce/network/TerminalPullItemPKT.java"
-    handler = "src/com/craftingveloce/network/VelocePacketHandler.java"
-    screen = "src/com/craftingveloce/client/gui/VeloceTerminalScreen.java"
-    hints = "src/com/craftingveloce/client/gui/VeloceCraftErrorHints.java"
-    helper = "src/com/craftingveloce/client/ClientTerminalHelper.java"
-    errors = "src/com/craftingveloce/crafting/VeloceCraftErrors.java"
+    pkt = "neoforge/src/main/java/com/craftingveloce/network/TerminalCraftErrorPKT.java"
+    pull = "neoforge/src/main/java/com/craftingveloce/network/TerminalPullItemPKT.java"
+    handler = "neoforge/src/main/java/com/craftingveloce/network/VelocePacketHandler.java"
+    screen = "neoforge/src/main/java/com/craftingveloce/client/gui/VeloceTerminalScreen.java"
+    hints = "neoforge/src/main/java/com/craftingveloce/client/gui/VeloceCraftErrorHints.java"
+    helper = "neoforge/src/main/java/com/craftingveloce/client/ClientTerminalHelper.java"
+    errors = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceCraftErrors.java"
     for path, what in ((pkt, "the reason packet"), (hints, "the reason memory"),
                        (errors, "the common message keys")):
         if not os.path.exists(path):
@@ -1542,8 +1546,8 @@ def validate_jei_catalysts():
          otherwise the leak check in the JAR does not see them.
     """
     problems = []
-    plugin = "src/com/craftingveloce/compat/jei/VeloceJeiPlugin.java"
-    registry = "src/com/craftingveloce/compat/VeloceJeiCatalysts.java"
+    plugin = "neoforge/src/main/java/com/craftingveloce/compat/jei/VeloceJeiPlugin.java"
+    registry = "neoforge/src/main/java/com/craftingveloce/compat/VeloceJeiCatalysts.java"
     for path, what in ((plugin, "JEI plugin"), (registry, "JEI category list")):
         if not os.path.exists(path):
             problems.append("no " + what)
@@ -1568,7 +1572,7 @@ def validate_jei_catalysts():
     # know JEI - that boundary is guarded by validate_core_isolation (owners["jei"]).
 
     # ...and the other way round: nobody outside compat/jei/ may touch the plugin.
-    for path in glob.glob("src/com/craftingveloce/**/*.java", recursive=True):
+    for path in glob.glob("neoforge/src/main/java/com/craftingveloce/**/*.java", recursive=True):
         rel = path.replace(os.sep, "/")
         if "/compat/jei/" in rel:
             continue
@@ -1597,19 +1601,19 @@ def validate_jei_catalysts():
         for uid, (want, got) in wrong.items():
             problems.append(f"{os.path.basename(path)}: {uid} -> {got}, should be {want}")
 
-    core = "src/com/craftingveloce/CraftingVeloceMod.java"
+    core = "neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java"
     if os.path.exists(core) and "VeloceJeiCatalysts.registerDefaults()" \
             not in open(core, encoding="utf-8").read():
         problems.append("the core does not fill in the minecraft:crafting category")
-    for path, call in (("src/com/craftingveloce/compat/create/CreateCompat.java",
+    for path, call in (("neoforge/src/main/java/com/craftingveloce/compat/create/CreateCompat.java",
                         "CreateJeiCatalysts.register()"),
-                       ("src/com/craftingveloce/compat/mekanism/MekanismCompat.java",
+                       ("neoforge/src/main/java/com/craftingveloce/compat/mekanism/MekanismCompat.java",
                         "MekanismJeiCatalysts.register()"),
-                       ("src/com/craftingveloce/compat/alchemistry/AlchemistryCompat.java",
+                       ("neoforge/src/main/java/com/craftingveloce/compat/alchemistry/AlchemistryCompat.java",
                         "AlchemistryJeiCatalysts.register()")):
         if not os.path.exists(path) or call not in open(path, encoding="utf-8").read():
             problems.append(f"{os.path.basename(path)}: no {call}")
-    if 'JEI("jei")' not in open("src/com/craftingveloce/compat/VeloceMods.java",
+    if 'JEI("jei")' not in open("neoforge/src/main/java/com/craftingveloce/compat/VeloceMods.java",
                                 encoding="utf-8").read():
         problems.append("VeloceMods without a JEI entry")
     toml = "src_meta/META-INF/neoforge.mods.toml"
@@ -1643,28 +1647,28 @@ def validate_module_info_gui():
       * the old, combined windows have not come back.
     """
     problems = []
-    inventory = "src/com/craftingveloce/inventory/VeloceModuleMenu.java"
-    kinetic_menu = "src/com/craftingveloce/inventory/VeloceKineticMenu.java"
-    screen = "src/com/craftingveloce/client/gui/VeloceModuleScreen.java"
-    kinetic_screen = "src/com/craftingveloce/client/gui/VeloceKineticScreen.java"
+    inventory = "neoforge/src/main/java/com/craftingveloce/inventory/VeloceModuleMenu.java"
+    kinetic_menu = "neoforge/src/main/java/com/craftingveloce/inventory/VeloceKineticMenu.java"
+    screen = "neoforge/src/main/java/com/craftingveloce/client/gui/VeloceModuleScreen.java"
+    kinetic_screen = "neoforge/src/main/java/com/craftingveloce/client/gui/VeloceKineticScreen.java"
     for path, what in ((inventory, "FE machine menu"), (kinetic_menu, "kinetic machine menu"),
                        (screen, "FE machine screen"), (kinetic_screen, "kinetic machine screen")):
         if not os.path.exists(path):
             problems.append("no " + what)
-    for gone in ("src/com/craftingveloce/client/gui/VeloceModuleInfoScreen.java",
-                 "src/com/craftingveloce/network/OpenModuleInfoPKT.java",
-                 "src/com/craftingveloce/crafting/VeloceModuleInfoLines.java"):
+    for gone in ("neoforge/src/main/java/com/craftingveloce/client/gui/VeloceModuleInfoScreen.java",
+                 "neoforge/src/main/java/com/craftingveloce/network/OpenModuleInfoPKT.java",
+                 "neoforge/src/main/java/com/craftingveloce/crafting/VeloceModuleInfoLines.java"):
         if os.path.exists(gone):
             problems.append("the old window is still there: " + os.path.basename(gone))
     if problems:
         fail("machine windows:\n  " + "\n  ".join(problems))
 
-    registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    registry = open("neoforge/src/main/java/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     for need, what in (("VELOCE_MODULE_MENU =", "the FE machine menu"),
                        ("VELOCE_KINETIC_MENU =", "the kinetic machine menu")):
         if need not in registry:
             problems.append("not registered: " + what)
-    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    mod = open("neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     for need, what in (("VELOCE_MODULE_MENU.get()", "the FE screen"),
                        ("VeloceModuleScreen::new", "the FE screen"),
                        ("VELOCE_KINETIC_MENU.get()", "the kinetic screen"),
@@ -1680,7 +1684,7 @@ def validate_module_info_gui():
             problems.append("the kinetic menu without " + what)
     if "getBatterySlot" in km or "isEnergyItem" in km:
         problems.append("the kinetic menu has a battery slot (and it should not)")
-    block = "src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java"
+    block = "neoforge/src/main/java/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java"
     block_text = open(block, encoding="utf-8").read()
     if "VeloceKineticMenu" not in block_text:
         problems.append("the kinetic machine opens a menu that is not its own")
@@ -1720,7 +1724,7 @@ def validate_module_info_gui():
                        ("isEnergyItem", "the filter: only items with energy")):
         if need not in menu:
             problems.append("the machine menu without " + what)
-    fe_be = "src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
+    fe_be = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
     fe_be_text = open(fe_be, encoding="utf-8").read()
     for need, what in (("private void chargeFromItem()", "the method that draws power"),
                        ("getBatterySlot()", "exposing the battery slot"),
@@ -1733,7 +1737,7 @@ def validate_module_info_gui():
         problems.append("the FE module does not draw power in the tick")
     ticker = ("public <T extends BlockEntity> "
               "net.minecraft.world.level.block.entity.BlockEntityTicker<T> getTicker(")
-    if ticker not in open("src/com/craftingveloce/block/VeloceFeModuleBlock.java",
+    if ticker not in open("neoforge/src/main/java/com/craftingveloce/block/VeloceFeModuleBlock.java",
                           encoding="utf-8").read():
         problems.append("the FE module has no ticker (charging from the item will not work)")
 
@@ -1758,19 +1762,19 @@ def validate_pipe_energy():
     problems = []
     
     # 1. The container in the network
-    net_path = "src/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
+    net_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
     net_text = open(net_path, encoding="utf-8").read()
     if "private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer" not in net_text:
         problems.append("VelocePipeNetwork without an energy container declaration")
     
     # 2. The tick in the cache
-    cache_path = "src/com/craftingveloce/crafting/VeloceCraftingCache.java"
+    cache_path = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceCraftingCache.java"
     cache_text = open(cache_path, encoding="utf-8").read()
     tick = _method_body(cache_text, "public static void tickAll(ServerLevel level)")
     if tick is None or "VeloceEnergyPull.pull" not in tick:
         problems.append("energy is not ticked (no VeloceEnergyPull in VeloceCraftingCache.tickAll)")
     
-    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    mod = open("neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     # Registering energy on the pipe = the pipe becomes a conduit for other mods.
     # We check a WINDOW around each registration, because the type is sometimes
     # on the next line.
@@ -1781,9 +1785,9 @@ def validate_pipe_energy():
             break
 
     # Machines: sinks only - extractEnergy must return 0.
-    for path, what in (("src/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java",
+    for path, what in (("neoforge/src/main/java/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java",
                         "the electric furnace"),
-                       ("src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java",
+                       ("neoforge/src/main/java/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java",
                         "the FE module")):
         body = _method_body(open(path, encoding="utf-8").read(), "public int extractEnergy(")
         if body is None or "return 0;" not in body:
@@ -1816,10 +1820,10 @@ def validate_brewing_stand():
          the data.
     """
     problems = []
-    block = "src/com/craftingveloce/block/VeloceBrewingStandBlock.java"
-    be = "src/com/craftingveloce/block/entity/VeloceBrewingStandBlockEntity.java"
-    menu = "src/com/craftingveloce/inventory/VeloceBrewingStandMenu.java"
-    screen = "src/com/craftingveloce/client/gui/VeloceBrewingStandScreen.java"
+    block = "neoforge/src/main/java/com/craftingveloce/block/VeloceBrewingStandBlock.java"
+    be = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceBrewingStandBlockEntity.java"
+    menu = "neoforge/src/main/java/com/craftingveloce/inventory/VeloceBrewingStandMenu.java"
+    screen = "neoforge/src/main/java/com/craftingveloce/client/gui/VeloceBrewingStandScreen.java"
     for path, what in ((block, "the block"), (be, "block entity"), (menu, "menu"),
                        (screen, "screen")):
         if not os.path.exists(path):
@@ -1937,15 +1941,15 @@ def validate_brewing_stand():
     if "electric_furnace.png" not in screen_text:
         problems.append("the brewing screen does not use the furnace texture")
 
-    reg = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    reg = open("neoforge/src/main/java/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     for need, what in (("BREWING_STAND =", "the block"), ("BREWING_STAND_ITEM", "the item"),
                        ("BREWING_STAND_BE", "block entity"), ("BREWING_STAND_MENU", "menu")):
         if need not in reg:
             problems.append("registration without " + what)
-    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    mod = open("neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VeloceBrewingStandScreen::new" not in mod:
         problems.append("the brewing screen is not wired")
-    cc = open("src/com/craftingveloce/block/VeloceCaseContents.java", encoding="utf-8").read()
+    cc = open("neoforge/src/main/java/com/craftingveloce/block/VeloceCaseContents.java", encoding="utf-8").read()
     if "BREWING_STAND.get()" not in cc:
         problems.append("no Integrale casing for the brewing stand")
     for path in ("assets/craftingveloce/blockstates/brewing_stand.json",
@@ -1958,7 +1962,7 @@ def validate_brewing_stand():
     # FACTS from vanilla, not promises - smithing and fletching are already
     # handled, while cartography and brewing have no RecipeType, so they must
     # NOT be added to the families.
-    families = open("src/com/craftingveloce/crafting/VeloceRecipeFamilies.java",
+    families = open("neoforge/src/main/java/com/craftingveloce/crafting/VeloceRecipeFamilies.java",
                     encoding="utf-8").read()
     if "RecipeType.SMITHING" not in families:
         problems.append("the smithing table fell out of the recipe families (the network will not make it)")
@@ -1993,7 +1997,7 @@ def validate_brewing_proxy():
     the presence of a word - a word-level check would pass again the moment
     somebody reintroduces one real-potion result.
     """
-    path = "src/com/craftingveloce/crafting/VeloceBrewingModule.java"
+    path = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceBrewingModule.java"
     if not os.path.exists(path):
         fail("brewing proxy:\n  no VeloceBrewingModule")
     text = open(path, encoding="utf-8").read()
@@ -2031,7 +2035,7 @@ def validate_brewing_proxy():
                         "(the rest of the potion chain consumes it as an input)")
 
     # The proxy registry must exist and be able to answer both directions.
-    mapper = "src/com/craftingveloce/util/VelocePotionMapper.java"
+    mapper = "neoforge/src/main/java/com/craftingveloce/util/VelocePotionMapper.java"
     if not os.path.exists(mapper):
         problems.append("no VelocePotionMapper")
     else:
@@ -2046,7 +2050,7 @@ def validate_brewing_proxy():
     # The proxies must actually be registered at init, otherwise getProxy falls
     # back to the plain potion item for EVERY potion and all recipes collapse into
     # duplicates of each other.
-    reg = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    reg = open("neoforge/src/main/java/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     registered = re.findall(r'registerProxy\("([a-z_]+)"', reg)
     if len(registered) < 10:
         problems.append(f"only {len(registered)} potion proxies registered at init "
@@ -2055,7 +2059,7 @@ def validate_brewing_proxy():
 
     # The water bypass: a glass bottle put into the stand must become a water
     # potion without any water source. That is what makes the base recipe startable.
-    stand = "src/com/craftingveloce/block/entity/VeloceBrewingStandBlockEntity.java"
+    stand = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceBrewingStandBlockEntity.java"
     stand_text = open(stand, encoding="utf-8").read()
     if "Items.GLASS_BOTTLE" not in stand_text:
         problems.append("the stand does not convert a glass bottle into the water proxy "
@@ -2151,7 +2155,7 @@ def validate_potion_proxy_assets():
     without a lang key they show as the raw translation id - both look like the
     mod is broken, and neither fails the build by itself.
     """
-    reg = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    reg = open("neoforge/src/main/java/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     proxies = sorted(set(re.findall(r'ITEMS\.register\("(potion_[a-z_]+)"', reg)))
     if not proxies:
         fail("potion proxies:\n  no proxy items registered (the brewing proxy domain "
@@ -2192,10 +2196,10 @@ def validate_energy_pull():
       4. our pipe does NOT expose EnergyStorage (one direction only).
     """
     problems = []
-    enum_path = "src/com/craftingveloce/network/pipe/ConnectedEndpointInfo.java"
-    scan_path = "src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java"
-    pull_path = "src/com/craftingveloce/network/pipe/VeloceEnergyPull.java"
-    net_path = "src/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
+    enum_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/ConnectedEndpointInfo.java"
+    scan_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java"
+    pull_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/VeloceEnergyPull.java"
+    net_path = "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
 
     if "ENERGY" not in open(enum_path, encoding="utf-8").read():
         problems.append("no ENERGY endpoint type")
@@ -2269,7 +2273,7 @@ def validate_energy_pull():
                             "(stale world-position entries survive a block swap)")
 
     # The furnace's intake must be bounded too - it used to be Integer.MAX_VALUE.
-    furn_path = "src/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java"
+    furn_path = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java"
     furn_text_rates = open(furn_path, encoding="utf-8").read()
     if "MAX_PULL_PER_TICK = Integer.MAX_VALUE" in furn_text_rates:
         problems.append("the electric furnace intake is Integer.MAX_VALUE "
@@ -2281,20 +2285,20 @@ def validate_energy_pull():
     # while the furnace does it directly - that is why we check the TICK + the
     # call in the file, and not the literal inside the tick body (the first
     # version of the test raised a false alarm).
-    fe_mod = "src/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
+    fe_mod = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceFeModuleBlockEntity.java"
     fe_text = open(fe_mod, encoding="utf-8").read()
     fe_tick = _method_body(fe_text, "public void serverTick()")
     if fe_tick is None or "pullFromNetwork()" not in fe_tick \
             or "VeloceEnergyPull.pull(" not in fe_text:
         problems.append("the FE module: does not pull power from the network in the tick")
-    furn = "src/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java"
+    furn = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java"
     furn_text = open(furn, encoding="utf-8").read()
     furn_tick = _method_body(furn_text, "public void serverTick()")
     if furn_tick is None or "VeloceEnergyPull.pull(" not in furn_tick:
         problems.append("the electric furnace: does not pull power from the network in the tick")
 
     # One direction only: the pipe must not expose EnergyStorage.
-    pipe_be = "src/com/craftingveloce/block/entity/VelocePipeBlockEntity.java"
+    pipe_be = "neoforge/src/main/java/com/craftingveloce/block/entity/VelocePipeBlockEntity.java"
     if os.path.exists(pipe_be) and "IEnergyStorage" in open(pipe_be, encoding="utf-8").read():
         problems.append("the pipe exposes EnergyStorage (a foreign mod could draw from it)")
 
@@ -2327,11 +2331,11 @@ def validate_craftable_cache():
       5. the controller follows the SAME path as the terminal (no track of its own).
     """
     problems = []
-    network = "src/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
-    packet = "src/com/craftingveloce/network/RequestCraftableCountsPKT.java"
-    nodes = "src/com/craftingveloce/network/pipe/VeloceNodeBlocks.java"
-    toggle = "src/com/craftingveloce/network/CraftingTableToggleItemPKT.java"
-    controller = "src/com/craftingveloce/client/gui/VeloceControllerScreen.java"
+    network = "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetwork.java"
+    packet = "neoforge/src/main/java/com/craftingveloce/network/RequestCraftableCountsPKT.java"
+    nodes = "neoforge/src/main/java/com/craftingveloce/network/pipe/VeloceNodeBlocks.java"
+    toggle = "neoforge/src/main/java/com/craftingveloce/network/CraftingTableToggleItemPKT.java"
+    controller = "neoforge/src/main/java/com/craftingveloce/client/gui/VeloceControllerScreen.java"
 
     net_text = open(network, encoding="utf-8").read()
     for need, what in (("craftableMemo", "the cache map"),
@@ -2360,7 +2364,7 @@ def validate_craftable_cache():
     # Layout change / chunk reload: clearing MUST be in the BODY of
     # reconcileCaches - otherwise the clearCraftableMemo method exists, but
     # nobody calls it when the topology changes (calibration showed this).
-    mgr_text = open("src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
+    mgr_text = open("neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
                     encoding="utf-8").read()
     reconcile = _method_body(mgr_text, "private void reconcileCaches(")
     if reconcile is None or "clearCraftableMemo()" not in reconcile:
@@ -2374,11 +2378,11 @@ def validate_craftable_cache():
 
     # Persistence: the cache must go into the save together with the network.
     if "saveCraftableMemo(" not in open(
-            "src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
+            "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
             encoding="utf-8").read():
         problems.append("the number cache is not saved into the game save")
     if "restoreCraftableMemo(" not in open(
-            "src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
+            "neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
             encoding="utf-8").read():
         problems.append("the number cache is not read from the game save")
 
@@ -2400,14 +2404,14 @@ def validate_block_probe():
          window/Jade (VeloceModuleInfoSource) and show the MISSING speed.
     """
     problems = []
-    be = ("src/com/craftingveloce/compat/create/block/entity/"
+    be = ("neoforge/src/main/java/com/craftingveloce/compat/create/block/entity/"
           "VeloceKineticModuleBlockEntity.java")
     text = open(be, encoding="utf-8").read()
     speed = _method_body(text, "public boolean hasEnoughRotationSpeed()")
     if speed is None or "REQUIRED_SPEED_TOLERANCE" not in speed:
         problems.append("the 256 RPM threshold without tolerance (256.0 is sometimes 255.99998)")
 
-    probe = "src/com/craftingveloce/commands/BlockProbeCommand.java"
+    probe = "neoforge/src/main/java/com/craftingveloce/commands/BlockProbeCommand.java"
     if not os.path.exists(probe):
         problems.append("no /cv block command")
     else:
@@ -2419,7 +2423,7 @@ def validate_block_probe():
                            ("VeloceNetworkNode", "information about the network node")):
             if need not in ptext:
                 problems.append("the /cv block command without " + what)
-    root = open("src/com/craftingveloce/commands/CVDebugCommand.java", encoding="utf-8").read()
+    root = open("neoforge/src/main/java/com/craftingveloce/commands/CVDebugCommand.java", encoding="utf-8").read()
     if 'Commands.literal("block")' not in root or "BlockProbeCommand::describe" not in root:
         problems.append("/cv block is not wired")
     readme = "README.md"
@@ -2441,7 +2445,7 @@ def validate_showcase_command():
     the registry (BuiltInRegistries.BLOCK), fills the built machines
     (VeloceCaseBuildable) and is wired into the command registration.
     """
-    path = "src/com/craftingveloce/commands/CVShowcaseCommand.java"
+    path = "neoforge/src/main/java/com/craftingveloce/commands/CVShowcaseCommand.java"
     if not os.path.exists(path):
         fail("showcase:\n  no /cv showcase command class")
     text = open(path, encoding="utf-8").read()
@@ -2461,7 +2465,7 @@ def validate_showcase_command():
     fill_body = _method_body(text, "private static void fillParts(")
     if fill_body is None or "VeloceCaseBuildable" not in fill_body:
         problems.append("showcase does not fill the built machines with parts")
-    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    mod = open("neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "CVShowcaseCommand.register" not in mod:
         problems.append("the showcase command is not registered")
     if problems:
@@ -2479,9 +2483,9 @@ def validate_loot_item_ids():
     existing files untouched. The symptom: those blocks dropped NOTHING (and
     the error only went to the log, while loading the loot tables).
     """
-    registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    registry = open("neoforge/src/main/java/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     compat = "".join(open(path, encoding="utf-8").read()
-                     for path in glob.glob("src/com/craftingveloce/compat/*/*Blocks.java"))
+                     for path in glob.glob("neoforge/src/main/java/com/craftingveloce/compat/*/*Blocks.java"))
     items = set(re.findall(r'register(?:SimpleBlockItem)?\(\s*"([a-z0-9_]+)"', registry + compat))
 
     problems = []
@@ -2523,9 +2527,9 @@ def validate_case_occlusion():
     looked random.
     """
     problems = []
-    files = ["src/com/craftingveloce/init/VeloceRegistry.java"]
-    files += sorted(glob.glob("src/com/craftingveloce/compat/*/*Blocks.java"))
-    files += sorted(glob.glob("src/com/craftingveloce/compat/*/block/*.java"))
+    files = ["neoforge/src/main/java/com/craftingveloce/init/VeloceRegistry.java"]
+    files += sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/compat/*/*Blocks.java"))
+    files += sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/compat/*/block/*.java"))
     for path in files:
         if not os.path.exists(path):
             continue
@@ -2558,7 +2562,7 @@ def validate_create_mechanics():
     """
     problems = []
 
-    block_code = open("src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
+    block_code = open("neoforge/src/main/java/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
                       encoding="utf-8").read()
     for need, what in (("BlockStateProperties.AXIS", "the rotation axis state"),
                        ("side.getAxis() == own",
@@ -2574,12 +2578,12 @@ def validate_create_mechanics():
         if need not in block_code:
             problems.append("the kinetic machine without " + what)
 
-    entry = open("src/com/craftingveloce/crafting/ProcessingEntry.java", encoding="utf-8").read()
+    entry = open("neoforge/src/main/java/com/craftingveloce/crafting/ProcessingEntry.java", encoding="utf-8").read()
     if "public boolean fitsGrid(int side, int parts)" not in entry:
         problems.append("ProcessingEntry does not check the NUMBER of cells (only the grid side)")
     if "gridWidth * gridHeight <= parts" not in entry:
         problems.append("no condition that all recipe cells are covered")
-    processing_sources = open("src/com/craftingveloce/crafting/VeloceProcessingSources.java",
+    processing_sources = open("neoforge/src/main/java/com/craftingveloce/crafting/VeloceProcessingSources.java",
                               encoding="utf-8").read()
     if "public static int maxParts(" not in processing_sources:
         problems.append("no counting of the built cells")
@@ -2587,18 +2591,18 @@ def validate_create_mechanics():
         problems.append("the grid side is not computed from the number of built cells")
     if "public boolean fitsGrid(int side)" in entry:
         problems.append("ProcessingEntry without the grid fitting rule")
-    sources = open("src/com/craftingveloce/crafting/VeloceProcessingSources.java",
+    sources = open("neoforge/src/main/java/com/craftingveloce/crafting/VeloceProcessingSources.java",
                    encoding="utf-8").read()
     if "maxGridSide" not in sources:
         problems.append("no computation of the built grid side")
-    harvest = open("src/com/craftingveloce/compat/create/CreateRecipeHarvest.java",
+    harvest = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateRecipeHarvest.java",
                    encoding="utf-8").read()
     for need, what in (("recipe.getWidth()", "the grid width from the recipe"),
                        ("recipe.getHeight()", "the grid height from the recipe"),
                        ("requiresHeat", "the heat flag (Blaze Burner)")):
         if need not in harvest:
             problems.append("the Create harvest without " + what)
-    module = open("src/com/craftingveloce/compat/create/CreateModule.java",
+    module = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateModule.java",
                   encoding="utf-8").read()
     for need, what in (('"blaze_burner"', "the Blaze Burner requirement"),
                        ('"basin"', "the Basin requirement")):
@@ -2613,12 +2617,12 @@ def validate_create_mechanics():
         body = _method_body(module, signature)
         if body is None or "fitsGrid" not in body or "requirementsMet" not in body:
             problems.append(f"{name} does not filter recipes by grid and requirements")
-    family = open("src/com/craftingveloce/compat/create/CreateRecipeFamily.java",
+    family = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateRecipeFamily.java",
                   encoding="utf-8").read()
     for need, what in (("pressing()", "the press type"), ("mixing()", "the mixer type")):
         if need not in family:
             problems.append("the Create family without " + what)
-    be = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
+    be = open("neoforge/src/main/java/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
               encoding="utf-8").read()
     for need, what in (("public static final int GRID_LIMIT = 9", "the 9x9 limit"),
                        ("GRID_LIMIT * GRID_LIMIT", "the crafter cell limit")):
@@ -2629,7 +2633,7 @@ def validate_create_mechanics():
     # path the player described ("I take an empty veloce integrale, click it
     # with a crushing wheel - one appears in the middle, a second click - the
     # second one, and only now does the machine work").
-    compat = open("src/com/craftingveloce/compat/create/CreateCompat.java",
+    compat = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateCompat.java",
                   encoding="utf-8").read()
     if "registerConversions();" not in compat:
         problems.append("the Create gate does not register conversions from the empty casing")
@@ -2642,7 +2646,7 @@ def validate_create_mechanics():
     # blocks from another mod may not exist yet when the gate registers the
     # entries, and then the entry would point to an empty block and clicking the
     # casing would do NOTHING.
-    conversions = open("src/com/craftingveloce/block/VeloceIntegraleConversions.java",
+    conversions = open("neoforge/src/main/java/com/craftingveloce/block/VeloceIntegraleConversions.java",
                        encoding="utf-8").read()
     if "record Conversion(ResourceLocation inputId" not in conversions:
         problems.append("the conversion table is keyed by block, not by ID "
@@ -2650,13 +2654,13 @@ def validate_create_mechanics():
     if "BuiltInRegistries.BLOCK.getKey(block)" not in conversions:
         problems.append("conversions do not look up the input by ID at use time")
 
-    integrale = open("src/com/craftingveloce/block/VeloceIntegraleBlock.java",
+    integrale = open("neoforge/src/main/java/com/craftingveloce/block/VeloceIntegraleBlock.java",
                      encoding="utf-8").read()
     if "VeloceCaseBuildable" not in integrale or "buildable.addPart()" not in integrale:
         problems.append("the first inserted block does not stay in the machine "
                         "(the conversion does not add a part)")
 
-    renderer = open("src/com/craftingveloce/client/render/VeloceCaseRenderer.java",
+    renderer = open("neoforge/src/main/java/com/craftingveloce/client/render/VeloceCaseRenderer.java",
                     encoding="utf-8").read()
     render_body = _method_body(renderer, "public void render(")
     if render_body is None or "caseParts() > 0" not in render_body \
@@ -2704,7 +2708,7 @@ def validate_create_mechanics():
         problems.append("no reading of the item model transform")
 
     # The per-machine scale lives in the casing table.
-    contents = open("src/com/craftingveloce/block/VeloceCaseContents.java", encoding="utf-8").read()
+    contents = open("neoforge/src/main/java/com/craftingveloce/block/VeloceCaseContents.java", encoding="utf-8").read()
     if "public static float contentScale(BlockState state)" not in contents:
         problems.append("the casing table without a content scale")
     for need, what in (("float scale,", "the content size in the table entry"),
@@ -2712,7 +2716,7 @@ def validate_create_mechanics():
                        ("boolean keepItemRotation", "the model orientation choice in the table entry")):
         if need not in contents:
             problems.append("the casing table entry without " + what)
-    compat_create = open("src/com/craftingveloce/compat/create/CreateCompat.java", encoding="utf-8").read()
+    compat_create = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateCompat.java", encoding="utf-8").read()
     for need, what in (('block("crushing_wheel"), 0.4F, 0.0F, true', "the strongly reduced crusher"),
                        ('block("mechanical_crafter"), 0.42F', "the reduced crafter"),
                        ('block("mechanical_press"), 0.5F', "the reduced press"),
@@ -2722,14 +2726,14 @@ def validate_create_mechanics():
         if need not in compat_create:
             problems.append("no " + what)
 
-    be_code = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
+    be_code = open("neoforge/src/main/java/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
                    encoding="utf-8").read()
 
     # Rotation: a 256 RPM THRESHOLD + a 1024 SU draw. The earlier model
     # (dividing a constant by the speed without a threshold) produced a huge
     # "impact" at low rotation and the network screamed overstressed - the
     # player reported it ("at 256 it jams, at 1 it spins normally").
-    modules = open("src/com/craftingveloce/compat/create/CreateKineticModules.java",
+    modules = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateKineticModules.java",
                    encoding="utf-8").read()
     if "public static final int REQUIRED_SPEED = 256;" not in modules:
         problems.append("no required speed threshold of 256 RPM")
@@ -2756,10 +2760,10 @@ def validate_create_mechanics():
     # window (see validate_jade_info, which checks that they really show it).
     # This test guards the other end: that there is no text of our own at the
     # crosshair.
-    gone = "src/com/craftingveloce/client/VeloceModuleOverlay.java"
+    gone = "neoforge/src/main/java/com/craftingveloce/client/VeloceModuleOverlay.java"
     if os.path.exists(gone):
         problems.append("our own text at the crosshair came back (it should be in the Jade tooltip)")
-    own_mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    own_mod = open("neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VeloceModuleOverlay" in own_mod:
         problems.append("the mod still wires our own text at the crosshair")
 
@@ -2773,7 +2777,7 @@ def validate_create_mechanics():
                        ("return 2;", "the default two wheels for the crusher")):
         if need not in block_code:
             problems.append("the machine without " + what)
-    blocks_registry = open("src/com/craftingveloce/compat/create/CreateBlocks.java",
+    blocks_registry = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateBlocks.java",
                            encoding="utf-8").read()
     for need, what in (("VELOCE_CRUSHING_MODULE.get().filledStack()", "the filled crusher in the tab"),
                        ("VELOCE_MECHANICAL_CRAFTER_MODULE.get().filledStack()",
@@ -2818,7 +2822,7 @@ def validate_create_mechanics():
         problems.append("the casing renderer calls block entity renderers - Create "
                         "machines are drawn by Flywheel, so it would be empty")
 
-    spin_iface = open("src/com/craftingveloce/block/VeloceCaseSpin.java", encoding="utf-8").read()
+    spin_iface = open("neoforge/src/main/java/com/craftingveloce/block/VeloceCaseSpin.java", encoding="utf-8").read()
     if "boolean casePartsSpinIndividually();" not in spin_iface:
         problems.append("the interface without information whether the parts spin individually")
     if "boolean caseBuiltFromParts();" not in spin_iface:
@@ -2831,7 +2835,7 @@ def validate_create_mechanics():
     # "1x2" while something else is drawn inside.
     if "gridLabel()" not in block_code or "displayClientMessage" not in block_code:
         problems.append("no action bar notification about the grid layout")
-    be_code = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
+    be_code = open("neoforge/src/main/java/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
                    encoding="utf-8").read()
     for need, what in (("public int caseGridColumns()", "the layout columns"),
                        ("public int caseGridRows()", "the layout rows"),
@@ -2862,9 +2866,9 @@ def validate_create_mechanics():
 
 
     # A machine without power is not available: applies to ALL integrations.
-    for path, name in (("src/com/craftingveloce/compat/create/CreateModule.java", "Create"),
-                       ("src/com/craftingveloce/compat/mekanism/MekanismModule.java", "Mekanism"),
-                       ("src/com/craftingveloce/compat/alchemistry/AlchemistryModule.java", "Alchemistry")):
+    for path, name in (("neoforge/src/main/java/com/craftingveloce/compat/create/CreateModule.java", "Create"),
+                       ("neoforge/src/main/java/com/craftingveloce/compat/mekanism/MekanismModule.java", "Mekanism"),
+                       ("neoforge/src/main/java/com/craftingveloce/compat/alchemistry/AlchemistryModule.java", "Alchemistry")):
         body = _method_body(open(path, encoding="utf-8").read(), "public Set<Item> producible(")
         if body is None or "hasPowered" not in body:
             problems.append(f"the {name} module: producible shows machines WITHOUT power")
@@ -2894,7 +2898,7 @@ def validate_case_disassembly():
     """
     problems = []
 
-    module_block = open("src/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
+    module_block = open("neoforge/src/main/java/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
                         encoding="utf-8").read()
     drops = _method_body(module_block, "protected java.util.List<ItemStack> getDrops(")
     if drops is None:
@@ -2906,12 +2910,12 @@ def validate_case_disassembly():
             if need not in drops:
                 problems.append("the machine drop without " + what)
 
-    be = open("src/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
+    be = open("neoforge/src/main/java/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
               encoding="utf-8").read()
     if 'tag.getInt("VeloceParts")' not in be or 'tag.putInt("VeloceParts"' not in be:
         problems.append("the block entity does not read/write the number of parts in NBT")
 
-    recipe_path = "src/com/craftingveloce/crafting/VeloceCaseDisassemblyRecipe.java"
+    recipe_path = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceCaseDisassemblyRecipe.java"
     if not os.path.exists(recipe_path):
         fail("casing disassembly:\n  no recipe class")
     recipe = open(recipe_path, encoding="utf-8").read()
@@ -2927,10 +2931,10 @@ def validate_case_disassembly():
         if need not in recipe:
             problems.append("the recipe without " + what)
 
-    recipes = open("src/com/craftingveloce/crafting/VeloceRecipes.java", encoding="utf-8").read()
+    recipes = open("neoforge/src/main/java/com/craftingveloce/crafting/VeloceRecipes.java", encoding="utf-8").read()
     if '"case_disassembly"' not in recipes:
         problems.append("the recipe serializer is not registered")
-    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    mod = open("neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VeloceRecipes.register" not in mod:
         problems.append("recipe registration is not wired into the mod")
 
@@ -3007,7 +3011,7 @@ def validate_integrale_display():
     """
     problems = []
 
-    conv_path = "src/com/craftingveloce/block/VeloceIntegraleConversions.java"
+    conv_path = "neoforge/src/main/java/com/craftingveloce/block/VeloceIntegraleConversions.java"
     if not os.path.exists(conv_path):
         fail("frame / machines:\n  no VeloceIntegraleConversions conversion table")
     conversions = open(conv_path, encoding="utf-8").read()
@@ -3020,7 +3024,7 @@ def validate_integrale_display():
         if pair not in conversions:
             problems.append(f"the conversion table without the pair {input_block} -> {target}")
 
-    integrale = "src/com/craftingveloce/block/VeloceIntegraleBlock.java"
+    integrale = "neoforge/src/main/java/com/craftingveloce/block/VeloceIntegraleBlock.java"
     text = open(integrale, encoding="utf-8").read()
     for need, what in (("VeloceIntegraleConversions.forItem", "a look into the conversion table"),
                        ("world.setBlock(pos, result", "replacing the block"),
@@ -3054,7 +3058,7 @@ def validate_integrale_display():
     # skipped (test: {Name:"minecraft:oak_fence",Properties:{filled:"true"}}
     # parses without an error, just like a wrong value of a known property).
     leftovers = []
-    for path in sorted(glob.glob("src/com/craftingveloce/**/*.java", recursive=True)):
+    for path in sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/**/*.java", recursive=True)):
         body = open(path, encoding="utf-8").read()
         for need in ("FILLED", "isDisplayable", "putOnDisplay", "takeOffDisplay",
                      "getDisplayItem()", "setDisplayItem(",
@@ -3064,29 +3068,29 @@ def validate_integrale_display():
     if leftovers:
         problems.append("the old display item system is still there:\n  " + "\n  ".join(leftovers))
 
-    be_path = "src/com/craftingveloce/block/entity/VeloceCraftingTableBlockEntity.java"
+    be_path = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceCraftingTableBlockEntity.java"
     be = open(be_path, encoding="utf-8").read()
     if "instanceof com.craftingveloce.block.VeloceCraftingTableBlock" not in be:
         problems.append("the crafting table block entity does not recognise a crafter by BLOCK TYPE")
 
     # Storage ghost: the buffer endpoint must disappear when the block stops
     # being a crafter - so the validation cannot rely on the block entity alone.
-    manager = open("src/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
+    manager = open("neoforge/src/main/java/com/craftingveloce/network/pipe/VelocePipeNetworkManager.java",
                    encoding="utf-8").read()
     buffer_case = manager.partition("case CRAFTING_BUFFER")[2][:400]
     if "exposesCraftingBuffer" not in buffer_case:
         problems.append("the crafter buffer validation does not ask the node about the rule - "
                         "after the block is replaced a storage ghost remains")
 
-    registry = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    registry = open("neoforge/src/main/java/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
     if "integraleBlock()" in registry:
         problems.append("the frame still has its own crafting table block entity (it must not)")
 
-    mod = open("src/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    mod = open("neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
     if "VeloceCaseRenderer" not in mod:
         problems.append("no casing renderer registration (RegisterRenderers)")
 
-    renderer = "src/com/craftingveloce/client/render/VeloceCaseRenderer.java"
+    renderer = "neoforge/src/main/java/com/craftingveloce/client/render/VeloceCaseRenderer.java"
     if not os.path.exists(renderer):
         problems.append("no casing renderer class")
     else:
@@ -3105,7 +3109,7 @@ def validate_integrale_display():
             problems.append("the renderer does not draw the machine parts (mill wheels) "
                             "with the speed from the machine - VeloceCaseSpin unused")
 
-    contents_path = "src/com/craftingveloce/block/VeloceCaseContents.java"
+    contents_path = "neoforge/src/main/java/com/craftingveloce/block/VeloceCaseContents.java"
     if not os.path.exists(contents_path):
         problems.append("no casing contents table (VeloceCaseContents)")
     else:
@@ -3261,7 +3265,7 @@ def validate_integrale_model():
     #    from the frame: with multipart, vanilla takes the particleIcon from the
     #    FIRST part of the list.
     machines_with_frame = set()
-    for j in glob.glob("src/com/craftingveloce/block/*.java") + glob.glob("src/com/craftingveloce/compat/*/block/*.java"):
+    for j in glob.glob("neoforge/src/main/java/com/craftingveloce/block/*.java") + glob.glob("neoforge/src/main/java/com/craftingveloce/compat/*/block/*.java"):
         if "VeloceIntegraleFrame.addProperties" in open(j, encoding="utf-8").read():
             # We want the block ID, but we have Java files. The easiest way is to scan all blockstate json
             # but maybe we just require all blockstates that have the frame model to be multipart
@@ -3388,7 +3392,7 @@ def main():
         if not os.path.exists(dep):
             fail(f"missing dependency: {dep}")
 
-    sources = [f for f in glob.glob("src/**/*.java", recursive=True)
+    sources = [f for f in glob.glob("neoforge/src/main/java/**/*.java", recursive=True)
                if not any(x in f for x in EXCLUDED_SRC)]
     print(f"    files: {len(sources)} (skipped {', '.join(EXCLUDED_SRC)})")
 
@@ -3412,7 +3416,7 @@ def main():
     built = {os.path.relpath(os.path.join(dp, f), BUILD_OUT).replace(os.sep, "/")
              for dp, _, fs in os.walk(BUILD_OUT) for f in fs if f.endswith(".class")}
     imports = set()
-    for f in glob.glob("src/com/**/*.java", recursive=True):
+    for f in glob.glob("neoforge/src/main/java/com/**/*.java", recursive=True):
         for line in open(f):
             line = line.strip()
             if line.startswith("import com.craftingveloce."):

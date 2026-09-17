@@ -1,6 +1,18 @@
-// Root project: shared configuration only. Each loader module applies its own
-// toolchain plugin (see neoforge/build.gradle).
+// Root project: shared configuration plus the guard task.
+//
+// `verifyGuards` is the bridge between the two build systems: Gradle builds the
+// jar, then the existing scripts/build.py guards are run against it. They are the
+// project's real test suite (~38 checks) and are being rewritten as Gradle tests
+// incrementally - see MULTILOADER.md.
 allprojects {
     group = project.mod_group
     version = project.mod_version
+}
+
+tasks.register("verifyGuards", Exec) {
+    description = "Run the scripts/build.py source/jar guards against the built jar."
+    group = "verification"
+    dependsOn(":neoforge:build")
+    workingDir = rootProject.projectDir
+    commandLine("python3", "scripts/guards.py")
 }
