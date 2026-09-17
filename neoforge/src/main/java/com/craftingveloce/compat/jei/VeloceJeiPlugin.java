@@ -9,6 +9,7 @@ import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.helpers.IJeiHelpers;
 import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.registration.IRecipeCatalystRegistration;
+import mezz.jei.api.registration.IRecipeRegistration;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +62,46 @@ public class VeloceJeiPlugin implements IModPlugin {
     @Override
     public ResourceLocation getPluginUid() {
         return PLUGIN_UID;
+    }
+
+    /**
+     * Hides the potion proxies from JEI.
+     *
+     * <p><b>Why they exist at all.</b> The network counts its stock by {@code Item}
+     * ({@code getAllItemCounts} returns a {@code Map<Item, Long>}), so every potion STATE
+     * needs an item of its own: a real water bottle and a real night vision potion are
+     * both {@code minecraft:potion} and differ only by a data component, which the
+     * storage cannot tell apart. The proxies are that plumbing - one item per state, 138
+     * of them - and the network converts to them on the way in and back to real potions
+     * on the way out.
+     *
+     * <p><b>Why they must not be seen.</b> They are not items a player can obtain or use.
+     * Left visible they appear in JEI as a second copy of every potion in the game, with
+     * no contents and no use - a duplicate the player cannot explain, and rightly does
+     * not want. This plugin registers no category for the brewing recipe type, so nothing
+     * is lost by hiding them: JEI never showed how a potion is brewed in the first place.
+     */
+    @Override
+    public void registerRecipes(IRecipeRegistration registration) {
+        java.util.List<net.minecraft.world.item.ItemStack> proxies = new java.util.ArrayList<>();
+        for (net.minecraft.world.item.Item item : com.craftingveloce.init.VelocePotionProxies.created()) {
+            proxies.add(new net.minecraft.world.item.ItemStack(item));
+        }
+        for (var proxy : com.craftingveloce.init.VeloceRegistry.handAuthoredProxyItems()) {
+            proxies.add(new net.minecraft.world.item.ItemStack(proxy.get()));
+        }
+        if (proxies.isEmpty()) {
+            return;
+        }
+        // Logged for the same reason the creative tab logs its contents: an ingredient
+        // that fails to hide is invisible in a different sense - it silently shows up as
+        // a second copy of every potion in the game, and nothing anywhere says so.
+        com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                "[Veloce] JEI: hiding {} potion proxies (internal network plumbing)", proxies.size());
+        registration.getIngredientVisibility().hideIngredients(
+                mezz.jei.api.constants.VanillaTypes.ITEM_STACK,
+                proxies,
+                java.util.Set.of(mezz.jei.api.ingredients.subtypes.UidContext.Ingredient));
     }
 
     @Override
