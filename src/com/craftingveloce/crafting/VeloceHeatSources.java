@@ -2,6 +2,7 @@ package com.craftingveloce.crafting;
 
 import com.craftingveloce.block.entity.VeloceHeatSource;
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
+import com.craftingveloce.util.VeloceLog;
 import net.minecraft.server.level.ServerLevel;
 
 import java.util.ArrayList;
@@ -143,6 +144,25 @@ public final class VeloceHeatSources {
         for (VeloceHeatSource heat : sources) {
             total += Math.max(0L, heat.availableOperations());
         }
+        // WHO is in the list, and how much each can still pay. This is the decisive
+        // evidence for "the electric furnace does not draw from its accumulator":
+        // either it is absent from the list, present but not isPowered(), or present
+        // and actually charged - three different faults that look identical to the
+        // player, because in the last case the accumulator IS drained and only the
+        // gauge is stale.
+        if (VeloceLog.Craft.isDetailEnabled(VeloceLog.Side.SERVER)) {
+            StringBuilder who = new StringBuilder();
+            for (VeloceHeatSource heat : sources) {
+                who.append(heat.heatSourceName())
+                        .append("[prio=").append(heat.heatPriority())
+                        .append(" powered=").append(heat.isPowered())
+                        .append(" ops=").append(heat.availableOperations())
+                        .append("] ");
+            }
+            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                    "[VELOCE-DEBUG] heat payment: need %s op(s), total available %s, sources: %s",
+                    operations, total, who.toString().trim());
+        }
         if (total < operations) {
             return false;
         }
@@ -158,7 +178,12 @@ public final class VeloceHeatSources {
             if (take <= 0) {
                 continue;
             }
+            long before = heat.availableOperations();
             heat.consumeOperations(take);
+            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                    "[VELOCE-DEBUG] heat payment: %s paid %s op(s), ops %s -> %s (powered=%s now)",
+                    heat.heatSourceName(), take, before, heat.availableOperations(),
+                    heat.isPowered());
             left -= take;
         }
         return left <= 0;
