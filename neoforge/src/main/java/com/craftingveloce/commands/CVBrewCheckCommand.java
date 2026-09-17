@@ -174,25 +174,33 @@ public final class CVBrewCheckCommand {
                 com.craftingveloce.util.VeloceLog.Side.SERVER, "[brewcheck] %s", lastVerdict);
     }
 
-    /** Do these two stacks carry the same potion (or the same non-potion item)? */
-    private static boolean samePotion(ItemStack a, ItemStack b) {
-        ResourceLocation pa = potionId(a);
-        ResourceLocation pb = potionId(b);
-        return pa != null || pb != null
-                ? java.util.Objects.equals(pa, pb)
-                : a.getItem() == b.getItem();
+    /**
+     * Which potion STATE a stack stands for, container included - our proxy key format.
+     *
+     * <p>Container matters and the ITEM does not: a splash and a lingering potion of the
+     * same kind are different states, and every drinkable potion is
+     * {@code minecraft:potion}. Reading only {@code POTION} made a delivered splash
+     * potion report as the bare item {@code minecraft:splash_potion}, so a correct brew
+     * was scored a mismatch.
+     */
+    private static String potionIdentity(ItemStack stack) {
+        String fromStack = com.craftingveloce.util.VelocePotionMapper.proxyKey(stack);
+        if (fromStack != null) {
+            return fromStack;
+        }
+        return com.craftingveloce.util.VelocePotionMapper.proxyKeyOf(stack.getItem());
     }
 
-    private static ResourceLocation potionId(ItemStack stack) {
-        if (stack.getItem() != Items.POTION) return null;
-        return stack.getOrDefault(DataComponents.POTION_CONTENTS, PotionContents.EMPTY)
-                .potion()
-                .flatMap(holder -> holder.unwrapKey().map(key -> key.location()))
-                .orElse(null);
+    /** Do these two stacks stand for the same potion state? */
+    private static boolean samePotion(ItemStack a, ItemStack b) {
+        String ia = potionIdentity(a);
+        String ib = potionIdentity(b);
+        return ia != null || ib != null ? java.util.Objects.equals(ia, ib) : a.getItem() == b.getItem();
     }
 
     private static String describe(ItemStack stack) {
-        ResourceLocation id = potionId(stack);
-        return id != null ? id.toString() : stack.getItem().toString();
+        String identity = potionIdentity(stack);
+        return identity == null ? stack.getItem().toString()
+                : identity + " (" + stack.getItem() + ")";
     }
 }

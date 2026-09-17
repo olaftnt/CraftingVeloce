@@ -48,8 +48,8 @@ public class VelocePotionMapper {
                 "[VELOCE-DEBUG] proxy registered: potion '%s' <-> item %s", potionId, proxyItem);
     }
 
-    /** Container prefix of a potion state, or null when the item is not a potion container. */
-    private static String containerPrefix(Item item) {
+    /** Container prefix of a potion state, or empty when the item is not a potion container. */
+    public static String containerPrefix(Item item) {
         if (item == Items.POTION) return "";
         if (item == Items.SPLASH_POTION) return "splash_";
         if (item == Items.LINGERING_POTION) return "lingering_";
@@ -99,6 +99,11 @@ public class VelocePotionMapper {
 
     public static Item getProxy(String path) {
         return POTION_TO_PROXY.getOrDefault(path, Items.POTION);
+    }
+
+    /** Whether a proxy is already registered for this key. */
+    public static boolean hasProxy(String key) {
+        return POTION_TO_PROXY.containsKey(key);
     }
 
     public static boolean isProxy(Item item) {

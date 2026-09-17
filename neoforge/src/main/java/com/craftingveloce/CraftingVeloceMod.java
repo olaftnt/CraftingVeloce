@@ -161,6 +161,34 @@ public class CraftingVeloceMod {
                     com.craftingveloce.client.gui.VeloceThresholdSensorScreen::new);
         });
 
+        // The generated potion proxies have no model file - there is one file per item
+        // and they are made at runtime - so they borrow the hand-authored proxy's baked
+        // model, which is itself just `minecraft:item/potion`. One lookup, N entries.
+        modEventBus.addListener(net.neoforged.neoforge.client.event.ModelEvent.ModifyBakingResult.class, event -> {
+            java.util.List<net.minecraft.world.item.Item> generated =
+                    com.craftingveloce.init.VelocePotionProxies.created();
+            if (generated.isEmpty()) {
+                return;
+            }
+            net.minecraft.client.resources.model.ModelResourceLocation templateKey =
+                    net.minecraft.client.resources.model.ModelResourceLocation.inventory(
+                            net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(
+                                    VeloceRegistry.POTION_WATER.get()));
+            var template = event.getModels().get(templateKey);
+            if (template == null) {
+                LOGGER.warn("[Veloce] no model to copy for the {} generated potion proxies - "
+                        + "they will render as the missing-texture block", generated.size());
+                return;
+            }
+            for (net.minecraft.world.item.Item proxy : generated) {
+                event.getModels().put(
+                        net.minecraft.client.resources.model.ModelResourceLocation.inventory(
+                                net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(proxy)),
+                        template);
+            }
+            LOGGER.info("[Veloce] baked {} generated potion proxy models", generated.size());
+        });
+
         // Leaving the world clears the remembered terminal views.
         // Block positions make no sense in another world, and in a new one they
         // could accidentally point at a different terminal.

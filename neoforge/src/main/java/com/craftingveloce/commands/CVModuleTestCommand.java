@@ -554,40 +554,24 @@ public final class CVModuleTestCommand {
         pass(moduleId, wanted, recipeId, stock, pulled.stack().getCount());
     }
 
-    /** Potion id of a stack, or null when it is not a potion at all. */
-    private static net.minecraft.resources.ResourceLocation potionId(ItemStack stack) {
-        if (stack.getItem() != net.minecraft.world.item.Items.POTION) return null;
-        return stack.getOrDefault(net.minecraft.core.component.DataComponents.POTION_CONTENTS,
-                        net.minecraft.world.item.alchemy.PotionContents.EMPTY)
-                .potion()
-                .flatMap(holder -> holder.unwrapKey().map(key -> key.location()))
-                .orElse(null);
-    }
-
     /**
-     * Which potion a stack stands for, following our proxy items.
+     * Which potion STATE a stack stands for, container included - our proxy key format.
      *
-     * <p>The network stores a potion as a proxy - a distinct item per potion, because
-     * every potion shares the single {@code minecraft:potion} item and stock has to
-     * be countable. A proxy therefore identifies a potion twice over, and both
-     * spellings must compare equal or a correct delivery would be scored a mismatch.
+     * <p>Container matters and the ITEM does not: a splash and a lingering potion of the
+     * same kind are different states, and every drinkable potion is {@code
+     * minecraft:potion}. An earlier version read only {@code POTION}, so a delivered
+     * splash potion reported as the bare item {@code minecraft:splash_potion} and a
+     * correct delivery was scored a mismatch.
      */
     private static String potionIdentity(ItemStack stack) {
-        net.minecraft.resources.ResourceLocation id = potionId(stack);
-        if (id != null) {
-            return id.toString();
+        String fromStack = com.craftingveloce.util.VelocePotionMapper.proxyKey(stack);
+        if (fromStack != null) {
+            return fromStack;
         }
-        if (com.craftingveloce.util.VelocePotionMapper.isProxy(stack.getItem())) {
-            net.minecraft.resources.ResourceLocation real =
-                    potionId(com.craftingveloce.util.VelocePotionMapper.toRealPotion(stack.copyWithCount(1)));
-            if (real != null) {
-                return real.toString();
-            }
-        }
-        return null;
+        return com.craftingveloce.util.VelocePotionMapper.proxyKeyOf(stack.getItem());
     }
 
-    /** Do these two stacks stand for the same result? */
+    /** Do these two stacks stand for the same potion state? */
     private static boolean samePotion(ItemStack a, ItemStack b) {
         String ia = potionIdentity(a);
         String ib = potionIdentity(b);
@@ -596,11 +580,7 @@ public final class CVModuleTestCommand {
 
     private static String describePotion(ItemStack stack) {
         String identity = potionIdentity(stack);
-        if (identity == null) {
-            return stack.getItem().toString();
-        }
-        return stack.getItem() == net.minecraft.world.item.Items.POTION
-                ? identity
+        return identity == null ? stack.getItem().toString()
                 : identity + " (" + stack.getItem() + ")";
     }
 

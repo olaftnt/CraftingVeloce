@@ -2074,7 +2074,7 @@ def validate_brewing_proxy():
         problems.append("VeloceBrewingModule builds a real potion (PotionContents.) "
                         "outside candidateInputs - recipe results must be proxy items")
 
-    emit_body = _method_body(code, "private boolean emit(")
+    emit_body = _method_body(code, "private String emit(")
     if not emit_body:
         problems.append("no emit() method (the recipe-results-are-proxies check has "
                         "nothing to inspect - if the builder call shape changed, update "
@@ -2099,6 +2099,13 @@ def validate_brewing_proxy():
                                 f"item: {args.strip().splitlines()[-1].strip()}")
             if "PotionContents" in args or "mix.result()" in args:
                 problems.append("a brewing recipe result is a REAL potion, not a proxy")
+        # emit() answers with a REASON (null when the recipe was added), so the caller can
+        # say WHY a mix was not offered. A boolean here would put "no proxy" and
+        # "duplicate id" back into one bucket, which is how a reporting bug hid twelve
+        # lost recipes behind a message about missing proxies.
+        if "return null;" not in emit_body:
+            problems.append("emit() does not return null for an emitted recipe - the "
+                            "caller cannot tell success from a skip reason")
 
     # The proxy registry must exist and be able to answer both directions, and to say
     # "unknown" - a module that cannot tell a missing proxy apart from a present one
@@ -2120,11 +2127,43 @@ def validate_brewing_proxy():
     # back to the plain potion item for EVERY potion and all recipes collapse into
     # duplicates of each other.
     reg = open("neoforge/src/main/java/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
-    registered = re.findall(r'registerProxy\("([a-z_]+)"', reg)
-    if len(registered) < 10:
-        problems.append(f"only {len(registered)} potion proxies registered at init "
-                        f"(getProxy would fall back to minecraft:potion and every "
-                        f"brewing recipe would collide)")
+    # Two sources of proxies now, and BOTH have to exist.
+    #
+    # The hand-authored ones are a MAP, not nineteen literal registerProxy() calls -
+    # they moved because the generator needs to know which keys are taken before the
+    # deferred items are bound, and a second copy of that list would drift.
+    hand_authored = re.findall(r'Map\.entry\("([a-z_]+)",\s*POTION_', reg)
+    if len(hand_authored) < 10:
+        problems.append(f"only {len(hand_authored)} hand-authored potion proxies declared "
+                        f"(getProxy would fall back to minecraft:potion and every brewing "
+                        f"recipe would collide)")
+
+    # The generated ones cover everything the nineteen do not: the extended, level-II,
+    # splash and lingering states, which is 250 of the game's 281 mixes. Without them the
+    # module silently offers a fraction of the brewing tree.
+    gen = "neoforge/src/main/java/com/craftingveloce/init/VelocePotionProxies.java"
+    if not os.path.exists(gen):
+        problems.append("no VelocePotionProxies - the extended, level-II, splash and "
+                        "lingering potion states would have no proxy item at all")
+    else:
+        gen_text = _strip_comments(open(gen, encoding="utf-8").read())
+        for need, what in (("BuiltInRegistries.POTION", "reading the potion registry"),
+                           ("event.register(Registries.ITEM", "registering the items"),
+                           ("VelocePotionMapper.registerProxy", "filling the proxy table"),
+                           ("handAuthoredProxyKeys()", "leaving the hand-authored keys alone")):
+            if need not in gen_text:
+                problems.append("VelocePotionProxies without " + what)
+        if "VelocePotionProxies::register" not in reg and "VelocePotionProxies.register(" not in reg:
+            problems.append("VelocePotionProxies is never wired into a registry event - "
+                            "the generated proxies would not exist")
+
+    # A generated item has no model file, so a client must bake one for it or every
+    # generated proxy renders as the missing-texture block.
+    mod = open("neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java", encoding="utf-8").read()
+    if "ModifyBakingResult" not in mod or "VelocePotionProxies.created()" not in mod:
+        problems.append("nothing bakes a model for the generated proxies (ModifyBakingResult "
+                        "+ VelocePotionProxies.created()) - they would render as the "
+                        "missing-texture block")
 
     # The water bypass: a glass bottle put into the stand must become a water
     # potion without any water source. That is what makes the base recipe startable.
@@ -2137,7 +2176,8 @@ def validate_brewing_proxy():
     if problems:
         fail("brewing proxy domain:\n  " + "\n  ".join(problems))
     print(f"    OK (brewing proxy: mixes discovered via potionBrewing()+hasMix()+getRecipes(), "
-          f"results in the proxy domain, {len(registered)} proxies registered, water bypass present)")
+          f"results in the proxy domain, {len(hand_authored)} hand-authored proxies + generated "
+          f"ones wired with a baked model, water bypass present)")
 
 
 # Which foreign JAR holds the textures of a namespace, and how its file names start.

@@ -154,21 +154,29 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
             }
         }
 
-        int skipped = 0;
         java.util.Set<String> usedIds = new java.util.HashSet<>();
+        java.util.Map<String, Integer> notOffered = new java.util.TreeMap<>();
         for (Mix mix : mixes.values()) {
-            if (emit(mix, routesPerResult.getOrDefault(stateKey(mix.result()), 0), usedIds)) {
-                skipped++;
+            String reason = emit(mix, routesPerResult.getOrDefault(stateKey(mix.result()), 0), usedIds);
+            if (reason != null) {
+                notOffered.merge(reason, 1, Integer::sum);
             }
+        }
+        if (!notOffered.isEmpty()) {
+            // Grouped by reason. "15 skipped" reads like a rounding error, while "12 with
+            // no proxy for X" is a to-do list. An earlier version counted EVERY failure as
+            // a missing proxy, which was wrong twice over: the proxies were all there, and
+            // the real cause was duplicate recipe ids.
+            LOG.info("brewing discovery: {} mix(es) not offered: {}",
+                    notOffered.values().stream().mapToInt(Integer::intValue).sum(), notOffered);
         }
         // INFO, once per data load, and deliberately not a gated DEBUG line: this is the
         // only place that answers "how much of the game's brewing tree did the module
         // actually pick up". A discovery that quietly finds nothing looks exactly like a
         // brewing stand that refuses to work, and that is the failure this class was
         // rewritten to remove.
-        LOG.info("brewing discovery: probed {} input(s) x {} ingredient(s), "
-                        + "found {} mix(es), emitted {}, skipped {} with no proxy item",
-                inputs.size(), ingredients.size(), mixes.size(), mixes.size() - skipped, skipped);
+        LOG.info("brewing discovery: probed {} input(s) x {} ingredient(s), found {} mix(es), offered {}",
+                inputs.size(), ingredients.size(), mixes.size(), mixes.size() - notOffered.size());
     }
 
     /**
@@ -217,26 +225,27 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
     }
 
     /**
-     * Turns one discovered mix into a recipe, or reports why it cannot be one.
+     * Turns one discovered mix into a recipe, or says why it cannot be one.
      *
-     * @return true when the mix was skipped for want of a proxy
+     * @return null when the recipe was added, otherwise the reason it was not
      */
-    private boolean emit(Mix mix, int routesToThisResult, java.util.Set<String> usedIds) {
+    private String emit(Mix mix, int routesToThisResult, java.util.Set<String> usedIds) {
         // hasMix() says a mix EXISTS; it does not promise the bottle changes. A pair
         // that leaves the potion alone is not a recipe, and emitting it produced a
         // second recipe called "brewing_water" - the same id as filling a glass bottle
         // - which the recipe index then deduplicated away, silently losing a recipe.
         if (stateKey(mix.result()).equals(stateKey(mix.input()))) {
-            return false;
+            return null;
         }
 
         Item inputProxy = VelocePotionMapper.proxyOrNull(mix.input());
         Item resultProxy = VelocePotionMapper.proxyOrNull(mix.result());
         if (inputProxy == null || resultProxy == null) {
+            String side = inputProxy == null ? stateKey(mix.input()) : stateKey(mix.result());
             LOG.debug("[VELOCE-DEBUG] brewing mix skipped - no proxy for {}: {} + {} -> {}",
-                    inputProxy == null ? "input " + stateKey(mix.input()) : "result " + stateKey(mix.result()),
+                    inputProxy == null ? "input " + side : "result " + side,
                     stateKey(mix.input()), itemKey(mix.ingredient()), stateKey(mix.result()));
-            return true;
+            return "no proxy for " + side;
         }
 
         // A result is named after itself when only one route reaches it, and after the
@@ -249,12 +258,18 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
                 ? "brewing_" + resultKey
                 : "brewing_" + resultKey + "_from_" + ingredientKey(mix.ingredient());
         if (!usedIds.add(id)) {
-            // Belt and braces: whatever else reaches the same name, the route-qualified
-            // form is unique, and an id that is silently dropped is worse than a long one.
-            id = "brewing_" + resultKey + "_from_" + ingredientKey(mix.ingredient());
+            // The qualifier has to be the dimension that actually DIFFERS. Fermented
+            // spider eye turns both Swiftness and Leaping into Slowness, and Poison into
+            // Harming - same ingredient, different input - so qualifying a multi-route
+            // result by its ingredient alone is not unique and twelve real recipes were
+            // being dropped. Mundane is the mirror case: many ingredients, all poured
+            // into water. The recipe index deduplicates by id, so a lost id is a lost
+            // recipe, silently.
+            id = "brewing_" + resultKey + "_from_" + ingredientKey(mix.ingredient())
+                    + "_via_" + inputKey(mix.input());
             if (!usedIds.add(id)) {
                 LOG.warn("[VELOCE-DEBUG] brewing mix dropped - id {} is already taken", id);
-                return true;
+                return "duplicate id " + id;
             }
         }
 
@@ -266,7 +281,7 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
                         Ingredient.of(mix.ingredient())),
                 VeloceRecipes.getBrewing()
         ));
-        return false;
+        return null;
     }
 
     /** Proxy key of a stack, falling back to the item id for things that are not potions. */
@@ -278,6 +293,18 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
     private static String itemKey(ItemStack stack) {
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
         return id == null ? stack.getItem().toString() : id.toString();
+    }
+
+    /**
+     * The INPUT side as an id fragment - its potion STATE, not its item.
+     *
+     * <p>Not {@link #ingredientKey}: every drinkable potion is the same item
+     * ({@code minecraft:potion}), so keying the input that way collapses Poison and
+     * strong Poison - two different starting points for Harming - into one name and
+     * loses a real recipe.
+     */
+    private static String inputKey(ItemStack stack) {
+        return stateKey(stack).replace(':', '_');
     }
 
     /** Path-safe suffix for a recipe id - recipe ids cannot contain a colon. */

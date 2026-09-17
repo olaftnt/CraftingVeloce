@@ -302,30 +302,72 @@ public class VeloceRegistry {
     public static final DeferredItem<Item> POTION_SLOW_FALLING = ITEMS.register("potion_slow_falling", () -> new Item(new Item.Properties()));
     public static final DeferredItem<Item> POTION_TURTLE_MASTER = ITEMS.register("potion_turtle_master", () -> new Item(new Item.Properties()));
 
+    /**
+     * The potion keys that have a HAND-AUTHORED proxy item - a name, a model and a lang
+     * entry written by hand - and therefore must not be generated.
+     *
+     * <p><b>One list, two uses.</b> This is what the mappings are registered from AND what
+     * the generated proxies skip. Keeping it in one place is what stops the generator from
+     * claiming craftingveloce:potion_water as well: the game refuses to start on a
+     * duplicate item key, and the generator cannot ask the mapper who already owns a key,
+     * because these items are not bound yet when it runs.
+     */
+    private static final java.util.Map<String, DeferredItem<Item>> HAND_AUTHORED_PROXIES =
+            java.util.Map.ofEntries(
+            java.util.Map.entry("water", POTION_WATER),
+            java.util.Map.entry("awkward", POTION_AWKWARD),
+            java.util.Map.entry("mundane", POTION_MUNDANE),
+            java.util.Map.entry("thick", POTION_THICK),
+            java.util.Map.entry("night_vision", POTION_NIGHT_VISION),
+            java.util.Map.entry("invisibility", POTION_INVISIBILITY),
+            java.util.Map.entry("leaping", POTION_LEAPING),
+            java.util.Map.entry("fire_resistance", POTION_FIRE_RESISTANCE),
+            java.util.Map.entry("swiftness", POTION_SWIFTNESS),
+            java.util.Map.entry("slowness", POTION_SLOWNESS),
+            java.util.Map.entry("water_breathing", POTION_WATER_BREATHING),
+            java.util.Map.entry("healing", POTION_HEALING),
+            java.util.Map.entry("harming", POTION_HARMING),
+            java.util.Map.entry("poison", POTION_POISON),
+            java.util.Map.entry("regeneration", POTION_REGENERATION),
+            java.util.Map.entry("strength", POTION_STRENGTH),
+            java.util.Map.entry("weakness", POTION_WEAKNESS),
+            java.util.Map.entry("slow_falling", POTION_SLOW_FALLING),
+            java.util.Map.entry("turtle_master", POTION_TURTLE_MASTER));
+
+    /** Potion keys the generator must leave alone. */
+    public static java.util.Set<String> handAuthoredProxyKeys() {
+        return HAND_AUTHORED_PROXIES.keySet();
+    }
+
+
+    /**
+     * The nineteen hand-authored proxies, mapped before anything is generated.
+     *
+     * <p><b>Order matters.</b> These runs from the ITEM registration event, not from
+     * {@code FMLCommonSetupEvent}, because the generator also runs there and has to
+     * SEE these keys already taken - otherwise it claims their names, and the game
+     * refuses to start with a duplicate item key.
+     */
+    private static void registerHandAuthoredProxies() {
+        HAND_AUTHORED_PROXIES.forEach((key, item) ->
+                com.craftingveloce.util.VelocePotionMapper.registerProxy(key, item.get()));
+    }
     public static void register(IEventBus modEventBus) {
+        // One proxy item per potion state, made now because the potion registry is
+        // already complete here. See VelocePotionProxies for why this cannot be a
+        // single item carrying the potion id.
+        modEventBus.addListener(net.neoforged.neoforge.registries.RegisterEvent.class, event -> {
+            if (!event.getRegistryKey().equals(net.minecraft.core.registries.Registries.ITEM)) {
+                return;
+            }
+            VelocePotionProxies.register(event);
+        });
+
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
-        modEventBus.addListener(net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent.class, event -> {
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("water", POTION_WATER.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("awkward", POTION_AWKWARD.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("mundane", POTION_MUNDANE.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("thick", POTION_THICK.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("night_vision", POTION_NIGHT_VISION.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("invisibility", POTION_INVISIBILITY.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("leaping", POTION_LEAPING.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("fire_resistance", POTION_FIRE_RESISTANCE.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("swiftness", POTION_SWIFTNESS.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("slowness", POTION_SLOWNESS.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("water_breathing", POTION_WATER_BREATHING.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("healing", POTION_HEALING.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("harming", POTION_HARMING.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("poison", POTION_POISON.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("regeneration", POTION_REGENERATION.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("strength", POTION_STRENGTH.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("weakness", POTION_WEAKNESS.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("slow_falling", POTION_SLOW_FALLING.get());
-            com.craftingveloce.util.VelocePotionMapper.registerProxy("turtle_master", POTION_TURTLE_MASTER.get());
-        });
+        // After the items are bound: this only fills the mapper, it registers nothing.
+        modEventBus.addListener(net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent.class,
+                event -> registerHandAuthoredProxies());
 
         BLOCK_ENTITY_TYPES.register(modEventBus);
         MENU_TYPES.register(modEventBus);

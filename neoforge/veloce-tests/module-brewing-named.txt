@@ -1,23 +1,70 @@
-# Named-recipe check: the random draw can never guarantee a particular recipe is
-# the one under test, so the exact one is named here. This is also the form used to
-# replay a red draw from module-brewing-sweep.txt.
+# Pinned recipes - the random draw can never guarantee a particular one is tested.
 #
-# The recipe id is the ROUTE, not just the result: vanilla reaches Mundane
-# from water through nine different ingredients, so "brewing_mundane" alone
-# could not identify a recipe. When only one route reaches a result the id is
-# just that result ("brewing_awkward"); when several do, the route is added.
+# The first case is the potion from the original bug report. The rest are potions that
+# had NO proxy item before proxies started being generated at registration time: an
+# extended variant, a splash and a lingering one. They are in here on purpose - if the
+# generated proxies stop working, these are the cases that go red, while the nineteen
+# hand-authored potions would still be green.
 #
-# The id is QUOTED. Brigadier's word() and unquoted string() readers both reject
-# ':', so an unquoted craftingveloce:brewing_mundane does not parse at all - the
-# command never runs, and a script watching for the recipe name sees only the parse
-# error echo, which contains the name. Hence two assertions: one that the command
-# really ran, one that it drew the intended recipe.
+# The recipe id is the ROUTE, not just the result: vanilla reaches Mundane from water
+# through twelve different ingredients, so "brewing_mundane" alone could not identify a
+# recipe. When only one route reaches a result the id is just that result
+# ("brewing_awkward"); when several do, the route is added.
+#
+# The id is QUOTED. Brigadier's word() and unquoted string() readers both reject ':',
+# so an unquoted id does not parse at all - the command never runs, and a script
+# watching for the recipe name sees only the parse error echo, which contains the name.
+# Hence two assertions: one that the command really ran, one that it drew the intended
+# recipe.
 #
 # Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-brewing-named -PveloceKeepOpen
 
+# --- the potion from the bug report ---
 /cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_redstone"
 expect: building and waiting
 expect: brewing_mundane_from_redstone
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- extended: had no proxy before, so it was never plannable ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_long_night_vision"
+expect: building and waiting
+expect: brewing_long_night_vision
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- splash: potion + gunpowder, a different container, also previously unproxied ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_splash_night_vision_from_gunpowder"
+expect: building and waiting
+expect: brewing_splash_night_vision_from_gunpowder
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- lingering: splash + dragon's breath, the end of the container chain ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_lingering_night_vision_from_dragon_breath"
+expect: building and waiting
+expect: brewing_lingering_night_vision_from_dragon_breath
 
 /cv testmodule fe 1000000
 expect: FE set to
