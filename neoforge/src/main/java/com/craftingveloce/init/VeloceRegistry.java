@@ -356,12 +356,9 @@ public class VeloceRegistry {
         // One proxy item per potion state, made now because the potion registry is
         // already complete here. See VelocePotionProxies for why this cannot be a
         // single item carrying the potion id.
-        modEventBus.addListener(net.neoforged.neoforge.registries.RegisterEvent.class, event -> {
-            if (!event.getRegistryKey().equals(net.minecraft.core.registries.Registries.ITEM)) {
-                return;
-            }
-            VelocePotionProxies.register(event);
-        });
+        // Both events: ITEM covers vanilla, POTION covers what another mod registered.
+        modEventBus.addListener(net.neoforged.neoforge.registries.RegisterEvent.class,
+                VelocePotionProxies::register);
 
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);

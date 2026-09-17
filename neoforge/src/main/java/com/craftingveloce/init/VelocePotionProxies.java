@@ -50,8 +50,21 @@ public final class VelocePotionProxies {
         return List.copyOf(CREATED);
     }
 
+    /**
+     * Registers a proxy for every potion state that does not have one yet.
+     *
+     * <p>Called for BOTH the ITEM event and the POTION event. The ITEM event is where
+     * the vanilla tree is covered - all 46 potions are already in the registry there,
+     * measured rather than assumed. The POTION event is where another mod's potions
+     * arrive: it fires after ITEM, and adding to a registry whose own event has already
+     * passed is allowed (verified), so anything a mod registered before this listener
+     * runs still gets an item. A mod that registers after it cannot be helped - no
+     * event remains - so that case is counted and logged rather than silently missing.
+     */
     public static void register(RegisterEvent event) {
-        if (!event.getRegistryKey().equals(Registries.ITEM)) {
+        boolean items = event.getRegistryKey().equals(Registries.ITEM);
+        boolean potions = event.getRegistryKey().equals(Registries.POTION);
+        if (!items && !potions) {
             return;
         }
         int created = 0;
@@ -88,8 +101,14 @@ public final class VelocePotionProxies {
                 created++;
             }
         }
-        LOG.info("potion proxies: {} generated, {} hand-authored kept "
-                        + "(a potion another mod registers arrives too late for an item to be made for it)",
-                created, kept);
+        if (created > 0) {
+            LOG.info("potion proxies: {} generated at the {} event, {} hand-authored kept",
+                    created, items ? "ITEM" : "POTION", kept);
+        }
+        if (items) {
+            // Reported once, after the vanilla pass, so the number is the size of the
+            // tree a player can actually reach rather than a per-event tally.
+            LOG.info("potion proxies: {} state(s) proxied in total", VelocePotionMapper.proxyKeyCount());
+        }
     }
 }

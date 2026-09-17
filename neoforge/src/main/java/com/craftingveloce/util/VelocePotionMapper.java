@@ -101,6 +101,11 @@ public class VelocePotionMapper {
         return POTION_TO_PROXY.getOrDefault(path, Items.POTION);
     }
 
+    /** How many potion states have a proxy - for the startup log. */
+    public static int proxyKeyCount() {
+        return POTION_TO_PROXY.size();
+    }
+
     /** Whether a proxy is already registered for this key. */
     public static boolean hasProxy(String key) {
         return POTION_TO_PROXY.containsKey(key);
