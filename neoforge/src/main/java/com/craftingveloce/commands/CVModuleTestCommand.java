@@ -102,7 +102,12 @@ public final class CVModuleTestCommand {
                                         // name the recipe is drawn at random, which is
                                         // what turns one script into a sweep over the
                                         // module's whole set when run repeatedly.
-                                        .then(Commands.argument("recipe", StringArgumentType.word())
+                                        // string(), not word(): a recipe id is namespaced
+                                        // (craftingveloce:brewing_mundane) and Brigadier's
+                                        // word() rejects ':' outright - the command then fails
+                                        // to parse, never runs, and a script watching for the
+                                        // recipe name sees the parse error echo instead.
+                                        .then(Commands.argument("recipe", StringArgumentType.string())
                                                 .executes(ctx -> run(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "module"),
                                                         StringArgumentType.getString(ctx, "block"),

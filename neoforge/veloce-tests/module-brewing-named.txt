@@ -1,0 +1,24 @@
+# Named-recipe check: the random draw can never guarantee a particular recipe is
+# the one under test, so the exact one is named here. This is also the form used to
+# replay a red draw from module-brewing-sweep.txt.
+#
+# The id is QUOTED. Brigadier's word() and unquoted string() readers both reject
+# ':', so an unquoted craftingveloce:brewing_mundane does not parse at all - the
+# command never runs, and a script watching for the recipe name sees only the parse
+# error echo, which contains the name. Hence two assertions: one that the command
+# really ran, one that it drew the intended recipe.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-brewing-named -PveloceKeepOpen
+
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane"
+expect: building and waiting
+expect: brewing_mundane
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
