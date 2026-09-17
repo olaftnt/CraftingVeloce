@@ -2278,6 +2278,52 @@ def validate_energy_pull():
     print("    OK (power: no draw through the network; local battery item + direct cable only)")
 
 
+def validate_heat_accounting():
+    """
+    A furnace recipe's heat must be charged ATOMICALLY with its plan run.
+
+    The bug this guards (player: "shift-click does not work on furnace-recipe items"
+    and, earlier, "I can take one but not a stack"): `planRecipe` decremented
+    `plan.heatRemaining` BEFORE planning the ingredients, but only added the run to the
+    plan AFTER the ingredients succeeded. A recipe whose ingredient could not be
+    planned returned false without ever being added, so `rollbackTo` (which restores
+    heat only for runs that are IN the plan) could never give that heat back. With
+    roughly ten furnace recipes per item, every failed unit attempt melted ~10 heat
+    operations, so the planner concluded "no heat" long before the furnace was empty.
+
+    The symptom was masked for a long time: a 200 000 000 FE accumulator means 1000
+    operations, so a 10x leak still left plenty. It only became visible after the
+    accumulator was pinned to 25 000 000 FE (125 operations).
+
+    The guard asserts the heat charge sits NEXT TO the run-add (after the ingredient
+    loop), never before it.
+    """
+    path = "src/com/craftingveloce/crafting/VeloceAutoCrafter.java"
+    if not os.path.exists(path):
+        fail("heat accounting:\n  no VeloceAutoCrafter")
+    body = _method_body(open(path, encoding="utf-8").read(),
+                        "private static boolean planRecipe(")
+    if body is None:
+        fail("heat accounting:\n  no planRecipe method")
+    problems = []
+    dec = body.find("plan.heatRemaining -= times")
+    add = body.find("plan.add(recipe, times)")
+    loop = body.find("for (int ingIndex")
+    if dec < 0:
+        problems.append("planRecipe does not charge heat for a furnace recipe")
+    if add < 0:
+        problems.append("planRecipe does not add the run")
+    if dec >= 0 and add >= 0 and dec > add:
+        problems.append("the heat is charged AFTER the run is added (rollbackTo would double-charge)")
+    if dec >= 0 and loop >= 0 and dec < loop:
+        problems.append("the heat is charged before planning the ingredients - a failed "
+                        "ingredient plan then leaks heat (rollbackTo cannot return it, "
+                        "because the run was never added)")
+    if problems:
+        fail("heat accounting:\n  " + "\n  ".join(problems))
+    print("    OK (heat accounting: a furnace run and its heat are charged atomically)")
+
+
 def validate_partial_delivery():
     """
     A request that cannot be satisfied IN FULL must still deliver what the network has.
@@ -3588,6 +3634,7 @@ def main():
     validate_craftable_cache()
     validate_energy_pull()
     validate_partial_delivery()
+    validate_heat_accounting()
     validate_brewing_stand()
     validate_brewing_proxy()
     validate_module_content_textures()

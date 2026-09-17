@@ -1045,7 +1045,15 @@ public final class VeloceAutoCrafter {
                     if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NO HEAT (times=" + times + ", remaining=" + plan.heatRemaining + ")");
                     return false;
                 }
-                plan.heatRemaining -= times;
+                // NOTE: the heat is NOT decremented here any more. It used to be, and
+                // that was the leak: a recipe whose ingredients could not be planned
+                // returned false WITHOUT ever reaching plan.add(), so rollbackTo could
+                // never give that heat back. With ~10 furnace recipes for one item, every
+                // failed unit attempt melted ~10 heat operations, and the planner
+                // concluded "no heat" long before the furnace was actually empty.
+                //
+                // The decrement now happens together with plan.add() below, so a run and
+                // its heat cost are atomic - rollbackTo restores both.
             }
 
 
@@ -1115,6 +1123,13 @@ public final class VeloceAutoCrafter {
 
         }
 
+        // A furnace recipe pays with ONE smelting operation per unit. The heat is
+        // charged HERE, atomically with the run, so a failed ingredient plan above
+        // (which returns before this line) does not leak heat; rollbackTo restores it
+        // together with the run.
+        if (recipe.isFurnace()) {
+            plan.heatRemaining -= times;
+        }
         plan.add(recipe, times);
 
         // CRUCIAL: credit the produced items to the simulated stock.
