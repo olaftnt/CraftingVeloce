@@ -437,6 +437,17 @@ public final class VeloceAutoCrafter {
             VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                     "execution failed for %s - ingredients vanished mid-craft", item);
             String ingredient = ctx.lastMissingIngredient;
+            if (ingredient == null || ingredient.isEmpty()) {
+                // Execution failed with NOTHING missing, so the plan was fine and the
+                // MACHINE could not pay. That is the "the machine has no power" case, and
+                // it used to arrive as a bare "could not take ingredients" - the reason the
+                // player sees is the one thing that has to name the machine.
+                String machine = unpoweredMachine(level, ctx, item);
+                if (!machine.isEmpty()) {
+                    return partialOrFail(available, count,
+                            CraftResult.fail("craftingveloce.craft.error.moduleUnpowered", machine));
+                }
+            }
             return partialOrFail(available, count,
                     CraftResult.fail("craftingveloce.craft.error.extract",
                             ingredient == null ? "" : ingredient));
@@ -1654,11 +1665,16 @@ public final class VeloceAutoCrafter {
                                                    Map<Item, Long> stock) {
         // 1) Furnace: a furnace recipe exists, but the machine is absent or idle.
         if (!VeloceRecipeRegistry.getFurnaceRecipesFor(level, item).isEmpty()) {
+            // Both of these used to arrive with no detail at all, so "no furnace in the
+            // network" left the player to work out which of OUR furnaces was meant - and
+            // the two are not interchangeable: velocity_furnace burns fuel, the electric
+            // one has an accumulator.
+            String furnaces = furnaceNames();
             if (!VeloceHeatSources.hasAnyHeatSource(level, ctx.network)) {
-                return CraftResult.fail("craftingveloce.craft.error.noFurnace");
+                return CraftResult.fail("craftingveloce.craft.error.noFurnace", furnaces);
             }
             if (!VeloceHeatSources.hasPower(level, ctx.network)) {
-                return CraftResult.fail("craftingveloce.craft.error.furnaceUnpowered");
+                return CraftResult.fail("craftingveloce.craft.error.furnaceUnpowered", furnaces);
             }
         }
         // 2) Module: the machine stands in the network but is not powered (e.g. a
@@ -1667,12 +1683,15 @@ public final class VeloceAutoCrafter {
             if (module.recipesAnywhere(level, item).isEmpty()) {
                 continue;
             }
+            // The machine, not just the family: the module id ("mekanism") does not tell
+            // the player which block to place, and the family has twenty-three of them.
+            String machine = machineNames(module);
             if (!module.available(level, ctx.network)) {
-                return CraftResult.fail("craftingveloce.craft.error.noModule", module.id());
+                return CraftResult.fail("craftingveloce.craft.error.noModule", machine);
             }
             if (!module.powered(level, ctx.network)) {
                 return CraftResult.fail("craftingveloce.craft.error.moduleUnpowered",
-                        module.id());
+                        machine);
             }
         }
         // 3) What remains is a missing ingredient - we say which one.
@@ -1711,9 +1730,12 @@ public final class VeloceAutoCrafter {
             if (recipes.isEmpty()) {
                 return name(item);             // there is no recipe we can use
             }
-            String firstGap = null;
+            String firstGaps = null;
             for (ProcessingEntry recipe : recipes) {
-                String gap = null;
+                // EVERY unsatisfied ingredient of this recipe, not just the first one.
+                // "missing nether wart" sends the player back for one trip per attempt;
+                // the recipe already says all of them, so they are all named.
+                java.util.List<String> gaps = new java.util.ArrayList<>();
                 List<Ingredient> ingredients = recipe.ingredients();
                 for (int i = 0; i < ingredients.size(); i++) {
                     if (!hasOptions(ingredients.get(i))) {
@@ -1729,18 +1751,17 @@ public final class VeloceAutoCrafter {
                         }
                     }
                     if (!satisfied) {
-                        gap = firstOptionName(ingredients.get(i));
-                        break;
+                        gaps.add(firstOptionName(ingredients.get(i)));
                     }
                 }
-                if (gap == null) {
+                if (gaps.isEmpty()) {
                     return null;               // this recipe is feasible
                 }
-                if (firstGap == null) {
-                    firstGap = gap;
+                if (firstGaps == null) {
+                    firstGaps = String.join(", ", gaps);
                 }
             }
-            return firstGap;
+            return firstGaps;
         } finally {
             visiting.remove(item);
         }
@@ -1749,8 +1770,85 @@ public final class VeloceAutoCrafter {
     /** Depth of descent when looking for the missing ingredient. */
     private static final int MISSING_MAX_DEPTH = 6;
 
+    /**
+     * The machine that stands in the network, could make this item, and cannot pay -
+     * or an empty string when that is not the situation.
+     *
+     * <p>Used only to fill in the reason when execution fails and nothing was missing.
+     * The furnace is checked too: a heat recipe with a furnace that has no fuel fails
+     * exactly the same way, and it is the same answer the player needs.
+     */
+    private static String unpoweredMachine(ServerLevel level, Context ctx, Item item) {
+        if (!VeloceRecipeRegistry.getFurnaceRecipesFor(level, item).isEmpty()
+                && VeloceHeatSources.hasAnyHeatSource(level, ctx.network)
+                && !VeloceHeatSources.hasPower(level, ctx.network)) {
+            return furnaceNames();
+        }
+        // Asked through the SOURCES, not through module.powered().
+        //
+        // VeloceBrewingModule.powered() returns available() - it answers "is the machine
+        // there", not "can it pay" - because the brewing stand's energy is charged by the
+        // crafter at payment time rather than advertised as a power state. Asking the
+        // module produced an empty answer for exactly the machine the player was looking
+        // at, so the question is put to the machines themselves.
+        for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
+            for (net.minecraft.world.item.crafting.RecipeType<?> type : module.recipeTypes()) {
+                if (VeloceProcessingSources.hasAny(level, ctx.network, type)
+                        && !VeloceProcessingSources.hasPowered(level, ctx.network, type)) {
+                    return machineNames(module);
+                }
+            }
+        }
+        return "";
+    }
+
+    /** The furnaces a heat recipe can use, as translatable names. */
+    private static String furnaceNames() {
+        return com.craftingveloce.init.VeloceRegistry.VELOCITY_FURNACE.get().getDescriptionId()
+                + ", "
+                + com.craftingveloce.init.VeloceRegistry.ELECTRIC_FURNACE.get().getDescriptionId();
+    }
+
+    /**
+     * The machines this module serves, as translatable names.
+     *
+     * <p>Built-in modules have one machine each and it is one of ours. A compat module
+     * covers a whole family whose machines are {@link com.craftingveloce.block.VeloceFeModuleBlock}s;
+     * their block description ids are looked up in the registry, which is exactly what the
+     * player sees in the creative menu. When nothing is found the module id is used, so the
+     * message still says something rather than nothing.
+     */
+    private static String machineNames(VeloceProcessingModule module) {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (net.minecraft.world.level.block.Block block
+                : net.minecraft.core.registries.BuiltInRegistries.BLOCK) {
+            if (!(block instanceof com.craftingveloce.block.VeloceFeModuleBlock fe)) {
+                continue;
+            }
+            if (fe.module().id().startsWith(module.id() + ":")) {
+                names.add(block.getDescriptionId());
+            }
+        }
+        if (!names.isEmpty()) {
+            return String.join(", ", names);
+        }
+        switch (module.id()) {
+            case "crafting" -> names.add(
+                    com.craftingveloce.init.VeloceRegistry.VELOCE_CRAFTING_TABLE.get().getDescriptionId());
+            case "furnace" -> names.add(furnaceNames());
+            case "brewing" -> names.add(
+                    com.craftingveloce.init.VeloceRegistry.BREWING_STAND.get().getDescriptionId());
+            default -> names.add(module.id());
+        }
+        return String.join(", ", names);
+    }
+
     private static String name(Item item) {
-        return new ItemStack(item).getHoverName().getString();
+        // The DESCRIPTION ID, not the rendered name: these strings travel to the client,
+        // which translates them itself. A resolved name would arrive in the SERVER's
+        // language, so a Polish player on an English server would be told what is missing
+        // in English.
+        return item.getDescriptionId();
     }
 
     /** One run of a recipe: take the ingredients, insert the result. */
@@ -2001,7 +2099,7 @@ public final class VeloceAutoCrafter {
     /** Name of the first ingredient option (for the player-facing message). */
     private static String firstOptionName(Ingredient ing) {
         List<ItemStack> options = nonEmpty(ing);
-        return options.isEmpty() ? "" : options.get(0).getHoverName().getString();
+        return options.isEmpty() ? "" : options.get(0).getItem().getDescriptionId();
     }
 
     /** A short description of the ingredient for the log: the list of item ids matching it. */

@@ -50,10 +50,37 @@ public final class VeloceCraftErrors {
     public static MutableComponent message(String reason, String detail, String itemName) {
         if (!reason.isEmpty()) {
             if (!detail.isEmpty()) {
-                return Component.translatable(detailKey(reason), detail);
+                return Component.translatable(detailKey(reason), asArgument(detail));
             }
             return Component.translatable(reason);
         }
         return Component.translatable("craftingveloce.message.itemNotInNetwork", itemName);
+    }
+
+    /**
+     * The detail as a component: translation keys get translated, anything else is literal.
+     *
+     * <p><b>Why this exists.</b> The server names machines and missing ingredients by their
+     * description ids ({@code block.craftingveloce.brewing_stand},
+     * {@code item.minecraft.nether_wart}), because that is the only form the CLIENT can
+     * turn into the player's language. A detail is allowed to be a comma-separated list -
+     * a recipe can miss several ingredients at once - so each part is decided on its own.
+     */
+    private static MutableComponent asArgument(String detail) {
+        MutableComponent out = Component.empty();
+        String[] parts = detail.split(", ");
+        for (int i = 0; i < parts.length; i++) {
+            if (i > 0) {
+                out.append(", ");
+            }
+            out.append(looksLikeKey(parts[i]) ? Component.translatable(parts[i])
+                    : Component.literal(parts[i]));
+        }
+        return out;
+    }
+
+    private static boolean looksLikeKey(String value) {
+        return value.startsWith("block.") || value.startsWith("item.")
+                || value.startsWith("entity.");
     }
 }

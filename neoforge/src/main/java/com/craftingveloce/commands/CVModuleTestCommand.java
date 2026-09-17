@@ -647,6 +647,9 @@ public final class CVModuleTestCommand {
 
     private static void fail(String moduleId, String recipeId, String why) {
         lastVerdict = "FAIL " + moduleId + " recipe=" + recipeId + ": " + why + " | " + diag;
+        // On the log as well - a failure is exactly the case a human wants to read
+        // afterwards, and the chat line is gone by then.
+        LOG.info("[testmodule] {}", lastVerdict);
         com.craftingveloce.util.VeloceLog.Block.error(
                 com.craftingveloce.util.VeloceLog.Side.SERVER, null,
                 "[testmodule] FAIL %s: %s", moduleId, why);
