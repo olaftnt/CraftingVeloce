@@ -2,7 +2,7 @@
   "multipart": [
     {
       "apply": {
-        "model": "craftingveloce:block/veloce_mekanism_chemical_infuser_module"
+        "model": "craftingveloce:block/veloce_integrale_frame"
       }
     },
     {

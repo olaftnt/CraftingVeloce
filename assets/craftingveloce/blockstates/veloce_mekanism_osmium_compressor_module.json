@@ -2,7 +2,7 @@
   "multipart": [
     {
       "apply": {
-        "model": "craftingveloce:block/veloce_mekanism_osmium_compressor_module"
+        "model": "craftingveloce:block/veloce_integrale_frame"
       }
     },
     {

@@ -1,6 +1,0 @@
-{
-  "parent": "craftingveloce:block/veloce_integrale_core",
-  "textures": {
-    "core": "mekanism:block/chemical_washer"
-  }
-}

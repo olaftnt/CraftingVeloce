@@ -29,5 +29,11 @@ public final class AlchemistryJeiCatalysts {
                 () -> AlchemistryBlocks.VELOCE_FISSION_MODULE_ITEM.get());
         VeloceJeiCatalysts.register("alchemistry:fusion",
                 () -> AlchemistryBlocks.VELOCE_FUSION_MODULE_ITEM.get());
+        VeloceJeiCatalysts.register("alchemistry:atomizer",
+                () -> AlchemistryBlocks.VELOCE_ATOMIZER_MODULE_ITEM.get());
+        VeloceJeiCatalysts.register("alchemistry:dissolver",
+                () -> AlchemistryBlocks.VELOCE_DISSOLVER_MODULE_ITEM.get());
+        VeloceJeiCatalysts.register("alchemistry:liquifier",
+                () -> AlchemistryBlocks.VELOCE_LIQUIFIER_MODULE_ITEM.get());
     }
 }

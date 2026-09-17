@@ -2,7 +2,7 @@
   "multipart": [
     {
       "apply": {
-        "model": "craftingveloce:block/veloce_alchemistry_atomizer_module"
+        "model": "craftingveloce:block/veloce_integrale_frame"
       }
     },
     {

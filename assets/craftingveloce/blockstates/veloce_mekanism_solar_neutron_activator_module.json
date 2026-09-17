@@ -2,7 +2,7 @@
   "multipart": [
     {
       "apply": {
-        "model": "craftingveloce:block/veloce_mekanism_solar_neutron_activator_module"
+        "model": "craftingveloce:block/veloce_integrale_frame"
       }
     },
     {

@@ -3,6 +3,7 @@ package com.craftingveloce.crafting;
 import com.craftingveloce.CraftingVeloceMod;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.crafting.RecipeSerializer;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -21,6 +22,12 @@ public final class VeloceRecipes {
     private VeloceRecipes() {
     }
 
+    
+    public static final DeferredRegister<RecipeType<?>> TYPES =
+            DeferredRegister.create(BuiltInRegistries.RECIPE_TYPE, CraftingVeloceMod.MODID);
+
+    public static final DeferredHolder<RecipeType<?>, RecipeType<?>> BREWING = TYPES.register("brewing", () -> net.minecraft.world.item.crafting.RecipeType.simple(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("craftingveloce", "brewing")));
+
     public static final DeferredRegister<RecipeSerializer<?>> SERIALIZERS =
             DeferredRegister.create(BuiltInRegistries.RECIPE_SERIALIZER, CraftingVeloceMod.MODID);
 
@@ -30,6 +37,7 @@ public final class VeloceRecipes {
             VeloceCaseDisassemblySerializer::new);
 
     public static void register(IEventBus modEventBus) {
+        TYPES.register(modEventBus);
         SERIALIZERS.register(modEventBus);
     }
 }

@@ -2,7 +2,7 @@
   "multipart": [
     {
       "apply": {
-        "model": "craftingveloce:block/veloce_mekanism_energized_smelter_module"
+        "model": "craftingveloce:block/veloce_integrale_frame"
       }
     },
     {

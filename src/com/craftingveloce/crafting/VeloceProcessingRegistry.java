@@ -52,6 +52,7 @@ public final class VeloceProcessingRegistry {
         builtinsRegistered = true;
         register(new CraftingModule());
         register(new FurnaceModule());
+        register(new VeloceBrewingModule());
     }
 
     /** All modules (built-in + those registered by integrations). */

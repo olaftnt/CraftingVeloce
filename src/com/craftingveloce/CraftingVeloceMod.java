@@ -141,6 +141,8 @@ public class CraftingVeloceMod {
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(VeloceRegistry.ELECTRIC_FURNACE_BE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(VeloceRegistry.BREWING_STAND_BE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
                 });
 
         modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent.class, event -> {
