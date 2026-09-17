@@ -37,8 +37,15 @@ import net.neoforged.neoforge.energy.IEnergyStorage;
 public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         implements MenuProvider, VeloceHeatSource, IEnergyStorage {
 
-    /** Capacity of the internal accumulator. */
-    public static final int ENERGY_CAPACITY = 200_000_000; // 1000 operations buffer
+    /**
+     * Capacity of the internal accumulator.
+     *
+     * <p>25 000 000 FE = 125 smelts at {@link #FE_PER_SMELT}, i.e. a bit less than two
+     * stacks of 64. This is the figure agreed with the player and the one the class
+     * documentation and the brewing stand already use - the constant had drifted to
+     * 200 000 000 (1000 smelts), which made the accumulator effectively bottomless.
+     */
+    public static final int ENERGY_CAPACITY = 25_000_000;
 
     /** Cost of one instant smelt. */
     public static final int FE_PER_SMELT = 200_000;

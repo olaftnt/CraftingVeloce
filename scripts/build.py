@@ -2262,9 +2262,80 @@ def validate_energy_pull():
     if available is None or "FE_PER_SMELT" not in available:
         problems.append("the electric furnace does not derive its operations from the accumulator")
 
+    # The accumulator SIZE is part of the agreed specification: 25 000 000 FE is 125
+    # smelts at 200 000 FE. The constant had drifted to 200 000 000 (1000 smelts), which
+    # is effectively bottomless and contradicted the class documentation - so it is
+    # pinned here rather than left to drift again.
+    cap = re.search(r"ENERGY_CAPACITY\s*=\s*([0-9_]+)", furn)
+    if cap is None:
+        problems.append("the electric furnace has no ENERGY_CAPACITY")
+    elif cap.group(1) != "25_000_000":
+        problems.append(f"the electric furnace accumulator is {cap.group(1)} FE, "
+                        f"should be 25_000_000 (125 smelts at 200 000 FE)")
+
     if problems:
         fail("machine power (no cables):\n  " + "\n  ".join(problems))
     print("    OK (power: no draw through the network; local battery item + direct cable only)")
+
+
+def validate_partial_delivery():
+    """
+    A request that cannot be satisfied IN FULL must still deliver what the network has.
+
+    The player: "shift-click does not work on the items from the furnace recipe - it
+    appeared again; taking one works, but I cannot shift-click to take a stack".
+
+    That is count-dependent by construction, and this guard exists because the cause was
+    invisible: a plain click asks for ONE unit and is served straight from stock, while
+    a shift-click asks for a whole stack, which the network normally does not have, so
+    the planner is asked to craft the remainder. When it could not, the entire request
+    was reported as failed and the terminal handed over NOTHING - the player lost even
+    the units already sitting in the network.
+
+    So: `ensureAvailable` must route every failure through `partialOrFail`, which returns
+    the available amount when there is one.
+    """
+    path = "src/com/craftingveloce/crafting/VeloceAutoCrafter.java"
+    if not os.path.exists(path):
+        fail("partial delivery:\n  no VeloceAutoCrafter")
+    text = open(path, encoding="utf-8").read()
+    problems = []
+
+    helper = _method_body(text, "private static CraftResult partialOrFail(")
+    if helper is None:
+        problems.append("no partialOrFail helper (a failed craft would deliver nothing)")
+    elif "CraftResult.ok(" not in helper:
+        problems.append("partialOrFail does not return the available amount")
+
+    # Every failure inside the two ensureAvailable overloads must go through the helper:
+    # the full-request planner, the budget abort and the execution failure.
+    body = _method_body(text, "Item item, int count, Context ctx,\n"
+                              "                                              long planBudgetNanos)")
+    if body is None:
+        problems.append("could not find the planning ensureAvailable overload")
+    else:
+        # There are FIVE failure paths in the planning overload: the "not enabled" gate,
+        # the two budget aborts, the "cannot plan anything" diagnosis and the execution
+        # failure. The threshold must be exact - a lower one silently tolerated one path
+        # reverting to "deliver nothing" (calibration caught exactly that).
+        routed = body.count("partialOrFail(available, count,")
+        if routed < 5:
+            problems.append(f"only {routed} of the 5 failure paths in ensureAvailable hand over "
+                            f"the available amount instead of nothing")
+        # A bare `return CraftResult.fail(` left in the planning body is the regression we
+        # care about: it is exactly the "delivers nothing" behaviour. The "amount" failure
+        # is excluded - it rejects an invalid request (count <= 0), where there is
+        # nothing to deliver in the first place.
+        leftover = [ln.strip() for ln in body.splitlines()
+                    if "return CraftResult.fail(" in ln
+                    and "partialOrFail" not in ln
+                    and "craft.error.amount" not in ln]
+        if leftover:
+            problems.append("a failure path still returns nothing: " + leftover[0])
+
+    if problems:
+        fail("partial delivery:\n  " + "\n  ".join(problems))
+    print("    OK (partial delivery: a failed craft hands over what the network has)")
 
 
 def validate_craftable_cache():
@@ -3516,6 +3587,7 @@ def main():
     validate_block_probe()
     validate_craftable_cache()
     validate_energy_pull()
+    validate_partial_delivery()
     validate_brewing_stand()
     validate_brewing_proxy()
     validate_module_content_textures()

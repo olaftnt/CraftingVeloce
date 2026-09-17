@@ -69,7 +69,7 @@ A mod that adds an intelligent logistics network to Minecraft, built on top of t
   (`wantImmediatePull`), instead of waiting for the end of `PULL_INTERVAL_TICKS`
 
 ### 7. Velocity Electric Furnace (`electric_furnace`)
-- An internal FE accumulator (200 000 000 FE, 200 000 FE per smelt). It is charged
+- An internal FE accumulator (25 000 000 FE = 125 smelts, 200 000 FE per smelt). It is charged
   **only** by the energy item in its own battery slot, or by a cable from another mod
   attached **directly** to the furnace
 - **Zero FE travels on Veloce cables.** A Veloce cable is a carrier for the Veloce
