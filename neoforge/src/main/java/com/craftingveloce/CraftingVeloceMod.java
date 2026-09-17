@@ -220,6 +220,26 @@ public class CraftingVeloceMod {
                     missing.isEmpty() ? "" : " (" + String.join(", ", missing) + ")");
         });
 
+        // The icon dump: a dev tool that renders item icons to PNG - see VeloceIconDump
+        // for why the casing icons are being rebuilt from pictures.
+        NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.client.event.ClientTickEvent.Post.class,
+                event -> com.craftingveloce.client.VeloceIconDump.tick(
+                        net.minecraft.client.Minecraft.getInstance()));
+        NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.client.event.RegisterClientCommandsEvent.class,
+                event -> event.getDispatcher().register(
+                        net.minecraft.commands.Commands.literal("cvicon")
+                                .then(net.minecraft.commands.Commands.literal("all").executes(ctx -> {
+                                    ctx.getSource().sendSystemMessage(
+                                            com.craftingveloce.client.VeloceIconDump.report());
+                                    return com.craftingveloce.client.VeloceIconDump.queueAll();
+                                }))
+                                .then(net.minecraft.commands.Commands
+                                        .argument("item", com.mojang.brigadier.arguments.StringArgumentType.string())
+                                        .executes(ctx -> com.craftingveloce.client.VeloceIconDump.queue(
+                                                com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "item"))))));
+
         // Leaving the world clears the remembered terminal views.
         // Block positions make no sense in another world, and in a new one they
         // could accidentally point at a different terminal.

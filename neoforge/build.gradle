@@ -49,6 +49,10 @@ neoForge {
                     file("../neoforge/veloce-tests/${project.findProperty('veloceTest') ?: 'smoke'}.txt").absolutePath)
             programArguments.addAll("--quickPlaySingleplayer",
                     project.findProperty('veloceTestWorld') ?: 'New World')
+            // -PveloceDumpIcons renders every casing icon to a PNG and exits - see
+            // VeloceIconDump. Dev-only, and driven by a script so it can run unattended.
+            systemProperty("veloce.dumpIconsAll",
+                    project.hasProperty('veloceDumpIcons') ? "true" : "false")
             // -PveloceKeepOpen leaves the game open after the script, to watch it.
             if (project.hasProperty('veloceKeepOpen')) {
                 systemProperty("veloce.test.keepOpen", "true")
