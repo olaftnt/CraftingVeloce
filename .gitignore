@@ -33,4 +33,3 @@ __pycache__/
 # Logs from isolation test runs (scripts/isolation/L1Test.java).
 logs/
 run-tests/
-icon-dump/

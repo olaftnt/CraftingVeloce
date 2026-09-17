@@ -79,6 +79,7 @@ public final class VeloceIconDumpScreen extends Screen {
 
         if (++frames >= 2 && !grabbed) {
             grabbed = true;
+            ticksAfterGrab = 0;
             try {
                 grab();
             } catch (Throwable t) {
@@ -92,7 +93,10 @@ public final class VeloceIconDumpScreen extends Screen {
     public void tick() {
         // Closing waits for the next tick, because a screen must not be replaced from
         // inside its own render pass.
-        if (!grabbed || ticksAfterGrab < 0 || ++ticksAfterGrab < 2) {
+        // The counter is started where the grab happens - testing it for "not started yet"
+        // HERE short-circuited before the increment, so the screen never closed and the
+        // queue stopped after the first icon.
+        if (!grabbed || ++ticksAfterGrab < 2) {
             return;
         }
         Minecraft.getInstance().setScreen(null);

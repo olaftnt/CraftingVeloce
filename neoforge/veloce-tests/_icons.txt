@@ -1,0 +1,2 @@
+/cv testmodule result
+wait: 400

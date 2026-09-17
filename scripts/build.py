@@ -25,6 +25,7 @@ NoClassDefFoundError for classes that were not in the loaded version.
 import glob
 import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -2270,25 +2271,36 @@ def validate_module_content_textures():
                                 f"would render twice, composed and stretched")
                 break
 
-    composer = "neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java"
-    model = "neoforge/src/main/java/com/craftingveloce/client/render/VeloceCaseItemModel.java"
-    if not os.path.exists(model):
-        problems.append("no VeloceCaseItemModel - nothing puts the machine inside the frame, "
-                        "so every casing item icon renders as an empty box")
-    else:
-        body = _strip_comments(open(model, encoding="utf-8").read())
-        for need, what in (("contentModel.getQuads", "drawing the content model"),
-                           ("caseModel.getQuads", "drawing the casing over it"),
-                           ("contentTransform.transformPosition", "placing the content"),
-                           ("CONTENT_SCALE", "the size the world renderer also uses")):
-            if need not in body:
-                problems.append("VeloceCaseItemModel without " + what)
-    if os.path.exists(composer):
-        wired = open(composer, encoding="utf-8").read()
-        if "VeloceCaseItemModel" not in wired or "VeloceCaseContents.all()" not in wired:
-            problems.append("the bake listener does not compose the casing icons - the item "
-                            "models have no content element any more, so every casing would "
-                            "render as an empty frame")
+    # The icons are composed from pieces kept in the repo so the result can be rebuilt
+    # rather than re-rendered. A missing piece means a casing with no inside, and the
+    # generator would report it only to whoever happens to run it.
+    for need, what in (("scripts/gen_case_icons.py", "the icon generator"),
+                       ("assets/craftingveloce/case-source/BACK.png", "the back plate"),
+                       ("assets/craftingveloce/case-source/FRONT.png", "the front plate"),
+                       ("assets/craftingveloce/icon-dump/_map.txt", "the casing -> machine map")):
+        if not os.path.exists(need):
+            problems.append("missing " + what + f" ({need}) - the casing icons cannot be "
+                            f"rebuilt from the repository alone")
+
+    # Every casing must point at a picture that exists, and every picture must have been
+    # produced for a casing we actually have.
+    composed = set()
+    for path in sorted(glob.glob("assets/craftingveloce/models/item/*.json")):
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        layer = (data.get("textures") or {}).get("layer0", "")
+        if layer.startswith("craftingveloce:item/case/"):
+            name = layer.rsplit("/", 1)[1]
+            composed.add(name)
+            png = f"assets/craftingveloce/textures/item/case/{name}.png"
+            if not os.path.exists(png):
+                problems.append(f"{os.path.basename(path)} draws {layer}, which has no file")
+    orphans = {p.stem for p in pathlib.Path("assets/craftingveloce/textures/item/case").glob("*.png")} - composed \
+        if os.path.isdir("assets/craftingveloce/textures/item/case") else set()
+    if orphans:
+        problems.append(f"{len(orphans)} composed icon(s) no casing draws: {sorted(orphans)[:5]}")
 
     if checked == 0:
         if problems:
@@ -3576,13 +3588,25 @@ def validate_integrale_model():
         # with neither the entry nor the composition renders as an empty frame, which is
         # why both halves are checked - the entry here, the composition in
         # validate_module_content_textures.
-        content_texture = (icon.get("textures") or {}).get("content")
-        is_case = content_texture is not None or bs_models[0] == "craftingveloce:block/veloce_integrale_frame"
+        # The casing icon is a flat PNG composed from the two plates and the machine's
+        # rendered icon (scripts/gen_case_icons.py). It used to be a #content cube, then a
+        # model composed at bake time; both are gone. What can fail silently now is a model
+        # pointing at a picture that is not there - it renders as the missing-texture
+        # checkerboard and nothing else complains.
+        layer = (icon.get("textures") or {}).get("layer0", "")
+        is_case = bool(layer) or bs_models[0] == "craftingveloce:block/veloce_integrale_frame"
         if not is_case:
             continue
-        if content_texture is None:
-            problems.append(f"{block_id}: casing without a content texture entry - nothing "
-                            f"says which machine it represents, so its icon has no inside")
+        if not layer.startswith("craftingveloce:item/case/"):
+            problems.append(f"{block_id}: casing icon does not draw a composed picture "
+                            f"(layer0={layer!r}) - see scripts/gen_case_icons.py")
+        else:
+            png = "assets/craftingveloce/textures/" + layer.split(":", 1)[1] + ".png"
+            if not os.path.exists(png):
+                problems.append(f"{block_id}: casing icon {layer} has no file ({png})")
+        if icon.get("elements"):
+            problems.append(f"{block_id}: casing icon still has 3D elements - the icon is "
+                            f"composed from pictures now")
         wrong = [m for m in bs_models if m and not m.startswith(allowed_models)]
         if wrong:
             problems.append(f"{block_id}: casing with a foreign model {wrong[0]}")

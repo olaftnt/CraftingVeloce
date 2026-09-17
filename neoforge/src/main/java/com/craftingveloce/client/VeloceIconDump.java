@@ -45,6 +45,24 @@ public final class VeloceIconDump {
                 : com.craftingveloce.block.VeloceCaseContents.all()) {
             add(entry.content().get().asItem());
         }
+        // The mapping is written next to the pictures, because the composition of the
+        // icons needs to know WHICH machine goes into WHICH casing and that pairing lives
+        // only in VeloceCaseContents. Reading it back out of Java with a regex would be a
+        // second, drifting copy of the table.
+        StringBuilder map = new StringBuilder();
+        for (com.craftingveloce.block.VeloceCaseContents.Entry entry
+                : com.craftingveloce.block.VeloceCaseContents.all()) {
+            map.append(BuiltInRegistries.BLOCK.getKey(entry.machine().get()).getPath())
+                    .append('=')
+                    .append(BuiltInRegistries.ITEM.getKey(entry.content().get().asItem()).getPath())
+                    .append('\n');
+        }
+        try {
+            java.nio.file.Files.createDirectories(OUTPUT);
+            java.nio.file.Files.writeString(OUTPUT.resolve("_map.txt"), map.toString());
+        } catch (java.io.IOException e) {
+            LOG.error("[Veloce] icon dump: could not write the map", e);
+        }
         LOG.info("[Veloce] icon dump queued: {} item(s)", QUEUE.size());
         return QUEUE.size();
     }
