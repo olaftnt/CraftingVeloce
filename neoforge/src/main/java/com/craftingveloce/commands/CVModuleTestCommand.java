@@ -6,6 +6,7 @@ import com.craftingveloce.crafting.VeloceProcessingModule;
 import com.craftingveloce.crafting.VeloceProcessingRegistry;
 import com.craftingveloce.crafting.VeloceRecipeRegistry;
 import com.craftingveloce.init.VeloceRegistry;
+import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -164,6 +165,16 @@ public final class CVModuleTestCommand {
         level.setBlock(pipePos, VeloceRegistry.VELOCE_PIPE.get().defaultBlockState(), Block.UPDATE_ALL);
         level.setBlock(machinePos, machine.defaultBlockState(), Block.UPDATE_ALL);
         lastMachinePos = machinePos;
+
+        // Register the machine as a network node, which is what a player's
+        // placement does: setBlock() does NOT run setPlacedBy, so without this the
+        // machine stands there connected to a pipe but is not in the network's node
+        // list. Modules that look the machine up through that list then report
+        // "needs a machine" while one is plainly standing there - which is exactly
+        // how the brewing stand first failed here.
+        VeloceNodeBlocks.onNodePlaced(level, machinePos);
+        VeloceNodeBlocks.onNodePlaced(level, terminalPos);
+        VeloceNodeBlocks.onNodePlaced(level, pipePos);
         level.setBlock(barrelPos, Blocks.BARREL.defaultBlockState(), Block.UPDATE_ALL);
 
         // Give the machine power so an FE-driven module is not judged on "no energy"
