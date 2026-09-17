@@ -108,11 +108,12 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
         float contentScale = VeloceCaseContents.contentScale(be.getBlockState());
         float contentPitch = VeloceCaseContents.contentPitch(be.getBlockState());
         boolean keepRotation = VeloceCaseContents.keepsItemRotation(be.getBlockState());
+        boolean useItemModel = VeloceCaseContents.usesItemModel(be.getBlockState());
         float time = be.getLevel().getGameTime() + partialTick;
 
         if (be instanceof VeloceCaseSpin spin) {
             if (spin.caseParts() > 0) {
-                renderParts(spin, content, contentScale, contentPitch, keepRotation, pose, buffers, packedLight, packedOverlay, time);
+                renderParts(spin, content, contentScale, contentPitch, keepRotation, useItemModel, pose, buffers, packedLight, packedOverlay, time);
                 return;
             }
             if (spin.caseBuiltFromParts()) {
@@ -120,17 +121,17 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 return;
             }
         }
-        renderStandard(content, contentScale, contentPitch, keepRotation, pose, buffers, packedLight, packedOverlay, time);
+        renderStandard(content, contentScale, contentPitch, keepRotation, useItemModel, pose, buffers, packedLight, packedOverlay, time);
     }
 
     /** Ordinary content animation: rotation around the vertical axis + swaying. */
     private void renderStandard(Block content, float contentScale, float contentPitch,
-                                boolean keepRotation, PoseStack pose,
+                                boolean keepRotation, boolean useItemModel, PoseStack pose,
                                 MultiBufferSource buffers, int packedLight, int packedOverlay,
                                 float time) {
         pose.pushPose();
         beginStandardAnimation(pose, time);
-        renderContent(content, contentScale, contentPitch, keepRotation, pose, buffers,
+        renderContent(content, contentScale, contentPitch, keepRotation, useItemModel, pose, buffers,
                 packedLight, packedOverlay);
         pose.popPose();
     }
@@ -154,7 +155,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      * from the grid density, so 81 cells are correspondingly smaller than one.
      */
     private void renderParts(VeloceCaseSpin spin, Block content, float contentScale,
-                             float contentPitch, boolean keepRotation, PoseStack pose,
+                             float contentPitch, boolean keepRotation, boolean useItemModel, PoseStack pose,
                              MultiBufferSource buffers, int packedLight, int packedOverlay,
                              float time) {
         int parts = spin.caseParts();
@@ -186,7 +187,7 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
             // element relative to it (and not a second time from scratch).
             float factor = scale / (CONTENT_SCALE * contentScale);
             pose.scale(factor, factor, factor);
-            renderContent(content, contentScale, contentPitch, keepRotation, pose, buffers,
+            renderContent(content, contentScale, contentPitch, keepRotation, useItemModel, pose, buffers,
                     packedLight, packedOverlay);
             pose.popPose();
         }
@@ -199,9 +200,12 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      */
 
     private void renderContent(Block content, float contentScale, float contentPitch,
-                               boolean keepRotation, PoseStack pose,
+                               boolean keepRotation, boolean useItemModel, PoseStack pose,
                                MultiBufferSource buffers, int packedLight, int packedOverlay) {
-
+        if (!useItemModel) {
+            renderBlockModel(content, contentScale, contentPitch, pose, buffers, packedLight, packedOverlay);
+            return;
+        }
 
         ItemStack stack = CONTENT_STACKS.computeIfAbsent(content,
 
@@ -238,6 +242,32 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
                 -transform.translation.z);
         renderer.renderStatic(stack, ItemDisplayContext.FIXED, packedLight, packedOverlay,
                 pose, buffers, Minecraft.getInstance().level, 0);
+        pose.popPose();
+    }
+
+    /**
+     * Draws the machine's BLOCK model - the default, and what a block standing inside a
+     * window should look like.
+     *
+     * <p>Unlike the item path there is no item transform to undo: a block model is
+     * already a one-block cube in its own coordinates, so the only work is to move its
+     * centre onto the casing's centre and scale it into the window. The order matters -
+     * scale then translate puts the block's (0.5, 0.5, 0.5) at the origin, while the
+     * reverse would leave it hanging off to one side.
+     */
+    private void renderBlockModel(Block content, float contentScale, float contentPitch,
+                                  PoseStack pose, MultiBufferSource buffers,
+                                  int packedLight, int packedOverlay) {
+        float factor = CONTENT_SCALE * contentScale;
+        pose.pushPose();
+        if (contentPitch != 0.0F) {
+            pose.mulPose(Axis.XP.rotationDegrees(contentPitch));
+        }
+        pose.scale(factor, factor, factor);
+        pose.translate(-0.5F, -0.5F, -0.5F);
+        Minecraft.getInstance().getBlockRenderer().renderSingleBlock(
+                content.defaultBlockState(), pose, buffers, packedLight, packedOverlay,
+                net.neoforged.neoforge.client.model.data.ModelData.EMPTY, null);
         pose.popPose();
     }
 

@@ -68,22 +68,31 @@ public final class CreateCompat {
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", id));
     }
 
-    /** Casing table rows: our module -&gt; the base block from Create. */
+    /**
+     * Casing table rows: our module -&gt; the base block from Create.
+     *
+     * <p><b>These use the ITEM model, and that is measured.</b> Create's block models are
+     * not a complete picture of the machine: {@code create:block/millstone/block} has 6
+     * elements against 12 in {@code create:block/millstone/item}, and
+     * {@code create:block/mechanical_saw/block} does not exist at all - the missing parts
+     * are drawn by Flywheel. A casing with the block model shows a millstone without its
+     * centre stone and a saw without its blade, which is what "half wrecked" meant.
+     */
     private static void registerCases() {
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MILLSTONE_MODULE.get(),
-                () -> block("millstone"), 0.7F, 0.0F, false);
+                () -> block("millstone"), 0.7F, 0.0F, false, true);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_SAW_MODULE.get(),
-                () -> block("mechanical_saw"), 0.7F, -90.0F, false);
+                () -> block("mechanical_saw"), 0.7F, -90.0F, false, true);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_CRUSHING_MODULE.get(),
-                () -> block("crushing_wheel"), 0.4F, 0.0F, true);
+                () -> block("crushing_wheel"), 0.4F, 0.0F, true, true);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MECHANICAL_CRAFTER_MODULE.get(),
-                () -> block("mechanical_crafter"), 0.42F, 0.0F, false);
+                () -> block("mechanical_crafter"), 0.42F, 0.0F, false, true);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_PRESS_MODULE.get(),
-                () -> block("mechanical_press"), 0.5F, 180.0F, false);
+                () -> block("mechanical_press"), 0.5F, 180.0F, false, true);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_MIXER_MODULE.get(),
-                () -> block("mechanical_mixer"), 0.5F, 180.0F, false);
+                () -> block("mechanical_mixer"), 0.5F, 180.0F, false, true);
         VeloceCaseContents.register(() -> CreateBlocks.VELOCE_DEPLOYER_MODULE.get(),
-                () -> block("deployer"), 0.5F, -90.0F, false);
+                () -> block("deployer"), 0.5F, -90.0F, false, true);
     }
 
     /**

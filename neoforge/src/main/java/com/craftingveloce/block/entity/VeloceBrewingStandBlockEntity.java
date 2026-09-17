@@ -47,9 +47,18 @@ public class VeloceBrewingStandBlockEntity extends BlockEntity
     }
 
 
+    /**
+     * Vestigial GUI slot: index 0 of {@link #dataAccess}.
+     *
+     * <p>Always zero. It used to be the vanilla brew timer, and the screen still reads
+     * it, so the slot is kept rather than renumbering the protocol. There is nothing to
+     * show: brewing is settled in one step, like smelting in the electric furnace.
+     */
     public int brewTime = 0;
+
+    /** Last bottle indicators pushed into the blockstate, so we only write when they change. */
     private boolean[] lastPotionCount;
-    private net.minecraft.world.item.Item ingredient;
+
     public int energy = 0;
     public static final int ENERGY_CAPACITY = 25_000_000;
     public static final int FE_PER_BREW = 200_000;
@@ -165,7 +174,6 @@ protected final net.minecraft.world.inventory.ContainerData dataAccess = new net
     @Override
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
-        tag.putShort("BrewTime", (short)this.brewTime);
         tag.putInt("Energy", this.energy);
         tag.put("Items", items.createTag(registries));
     }
@@ -173,7 +181,6 @@ protected final net.minecraft.world.inventory.ContainerData dataAccess = new net
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        this.brewTime = tag.getShort("BrewTime");
         this.energy = tag.getInt("Energy");
         items.fromTag(tag.getList("Items", net.minecraft.nbt.Tag.TAG_COMPOUND), registries);
     }
@@ -184,39 +191,24 @@ public static void serverTick(net.minecraft.world.level.Level level, BlockPos po
         // directly to the stand - never through the Veloce network (zero FE on our cables).
         be.chargeFromItem();
 
-        // META-RECIPE: instantly fill glass bottles with water
-        for (int i = 0; i < 3; i++) {
-            ItemStack bottle = be.items.getItem(i);
-            if (bottle.is(net.minecraft.world.item.Items.GLASS_BOTTLE)) {
-                be.items.setItem(i, com.craftingveloce.util.VelocePotionMapper.toRealPotion(com.craftingveloce.init.VeloceRegistry.POTION_WATER.get(), bottle.getCount()));
-                setChanged(level, pos, state);
-            }
-        }
+        // NO brewing logic here.
+        //
+        // This stand used to be the only Veloce machine with a second, private machine
+        // inside it: its own container, its own 400-tick timer and its own doBrew().
+        // Every other module is a PASSIVE HOST - it declares the recipe type it serves
+        // and the network does the planning, the charging and the producing. That second
+        // machine had no test of its own, and it depended on this ticker, which measured
+        // ran ONCE for a freshly placed stand instead of every tick. So it silently
+        // produced nothing, and nothing anywhere said why.
+        //
+        // The brewing itself is unchanged and works: VeloceBrewingModule serves all 281
+        // mixes the game knows, and the crafter settles each one in a single step -
+        // exactly like smelting in the electric furnace, and like every compat machine.
+        //
+        // What is left below is GUI housekeeping, and it is the only reason this block
+        // ticks at all: the bottle indicators on the block's own model, and the energy
+        // bar on the client. The furnace ticks for the same reason and no other.
 
-
-        boolean canBrew = isBrewable(level.potionBrewing(), be.items);
-        boolean isBrewing = be.brewTime > 0;
-        ItemStack ingredient = be.items.getItem(3);
-
-        if (isBrewing) {
-            if (be.energy >= 500) {
-                be.energy -= 500;
-                be.brewTime--;
-                boolean done = be.brewTime == 0;
-                if (done && canBrew) {
-                    doBrew(level, pos, be.items);
-                    setChanged(level, pos, state);
-                } else if (!canBrew || !ingredient.is(be.ingredient)) {
-                    be.brewTime = 0;
-                    setChanged(level, pos, state);
-                }
-            }
-        } else if (canBrew && be.energy >= 500) {
-            be.brewTime = 400; // standard brew time
-            be.ingredient = ingredient.getItem();
-            setChanged(level, pos, state);
-        }
-        
         boolean[] currentCount = be.getPotionBits();
         if (!java.util.Arrays.equals(currentCount, be.lastPotionCount)) {
             be.lastPotionCount = currentCount;
@@ -262,50 +254,6 @@ public static void serverTick(net.minecraft.world.level.Level level, BlockPos po
         return bits;
     }
 
-    private static boolean isBrewable(net.minecraft.world.item.alchemy.PotionBrewing brewing, net.minecraft.world.SimpleContainer container) {
-        ItemStack ingredient = container.getItem(3);
-        if (ingredient.isEmpty()) return false;
-        if (!brewing.isIngredient(ingredient)) return false;
-        for (int i = 0; i < 3; i++) {
-            ItemStack bottle = container.getItem(i);
-            if (!bottle.isEmpty() && brewing.hasMix(bottle, ingredient)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static void doBrew(net.minecraft.world.level.Level level, BlockPos pos, net.minecraft.world.SimpleContainer container) {
-        ItemStack ingredient = container.getItem(3);
-        net.minecraft.world.item.alchemy.PotionBrewing brewing = level.potionBrewing();
-        for (int i = 0; i < 3; i++) {
-            ItemStack bottle = container.getItem(i);
-            if (!bottle.isEmpty() && brewing.hasMix(bottle, ingredient)) {
-                // ARGUMENT ORDER IS INVERTED BETWEEN THE TWO METHODS, and it is not a
-                // typo here. Vanilla declares:
-                //     hasMix (input, ingredient)   - input first
-                //     mix    (ingredient, input)   - INGREDIENT first
-                // and mix() finds the bottle by reading POTION_CONTENTS from its SECOND
-                // argument. Passing the bottle first therefore makes mix() look for
-                // potion contents on the ingredient, find none, and return the
-                // INGREDIENT unchanged - the stand silently swaps the potion for the
-                // redstone. The old draw-based tests could not see this: auto-crafting
-                // goes through VeloceAutoCrafter, which inserts recipe.primaryResult()
-                // itself and never calls doBrew, so only brewing BY HAND was broken.
-                container.setItem(i, brewing.mix(ingredient, bottle));
-            }
-        }
-        ingredient.shrink(1);
-        if (ingredient.getItem().hasCraftingRemainingItem()) {
-            ItemStack remainder = new ItemStack(ingredient.getItem().getCraftingRemainingItem());
-            if (ingredient.isEmpty()) {
-                container.setItem(3, remainder);
-            } else {
-                net.minecraft.world.Containers.dropItemStack(level, pos.getX(), pos.getY(), pos.getZ(), remainder);
-            }
-        }
-        level.levelEvent(1035, pos, 0);
-    }
 
 
     @Override

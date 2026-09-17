@@ -43,7 +43,7 @@ public final class VeloceCaseContents {
      *                           wheel looks better in its own orientation.
      */
     public record Entry(Supplier<Block> machine, Supplier<Block> content, float scale,
-                        float pitch, boolean keepItemRotation) {
+                        float pitch, boolean keepItemRotation, boolean useItemModel) {
     }
 
     private static final List<Entry> ENTRIES = new ArrayList<>();
@@ -80,7 +80,30 @@ public final class VeloceCaseContents {
     /** The variant with rotation (the saw and the deployer point down) and kept model rotation. */
     public static void register(Supplier<Block> machine, Supplier<Block> content, float scale,
                                 float pitch, boolean keepItemRotation) {
-        ENTRIES.add(new Entry(machine, content, scale, pitch, keepItemRotation));
+        register(machine, content, scale, pitch, keepItemRotation, false);
+    }
+
+    /**
+     * The full variant, including whether the casing shows the block's BLOCK model or
+     * its ITEM model.
+     *
+     * <p>Block model by default, which is what a machine standing inside a window
+     * should look like. The item model is the exception, for machines whose block model
+     * is not a complete picture of the machine - measured, not guessed: Create's
+     * {@code millstone/block} has 6 elements against 12 in {@code millstone/item}, and
+     * {@code mechanical_saw} has no block model file at all, because those parts are
+     * drawn by a separate renderer (Flywheel). Showing the block model there gives a
+     * machine that is visibly missing its centre stone or its blade.
+     */
+    public static void register(Supplier<Block> machine, Supplier<Block> content, float scale,
+                                float pitch, boolean keepItemRotation, boolean useItemModel) {
+        ENTRIES.add(new Entry(machine, content, scale, pitch, keepItemRotation, useItemModel));
+    }
+
+    /** Whether the casing should draw this machine's item model instead of its block model. */
+    public static boolean usesItemModel(BlockState state) {
+        Entry entry = entryFor(state);
+        return entry != null && entry.useItemModel();
     }
 
     /** Relative size of this machine's content (1.0, when nobody set it otherwise). */

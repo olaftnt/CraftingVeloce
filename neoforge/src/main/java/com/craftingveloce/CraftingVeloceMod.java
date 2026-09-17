@@ -266,10 +266,6 @@ public class CraftingVeloceMod {
             com.craftingveloce.test.VeloceTestDriver.register(event.getDispatcher());
             // /cv testmodule <id>: end-to-end test of one processing module.
             com.craftingveloce.commands.CVModuleTestCommand.register(event.getDispatcher());
-            // The stand's own brewing is a SEPARATE code path from auto-crafting
-            // (VeloceAutoCrafter inserts recipe.primaryResult() itself), so a terminal
-            // test cannot see it at all - see CVBrewCheckCommand.
-            com.craftingveloce.commands.CVBrewCheckCommand.register(event.getDispatcher());
         });
 
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock.class, event -> {

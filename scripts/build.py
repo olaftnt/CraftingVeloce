@@ -2167,11 +2167,13 @@ def validate_brewing_proxy():
 
     # The water bypass: a glass bottle put into the stand must become a water
     # potion without any water source. That is what makes the base recipe startable.
-    stand = "neoforge/src/main/java/com/craftingveloce/block/entity/VeloceBrewingStandBlockEntity.java"
-    stand_text = open(stand, encoding="utf-8").read()
-    if "Items.GLASS_BOTTLE" not in stand_text:
-        problems.append("the stand does not convert a glass bottle into the water proxy "
-                        "(the water bypass is missing - the first brewing step cannot start)")
+    # The first brewing step has to be startable: a glass bottle must become water
+    # without a water source. That used to live in the stand, which filled its own bottle
+    # slots on a tick. The stand is now a passive host like every other module, so the
+    # step lives where the brewing does - the module's recipe list.
+    if "brewing_water" not in code or "GLASS_BOTTLE" not in code:
+        problems.append("VeloceBrewingModule has no brewing_water recipe (glass bottle -> "
+                        "water proxy) - the first brewing step cannot start")
 
     if problems:
         fail("brewing proxy domain:\n  " + "\n  ".join(problems))
@@ -2983,12 +2985,27 @@ def validate_create_mechanics():
         if need not in renderer:
             problems.append("the casing renderer without " + what)
 
-    if "renderSingleBlock" in renderer or "getBlockRenderer" in renderer:
-        problems.append("the casing renderer draws a BLOCK model - the block models of "
-                        "machines are trimmed (the item model is the complete one)")
-    if "getBlockEntityRenderDispatcher" in renderer:
-        problems.append("the casing renderer calls block entity renderers - Create "
-                        "machines are drawn by Flywheel, so it would be empty")
+    # The casing draws the BLOCK model by default, and the ITEM model only for machines
+    # whose block model is not a complete picture of them.
+    #
+    # Create is what forced the distinction, and the numbers are measured from its jar:
+    # create:block/millstone/block has 6 elements against 12 in create:block/millstone/item,
+    # and create:block/mechanical_saw/block does not exist at all - those parts are drawn
+    # by a separate renderer (Flywheel). Drawing the block model there gives a millstone
+    # without its centre stone and a saw without its blade.
+    if "renderSingleBlock" not in renderer:
+        problems.append("the casing renderer has no BLOCK-model path - every machine "
+                        "would be drawn as an inventory item")
+    if "usesItemModel" not in renderer:
+        problems.append("the casing renderer ignores the per-machine item-model flag - a "
+                        "machine with a trimmed block model would be drawn as if complete")
+    create_rows = re.findall(r"VeloceCaseContents\.register\(", compat_create)
+    item_rows = re.findall(r"(?:false|true), true\);", compat_create)
+    if not create_rows:
+        problems.append("Create registers no casing rows - the modules would show nothing")
+    elif len(item_rows) != len(create_rows):
+        problems.append(f"only {len(item_rows)} of {len(create_rows)} Create casing rows opt "
+                        f"into the ITEM model - the rest would draw a trimmed block model")
 
     spin_iface = open("neoforge/src/main/java/com/craftingveloce/block/VeloceCaseSpin.java", encoding="utf-8").read()
     if "boolean casePartsSpinIndividually();" not in spin_iface:
