@@ -136,6 +136,11 @@ public final class VeloceTestScript {
 
             switch (step.kind()) {
                 case COMMAND -> {
+                    // The buffer is cleared when a command STARTS, not after every
+                    // assertion: several assertions may legitimately describe one
+                    // command's output, while output from a PREVIOUS command must
+                    // still never satisfy a later check.
+                    state.output.setLength(0);
                     state.output.append(execute(server, player, step.text())).append('\n');
                     VeloceLog.Block.attempt(VeloceLog.Side.SERVER, "[test] %s", step.text());
                 }
@@ -171,7 +176,6 @@ public final class VeloceTestScript {
                                 + step.text() + "\""
                                 + (seen.isEmpty() ? " (no output)" : " | saw: " + seen.replace("\n", " / ")));
                     }
-                    state.output.setLength(0);
                 }
             }
             index++;

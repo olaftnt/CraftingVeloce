@@ -4,6 +4,7 @@ import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
 import com.craftingveloce.crafting.ProcessingEntry;
 import com.craftingveloce.crafting.VeloceProcessingModule;
 import com.craftingveloce.crafting.VeloceProcessingRegistry;
+import com.craftingveloce.crafting.VeloceRecipeRegistry;
 import com.craftingveloce.init.VeloceRegistry;
 import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import com.mojang.brigadier.CommandDispatcher;
@@ -224,6 +225,28 @@ public final class CVModuleTestCommand {
      * how the existing module test network finds one.
      */
     private static ProcessingEntry findRecipe(ServerLevel level, VeloceProcessingModule module) {
+        // Two different APIs, and using the wrong one is why this first reported
+        // "no recipe available":
+        //
+        //   * the built-in modules (crafting, furnace, brewing) implement
+        //     producible(level, network) - the SET of items they can make - and
+        //     leave recipesAnywhere at its empty default;
+        //   * the compat modules (Create/Mekanism/Alchemistry) do the opposite.
+        //
+        // So the item set comes from the recipe registry for the built-ins and from
+        // the module itself for the rest, and the concrete recipe always comes from
+        // the shared finder, which knows about every source.
+        java.util.Set<Item> candidates = switch (module.id()) {
+            case "crafting" -> VeloceRecipeRegistry.getAllCraftableItems(level);
+            case "furnace" -> VeloceRecipeRegistry.getAllFurnaceCraftableItems(level);
+            default -> java.util.Set.of();
+        };
+        for (Item item : candidates) {
+            List<ProcessingEntry> found = com.craftingveloce.crafting.VeloceRecipeFinder.all(level, item);
+            if (!found.isEmpty()) {
+                return found.get(0);
+            }
+        }
         for (Item item : BuiltInRegistries.ITEM) {
             List<ProcessingEntry> found = module.recipesAnywhere(level, item);
             if (!found.isEmpty()) {
