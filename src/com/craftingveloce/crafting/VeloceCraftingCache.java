@@ -570,32 +570,20 @@ public final class VeloceCraftingCache {
             live.add(network.getId());
             get(level, network).tickIdle(level);
 
-            // Energy step: draw from external sources (maxRate = 20_000, as once in the pipe)
-            int energyRate = Integer.MAX_VALUE;
-            var buffer = network.getEnergyBuffer();
-            com.craftingveloce.network.pipe.VeloceEnergyPull.pull(level, network, buffer, energyRate);
-
-            // Distribution of power to the network's machines (terminals = all nodes, including furnace/modules)
-            if (buffer.getEnergyStored() > 0) {
-                for (BlockPos pos : network.getTerminals()) {
-                    if (buffer.getEnergyStored() <= 0) {
-                        break;
-                    }
-                    if (!level.isLoaded(pos)) {
-                        continue;
-                    }
-                    var target = level.getCapability(
-                            net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
-                            pos, null);
-                    if (target != null && target.canReceive()) {
-                        int accepted = target.receiveEnergy(
-                                Math.min(buffer.getEnergyStored(), energyRate), false);
-                        if (accepted > 0) {
-                            buffer.extractEnergy(accepted, false);
-                        }
-                    }
-                }
-            }
+            // NO ENERGY STEP HERE - DELIBERATELY.
+            //
+            // There used to be one: FE was drawn from foreign sources into a buffer
+            // kept on the network and then pushed to every terminal of the network.
+            // That made our pipes an energy conduit between other mods' machines,
+            // which is exactly what they must NOT be. Our cables are a carrier for
+            // the Veloce network (item logistics) and nothing else: ZERO FE on a
+            // Veloce cable.
+            //
+            // Consequence, by design: a machine is powered only by
+            //   1. the energy ITEM in its own battery slot (see chargeFromItem), or
+            //   2. a foreign energy cable attached DIRECTLY to the machine
+            //      (the machine still exposes IEnergyStorage.receiveEnergy).
+            // Nothing is routed through our network.
         }
 
         // Caches for networks that disappeared from the manager - release the chunks,

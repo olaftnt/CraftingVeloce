@@ -69,8 +69,12 @@ A mod that adds an intelligent logistics network to Minecraft, built on top of t
   (`wantImmediatePull`), instead of waiting for the end of `PULL_INTERVAL_TICKS`
 
 ### 7. Velocity Electric Furnace (`electric_furnace`)
-- An FE accumulator (25 000 000 FE, 200 000 FE per smelt); cables from other
-  mods charge it through the capability — the mod has no charging of its own
+- An internal FE accumulator (200 000 000 FE, 200 000 FE per smelt). It is charged
+  **only** by the energy item in its own battery slot, or by a cable from another mod
+  attached **directly** to the furnace
+- **Zero FE travels on Veloce cables.** A Veloce cable is a carrier for the Veloce
+  network (item logistics) and is never an energy conduit — not for our machines and
+  not for anyone else's. Nothing draws power through the network
 - **Priority 0** — the crafter draws from it first, and the fuel furnace (priority 1)
   is the fallback, including mid-run: a shortage of power for 5 smelts means 3 from
   power and 2 from fuel
@@ -448,9 +452,10 @@ share one core block (`VeloceFeModuleBlock`) and one block entity
 The costs are copied from the original machines (Mekanism: 20 FE/t × 200 t;
 Alchemistry: `energyPerTick` × `ticksPerOperation`), with buffers of
 40 000 FE and 100 000 FE respectively. Every machine sits in the network like any other, accepts FE
-through a cable (the `EnergyStorage` capability), and clicking it shows the accumulator state on the
-action bar. The sawmill plans only the main output, and adds the extra one after a dice
-roll; fission plans both outputs, because both are guaranteed.
+**directly from a cable attached to the machine** (the `EnergyStorage` capability) or from the energy
+item in its own battery slot — but **never through the Veloce network**: our cables carry zero FE.
+Clicking the machine shows the accumulator state on the action bar. The sawmill plans only the main
+output, and adds the extra one after a dice roll; fission plans both outputs, because both are guaranteed.
 
 Create machines are **kinetic**, not FE-based: "being powered" means `getSpeed() != 0`
 (Create itself returns 0 under overstress and on a stopped network). The SU draw is

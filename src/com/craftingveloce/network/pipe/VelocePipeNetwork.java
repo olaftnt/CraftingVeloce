@@ -26,13 +26,15 @@ public class VelocePipeNetwork {
     private final Set<BlockPos> terminals = new HashSet<>();
     private final Map<BlockPos, ConnectedEndpointInfo> endpoints = new HashMap<>();
 
-    /** Energy buffer of the pipe network. */
-    private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer =
-            new net.neoforged.neoforge.energy.EnergyStorage(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
+    // REMOVED: the network energy buffer.
+    //
+    // The network used to keep an EnergyStorage that the level tick filled from
+    // foreign sources and then pushed to every terminal, i.e. our pipes conducted
+    // Forge Energy between machines. They must not: a Veloce cable is a carrier for
+    // the Veloce network (item logistics) only - ZERO FE travels on it. A machine is
+    // powered by the energy item in its own battery slot, or by a foreign energy
+    // cable attached directly to the machine.
 
-    public net.neoforged.neoforge.energy.EnergyStorage getEnergyBuffer() {
-        return energyBuffer;
-    }
     private final Set<BlockPos> pipes = new HashSet<>();
 
     /**
@@ -160,9 +162,6 @@ public class VelocePipeNetwork {
         for (BlockPos p : endpoints.keySet()) {
             trackedChunks.add(new ChunkPos(p));
         }
-        for (BlockPos p : energyEndpoints) {
-            trackedChunks.add(new ChunkPos(p));
-        }
     }
 
     /**
@@ -229,30 +228,6 @@ public class VelocePipeNetwork {
      * the cache asked about it every few ticks, the server thread burned
      * itself out on pure reading.
      */
-    /**
-     * Positions of FOREIGN energy sources attached to this network.
-     *
-     * <p>They are filled in by the network scan (a neighbour with the
-     * {@code EnergyStorage.BLOCK} capability that is NOT our block). Our
-     * machines draw power from them, but only they may do so - and only when
-     * they have free space.
-     */
-    private final java.util.Set<BlockPos> energyEndpoints = new java.util.HashSet<>();
-
-    /** The scan found a foreign energy source - remember it. */
-    public void addEnergyEndpoint(BlockPos pos) {
-        energyEndpoints.add(pos.immutable());
-    }
-
-    /** Positions of the foreign energy sources in this network. */
-    public java.util.Set<BlockPos> getEnergyEndpoints() {
-        return java.util.Set.copyOf(energyEndpoints);
-    }
-
-    /** The scan fills the list from scratch (the topology changed). */
-    public void clearEnergyEndpoints() {
-        energyEndpoints.clear();
-    }
 
     /** Appends freshly computed numbers to the network cache (overwrites older ones). */
     public void rememberCraftable(Map<Item, Long> counts) {
@@ -492,9 +467,9 @@ public class VelocePipeNetwork {
             }
         }
         tag.put("PreferFurnace", prefList);
-        
-        tag.putInt("EnergyStored", energyBuffer.getEnergyStored());
-
+        // NOTE: "EnergyStored" is no longer written - our cables carry zero FE, so
+        // there is no network accumulator to persist. An old save's key is ignored
+        // on load below.
         return tag;
     }
 
@@ -534,10 +509,8 @@ public class VelocePipeNetwork {
                 net.endpoints.put(ep.getPos(), ep);
             }
         }
-        if (tag.contains("EnergyStored", Tag.TAG_INT)) {
-            net.energyBuffer.receiveEnergy(tag.getInt("EnergyStored"), false);
-        }
-
+        // NOTE: a legacy "EnergyStored" key from an older save is deliberately
+        // IGNORED - there is no network energy buffer any more.
         net.updateTrackedChunks();
         return net;
     }

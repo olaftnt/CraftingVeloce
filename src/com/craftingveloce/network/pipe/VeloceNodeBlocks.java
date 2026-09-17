@@ -97,13 +97,6 @@ public final class VeloceNodeBlocks {
             com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(sl).markNodeInvalid(pos);
             VelocePipeNetworkManager.get(sl).onTerminalRemoved(sl, pos);
             VelocePipeNetworkManager.get(sl).clearCraftableMemo(sl, pos);
-            // Purge every position-keyed cache we own for this coordinate.
-            //
-            // Positions are REUSED: a machine broken here and replaced by another
-            // block inherits the stale entry, which is what made "ghost state after
-            // swapping a block" so hard to reproduce. VeloceEnergyPull.forget is
-            // idempotent and logs only when it actually dropped something.
-            VeloceEnergyPull.forget(pos);
         }
     }
 }

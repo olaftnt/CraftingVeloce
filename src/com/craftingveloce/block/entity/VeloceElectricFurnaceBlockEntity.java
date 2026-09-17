@@ -293,78 +293,21 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
      * (and at most once every half a second): a cable from another mod can charge
      * every tick, and a packet every tick would be a waste.
      */
-    /**
-     * How much FE per tick we accept from the network at most (besides the source's own limit).
-     *
-     * <p><b>Why this is bounded.</b> This used to be {@code Integer.MAX_VALUE}, i.e. the
-     * furnace asked for as much as its free space allowed and the only remaining
-     * brake was the source's internal rate. A Mekanism Energy Cube can push a very
-     * large amount per tick, so a single tick could empty a whole cube into the
-     * accumulator - the reported "it drains infinite power from the cube". Pinning
-     * the intake makes the drain a predictable FE/tick figure that is easy to
-     * reason about in game, and it matches the brewing stand's limit.
-     */
-    public static final int MAX_PULL_PER_TICK = 1_000_000;
-
-
-    /**
-     * The network this machine REALLY belongs to.
-     *
-     * <p>BUG from the log: the furnace asked for the network via {@code getNetworkForTerminal}
-     * and got SOMEONE ELSE'S network - in the log its only pipe was adjacent to
-     * grass and air, so neither the Energy Cube nor the furnace was there and the
-     * draw had nothing to work from. Now we first look for a pipe NEXT TO the
-     * machine and ask for that pipe's network; only when there is none do we fall
-     * back to the old path.
-     */
-    private com.craftingveloce.network.pipe.VelocePipeNetwork networkFor(net.minecraft.server.level.ServerLevel sl) {
-        var manager = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(sl);
-        for (net.minecraft.core.Direction dir : net.minecraft.core.Direction.values()) {
-            net.minecraft.core.BlockPos side = worldPosition.relative(dir);
-            if (sl.isLoaded(side)
-                    && sl.getBlockState(side).getBlock() instanceof com.craftingveloce.block.VelocePipeBlock) {
-                var net = manager.getNetworkForPipe(sl, side);
-                if (net != null) {
-                    return net;
-                }
-            }
-        }
-        return manager.getNetworkForTerminal(sl, worldPosition);
-    }
 
     public void serverTick() {
         if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) {
             return;
         }
-        // NOTE: this must happen BEFORE the early return for syncing.
-        // Otherwise charging from the item would only work once every 10 ticks
-        // (i.e. 10x slower), because the cooldown exits this method.
+        // The ONLY way this furnace takes power is the energy ITEM in its own battery
+        // slot, or a foreign energy cable attached DIRECTLY to the furnace (which the
+        // capability below still accepts).
+        //
+        // It deliberately does NOT draw power through the Veloce network any more.
+        // Our cables are a carrier for the network (item logistics), never an energy
+        // conduit: zero FE travels on them. This also removes the whole class of
+        // "the network empties my Energy Cube" problems, because no code path exists
+        // that can pull from a remote source any more.
         chargeFromItem();
-        // The same PULLING from the network as in the modules: the furnace draws
-        // power on its own from foreign sources (Energy Cube, generator) hooked up
-        // to the pipes. Full accumulator = zero attempts, the source limit and our
-        // limit are respected.
-        int before = energy;
-        var net = networkFor(sl);
-        int pulled = com.craftingveloce.network.pipe.VeloceEnergyPull.pull(sl,
-                net, this, MAX_PULL_PER_TICK);
-        // One line per real transfer is enough to answer "does the cube drain, and
-        // by how much per tick" from a game log without flooding it. On the gated
-        // DETAIL channel so the player's debugEnabled actually surfaces it.
-        if (pulled > 0) {
-            com.craftingveloce.util.VeloceLog.Block.detail(
-                    com.craftingveloce.util.VeloceLog.Side.SERVER,
-                    "[VELOCE-DEBUG] furnace %s pull tick: got %s FE from network %s, "
-                            + "battery %s -> %s FE (rate cap %s FE/t)",
-                    worldPosition.toShortString(), pulled, net == null ? "none" : net.getId(),
-                    before, energy, MAX_PULL_PER_TICK);
-        } else if (net == null) {
-            com.craftingveloce.util.VeloceLog.Block.detail(
-                    com.craftingveloce.util.VeloceLog.Side.SERVER,
-                    "[VELOCE-DEBUG] furnace %s has NO network (no adjacent pipe, no terminal match) "
-                            + "- it can only charge from its battery slot",
-                    worldPosition.toShortString());
-        }
         if (--clientSyncCooldown > 0) {
             return;
         }

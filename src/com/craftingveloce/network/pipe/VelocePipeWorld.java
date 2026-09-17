@@ -102,7 +102,7 @@ public final class VelocePipeWorld {
         public final Set<BlockPos> storages = new LinkedHashSet<>();
         /** Crafters - additionally as production buffers. */
         public final Set<BlockPos> crafters = new LinkedHashSet<>();
-        public final Set<BlockPos> energy = new LinkedHashSet<>();
+        // NOTE: there is no "energy" set here any more - our cables never carry FE.
         /** When the description was built (gameTime) - for diagnostics. */
         public long builtAtTick;
     }
