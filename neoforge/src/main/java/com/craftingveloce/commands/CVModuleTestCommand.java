@@ -53,6 +53,9 @@ import java.util.List;
  */
 public final class CVModuleTestCommand {
 
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger("craftingveloce-testmodule");
+
     /** Ticks to let the network scan before the result is judged. */
     private static final int SCAN_TICKS = 60;
 
@@ -81,6 +84,15 @@ public final class CVModuleTestCommand {
                                 .then(Commands.argument("amount", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0))
                                         .executes(ctx -> setFe(ctx.getSource(),
                                                 com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "amount")))))
+                        // The list of recipes a module offers, so a script can pin every
+                        // one of them. The random draw proves a module works for SOME of
+                        // its items; only naming all of them proves it works for all.
+                        .then(Commands.literal("list")
+                                .then(Commands.argument("module", StringArgumentType.word())
+                                        .suggests((ctx, builder) ->
+                                                SharedSuggestionProvider.suggest(VeloceProcessingRegistry.ids(), builder))
+                                        .executes(ctx -> list(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "module")))))
                         .then(Commands.literal("result").executes(ctx -> {
                             ctx.getSource().sendSuccess(() -> Component.literal(lastVerdict), false);
                             return 1;
@@ -124,6 +136,57 @@ public final class CVModuleTestCommand {
             }
         }
         return paths;
+    }
+
+    /** Prints every recipe id this module offers, one per line. */
+    private static int list(CommandSourceStack source, String moduleId) {
+        ServerLevel level = source.getLevel();
+        VeloceProcessingModule module = null;
+        for (VeloceProcessingModule candidate : VeloceProcessingRegistry.all()) {
+            if (candidate.id().equals(moduleId)) {
+                module = candidate;
+                break;
+            }
+        }
+        if (module == null) {
+            source.sendFailure(Component.literal("§cNo such module: " + moduleId));
+            return 0;
+        }
+        java.util.Set<String> ids = new java.util.TreeSet<>();
+        for (Item item : BuiltInRegistries.ITEM) {
+            for (ProcessingEntry entry : module.recipesAnywhere(level, item)) {
+                ids.add(entry.id().toString());
+            }
+        }
+        // The built-in crafting/furnace modules publish a registry set instead.
+        java.util.Set<Item> registryItems = switch (moduleId) {
+            case "crafting" -> VeloceRecipeRegistry.getAllCraftableItems(level);
+            case "furnace" -> VeloceRecipeRegistry.getAllFurnaceCraftableItems(level);
+            default -> java.util.Set.of();
+        };
+        for (Item item : registryItems) {
+            for (ProcessingEntry entry : com.craftingveloce.crafting.VeloceRecipeFinder.all(level, item)) {
+                if (module.recipeTypes().contains(entry.type())) {
+                    ids.add(entry.id().toString());
+                }
+            }
+        }
+        // Also on the log: command feedback goes to the player's chat and does NOT reach
+        // the server log, so without this the list is invisible to a test harness that
+        // can only read the log.
+        LOG.info("[testmodule] {} offers {} recipe(s)", moduleId, ids.size());
+        // One id per line: a single joined line runs into the log's line limit once a
+        // module offers a few dozen recipes, and the tail is dropped SILENTLY - which
+        // is how a sweep generated from this list came out one recipe short.
+        for (String id : ids) {
+            LOG.info("[testmodule] RECIPE {}", id);
+        }
+        source.sendSuccess(() -> Component.literal("§6[testmodule]§f " + moduleId
+                + " offers " + ids.size() + " recipe(s)"), false);
+        for (String id : ids) {
+            source.sendSuccess(() -> Component.literal("RECIPE " + id), false);
+        }
+        return ids.size();
     }
 
     private static int run(CommandSourceStack source, String moduleId, String wantedBlock, String wantedRecipe) {

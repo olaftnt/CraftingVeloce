@@ -155,8 +155,9 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
         }
 
         int skipped = 0;
+        java.util.Set<String> usedIds = new java.util.HashSet<>();
         for (Mix mix : mixes.values()) {
-            if (emit(mix, routesPerResult.getOrDefault(stateKey(mix.result()), 0))) {
+            if (emit(mix, routesPerResult.getOrDefault(stateKey(mix.result()), 0), usedIds)) {
                 skipped++;
             }
         }
@@ -220,7 +221,15 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
      *
      * @return true when the mix was skipped for want of a proxy
      */
-    private boolean emit(Mix mix, int routesToThisResult) {
+    private boolean emit(Mix mix, int routesToThisResult, java.util.Set<String> usedIds) {
+        // hasMix() says a mix EXISTS; it does not promise the bottle changes. A pair
+        // that leaves the potion alone is not a recipe, and emitting it produced a
+        // second recipe called "brewing_water" - the same id as filling a glass bottle
+        // - which the recipe index then deduplicated away, silently losing a recipe.
+        if (stateKey(mix.result()).equals(stateKey(mix.input()))) {
+            return false;
+        }
+
         Item inputProxy = VelocePotionMapper.proxyOrNull(mix.input());
         Item resultProxy = VelocePotionMapper.proxyOrNull(mix.result());
         if (inputProxy == null || resultProxy == null) {
@@ -239,6 +248,15 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
         String id = routesToThisResult == 1
                 ? "brewing_" + resultKey
                 : "brewing_" + resultKey + "_from_" + ingredientKey(mix.ingredient());
+        if (!usedIds.add(id)) {
+            // Belt and braces: whatever else reaches the same name, the route-qualified
+            // form is unique, and an id that is silently dropped is worse than a long one.
+            id = "brewing_" + resultKey + "_from_" + ingredientKey(mix.ingredient());
+            if (!usedIds.add(id)) {
+                LOG.warn("[VELOCE-DEBUG] brewing mix dropped - id {} is already taken", id);
+                return true;
+            }
+        }
 
         recipes.add(ProcessingEntry.single(
                 ResourceLocation.fromNamespaceAndPath("craftingveloce", id),

@@ -119,6 +119,14 @@ public final class CVBrewCheckCommand {
             return 0;
         }
 
+        // setBlock should have registered the ticker through LevelChunk.setBlockState,
+        // but a stand placed this way never advanced its brew at all - energy untouched
+        // after 460 ticks - while stands loaded from the save tick normally. Registering
+        // explicitly is idempotent, so it is safe either way; WHAT IS NOT YET KNOWN is
+        // whether a real player placement is affected too, which is the difference
+        // between a broken test and a broken machine.
+        level.getChunkAt(pos).addAndRegisterBlockEntity(stand);
+
         stand.setItem(0, bottle.copy());
         stand.setItem(3, ingredient.copy());
         stand.energy = VeloceBrewingStandBlockEntity.ENERGY_CAPACITY;
@@ -144,10 +152,15 @@ public final class CVBrewCheckCommand {
             lastVerdict = "FAIL brewcheck: the stand disappeared from " + pos;
             return;
         }
+        // The machine's own state goes into the verdict: "the bottle did not change" has
+        // two very different causes - the stand never ticked, or it ticked and refused -
+        // and they need opposite fixes.
+        String state = " brewTime=" + stand.brewTime + " energy=" + stand.energy
+                + " offered=" + level.potionBrewing().hasMix(stand.getItem(0), stand.getItem(3));
         ItemStack got = stand.getItem(0);
         if (got.isEmpty()) {
             lastVerdict = "FAIL brewcheck: " + potionId + " + " + ingredientId
-                    + " - the stand left the bottle slot empty (did it brew at all?)";
+                    + " - the stand left the bottle slot empty (did it brew at all?)" + state;
             return;
         }
         if (samePotion(expected, got)) {
@@ -155,7 +168,7 @@ public final class CVBrewCheckCommand {
                     + " -> " + describe(got);
         } else {
             lastVerdict = "FAIL brewcheck: " + potionId + " + " + ingredientId
-                    + " should give " + describe(expected) + " but the stand produced " + describe(got);
+                    + " should give " + describe(expected) + " but the stand produced " + describe(got) + state;
         }
         com.craftingveloce.util.VeloceLog.Block.attempt(
                 com.craftingveloce.util.VeloceLog.Side.SERVER, "[brewcheck] %s", lastVerdict);

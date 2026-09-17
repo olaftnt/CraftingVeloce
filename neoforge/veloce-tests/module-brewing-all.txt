@@ -1,0 +1,404 @@
+# Module: brewing  -  EVERY recipe the module offers (30), named explicitly.
+#
+# Why this file exists next to the random sweep: the sweep proves the module works
+# for SOME of its items. Only naming all of them proves it works for ALL, and this is
+# the file that answers "can every potion be made". Regenerate the list with:
+#
+#     /cv testmodule list brewing
+#
+# The ids are routes, not just results: vanilla reaches Mundane from water through
+# twelve different ingredients, so "brewing_mundane" alone could not identify a
+# recipe. A failing case names the route, which is what makes it reproducible.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-brewing-all -PveloceKeepOpen
+
+
+# --- 1/30  craftingveloce:brewing_awkward ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_awkward"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 2/30  craftingveloce:brewing_fire_resistance ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_fire_resistance"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 3/30  craftingveloce:brewing_harming_from_fermented_spider_eye ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_harming_from_fermented_spider_eye"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 4/30  craftingveloce:brewing_healing ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_healing"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 5/30  craftingveloce:brewing_invisibility ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_invisibility"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 6/30  craftingveloce:brewing_leaping ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_leaping"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 7/30  craftingveloce:brewing_mundane_from_blaze_powder ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_blaze_powder"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 8/30  craftingveloce:brewing_mundane_from_breeze_rod ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_breeze_rod"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 9/30  craftingveloce:brewing_mundane_from_cobweb ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_cobweb"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 10/30  craftingveloce:brewing_mundane_from_ghast_tear ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_ghast_tear"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 11/30  craftingveloce:brewing_mundane_from_glistering_melon_slice ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_glistering_melon_slice"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 12/30  craftingveloce:brewing_mundane_from_magma_cream ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_magma_cream"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 13/30  craftingveloce:brewing_mundane_from_rabbit_foot ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_rabbit_foot"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 14/30  craftingveloce:brewing_mundane_from_redstone ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_redstone"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 15/30  craftingveloce:brewing_mundane_from_slime_block ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_slime_block"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 16/30  craftingveloce:brewing_mundane_from_spider_eye ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_spider_eye"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 17/30  craftingveloce:brewing_mundane_from_stone ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_stone"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 18/30  craftingveloce:brewing_mundane_from_sugar ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_mundane_from_sugar"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 19/30  craftingveloce:brewing_night_vision ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_night_vision"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 20/30  craftingveloce:brewing_poison ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_poison"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 21/30  craftingveloce:brewing_regeneration ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_regeneration"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 22/30  craftingveloce:brewing_slow_falling ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_slow_falling"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 23/30  craftingveloce:brewing_slowness_from_fermented_spider_eye ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_slowness_from_fermented_spider_eye"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 24/30  craftingveloce:brewing_strength ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_strength"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 25/30  craftingveloce:brewing_swiftness ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_swiftness"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 26/30  craftingveloce:brewing_thick ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_thick"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 27/30  craftingveloce:brewing_turtle_master ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_turtle_master"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 28/30  craftingveloce:brewing_water ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_water"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 29/30  craftingveloce:brewing_water_breathing ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_water_breathing"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- 30/30  craftingveloce:brewing_weakness ---
+/cv testmodule brewing brewing_stand "craftingveloce:brewing_weakness"
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
