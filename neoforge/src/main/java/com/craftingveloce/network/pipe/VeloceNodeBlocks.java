@@ -76,7 +76,6 @@ public final class VeloceNodeBlocks {
         if (world.isClientSide) {
             return;
         }
-        com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
         if (world instanceof net.minecraft.server.level.ServerLevel sl) {
             VelocePipeNetworkManager.get(sl).onTerminalPlaced(sl, pos);
             // A new node = new possibilities: the number cache is no longer current.
@@ -94,7 +93,6 @@ public final class VeloceNodeBlocks {
     public static void onNodeRemoved(net.minecraft.world.level.LevelAccessor world,
                                      net.minecraft.core.BlockPos pos) {
         if (world instanceof net.minecraft.server.level.ServerLevel sl) {
-            com.tom.storagemod.inventory.InventoryCableNetwork.getNetwork(sl).markNodeInvalid(pos);
             VelocePipeNetworkManager.get(sl).onTerminalRemoved(sl, pos);
             VelocePipeNetworkManager.get(sl).clearCraftableMemo(sl, pos);
             // Purge every position-keyed cache we own for this coordinate.

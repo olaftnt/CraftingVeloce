@@ -6,11 +6,7 @@ import com.craftingveloce.item.VeloceWrenchItem;
 import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
 import com.craftingveloce.rs.RefinedStorageHelper;
 import com.mojang.serialization.MapCodec;
-import com.tom.storagemod.block.IInventoryCable;
-import com.tom.storagemod.inventory.InventoryCableNetwork;
-import com.tom.storagemod.inventory.PlatformInventoryAccess.BlockInventoryAccess;
-import com.tom.storagemod.util.BlockFace;
-import com.tom.storagemod.util.TickerUtil;
+import com.craftingveloce.storage.VeloceInventoryLookup;
 import com.craftingveloce.client.ClientTerminalHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -60,7 +56,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
-public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, SimpleWaterloggedBlock, IInventoryCable {
+public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, SimpleWaterloggedBlock {
 
     public static final BooleanProperty DOWN = PipeBlock.DOWN;
     public static final BooleanProperty UP = PipeBlock.UP;
@@ -152,7 +148,14 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level world, BlockState state, BlockEntityType<T> type) {
-        return TickerUtil.createTicker(world, false, true);
+        // Server-side only, and only for our own block entity. Tom's TickerUtil
+        // used to do this; it is a two-line lambda, so the mod no longer needs Tom
+        // to be ticked.
+        return world.isClientSide ? null : (lvl, pos, st, be) -> {
+            if (be instanceof com.craftingveloce.block.entity.VelocePipeBlockEntity pipe) {
+                pipe.updateServer();
+            }
+        };
     }
 
     @Override
@@ -162,7 +165,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
     public static boolean canConnectToInventory(Level level, BlockPos pos, Direction side) {
         BlockState state = level.getBlockState(pos);
-        return BlockInventoryAccess.hasInventoryAt(level, pos, state, side);
+        return VeloceInventoryLookup.hasInventoryAt(level, pos, state, side);
     }
 
     public boolean canConnectDirection(Level level, BlockPos pos, Direction dir, @Nullable VelocePipeBlockEntity pipeBE) {
@@ -227,11 +230,6 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                 && com.craftingveloce.network.pipe.VeloceNodeBlocks.connectsFrom(
                         neighborState, neighborState.getBlock(), dir.getOpposite())) {
             return true;
-        }
-
-        // 3. Another IInventoryCable (Tom's Storage cable, etc.)
-        if (neighborState.getBlock() instanceof IInventoryCable cable) {
-            return cable.canConnectFrom(neighborState, dir.getOpposite());
         }
 
         // 4. Refined Storage (Interface, Controller, Cables, etc.)
@@ -392,7 +390,6 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
 
         BlockState newState = updateConnections(world, pos, state);
         world.setBlockAndUpdate(pos, newState);
-        InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
 
         if (world instanceof ServerLevel sl) {
             // THE SAME PATH AS ON A NEIGHBOR CHANGE - and that matters.
@@ -495,8 +492,6 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         world.setBlockAndUpdate(pos, updateConnections(world, pos, world.getBlockState(pos)));
         world.setBlockAndUpdate(neighborPos,
                 updateConnections(world, neighborPos, world.getBlockState(neighborPos)));
-        InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
-        InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighborPos);
 
         if (player instanceof ServerPlayer sp) {
             sp.displayClientMessage(
@@ -551,9 +546,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     public void setPlacedBy(Level world, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
         super.setPlacedBy(world, pos, state, placer, stack);
         if (!world.isClientSide) {
-            InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
             for (Direction d : Direction.values()) {
-                InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos.relative(d));
             }
             if (world instanceof ServerLevel sl) {
                 VelocePipeNetworkManager.get(sl).onPipePlaced(sl, pos);
@@ -562,26 +555,9 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
     }
 
     @Override
-    public List<BlockFace> nextScan(Level world, BlockState state, BlockPos pos) {
-        List<BlockFace> next = new ArrayList<>();
-        for (Direction d : Direction.values()) {
-            if (state.getValue(PipeBlock.PROPERTY_BY_DIRECTION.get(d))) {
-                next.add(new BlockFace(pos.relative(d), d.getOpposite()));
-            }
-        }
-        return next;
-    }
-
-    @Override
-    public boolean isFunctionalNode() {
-        return true;
-    }
-
-    @Override
     public void destroy(LevelAccessor world, BlockPos pos, BlockState state) {
         super.destroy(world, pos, state);
         if (world instanceof ServerLevel l) {
-            InventoryCableNetwork.getNetwork(l).markNodeInvalid(pos);
             VelocePipeNetworkManager.get(l).onPipeBroken(l, pos);
         }
     }
@@ -594,8 +570,6 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
             if (!updated.equals(state)) {
                 world.setBlockAndUpdate(pos, updated);
             }
-            InventoryCableNetwork.getNetwork(world).markNodeInvalid(pos);
-            InventoryCableNetwork.getNetwork(world).markNodeInvalid(neighbor);
             if (world instanceof ServerLevel sl) {
                 VelocePipeNetworkManager.get(sl).onNeighborChanged(sl, pos, neighbor);
             }

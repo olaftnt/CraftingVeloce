@@ -1,9 +1,6 @@
 package com.craftingveloce.block;
 
 import com.craftingveloce.block.entity.VeloceThresholdSensorBlockEntity;
-import com.tom.storagemod.block.IInventoryCable;
-import com.tom.storagemod.inventory.InventoryCableNetwork;
-import com.tom.storagemod.util.BlockFace;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -61,7 +58,7 @@ import com.craftingveloce.network.pipe.VeloceNodeBlocks;
  * player to guess where a wire may be placed.
  */
 public class VeloceThresholdSensorBlock extends BaseEntityBlock
-        implements EntityBlock, IInventoryCable, VeloceNetworkNode {
+        implements EntityBlock, VeloceNetworkNode {
 
     /** Whether the sensor is currently emitting power. */
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
@@ -198,29 +195,12 @@ public class VeloceThresholdSensorBlock extends BaseEntityBlock
                                 BlockPos neighbor, boolean isMoving) {
         super.neighborChanged(state, world, pos, block, neighbor, isMoving);
         if (!world.isClientSide) {
-            InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
-            n.markNodeInvalid(pos);
-            n.markNodeInvalid(neighbor);
         }
     }
 
     /** The sensor connects from every side - there is no front or back. */
     @Override
     public boolean canConnectFrom(BlockState state, Direction dir) {
-        return true;
-    }
-
-    @Override
-    public List<BlockFace> nextScan(Level world, BlockState state, BlockPos pos) {
-        List<BlockFace> list = new ArrayList<>();
-        for (Direction d : Direction.values()) {
-            list.add(new BlockFace(pos.relative(d), d.getOpposite()));
-        }
-        return list;
-    }
-
-    @Override
-    public boolean isFunctionalNode() {
         return true;
     }
 

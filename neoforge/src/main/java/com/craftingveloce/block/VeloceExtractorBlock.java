@@ -4,10 +4,6 @@ package com.craftingveloce.block;
 import com.craftingveloce.block.entity.VeloceExtractorBlockEntity;
 import com.craftingveloce.init.VeloceRegistry;
 import com.mojang.serialization.MapCodec;
-import com.tom.storagemod.block.IInventoryCable;
-import com.tom.storagemod.inventory.InventoryCableNetwork;
-import com.tom.storagemod.util.BlockFace;
-import com.tom.storagemod.util.TickerUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -40,7 +36,7 @@ import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 public class VeloceExtractorBlock extends BaseEntityBlock
-        implements EntityBlock, IInventoryCable, VeloceNetworkNode {
+        implements EntityBlock, VeloceNetworkNode {
 
     public static final MapCodec<VeloceExtractorBlock> CODEC = ChestBlock.simpleCodec(properties -> new VeloceExtractorBlock());
 
@@ -124,28 +120,11 @@ public class VeloceExtractorBlock extends BaseEntityBlock
     public void neighborChanged(BlockState state, Level world, BlockPos pos, Block block, BlockPos neighbor, boolean isMoving) {
         super.neighborChanged(state, world, pos, block, neighbor, isMoving);
         if (!world.isClientSide) {
-            InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
-            n.markNodeInvalid(pos);
-            n.markNodeInvalid(neighbor);
         }
     }
 
     @Override
     public boolean canConnectFrom(BlockState state, Direction dir) {
-        return true;
-    }
-
-    @Override
-    public List<BlockFace> nextScan(Level world, BlockState state, BlockPos pos) {
-        List<BlockFace> list = new ArrayList<>();
-        for (Direction d : Direction.values()) {
-            list.add(new BlockFace(pos.relative(d), d.getOpposite()));
-        }
-        return list;
-    }
-
-    @Override
-    public boolean isFunctionalNode() {
         return true;
     }
 

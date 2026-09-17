@@ -30,6 +30,13 @@ import build  # noqa: E402  (path set up above)
 
 DEFAULT_JAR = "neoforge/build/libs/craftingveloce-1.0.0.jar"
 
+# build.py compiles into its own hardcoded /tmp directory. Under Gradle the
+# classes land in the module's build dir instead, and validate_compat_gates runs
+# `javap` against build.BUILD_OUT. Point it at the real output, otherwise it
+# silently inspects stale classes left over from an old build.py run - which is
+# exactly how a missing class can look like a pass.
+GRADLE_CLASSES = "neoforge/build/classes/java/main"
+
 # Guards that only read the tree / the jar contents.
 NO_ARG_GUARDS = [
     "validate_packet_docs",
@@ -91,7 +98,12 @@ def main():
         print(f"no jar: {jar}\nRun ./gradlew :neoforge:build first.")
         return 2
 
-    print(f"guards against {jar}\n")
+    build.BUILD_OUT = GRADLE_CLASSES
+    if not os.path.isdir(GRADLE_CLASSES):
+        print(f"no compiled classes at {GRADLE_CLASSES}\nRun ./gradlew :neoforge:build first.")
+        return 2
+    print(f"guards against {jar}")
+    print(f"classes       {GRADLE_CLASSES}\n")
 
     results = []
 

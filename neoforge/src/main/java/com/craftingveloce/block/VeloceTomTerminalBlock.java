@@ -5,9 +5,6 @@ import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
 import com.craftingveloce.network.OpenTerminalScreenPKT;
 import com.mojang.serialization.MapCodec;
 import com.tom.storagemod.block.AbstractStorageTerminalBlock;
-import com.tom.storagemod.block.IInventoryCable;
-import com.tom.storagemod.inventory.InventoryCableNetwork;
-import com.tom.storagemod.util.BlockFace;
 import com.tom.storagemod.util.TickerUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -38,7 +35,7 @@ import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 
 public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock
-        implements EntityBlock, IInventoryCable, VeloceNetworkNode {
+        implements EntityBlock, VeloceNetworkNode {
     public static final MapCodec<VeloceTomTerminalBlock> CODEC = ChestBlock.simpleCodec(properties -> new VeloceTomTerminalBlock());
 
     public VeloceTomTerminalBlock() {
@@ -90,9 +87,6 @@ public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock
     public void neighborChanged(BlockState state, Level world, BlockPos pos, Block block, BlockPos neighbor, boolean isMoving) {
         super.neighborChanged(state, world, pos, block, neighbor, isMoving);
         if (!world.isClientSide) {
-            InventoryCableNetwork n = InventoryCableNetwork.getNetwork(world);
-            n.markNodeInvalid(pos);
-            n.markNodeInvalid(neighbor);
         }
     }
 
@@ -103,17 +97,6 @@ public class VeloceTomTerminalBlock extends AbstractStorageTerminalBlock
         if (p == TerminalPos.UP) d = Direction.UP;
         if (p == TerminalPos.DOWN) d = Direction.DOWN;
         return dir != d.getOpposite();
-    }
-
-    @Override
-    public List<BlockFace> nextScan(Level world, BlockState state, BlockPos pos) {
-        List<BlockFace> list = new ArrayList<>();
-        for (Direction d : Direction.values()) {
-            if (canConnectFrom(state, d)) {
-                list.add(new BlockFace(pos.relative(d), d.getOpposite()));
-            }
-        }
-        return list;
     }
 
     @Override
