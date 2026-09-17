@@ -89,13 +89,24 @@ public final class CVModuleTestCommand {
                                 .suggests((ctx, builder) ->
                                         SharedSuggestionProvider.suggest(VeloceProcessingRegistry.ids(), builder))
                                 .executes(ctx -> run(ctx.getSource(),
-                                        StringArgumentType.getString(ctx, "module"), null))
+                                        StringArgumentType.getString(ctx, "module"), null, null))
                                 .then(Commands.argument("block", StringArgumentType.word())
                                         .suggests((ctx, builder) ->
                                                 SharedSuggestionProvider.suggest(machineBlockPaths(), builder))
                                         .executes(ctx -> run(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "module"),
-                                                StringArgumentType.getString(ctx, "block")))))));
+                                                StringArgumentType.getString(ctx, "block"), null))
+                                        // A named recipe makes a failure reproducible:
+                                        // the verdict prints which recipe was drawn, so
+                                        // a red run can be replayed verbatim. Without a
+                                        // name the recipe is drawn at random, which is
+                                        // what turns one script into a sweep over the
+                                        // module's whole set when run repeatedly.
+                                        .then(Commands.argument("recipe", StringArgumentType.word())
+                                                .executes(ctx -> run(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "module"),
+                                                        StringArgumentType.getString(ctx, "block"),
+                                                        StringArgumentType.getString(ctx, "recipe"))))))));
     }
 
     /** Block paths of our machines, for the optional explicit choice. */
@@ -110,7 +121,7 @@ public final class CVModuleTestCommand {
         return paths;
     }
 
-    private static int run(CommandSourceStack source, String moduleId, String wantedBlock) {
+    private static int run(CommandSourceStack source, String moduleId, String wantedBlock, String wantedRecipe) {
         ServerLevel level = source.getLevel();
         var player = source.getPlayer();
         if (player == null) {
@@ -149,16 +160,7 @@ public final class CVModuleTestCommand {
             return 0;
         }
 
-        // --- 2. a recipe this module can actually do ---
-        ProcessingEntry recipe = findRecipe(level, module);
-        if (recipe == null) {
-            source.sendFailure(Component.literal("§c" + moduleId
-                    + " has no recipe available in this game instance"));
-            return 0;
-        }
-        Item wanted = recipe.primaryResult().getItem();
-
-        // --- 3. the network: terminal | pipe | machine, barrel of ingredients ---
+        // --- 2. the network: terminal | pipe | machine, barrel of ingredients ---
         BlockPos terminalPos = base;
         BlockPos pipePos = base.offset(1, 0, 0);
         BlockPos machinePos = base.offset(2, 0, 0);
@@ -202,17 +204,37 @@ public final class CVModuleTestCommand {
         placeLikePlayer(level, terminalPos);
         placeLikePlayer(level, machinePos);
 
+        // --- 3. a recipe this module can actually do ---
+        // Picked AFTER the blocks are placed, because the built-in crafting module
+        // derives its item set from the crafting tables it can see in the network -
+        // asking before the network exists answers "no recipe" for a machine that is
+        // about to be perfectly capable of crafting.
+        ProcessingEntry recipe = findRecipe(level, module, wantedRecipe);
+        if (recipe == null) {
+            source.sendFailure(Component.literal("§c" + moduleId
+                    + (wantedRecipe == null
+                            ? " has no recipe available in this game instance"
+                            : " cannot do recipe '" + wantedRecipe + "'")));
+            return 0;
+        }
+        // The full result stack, NOT just its item. A potion's identity lives in a
+        // data component, so every potion shares one item - asking the terminal for
+        // "minecraft:potion" asks for a plain water bottle and would let the test
+        // pass while the recipe's actual potion was never made.
+        ItemStack wanted = recipe.primaryResult();
+
         int ingredientsPut = fillBarrel(level, barrelPos, recipe);
 
         source.sendSuccess(() -> Component.literal("§6[testmodule] §f" + moduleId
                 + " §7building and waiting " + SCAN_TICKS + " ticks for the network scan"), false);
-        source.sendSuccess(() -> Component.literal("§7  want §f" + wanted
-                + "§7, ingredients placed: §f" + ingredientsPut
-                + "§7, recipe: §f" + recipe.id()), false);
+        source.sendSuccess(() -> Component.literal("§7  want §f" + wanted.getHoverName().getString()
+                + "§7 (" + wanted.getItem() + "), recipe: §f" + recipe.id()
+                + "§7, ingredients placed: §f" + ingredientsPut), false);
 
         // --- 4. judge after the scan has had time to run ---
         var server = level.getServer();
-        server.tell(new TickTask(server.getTickCount() + SCAN_TICKS, () -> judge(level, terminalPos, wanted, moduleId)));
+        server.tell(new TickTask(server.getTickCount() + SCAN_TICKS,
+                () -> judge(level, terminalPos, wanted, moduleId, recipe.id().toString())));
 
         return 1;
     }
@@ -223,19 +245,23 @@ public final class CVModuleTestCommand {
      * <p>This is the whole point of the test - not "is the module registered", but
      * "does the network produce the item and hand it over".
      */
-    private static void judge(ServerLevel level, BlockPos terminalPos, Item wanted, String moduleId) {
+    private static void judge(ServerLevel level, BlockPos terminalPos, ItemStack wanted, String moduleId, String recipeId) {
         var manager = VelocePipeNetworkManager.get(level);
         var net = manager.getNetworkForTerminal(level, terminalPos);
         if (net == null) {
-            fail(moduleId, "the terminal is not connected to a network after " + SCAN_TICKS + " ticks");
+            fail(moduleId, recipeId, "the terminal is not connected to a network after " + SCAN_TICKS + " ticks");
             return;
         }
         if (!(level.getBlockEntity(terminalPos) instanceof VeloceTomTerminalBlockEntity terminal)) {
-            fail(moduleId, "no terminal block entity at " + terminalPos);
+            fail(moduleId, recipeId, "no terminal block entity at " + terminalPos);
             return;
         }
 
-        long stock = net.getAllItemCounts(level).getOrDefault(wanted, 0L);
+        // Stock is counted under the item the network actually stores. A potion is
+        // filed under its proxy item, so counting "minecraft:potion" would report an
+        // empty stock for a potion the network is holding.
+        Item stockKey = com.craftingveloce.util.VelocePotionMapper.getProxy(wanted);
+        long stock = net.getAllItemCounts(level).getOrDefault(stockKey, 0L);
 
         // MEASURE, do not guess. Two faults look identical from the outside:
         //   (a) the machine never made it into the network, or
@@ -265,19 +291,80 @@ public final class CVModuleTestCommand {
 
         VeloceTomTerminalBlockEntity.PullResult pulled;
         try {
-            // count=1, allowCrafting=true: the player path.
-            pulled = terminal.extractWithReason(new ItemStack(wanted), 1, true);
+            // count=1, allowCrafting=true: the player path. The result stack is sent
+            // whole - components included - so the terminal resolves the same proxy a
+            // player clicking that entry in the terminal would resolve.
+            pulled = terminal.extractWithReason(wanted.copyWithCount(1), 1, true);
         } catch (Throwable t) {
-            fail(moduleId, "asking the terminal threw " + t);
+            fail(moduleId, recipeId, "asking the terminal threw " + t);
             return;
         }
 
         if (pulled == null || pulled.stack().isEmpty()) {
             String why = pulled == null ? "no result" : pulled.reason() + " (" + pulled.detail() + ")";
-            fail(moduleId, "terminal could not deliver " + wanted + ": " + why);
+            fail(moduleId, recipeId, "terminal could not deliver " + wanted.getItem()
+                    + " from recipe " + recipeId + ": " + why);
             return;
         }
-        pass(moduleId, wanted, stock, pulled.stack().getCount());
+        // A potion's identity is a data component, so "a potion came back" is NOT the
+        // question - every potion is minecraft:potion. Compare the contents, or a
+        // delivery of plain water would be scored as a successful brew.
+        if (!samePotion(wanted, pulled.stack())) {
+            fail(moduleId, recipeId, "terminal delivered " + describePotion(pulled.stack())
+                    + " for recipe " + recipeId + ", which makes " + describePotion(wanted));
+            return;
+        }
+        pass(moduleId, wanted, recipeId, stock, pulled.stack().getCount());
+    }
+
+    /** Potion id of a stack, or null when it is not a potion at all. */
+    private static net.minecraft.resources.ResourceLocation potionId(ItemStack stack) {
+        if (stack.getItem() != net.minecraft.world.item.Items.POTION) return null;
+        return stack.getOrDefault(net.minecraft.core.component.DataComponents.POTION_CONTENTS,
+                        net.minecraft.world.item.alchemy.PotionContents.EMPTY)
+                .potion()
+                .flatMap(holder -> holder.unwrapKey().map(key -> key.location()))
+                .orElse(null);
+    }
+
+    /**
+     * Which potion a stack stands for, following our proxy items.
+     *
+     * <p>The network stores a potion as a proxy - a distinct item per potion, because
+     * every potion shares the single {@code minecraft:potion} item and stock has to
+     * be countable. A proxy therefore identifies a potion twice over, and both
+     * spellings must compare equal or a correct delivery would be scored a mismatch.
+     */
+    private static String potionIdentity(ItemStack stack) {
+        net.minecraft.resources.ResourceLocation id = potionId(stack);
+        if (id != null) {
+            return id.toString();
+        }
+        if (com.craftingveloce.util.VelocePotionMapper.isProxy(stack.getItem())) {
+            net.minecraft.resources.ResourceLocation real =
+                    potionId(com.craftingveloce.util.VelocePotionMapper.toRealPotion(stack.copyWithCount(1)));
+            if (real != null) {
+                return real.toString();
+            }
+        }
+        return null;
+    }
+
+    /** Do these two stacks stand for the same result? */
+    private static boolean samePotion(ItemStack a, ItemStack b) {
+        String ia = potionIdentity(a);
+        String ib = potionIdentity(b);
+        return ia != null || ib != null ? java.util.Objects.equals(ia, ib) : a.getItem() == b.getItem();
+    }
+
+    private static String describePotion(ItemStack stack) {
+        String identity = potionIdentity(stack);
+        if (identity == null) {
+            return stack.getItem().toString();
+        }
+        return stack.getItem() == net.minecraft.world.item.Items.POTION
+                ? identity
+                : identity + " (" + stack.getItem() + ")";
     }
 
     /**
@@ -318,16 +405,20 @@ public final class CVModuleTestCommand {
         return now;
     }
 
-    private static void pass(String moduleId, Item wanted, long stockBefore, int delivered) {
-        lastVerdict = "PASS " + moduleId + " | " + diag;
+    private static void pass(String moduleId, ItemStack wanted, String recipeId, long stockBefore, int delivered) {
+        // The recipe id goes into the verdict so a randomly drawn run that fails can
+        // be replayed exactly: the test is meant to be run over and over, and a
+        // failure is only useful if it can be reproduced.
+        String drawn = "recipe=" + recipeId + " item=" + describePotion(wanted);
+        lastVerdict = "PASS " + moduleId + " " + drawn + " | " + diag;
         com.craftingveloce.util.VeloceLog.Block.attempt(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
                 "[testmodule] PASS %s: delivered %dx %s (stock before: %d)",
-                moduleId, delivered, wanted, stockBefore);
+                moduleId, delivered, wanted.getItem(), stockBefore);
     }
 
-    private static void fail(String moduleId, String why) {
-        lastVerdict = "FAIL " + moduleId + ": " + why + " | " + diag;
+    private static void fail(String moduleId, String recipeId, String why) {
+        lastVerdict = "FAIL " + moduleId + " recipe=" + recipeId + ": " + why + " | " + diag;
         com.craftingveloce.util.VeloceLog.Block.error(
                 com.craftingveloce.util.VeloceLog.Side.SERVER, null,
                 "[testmodule] FAIL %s: %s", moduleId, why);
@@ -384,42 +475,110 @@ public final class CVModuleTestCommand {
     }
 
     /**
-     * First recipe of this module found anywhere.
+     * Draws a recipe this module can actually do.
      *
-     * <p>Scans the item registry rather than the recipe type's list because the
-     * module API is expressed per item ({@code recipesAnywhere}) - that is also
-     * how the existing module test network finds one.
+     * <p><b>Random, not first.</b> Taking the first recipe the module lists means
+     * every run exercises the same item, so the test answers "does this module work
+     * for ONE item" - not "for the items it offers". Drawing at random turns a
+     * single script into a sweep: run it a hundred times and a hundred different
+     * items are tested. A drawn failure is reproducible because the verdict prints
+     * the recipe id and it can be passed back in as {@code wantedRecipe}.
+     *
+     * <p><b>Why the pool is a list of items, not of recipes.</b> Building every
+     * recipe up front would mean walking the whole item registry through the recipe
+     * finder on each run. Instead the candidate items are shuffled and the first one
+     * that yields a recipe wins - one lookup on a healthy run, a full walk only when
+     * the module genuinely has nothing.
+     *
+     * @param wantedRecipe recipe id to test, or {@code null} to draw at random
      */
-    private static ProcessingEntry findRecipe(ServerLevel level, VeloceProcessingModule module) {
-        // Two different APIs, and using the wrong one is why this first reported
-        // "no recipe available":
+    private static ProcessingEntry findRecipe(ServerLevel level, VeloceProcessingModule module, String wantedRecipe) {
+        // Two different module APIs, and mixing them is not cosmetic:
         //
-        //   * the built-in modules (crafting, furnace, brewing) implement
-        //     producible(level, network) - the SET of items they can make - and
-        //     leave recipesAnywhere at its empty default;
-        //   * the compat modules (Create/Mekanism/Alchemistry) do the opposite.
+        //   * the built-in crafting/furnace modules publish a SET of producible items
+        //     through the recipe registry, and the concrete recipe comes from the
+        //     shared finder;
+        //   * brewing and the compat modules (Create/Mekanism/Alchemistry) answer per
+        //     item through recipesAnywhere and publish no set.
         //
-        // So the item set comes from the recipe registry for the built-ins and from
-        // the module itself for the rest, and the concrete recipe always comes from
-        // the shared finder, which knows about every source.
-        java.util.Set<Item> candidates = switch (module.id()) {
+        // Using the shared finder for the second kind is wrong: it answers "how is
+        // this made" across EVERY source, so a brewing test drew minecraft:oak_fence
+        // and create:jungle_window - recipes the brewing stand has nothing to do
+        // with - and failed a module that works.
+        java.util.Set<Item> registryItems = switch (module.id()) {
             case "crafting" -> VeloceRecipeRegistry.getAllCraftableItems(level);
             case "furnace" -> VeloceRecipeRegistry.getAllFurnaceCraftableItems(level);
             default -> java.util.Set.of();
         };
-        for (Item item : candidates) {
-            List<ProcessingEntry> found = com.craftingveloce.crafting.VeloceRecipeFinder.all(level, item);
-            if (!found.isEmpty()) {
-                return found.get(0);
+        boolean fromRegistry = !registryItems.isEmpty();
+
+        List<Item> probe;
+        if (fromRegistry) {
+            probe = new java.util.ArrayList<>(registryItems);
+        } else {
+            // The module's own list is the only honest source: collect exactly the
+            // items it says it can make, so a random draw is uniform over the module.
+            probe = new java.util.ArrayList<>();
+            for (Item item : BuiltInRegistries.ITEM) {
+                if (!module.recipesAnywhere(level, item).isEmpty()) {
+                    probe.add(item);
+                }
             }
         }
-        for (Item item : BuiltInRegistries.ITEM) {
-            List<ProcessingEntry> found = module.recipesAnywhere(level, item);
+
+        if (wantedRecipe != null) {
+            for (Item item : probe) {
+                for (ProcessingEntry entry : fromRegistry
+                        ? registryRecipesFor(level, module, item)
+                        : module.recipesAnywhere(level, item)) {
+                    if (entry.id().toString().equals(wantedRecipe)) {
+                        return entry;
+                    }
+                }
+            }
+            return null;
+        }
+
+        java.util.Collections.shuffle(probe, new java.util.Random(level.getRandom().nextLong()));
+        for (Item item : probe) {
+            List<ProcessingEntry> found = fromRegistry
+                    ? registryRecipesFor(level, module, item)
+                    : module.recipesAnywhere(level, item);
             if (!found.isEmpty()) {
                 return found.get(0);
             }
         }
         return null;
+    }
+
+    /**
+     * Registry-path recipes, narrowed to the types this module owns.
+     *
+     * <p>{@code VeloceRecipeFinder.all} answers "how is this made" and deliberately
+     * mixes every source: the recipe registry, all module families and the furnace.
+     * That is right for a player asking about an item, and wrong here. A furnace
+     * sweep drew {@code mekanism:enriching/conversion/stone/to_cracked_bricks} for an
+     * electric furnace - a recipe belonging to a module that is not even in the
+     * network - and failed a furnace that works. Filtering by the module's declared
+     * recipe types is the same rule the network itself uses to decide what a machine
+     * may make.
+     *
+     * <p>An item whose only recipes belong elsewhere yields an empty list, and the
+     * caller simply draws again; it never silently falls back to a foreign recipe.
+     */
+    private static List<ProcessingEntry> registryRecipesFor(ServerLevel level, VeloceProcessingModule module, Item item) {
+        List<ProcessingEntry> all = com.craftingveloce.crafting.VeloceRecipeFinder.all(level, item);
+        java.util.Set<net.minecraft.world.item.crafting.RecipeType<?>> types = module.recipeTypes();
+        if (types.isEmpty()) {
+            return all;
+        }
+        List<ProcessingEntry> owned = new java.util.ArrayList<>();
+        for (ProcessingEntry entry : all) {
+            if (types.contains(entry.type())) {
+                owned.add(entry);
+            }
+        }
+        return owned;
     }
 
     /** Puts every ingredient of the recipe into the barrel. Returns how many slots were filled. */

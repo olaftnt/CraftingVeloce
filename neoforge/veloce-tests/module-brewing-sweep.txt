@@ -1,0 +1,337 @@
+# Module: brewing  -  SWEEP over 25 independently drawn recipes.
+#
+# Why a sweep and not one case: /cv testmodule draws a recipe at RANDOM from
+# everything the module offers. One run therefore proves the module works for
+# ONE item; 25 runs prove it works for 25 of them. Re-running the same script
+# draws a different set, so items are never retested in the same order.
+#
+# A failing draw prints the recipe id, which can be replayed exactly:
+#     /cv testmodule brewing brewing_stand <recipe-id>
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-brewing-sweep -PveloceKeepOpen
+
+# --- draw 1/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 2/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 3/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 4/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 5/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 6/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 7/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 8/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 9/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 10/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 11/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 12/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 13/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 14/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 15/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 16/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 17/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 18/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 19/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 20/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 21/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 22/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 23/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 24/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
+# --- draw 25/25 ---
+/cv testmodule brewing brewing_stand
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL
+
