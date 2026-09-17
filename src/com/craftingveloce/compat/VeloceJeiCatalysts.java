@@ -70,10 +70,22 @@ public final class VeloceJeiCatalysts {
      * <p>The Veloce table is a fully fledged crafting table, so in JEI it is
      * supposed to show up on the "this can be done in" list next to the
      * Minecraft table.
+     *
+     * <p>The brewing stand is added to JEI's own {@code minecraft:brewing}
+     * category. Brewing has no vanilla {@code RecipeType} (the logic is hardcoded
+     * in the block), but JEI defines a brewing category of its own, so this is the
+     * only way our stand can appear on a brewing recipe's "can be done in" list -
+     * otherwise the player sees the recipe and no way to make it.
+     *
+     * <p>The UID is resolved by JEI at runtime and reported in the plugin's log
+     * line; if it is ever missing, the entry is skipped with a warning rather than
+     * breaking plugin loading.
      */
     public static void registerDefaults() {
         register("minecraft:crafting",
                 () -> com.craftingveloce.init.VeloceRegistry.VELOCE_CRAFTING_TABLE_ITEM.get());
+        register("minecraft:brewing",
+                () -> com.craftingveloce.init.VeloceRegistry.BREWING_STAND_ITEM.get());
     }
 
     /** A copy of the registry - the JEI plugin reads it only once JEI has loaded. */

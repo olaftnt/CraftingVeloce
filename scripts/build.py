@@ -1279,6 +1279,11 @@ def validate_block_models():
 JEI_CATEGORIES = {
     "src/com/craftingveloce/compat/VeloceJeiCatalysts.java": {
         "minecraft:crafting": "VELOCE_CRAFTING_TABLE_ITEM",
+        # Verified against the JEI JAR: mezz.jei.api.constants.RecipeTypes.BREWING
+        # exists and its UID is minecraft:brewing. Brewing has no vanilla
+        # RecipeType, so JEI's own category is the only way our stand can appear
+        # on a brewing recipe.
+        "minecraft:brewing": "BREWING_STAND_ITEM",
     },
     "src/com/craftingveloce/compat/create/CreateJeiCatalysts.java": {
         "create:milling": "VELOCE_MILLSTONE_MODULE_ITEM",
@@ -2133,6 +2138,38 @@ def validate_module_content_textures():
              + "\n  ".join(problems))
     note = f", skipped namespaces without a JAR here: {sorted(skipped_mods)}" if skipped_mods else ""
     print(f"    OK (module content textures: {checked} verified against the mod JARs{note})")
+
+
+def validate_potion_proxy_assets():
+    """
+    Every potion proxy item needs an item model and a name.
+
+    The proxies are ordinary registered items that stand in for potion states in
+    the network. They are what the planner matches on and what `producible()`
+    returns, so they show up in the terminal's craftable overlay and in JEI.
+    Registered without a model they render as the missing-texture block, and
+    without a lang key they show as the raw translation id - both look like the
+    mod is broken, and neither fails the build by itself.
+    """
+    reg = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    proxies = sorted(set(re.findall(r'ITEMS\.register\("(potion_[a-z_]+)"', reg)))
+    if not proxies:
+        fail("potion proxies:\n  no proxy items registered (the brewing proxy domain "
+             "would fall back to minecraft:potion and every recipe would collide)")
+    lang_path = "assets/craftingveloce/lang/en_us.json"
+    lang = json.load(open(lang_path, encoding="utf-8"))
+    problems = []
+    for name in proxies:
+        model = f"assets/craftingveloce/models/item/{name}.json"
+        if not os.path.exists(model):
+            problems.append(f"{name}: no item model ({model}) - renders as the "
+                            f"missing-texture block")
+        if f"item.craftingveloce.{name}" not in lang:
+            problems.append(f"{name}: no lang key - the terminal shows "
+                            f"'item.craftingveloce.{name}'")
+    if problems:
+        fail("potion proxy assets:\n  " + "\n  ".join(problems))
+    print(f"    OK (potion proxies: {len(proxies)} items, each with a model and a name)")
 
 
 def validate_energy_pull():
@@ -3518,6 +3555,7 @@ def main():
     validate_brewing_stand()
     validate_brewing_proxy()
     validate_module_content_textures()
+    validate_potion_proxy_assets()
     validate_pipe_energy()
     validate_module_info_gui()
     validate_jade_info()
