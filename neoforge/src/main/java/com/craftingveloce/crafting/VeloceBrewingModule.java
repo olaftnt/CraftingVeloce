@@ -82,6 +82,23 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
         addMix("brewing_weakness", "minecraft:water", Items.FERMENTED_SPIDER_EYE, "minecraft:weakness");
         addMix("brewing_poison", "minecraft:awkward", Items.SPIDER_EYE, "minecraft:poison");
         addMix("brewing_harming", "minecraft:poison", Items.FERMENTED_SPIDER_EYE, "minecraft:harming");
+
+        // The four base potions that were missing. The models for all of them
+        // already existed (assets/craftingveloce/models/item/potion_*.json), so the
+        // items were in the game and appeared in the terminal while nothing could
+        // produce them - a player could see a Mundane Potion and not make one.
+        //
+        //   Mundane      water   + redstone        (vanilla: water + redstone)
+        //   Thick        water   + glowstone dust  (vanilla: water + glowstone dust)
+        //   Slow Falling awkward + phantom membrane
+        //   Turtle Master awkward + turtle shell
+        //
+        // These are the RECIPES; the "any other ingredient brewed on water yields
+        // Mundane" rule of vanilla is a different shape - see the note below.
+        addMix("brewing_mundane", "minecraft:water", Items.REDSTONE, "minecraft:mundane");
+        addMix("brewing_thick", "minecraft:water", Items.GLOWSTONE_DUST, "minecraft:thick");
+        addMix("brewing_slow_falling", "minecraft:awkward", Items.PHANTOM_MEMBRANE, "minecraft:slow_falling");
+        addMix("brewing_turtle_master", "minecraft:awkward", Items.TURTLE_HELMET, "minecraft:turtle_master");
     }
     
     /**
