@@ -93,11 +93,33 @@ dependencies {
 
     // Alchemistry has no public maven we can resolve, so it stays a local file
     // dependency in libs/ (exactly as the old scripts/build.py did).
-    compileOnly rootProject.files(
+    def alchemistryJars = rootProject.files(
             "libs/alchemistry-1.21.1-2.4.5.jar",
             "libs/alchemylib-1.21.1-1.1.6.jar",
             "libs/chemlib-1.21.1-2.1.5.jar"
     )
+    compileOnly alchemistryJars
+
+    // --- present in the dev run, so the module blocks exist and can be tested by hand ---
+    //
+    // compileOnly above only satisfies javac; without these the optional mods are
+    // absent at runtime, their blocks never register, and /cv testmodule reports
+    // "no machine block registered" for every module that belongs to them.
+    //
+    // Create pulls two more jars, both from maven.createmod.net:
+    //   net.createmod.ponder:ponder-neoforge           (the Ponder library)
+    //   dev.engine-room.flywheel:flywheel-neoforge-*   (Flywheel, Create's renderer)
+    runtimeOnly "maven.modrinth:mekanism:5KzzycBT"
+    runtimeOnly "maven.modrinth:create:UjX6dr61"
+    runtimeOnly "net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1"
+    runtimeOnly "dev.engine-room.flywheel:flywheel-neoforge-1.21.1:1.0.4"
+    runtimeOnly alchemistryJars
+
+    // Recipe viewer and tooltip mod: not required by the mod, but the reason to
+    // have them here is manual testing - JEI shows what a block can make and Jade
+    // shows the machine status under the crosshair.
+    runtimeOnly "mezz.jei:jei-1.21.1-neoforge:19.56.0.439"
+    runtimeOnly "maven.modrinth:jade:eYz2YBGT"
 }
 
 // The game assets stay at the repository root (assets/, data/, src_meta/) so the
