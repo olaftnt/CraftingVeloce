@@ -43,9 +43,20 @@ public final class VeloceIconDumpScreen extends Screen {
     private final ItemStack stack;
     private final Path output;
 
-    /** Frames to wait before grabbing: the first draws, the second captures that frame. */
-    private int ticks;
-    private boolean done;
+    /**
+     * Frames drawn so far, and whether the picture has been taken.
+     *
+     * <p><b>The grab happens INSIDE the render, right after the item is drawn.</b> It used
+     * to happen in {@code tick()}, reading the frame the game had already presented - and
+     * that produced the wrong icon in groups: identical files came out for crafting_table,
+     * lectern and the empty casing; for all five vanilla machine contents; for all five
+     * Create ones. The reason is that a client does not draw a frame every tick, so between
+     * two ticks the presented frame can still be the one from several screens ago. Reading
+     * the target we have just drawn into removes the question.
+     */
+    private int frames;
+    private boolean grabbed;
+    private int ticksAfterGrab = -1;
 
     public VeloceIconDumpScreen(ItemStack stack, Path output) {
         super(Component.literal("Veloce icon dump"));
@@ -65,22 +76,26 @@ public final class VeloceIconDumpScreen extends Screen {
         graphics.pose().scale(scale, scale, scale);
         graphics.renderItem(this.stack, -8, -8);
         graphics.pose().popPose();
+
+        if (++frames >= 2 && !grabbed) {
+            grabbed = true;
+            try {
+                grab();
+            } catch (Throwable t) {
+                com.craftingveloce.CraftingVeloceMod.LOGGER.error(
+                        "[Veloce] icon dump failed for {}", this.stack, t);
+            }
+        }
     }
 
     @Override
     public void tick() {
-        if (done || ++ticks < 2) {
+        // Closing waits for the next tick, because a screen must not be replaced from
+        // inside its own render pass.
+        if (!grabbed || ticksAfterGrab < 0 || ++ticksAfterGrab < 2) {
             return;
         }
-        done = true;
-        try {
-            grab();
-        } catch (Throwable t) {
-            com.craftingveloce.CraftingVeloceMod.LOGGER.error(
-                    "[Veloce] icon dump failed for {}", this.stack, t);
-        } finally {
-            Minecraft.getInstance().setScreen(null);
-        }
+        Minecraft.getInstance().setScreen(null);
     }
 
     /** Takes the presented frame, cuts the icon out of it and writes the PNG. */
