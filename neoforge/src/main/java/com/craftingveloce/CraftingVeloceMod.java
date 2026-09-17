@@ -44,58 +44,11 @@ public class CraftingVeloceMod {
                         // separate places.
                         output.accept(VeloceRegistry.VELOCITY_FURNACE_ITEM.get());
                         output.accept(VeloceRegistry.ELECTRIC_FURNACE_ITEM.get());
-                        // The brewing stand was missing here, which is the same bug the
-                        // comment above describes for the furnaces: registered, but
-                        // unobtainable except by command.
+                        // The brewing stand was missing here - the same bug the comment
+                        // above describes for the furnaces: registered, but unobtainable
+                        // except by command.
                         output.accept(VeloceRegistry.BREWING_STAND_ITEM.get());
                         output.accept(VeloceRegistry.THRESHOLD_SENSOR_ITEM.get());
-                        // EVERY potion proxy, and this is not decoration.
-                        //
-                        // The item browser the terminal and the crafting table share
-                        // (VeloceCreativeScreen) builds its list from the creative tabs -
-                        // CreativeModeTabs.tabs() and their getDisplayItems(). An item in
-                        // no tab cannot be browsed, and an item that cannot be browsed
-                        // never gets a craftable count, because the client asks for
-                        // numbers only for the items it is showing
-                        // (RequestCraftableCountsPKT takes the visible list). That is why
-                        // a network with a brewing stand showed no numbers at all: the
-                        // potions it can make were invisible to the very screen that
-                        // would have offered them.
-                        int handAuthored = 0;
-                        for (var proxy : VeloceRegistry.handAuthoredProxyItems()) {
-                            output.accept(proxy.get());
-                            handAuthored++;
-                        }
-                        var generated = com.craftingveloce.init.VelocePotionProxies.created();
-                        for (net.minecraft.world.item.Item proxy : generated) {
-                            output.accept(proxy);
-                        }
-                        // Logged because the failure mode here is invisible: a proxy that
-                        // never reaches a tab silently has no craftable count anywhere.
-                        LOGGER.info("[Veloce] creative tab: brewing stand + {} hand-authored "
-                                        + "and {} generated potion proxies",
-                                handAuthored, generated.size());
-                        output.accept(VeloceRegistry.VELOCE_WRENCH.get());
-                        // Decorative casing - only the edges are visible, the
-                        // middle is empty.
-                        output.accept(VeloceRegistry.VELOCE_INTEGRALE_ITEM.get());
-                        // Entries from optional integrations - ONLY when the mod
-                        // is present. The check must be INSIDE the lambda:
-                        // displayItems ALWAYS runs (also without those mods), so
-                        // reaching for a module block without that condition
-                        // would load a class with a foreign type.
-                        if (com.craftingveloce.compat.mekanism.MekanismCompat.isPresent()) {
-                            com.craftingveloce.compat.mekanism.MekanismCompat
-                                    .addCreativeItems(output);
-                        }
-                        if (com.craftingveloce.compat.alchemistry.AlchemistryCompat.isPresent()) {
-                            com.craftingveloce.compat.alchemistry.AlchemistryCompat
-                                    .addCreativeItems(output);
-                        }
-                        if (com.craftingveloce.compat.create.CreateCompat.isPresent()) {
-                            com.craftingveloce.compat.create.CreateCompat
-                                    .addCreativeItems(output);
-                        }
                     })
                     .build()
     );

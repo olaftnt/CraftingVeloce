@@ -226,14 +226,19 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
 
         if (isShopSlot(slot) && slot.hasItem()) {
             ItemStack stack = slot.getItem();
-            long count = networkCounts.getOrDefault(stack.getItem(), 0L);
+            // Same key the request used - see VeloceCraftableCounts. Looking these up by
+            // the raw stack made BOTH numbers (green stock and yellow craftable) silently
+            // zero for every potion, while every other item was fine.
+            net.minecraft.world.item.Item key =
+                    com.craftingveloce.util.VelocePotionMapper.getProxy(stack);
+            long count = networkCounts.getOrDefault(key, 0L);
             if (count > 0) {
                 VeloceSlotOverlay.drawStock(graphics, this.font, count, slot.x, slot.y);
             }
             // The number of units that can still be made by auto-crafting.
             // Shown as "+N" in the top left corner - yellow, to tell it apart
             // from the green stock. Zero is not drawn.
-            long craftable = this.craftable.get(stack.getItem());
+            long craftable = this.craftable.get(key);
             if (craftable > 0) {
                 VeloceSlotOverlay.drawCraftable(graphics, this.font, craftable, slot.x, slot.y);
             }

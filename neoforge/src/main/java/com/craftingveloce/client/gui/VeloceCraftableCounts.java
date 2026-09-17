@@ -141,7 +141,16 @@ public final class VeloceCraftableCounts {
                 }
                 continue;
             }
-            Item item = slot.getItem().getItem();
+            // The PROXY, not the raw stack, and this is the whole fix for potions.
+            //
+            // The network counts its stock through VelocePotionMapper.getProxy - a real
+            // water bottle is reported as craftingveloce:potion_water - and the craftable
+            // set is keyed the same way. The terminal, however, DISPLAYS the raw stack
+            // (minecraft:potion). Asking about minecraft:potion therefore asked about an
+            // item that is in no recipe and in no craftable set, and the answer was
+            // always zero, which is not drawn. Every other item is unaffected:
+            // getProxy(stack) returns the item itself for anything that is not a potion.
+            Item item = com.craftingveloce.util.VelocePotionMapper.getProxy(slot.getItem());
             if (seen.add(item)) {
                 visible.add(item);
                 // Signature: the composition and order of visible items.
