@@ -1,0 +1,92 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.141'
+}
+
+base {
+    archivesName = "craftingveloce"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+neoForge {
+    version = project.neo_version
+
+    mods {
+        craftingveloce {
+            sourceSet sourceSets.main
+        }
+    }
+
+    runs {
+        client {
+            client()
+        }
+        server {
+            server()
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content { includeGroup "maven.modrinth" }
+    }
+    maven {
+        name = "Create"
+        url = "https://maven.createmod.net"
+    }
+    maven {
+        name = "BlameJared (JEI, Jade)"
+        url = "https://maven.blamejared.com"
+    }
+    maven {
+        name = "Architectury"
+        url = "https://maven.architectury.dev"
+    }
+    maven {
+        name = "Shedaniel"
+        url = "https://maven.shedaniel.me"
+    }
+}
+
+dependencies {
+    // --- required ---
+    implementation "maven.modrinth:toms-storage:WQAMoIMC"
+
+    // --- optional integrations (compileOnly) ---
+    compileOnly "maven.modrinth:create:UjX6dr61"
+    compileOnly "net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1"
+    compileOnly "mezz.jei:jei-1.21.1-neoforge:19.56.0.439"
+    compileOnly "maven.modrinth:jade:eYz2YBGT"
+    compileOnly "maven.modrinth:mekanism:5KzzycBT"
+    compileOnly "maven.modrinth:refined-storage:lHHiI26k"
+    // JEI annotates with @ApiStatus; javac warns without this on the path.
+    compileOnly "org.apiguardian:apiguardian-api:1.1.2"
+
+    // Alchemistry has no public maven we can resolve, so it stays a local file
+    // dependency in libs/ (exactly as the old scripts/build.py did).
+    compileOnly rootProject.files(
+            "libs/alchemistry-1.21.1-2.4.5.jar",
+            "libs/alchemylib-1.21.1-1.1.6.jar",
+            "libs/chemlib-1.21.1-2.1.5.jar"
+    )
+}
+
+// The game assets stay at the repository root (assets/, data/, src_meta/) so the
+// existing scripts/build.py guards keep working and so changes made on main to
+// those paths do not turn into delete/modify conflicts when we merge back.
+processResources {
+    from(rootProject.projectDir) {
+        include "assets/**"
+        include "data/**"
+    }
+    from(rootProject.file("src_meta")) {
+        include "META-INF/**"
+    }
+}

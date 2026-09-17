@@ -1,0 +1,6 @@
+// Root project: shared configuration only. Each loader module applies its own
+// toolchain plugin (see neoforge/build.gradle).
+allprojects {
+    group = project.mod_group
+    version = project.mod_version
+}

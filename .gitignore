@@ -1,6 +1,15 @@
+# Build output
 *.class
-*.jar
 *.zip
+.gradle/
+build/
+*/build/
+
+# Local compileOnly dependency jars (third-party mods, never shipped)
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# Generated / scratch directories
 craftingveloce_classes/
 craftingveloce_jar_root/
 toms_storage_compiled/

@@ -1,0 +1,20 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url = "https://maven.neoforged.net/releases" }
+        maven { url = "https://maven.architectury.dev/" }
+        maven { url = "https://maven.fabricmc.net/" }
+    }
+}
+
+plugins {
+    // Lets Gradle download a matching JDK (21) automatically when the machine
+    // has only a newer JVM installed.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+rootProject.name = "craftingveloce"
+
+// The NeoForge module builds the mod today. `common/` and `fabric/` will be
+// added here once the platform-independent core is extracted (see README).
+include("neoforge")
