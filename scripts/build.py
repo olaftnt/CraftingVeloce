@@ -2245,14 +2245,63 @@ def validate_module_content_textures():
                                 f"(not present in {os.path.basename(jar)})")
         checked += 1
 
+    # --- the other half: the cube is GONE, and something composes the real icon ---
+    #
+    # These models used to hide a cube at [4,4,4]..[12,12,12] whose six faces all pointed
+    # at #content - one wall of the machine stretched over every side, including the lid.
+    # The geometry that put the machine inside the frame now lives in a BakedModel, so
+    # textures.content is no longer read by any element. Two ways that can go wrong, and
+    # both are silent:
+    #
+    #   * the cube comes back -> the content renders TWICE, once composed and once as the
+    #     old stretched cube;
+    #   * the composition is dropped -> the frame renders EMPTY, which looks exactly like
+    #     a casing that was never finished.
+    for path in sorted(glob.glob("assets/craftingveloce/models/item/*.json")):
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        for element in data.get("elements") or []:
+            faces = element.get("faces") or {}
+            if {f.get("texture") for f in faces.values()} == {"#content"}:
+                problems.append(f"{os.path.basename(path)}: still has the old #content cube "
+                                f"({element.get('from')}..{element.get('to')}) - the content "
+                                f"would render twice, composed and stretched")
+                break
+
+    composer = "neoforge/src/main/java/com/craftingveloce/CraftingVeloceMod.java"
+    model = "neoforge/src/main/java/com/craftingveloce/client/render/VeloceCaseItemModel.java"
+    if not os.path.exists(model):
+        problems.append("no VeloceCaseItemModel - nothing puts the machine inside the frame, "
+                        "so every casing item icon renders as an empty box")
+    else:
+        body = _strip_comments(open(model, encoding="utf-8").read())
+        for need, what in (("contentModel.getQuads", "drawing the content model"),
+                           ("caseModel.getQuads", "drawing the casing over it"),
+                           ("contentTransform.transformPosition", "placing the content"),
+                           ("CONTENT_SCALE", "the size the world renderer also uses")):
+            if need not in body:
+                problems.append("VeloceCaseItemModel without " + what)
+    if os.path.exists(composer):
+        wired = open(composer, encoding="utf-8").read()
+        if "VeloceCaseItemModel" not in wired or "VeloceCaseContents.all()" not in wired:
+            problems.append("the bake listener does not compose the casing icons - the item "
+                            "models have no content element any more, so every casing would "
+                            "render as an empty frame")
+
     if checked == 0:
-        print("    OK (module content textures: no foreign-mod JAR present to check against)")
+        if problems:
+            fail("module content textures:\n  " + "\n  ".join(problems))
+        print("    OK (module content textures: no foreign-mod JAR present to check against; "
+              "casing icons composed at bake time, old cube absent)")
         return
     if problems:
         fail("module content textures point at textures that do not exist:\n  "
              + "\n  ".join(problems))
     note = f", skipped namespaces without a JAR here: {sorted(skipped_mods)}" if skipped_mods else ""
-    print(f"    OK (module content textures: {checked} verified against the mod JARs{note})")
+    print(f"    OK (module content textures: {checked} verified against the mod JARs{note}; "
+          f"casing icons composed at bake time, old cube absent)")
 
 
 def validate_potion_proxy_assets():
@@ -3520,13 +3569,20 @@ def validate_integrale_model():
         if block_id == "veloce_integrale":
             continue   # The EMPTY casing: it has no contents and must not have any
         item_file = f"assets/craftingveloce/models/item/{block_id}.json"
-        icon = open(item_file, encoding="utf-8").read() if os.path.exists(item_file) else ""
-        has_content = "#content" in icon
-        is_case = has_content or bs_models[0] == "craftingveloce:block/veloce_integrale_frame"
+        icon = json.load(open(item_file, encoding="utf-8")) if os.path.exists(item_file) else {}
+        # Which machine this casing claims to represent is now a textures.content ENTRY,
+        # not a #content element: the geometry that used to read it is gone from the JSON
+        # and the content is composed at bake time instead (VeloceCaseItemModel). A casing
+        # with neither the entry nor the composition renders as an empty frame, which is
+        # why both halves are checked - the entry here, the composition in
+        # validate_module_content_textures.
+        content_texture = (icon.get("textures") or {}).get("content")
+        is_case = content_texture is not None or bs_models[0] == "craftingveloce:block/veloce_integrale_frame"
         if not is_case:
             continue
-        if not has_content:
-            problems.append(f"{block_id}: casing without contents in the item icon (#content)")
+        if content_texture is None:
+            problems.append(f"{block_id}: casing without a content texture entry - nothing "
+                            f"says which machine it represents, so its icon has no inside")
         wrong = [m for m in bs_models if m and not m.startswith(allowed_models)]
         if wrong:
             problems.append(f"{block_id}: casing with a foreign model {wrong[0]}")
@@ -3537,7 +3593,7 @@ def validate_integrale_model():
     if problems:
         fail("veloce_integrale frame model:\n  " + "\n  ".join(problems))
     print(f"    OK (frame: {len(bars)} rods + glass {glass_texture}, "
-          f"6 side panels, translucent; crafting table facade + icon with the table)")
+          f"6 side panels, translucent; per-block facade, icons composed at bake time)")
 
 def game_running():
 

@@ -56,7 +56,12 @@ import java.util.concurrent.ConcurrentHashMap;
 public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRenderer<T> {
 
     /** Size of the content: the casing window is 12 px (0.75 of a block). */
-    private static final float CONTENT_SCALE = 0.45F;
+    /**
+     * Size of the content relative to a full block, shared with
+     * {@link VeloceCaseItemModel} so the icon and the world cannot place the content
+     * at two different sizes.
+     */
+    public static final float CONTENT_SCALE = 0.45F;
 
     /** Rotation speed of the whole content in degrees per tick (full turn ~10 s). */
     private static final float SPIN_DEGREES_PER_TICK = 0.6F;
