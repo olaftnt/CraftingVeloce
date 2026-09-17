@@ -187,9 +187,17 @@ public final class CVModuleTestCommand {
         // Doing only the node half left the machines attached to a pipe that was
         // never part of any network - so a module looking its machine up through
         // the network reported "needs a machine" with the machine right there.
-        VelocePipeNetworkManager.get(level).onPipePlaced(level, pipePos);
-        VeloceNodeBlocks.onNodePlaced(level, terminalPos);
-        VeloceNodeBlocks.onNodePlaced(level, machinePos);
+        // Run the SAME hook the game runs when a player places a block, in the same
+        // order, instead of calling individual registration methods by hand.
+        //
+        // Trying to pick the right hook myself went wrong twice: setBlock runs
+        // neither onPipePlaced (which creates the network) nor onNodePlaced (which
+        // registers a machine), and calling them by hand still left the brewing
+        // stand invisible to its own module. setPlacedBy is what the game calls, so
+        // whatever a hand-placed block ends up registered as, this is too.
+        placeLikePlayer(level, pipePos);
+        placeLikePlayer(level, terminalPos);
+        placeLikePlayer(level, machinePos);
 
         int ingredientsPut = fillBarrel(level, barrelPos, recipe);
 
@@ -294,6 +302,12 @@ public final class CVModuleTestCommand {
         com.craftingveloce.util.VeloceLog.Block.error(
                 com.craftingveloce.util.VeloceLog.Side.SERVER, null,
                 "[testmodule] FAIL %s: %s", moduleId, why);
+    }
+
+    /** Runs the placement hook the game runs when a player places this block. */
+    private static void placeLikePlayer(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        state.getBlock().setPlacedBy(level, pos, state, null, ItemStack.EMPTY);
     }
 
     /**
