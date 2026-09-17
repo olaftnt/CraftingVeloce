@@ -107,6 +107,15 @@ public final class CVModuleTestCommand {
                                                 SharedSuggestionProvider.suggest(VeloceProcessingRegistry.ids(), builder))
                                         .executes(ctx -> list(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "module")))))
+                        // Which machines exist, what each one handles, and whether that
+                        // type has any recipes at all. Answers "did we add a block that
+                        // makes nothing" and "is there a recipe nothing can make".
+                        .then(Commands.literal("audit")
+                                .then(Commands.argument("module", StringArgumentType.word())
+                                        .suggests((ctx, builder) ->
+                                                SharedSuggestionProvider.suggest(VeloceProcessingRegistry.ids(), builder))
+                                        .executes(ctx -> audit(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "module")))))
                         .then(Commands.literal("result").executes(ctx -> {
                             ctx.getSource().sendSuccess(() -> Component.literal(lastVerdict), false);
                             return 1;
@@ -164,6 +173,111 @@ public final class CVModuleTestCommand {
             case "furnace" -> !VeloceRecipeRegistry.getAllFurnaceCraftableItems(level).isEmpty();
             default -> false;
         };
+    }
+
+    /**
+     * Reports, per machine block, the recipe type it handles and how many recipes
+     * that type actually has in this instance.
+     *
+     * <p>Two opposite mistakes hide behind a green test run, and neither is visible
+     * from "the module works":
+     *
+     * <ul>
+     *   <li>a machine whose type has NO recipes - a block that was added and makes
+     *       nothing, which the rig-only SKIP path would happily report as fine;</li>
+     *   <li>a recipe type of the module that NO machine handles - recipes the player
+     *       can see in JEI and can never make.</li>
+     * </ul>
+     *
+     * <p>Counted per type through the recipe manager rather than through the module,
+     * so the number is what the GAME has, not what our own index believes.
+     */
+    private static int audit(CommandSourceStack source, String moduleId) {
+        ServerLevel level = source.getLevel();
+        VeloceProcessingModule module = null;
+        for (VeloceProcessingModule candidate : VeloceProcessingRegistry.all()) {
+            if (candidate.id().equals(moduleId)) {
+                module = candidate;
+                break;
+            }
+        }
+        if (module == null) {
+            source.sendFailure(Component.literal("§cNo such module: " + moduleId));
+            return 0;
+        }
+
+        int blocks = 0;
+        int emptyBlocks = 0;
+        java.util.Set<net.minecraft.world.item.crafting.RecipeType<?>> covered = new java.util.HashSet<>();
+        for (Block block : BuiltInRegistries.BLOCK) {
+            var id = BuiltInRegistries.BLOCK.getKey(block);
+            if (id == null || !"craftingveloce".equals(id.getNamespace())
+                    || !id.getPath().contains(moduleId)
+                    || !(block instanceof com.craftingveloce.block.VeloceFeModuleBlock fe)) {
+                continue;
+            }
+            blocks++;
+            var type = fe.module().recipeType().get();
+            covered.add(type);
+            int total = recipeCount(level, type);
+            int own = ownRecipes(level, type, moduleId);
+            if (total == 0) {
+                emptyBlocks++;
+            }
+            LOG.info("[audit] MACHINE {} | id={} | type={} | recipes={} | ownNamespace={}",
+                    id.getPath(), fe.module().id(), BuiltInRegistries.RECIPE_TYPE.getKey(type), total, own);
+        }
+
+        int uncovered = 0;
+        for (var type : module.recipeTypes()) {
+            if (!covered.contains(type)) {
+                uncovered++;
+                LOG.info("[audit] UNCOVERED {} | type={} | recipes={}",
+                        moduleId, BuiltInRegistries.RECIPE_TYPE.getKey(type), recipeCount(level, type));
+            }
+        }
+        // Every recipe type the MOD actually registers, not just the ones our family
+        // lists. Comparing against our own list could never reveal a machine we simply
+        // forgot to add - the list would agree with itself.
+        for (var type : BuiltInRegistries.RECIPE_TYPE) {
+            var typeId = BuiltInRegistries.RECIPE_TYPE.getKey(type);
+            if (typeId == null || !moduleId.equals(typeId.getNamespace())) {
+                continue;
+            }
+            int count = recipeCount(level, type);
+            boolean ours = covered.contains(type);
+            LOG.info("[audit] NAMESPACE_TYPE {} | recipes={} | {}", typeId, count,
+                    ours ? "MACHINE_PRESENT" : (count > 0 ? "*** NO_MACHINE ***" : "no recipes"));
+        }
+        LOG.info("[audit] SUMMARY {} | machines={} | emptyMachines={} | declaredTypes={} | uncoveredTypes={}",
+                moduleId, blocks, emptyBlocks, module.recipeTypes().size(), uncovered);
+
+        final int fBlocks = blocks;
+        final int fEmpty = emptyBlocks;
+        final int fUncovered = uncovered;
+        source.sendSuccess(() -> Component.literal("§6[audit] §f" + moduleId + "§7 machines=" + fBlocks
+                + " empty=" + fEmpty + " uncovered=" + fUncovered), false);
+        return blocks;
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static int recipeCount(ServerLevel level, net.minecraft.world.item.crafting.RecipeType<?> type) {
+        return level.getRecipeManager().getAllRecipesFor((net.minecraft.world.item.crafting.RecipeType) type).size();
+    }
+
+    /** How many of those recipes produce an item of the mod's own namespace. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static int ownRecipes(ServerLevel level, net.minecraft.world.item.crafting.RecipeType<?> type, String namespace) {
+        int own = 0;
+        for (Object holder : level.getRecipeManager().getAllRecipesFor(
+                (net.minecraft.world.item.crafting.RecipeType) type)) {
+            var recipe = ((net.minecraft.world.item.crafting.RecipeHolder<?>) holder).value();
+            var id = BuiltInRegistries.ITEM.getKey(recipe.getResultItem(level.registryAccess()).getItem());
+            if (id != null && namespace.equals(id.getNamespace())) {
+                own++;
+            }
+        }
+        return own;
     }
 
     /** Prints every recipe id this module offers, one per line. */
