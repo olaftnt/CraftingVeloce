@@ -22,6 +22,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 
 import java.util.List;
@@ -127,6 +128,14 @@ public final class CVModuleTestCommand {
         }
 
         BlockPos base = player.blockPosition().offset(2, 0, 0);
+
+        // Clear the build area first. The dev world persists between runs, so a
+        // machine left by an EARLIER case stays in the network and answers for the
+        // one under test: a velocity_furnace left from a previous script made the
+        // electric furnace look as if it smelted on no charge, because the heat
+        // came from the leftover. Each case has to start from nothing for its
+        // result to mean anything.
+        clearBuildArea(level, base);
 
         // --- 1. the machine block of this module ---
         Block machine = findMachineBlock(moduleId, wantedBlock);
@@ -265,6 +274,25 @@ public final class CVModuleTestCommand {
         com.craftingveloce.util.VeloceLog.Block.error(
                 com.craftingveloce.util.VeloceLog.Side.SERVER, null,
                 "[testmodule] FAIL %s: %s", moduleId, why);
+    }
+
+    /**
+     * Removes our blocks and any barrels around the build area.
+     *
+     * <p>Only the region this command builds in, and only our own blocks plus the
+     * barrels it places - so a leftover network from an earlier case cannot
+     * contribute heat, storage or a crafter to the case being judged.
+     */
+    private static void clearBuildArea(ServerLevel level, BlockPos base) {
+        for (BlockPos p : BlockPos.betweenClosed(base.offset(-4, -1, -3), base.offset(4, 1, 3))) {
+            BlockState state = level.getBlockState(p);
+            var id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+            boolean ours = id != null && "craftingveloce".equals(id.getNamespace());
+            boolean barrel = state.is(Blocks.BARREL);
+            if (ours || barrel) {
+                level.setBlock(p, Blocks.AIR.defaultBlockState(), Block.UPDATE_ALL);
+            }
+        }
     }
 
     /** The machine block registered for this module id, or null when its mod is absent. */
