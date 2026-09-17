@@ -236,6 +236,8 @@ public class CraftingVeloceMod {
                     event.getDispatcher(), event.getBuildContext());
             // /cv test list | run <script>: drives the in-game test scripts.
             com.craftingveloce.test.VeloceTestDriver.register(event.getDispatcher());
+            // /cv testmodule <id>: end-to-end test of one processing module.
+            com.craftingveloce.commands.CVModuleTestCommand.register(event.getDispatcher());
         });
 
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock.class, event -> {

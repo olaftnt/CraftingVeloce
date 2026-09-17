@@ -1,0 +1,20 @@
+# End-to-end craft test for ONE processing module.
+#
+# Builds a real network next to the player (terminal + pipe + machine + barrel),
+# fills the barrel with the ingredients of a recipe this module can actually do,
+# waits for the network scan, and then asks the terminal for the result through
+# extractWithReason - the exact call a player makes by clicking an item.
+#
+# The point is the chain, not the pieces: a source guard can prove the module is
+# registered and the method exists, but only this can prove the machine plans,
+# consumes the ingredients and hands over the item.
+
+/cv testmodule furnace
+expect: building and waiting
+expect: ingredients placed:
+
+wait: 100
+
+/cv testmodule result
+expect: PASS
+expectnot: FAIL

@@ -129,44 +129,68 @@ public final class VeloceTestDriver {
             source.sendFailure(Component.literal("§cNo such script: " + path));
             return 0;
         }
+        List<VeloceTestScript.Step> steps;
         try {
-            VeloceTestScript.Result result = execute(path, player.server, player);
-            report(source, result);
-            return result.ok() ? result.passed() : 0;
+            steps = VeloceTestScript.parse(Files.readString(path));
         } catch (IOException e) {
             source.sendFailure(Component.literal("§cCannot read " + path + ": " + e.getMessage()));
             return 0;
         }
+        String scriptName = path.getFileName().toString().replace(".txt", "");
+        // Asynchronous: a script with `wait:` finishes many ticks from now.
+        VeloceTestScript.run(scriptName, steps, player.server, player,
+                result -> report(source, result));
+        return 1;
     }
 
     private static void runAutomatically(ServerPlayer player, Path path) {
         MinecraftServer server = player.server;
         VeloceLog.Block.attempt(VeloceLog.Side.SERVER, "[test] auto-run: %s", path);
-        VeloceTestScript.Result result;
+
+        List<VeloceTestScript.Step> steps;
         try {
-            result = execute(path, server, player);
+            steps = VeloceTestScript.parse(Files.readString(path));
         } catch (IOException e) {
             VeloceLog.Block.error(VeloceLog.Side.SERVER, e, "[test] cannot read %s", path);
-            server.halt(false);
+            finish(server);
             return;
         }
 
-        // The result goes to the log as well as to chat, because a headless run
-        // is read from the log.
-        VeloceLog.Block.attempt(VeloceLog.Side.SERVER,
-                "[test] %s: %d passed, %d failed", result.name(), result.passed(), result.failed());
-        for (String failure : result.failures()) {
-            VeloceLog.Block.error(VeloceLog.Side.SERVER, null, "[test] FAIL %s", failure);
-        }
-        report(player.createCommandSourceStack(), result);
+        String scriptName = path.getFileName().toString().replace(".txt", "");
+        VeloceTestScript.run(scriptName, steps, server, player, result -> {
+            // The result goes to the log as well as to chat: an automated run is
+            // read from the log.
+            VeloceLog.Block.attempt(VeloceLog.Side.SERVER,
+                    "[test] %s: %d passed, %d failed", result.name(), result.passed(), result.failed());
+            for (String failure : result.failures()) {
+                VeloceLog.Block.error(VeloceLog.Side.SERVER, null, "[test] FAIL %s", failure);
+            }
+            report(player.createCommandSourceStack(), result);
+            writeResultFile(result);
+            if (result.ok()) {
+                VeloceLog.Block.attempt(VeloceLog.Side.SERVER, "[test] RESULT: PASS");
+            } else {
+                VeloceLog.Block.error(VeloceLog.Side.SERVER, null, "[test] RESULT: FAIL");
+            }
+            finish(server);
+        });
+    }
 
-        writeResultFile(result);
-        if (result.ok()) {
-            VeloceLog.Block.attempt(VeloceLog.Side.SERVER, "[test] RESULT: PASS");
+    /**
+     * Ends an automated run.
+     *
+     * <p>On a dedicated server halting is enough. In singleplayer the client is the
+     * same process as the server, and halting only the server leaves the client on
+     * the "Connection lost" screen forever - the build then hangs instead of
+     * reporting the result it already has. The client-only call is made through a
+     * separate class so that a server never loads it.
+     */
+    private static void finish(MinecraftServer server) {
+        if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+            com.craftingveloce.test.client.VeloceTestClientShutdown.quit();
         } else {
-            VeloceLog.Block.error(VeloceLog.Side.SERVER, null, "[test] RESULT: FAIL");
+            server.halt(false);
         }
-        server.halt(false);
     }
 
     /** Writes PASS/FAIL and every failure line, for the build task to read. */
@@ -184,13 +208,6 @@ public final class VeloceTestDriver {
         } catch (IOException e) {
             VeloceLog.Block.error(VeloceLog.Side.SERVER, e, "[test] cannot write %s", RESULT_FILE);
         }
-    }
-
-    private static VeloceTestScript.Result execute(Path path, MinecraftServer server, ServerPlayer player)
-            throws IOException {
-        String text = Files.readString(path);
-        String name = path.getFileName().toString().replace(".txt", "");
-        return VeloceTestScript.run(name, VeloceTestScript.parse(text), server, player);
     }
 
     private static void report(CommandSourceStack source, VeloceTestScript.Result result) {
