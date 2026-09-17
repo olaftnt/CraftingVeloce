@@ -84,10 +84,28 @@ public final class CVModuleTestCommand {
                                 .suggests((ctx, builder) ->
                                         SharedSuggestionProvider.suggest(VeloceProcessingRegistry.ids(), builder))
                                 .executes(ctx -> run(ctx.getSource(),
-                                        StringArgumentType.getString(ctx, "module"))))));
+                                        StringArgumentType.getString(ctx, "module"), null))
+                                .then(Commands.argument("block", StringArgumentType.word())
+                                        .suggests((ctx, builder) ->
+                                                SharedSuggestionProvider.suggest(machineBlockPaths(), builder))
+                                        .executes(ctx -> run(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "module"),
+                                                StringArgumentType.getString(ctx, "block")))))));
     }
 
-    private static int run(CommandSourceStack source, String moduleId) {
+    /** Block paths of our machines, for the optional explicit choice. */
+    private static java.util.List<String> machineBlockPaths() {
+        java.util.List<String> paths = new java.util.ArrayList<>();
+        for (Block block : BuiltInRegistries.BLOCK) {
+            var id = BuiltInRegistries.BLOCK.getKey(block);
+            if (id != null && "craftingveloce".equals(id.getNamespace())) {
+                paths.add(id.getPath());
+            }
+        }
+        return paths;
+    }
+
+    private static int run(CommandSourceStack source, String moduleId, String wantedBlock) {
         ServerLevel level = source.getLevel();
         var player = source.getPlayer();
         if (player == null) {
@@ -111,7 +129,7 @@ public final class CVModuleTestCommand {
         BlockPos base = player.blockPosition().offset(2, 0, 0);
 
         // --- 1. the machine block of this module ---
-        Block machine = findMachineBlock(moduleId);
+        Block machine = findMachineBlock(moduleId, wantedBlock);
         if (machine == null) {
             source.sendFailure(Component.literal("§c" + moduleId
                     + " has no machine block registered - is the mod that provides it installed?"));
@@ -250,7 +268,18 @@ public final class CVModuleTestCommand {
     }
 
     /** The machine block registered for this module id, or null when its mod is absent. */
-    private static Block findMachineBlock(String moduleId) {
+    private static Block findMachineBlock(String moduleId, String wantedBlock) {
+        // An explicit block wins. This matters for the furnace: velocity_furnace
+        // burns fuel while electric_furnace has a Forge Energy accumulator, and the
+        // two answer different questions. Without the choice, "furnace" resolves to
+        // whichever the registry happens to list first, and the FE cases would be
+        // measuring a machine that has no accumulator at all.
+        if (wantedBlock != null) {
+            var id = net.minecraft.resources.ResourceLocation.tryParse(
+                    wantedBlock.contains(":") ? wantedBlock : "craftingveloce:" + wantedBlock);
+            Block block = id == null ? null : BuiltInRegistries.BLOCK.get(id);
+            return block == Blocks.AIR ? null : block;
+        }
         for (Block block : BuiltInRegistries.BLOCK) {
             var id = BuiltInRegistries.BLOCK.getKey(block);
             if (id == null || !"craftingveloce".equals(id.getNamespace())) {
