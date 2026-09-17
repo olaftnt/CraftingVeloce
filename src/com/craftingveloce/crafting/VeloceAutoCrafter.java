@@ -41,6 +41,10 @@ import java.util.Set;
  */
 public final class VeloceAutoCrafter {
 
+    /** Recipe-resolver diagnostics (see {@code [VELOCE-DEBUG]} lines in the planner). */
+    private static final org.slf4j.Logger RESOLVER_LOG =
+            org.slf4j.LoggerFactory.getLogger("craftingveloce-resolver");
+
     /**
      * Recursion depth for REAL crafting.
      *
@@ -206,6 +210,7 @@ public final class VeloceAutoCrafter {
         long heatOps() {
             if (heatOpsCache < 0) {
                 heatOpsCache = VeloceHeatSources.totalOperations(level, network);
+                VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "HEAT OPS COMPUTED: " + heatOpsCache);
             }
             return heatOpsCache;
         }
@@ -776,8 +781,17 @@ public final class VeloceAutoCrafter {
         plan.runs.addAll(best.runs);
         VeloceCraftTrace.log("plan: requested %d, feasible %d, steps in plan %d, heat=%d",
                 wanted, planned, plan.runs.size(), plan.heatRemaining);
+        // [VELOCE-DEBUG] mirror of the trace line: the trace channel can be off, and
+        // "the resolver found nothing / found fewer than asked" is the single most
+        // useful fact when a recipe silently does not craft.
+        RESOLVER_LOG.debug("[VELOCE-DEBUG] recipe resolver: item={} requested={} feasible={} "
+                        + "steps={} heatRemaining={} proxy={}",
+                item, wanted, planned, plan.runs.size(), plan.heatRemaining,
+                com.craftingveloce.util.VelocePotionMapper.isProxy(item));
         for (var run : plan.runs) {
             VeloceCraftTrace.log("  plan step: %s x%d", run.recipe().id(), run.times());
+            RESOLVER_LOG.debug("[VELOCE-DEBUG] recipe resolver step: {} x{} (type={}, furnace={})",
+                    run.recipe().id(), run.times(), run.recipe().type(), run.recipe().isFurnace());
         }
         if (planned < wanted) {
             VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
@@ -923,7 +937,9 @@ public final class VeloceAutoCrafter {
             }
 
             // Recursion only for enabled items.
+
             if (!enabled.contains(item)) {
+                if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NOT ENABLED");
                 return false;
             }
 
@@ -934,8 +950,10 @@ public final class VeloceAutoCrafter {
                     orderRecipes(level, network, item, preferred, plan.heatRemaining > 0,
                             network.prefersFurnace(item));
             if (recipes.isEmpty()) {
+                if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NO RECIPES");
                 return false;
             }
+
 
             // Try successive recipes - the first feasible one wins.
             for (ProcessingEntry recipe : recipes) {
@@ -982,12 +1000,15 @@ public final class VeloceAutoCrafter {
         // We check BEFORE planning the ingredients, because when there is no heat
         // there is no point in planning them. If the rest of the plan fails, the
         // caller will undo the plan through rollbackTo, which gives the heat back.
-        if (recipe.isFurnace()) {
-            if (times > plan.heatRemaining) {
-                return false;
+
+            if (recipe.isFurnace()) {
+                if (times > plan.heatRemaining) {
+                    if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NO HEAT (times=" + times + ", remaining=" + plan.heatRemaining + ")");
+                    return false;
+                }
+                plan.heatRemaining -= times;
             }
-            plan.heatRemaining -= times;
-        }
+
 
         // First plan the ingredients (recursion), then record ourselves.
         //
@@ -1044,12 +1065,15 @@ public final class VeloceAutoCrafter {
                 stock.putAll(snap2);
                 plan.rollbackTo(mark2);
             }
+
             if (!supplied) {
+                if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NOT SUPPLIED (ingIndex=" + ingIndex + ")");
                 stock.clear();
                 stock.putAll(snapshot);
                 plan.rollbackTo(planMark);
                 return false;
             }
+
         }
 
         plan.add(recipe, times);
@@ -1204,6 +1228,7 @@ public final class VeloceAutoCrafter {
                     amount, ok ? "OK" : "NO", candidate.runs.size(),
                     (System.nanoTime() - startNanos) / 1_000_000L,
                     candidate.heatRemaining, estimateAborted());
+            if (!ok && amount == 16) { VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED! heatOps=%d, heatRemaining=%d, estimateAborted=%s", heatOps, candidate.heatRemaining, estimateAborted()); }
             if (ok) {
                 found = amount;
                 best = candidate;

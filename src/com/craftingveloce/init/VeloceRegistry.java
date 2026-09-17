@@ -281,9 +281,52 @@ public class VeloceRegistry {
         return BlockEntityType.Builder.of(factory::create, blocks).build(null);
     }
 
+        // Dummy potions for auto-crafting
+    public static final DeferredItem<Item> POTION_WATER = ITEMS.register("potion_water", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_AWKWARD = ITEMS.register("potion_awkward", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_MUNDANE = ITEMS.register("potion_mundane", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_THICK = ITEMS.register("potion_thick", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_NIGHT_VISION = ITEMS.register("potion_night_vision", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_INVISIBILITY = ITEMS.register("potion_invisibility", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_LEAPING = ITEMS.register("potion_leaping", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_FIRE_RESISTANCE = ITEMS.register("potion_fire_resistance", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_SWIFTNESS = ITEMS.register("potion_swiftness", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_SLOWNESS = ITEMS.register("potion_slowness", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_WATER_BREATHING = ITEMS.register("potion_water_breathing", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_HEALING = ITEMS.register("potion_healing", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_HARMING = ITEMS.register("potion_harming", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_POISON = ITEMS.register("potion_poison", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_REGENERATION = ITEMS.register("potion_regeneration", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_STRENGTH = ITEMS.register("potion_strength", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_WEAKNESS = ITEMS.register("potion_weakness", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_SLOW_FALLING = ITEMS.register("potion_slow_falling", () -> new Item(new Item.Properties()));
+    public static final DeferredItem<Item> POTION_TURTLE_MASTER = ITEMS.register("potion_turtle_master", () -> new Item(new Item.Properties()));
+
     public static void register(IEventBus modEventBus) {
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
+        modEventBus.addListener(net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent.class, event -> {
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("water", POTION_WATER.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("awkward", POTION_AWKWARD.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("mundane", POTION_MUNDANE.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("thick", POTION_THICK.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("night_vision", POTION_NIGHT_VISION.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("invisibility", POTION_INVISIBILITY.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("leaping", POTION_LEAPING.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("fire_resistance", POTION_FIRE_RESISTANCE.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("swiftness", POTION_SWIFTNESS.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("slowness", POTION_SLOWNESS.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("water_breathing", POTION_WATER_BREATHING.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("healing", POTION_HEALING.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("harming", POTION_HARMING.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("poison", POTION_POISON.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("regeneration", POTION_REGENERATION.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("strength", POTION_STRENGTH.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("weakness", POTION_WEAKNESS.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("slow_falling", POTION_SLOW_FALLING.get());
+            com.craftingveloce.util.VelocePotionMapper.registerProxy("turtle_master", POTION_TURTLE_MASTER.get());
+        });
+
         BLOCK_ENTITY_TYPES.register(modEventBus);
         MENU_TYPES.register(modEventBus);
     }

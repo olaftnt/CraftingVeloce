@@ -76,8 +76,19 @@ public class VeloceJeiPlugin implements IModPlugin {
             }
             registration.addRecipeCatalysts(category.get(), catalyst.item().get());
             added++;
+            // One line per catalyst: JEI/terminal parity means the same machine must
+            // advertise the same categories in both places, and a missing catalyst is
+            // invisible in game (the recipe simply shows no machine).
+            LOGGER.debug("[VELOCE-DEBUG] JEI catalyst: {} -> category {}",
+                    catalyst.item().get(), catalyst.category());
         }
         LOGGER.info("[Veloce][JEI] catalysts: {} added, {} without a category {}",
                 added, unknown.size(), unknown);
+        if (!unknown.isEmpty()) {
+            // A category we name but JEI does not know means a typo or a mod that did
+            // not register its recipe type - the machine silently stops appearing.
+            LOGGER.warn("[VELOCE-DEBUG] JEI categories with no registered recipe type: {} "
+                    + "(those machines will not show as a catalyst anywhere)", unknown);
+        }
     }
 }

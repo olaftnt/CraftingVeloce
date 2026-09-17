@@ -32,6 +32,9 @@ import java.util.List;
  */
 public final class VeloceNetworkSources {
 
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger("craftingveloce-sources");
+
     private VeloceNetworkSources() {
     }
 
@@ -39,19 +42,36 @@ public final class VeloceNetworkSources {
     public static <T> List<T> scan(ServerLevel level, VelocePipeNetwork network, Class<T> type) {
         List<T> out = new ArrayList<>();
         if (network == null) {
+            LOG.debug("[VELOCE-DEBUG] tile lookup for {}: no network", type.getSimpleName());
             return out;
         }
         List<BlockPos> nodes = new ArrayList<>(network.getTerminals());
         nodes.sort(Comparator.comparingLong(BlockPos::asLong));
+        int unloaded = 0;
+        int foreign = 0;
         for (BlockPos pos : nodes) {
             if (!level.isLoaded(pos)) {
+                unloaded++;
                 continue;
             }
+            // This is THE world-position -> tile lookup. When a machine "disappears"
+            // from the network, the useful question is whether its position was
+            // unloaded, whether the block entity was missing, or whether the type did
+            // not match - three very different causes that used to look identical.
             BlockEntity be = level.getBlockEntity(pos);
             if (type.isInstance(be)) {
                 out.add(type.cast(be));
+            } else {
+                foreign++;
+                LOG.debug("[VELOCE-DEBUG] tile lookup {}: position {} holds {} (wanted {})",
+                        type.getSimpleName(), pos.toShortString(),
+                        be == null ? "no block entity" : be.getClass().getSimpleName(),
+                        type.getSimpleName());
             }
         }
+        LOG.debug("[VELOCE-DEBUG] tile lookup {}: {} terminal(s) -> {} match(es), "
+                        + "{} unloaded, {} type mismatch",
+                type.getSimpleName(), nodes.size(), out.size(), unloaded, foreign);
         return out;
     }
 }

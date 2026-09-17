@@ -11,6 +11,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.Set;
+
 /**
  * Our brewing stand - a block entity OF OUR OWN.
  *
@@ -25,7 +27,11 @@ import net.minecraft.world.level.block.state.BlockState;
  * saving to NBT, the menu works. No mixing logic yet - that is a later stage.
  */
 public class VeloceBrewingStandBlockEntity extends BlockEntity
-        implements net.minecraft.world.Container, net.minecraft.world.MenuProvider, net.neoforged.neoforge.energy.IEnergyStorage {
+        implements net.minecraft.world.Container, net.minecraft.world.MenuProvider,
+        net.neoforged.neoforge.energy.IEnergyStorage, VeloceProcessingSource {
+
+    private static final org.slf4j.Logger LOG =
+            org.slf4j.LoggerFactory.getLogger("craftingveloce-brewing-stand");
 
     /** 0-2 bottles, 3 ingredient, 4 blaze powder - exactly like in vanilla. */
     private final SimpleContainer items = new SimpleContainer(5);
@@ -66,22 +72,100 @@ protected final net.minecraft.world.inventory.ContainerData dataAccess = new net
         public int get(int index) {
             switch (index) {
                 case 0: return VeloceBrewingStandBlockEntity.this.brewTime;
-                case 1: return VeloceBrewingStandBlockEntity.this.energy;
+                case 1: return VeloceBrewingStandBlockEntity.this.energy & 0xFFFF;
+                case 2: return (VeloceBrewingStandBlockEntity.this.energy >> 16) & 0xFFFF;
                 default: return 0;
             }
         }
         public void set(int index, int value) {
             switch (index) {
                 case 0: VeloceBrewingStandBlockEntity.this.brewTime = value; break;
-                case 1: VeloceBrewingStandBlockEntity.this.energy = value; break;
+                case 1: VeloceBrewingStandBlockEntity.this.energy = (VeloceBrewingStandBlockEntity.this.energy & 0xFFFF0000) | (value & 0xFFFF); break;
+                case 2: VeloceBrewingStandBlockEntity.this.energy = (VeloceBrewingStandBlockEntity.this.energy & 0xFFFF) | ((value & 0xFFFF) << 16); break;
             }
+            // GUI sync payload, RECEIVED side: ContainerData.set is called by the
+            // client when a ClientboundContainerSetDataPacket arrives. The 16-bit
+            // halves are logged separately so a mis-split is visible immediately.
+            LOG.debug("[VELOCE-DEBUG] brewing GUI sync received: index={} value={} -> brewTime={} energy={} FE",
+                    index, value, VeloceBrewingStandBlockEntity.this.brewTime,
+                    VeloceBrewingStandBlockEntity.this.energy);
         }
-        public int getCount() { return 2; }
+        public int getCount() { return 3; }
     };
 
     @Override
     public AbstractContainerMenu createMenu(int id, Inventory inv, Player player) {
         return new com.craftingveloce.inventory.VeloceBrewingStandMenu(id, inv, getBlockPos(), this.dataAccess);
+    }
+
+    /**
+     * The LIVE menu data of this block entity.
+     *
+     * <p><b>Why this must be reachable from outside.</b> The menu used to be opened
+     * with {@code new VeloceBrewingStandMenu(id, inv, pos)}, whose 3-argument
+     * constructor attached a throwaway {@code SimpleContainerData(3)}. Nothing ever
+     * wrote into that object, so {@code menu.getEnergy()} returned 0 forever and the
+     * battery gauge in the screen stayed at zero no matter how much FE the stand
+     * held - reported as "the brewing stand GUI battery remains dead/empty".
+     * {@code createMenu} was never called, because the block opened a
+     * {@code SimpleMenuProvider} of its own instead of the block entity.
+     */
+    public net.minecraft.world.inventory.ContainerData getDataAccess() {
+        return this.dataAccess;
+    }
+
+    // ------------------------------------------------------------------
+    // VeloceProcessingSource - the brewing recipe type must be PAYABLE
+    // ------------------------------------------------------------------
+
+    /**
+     * Brewing as a network machine.
+     *
+     * <p><b>The bug this fixes.</b> {@code VeloceBrewingModule} declares recipes of
+     * type {@code craftingveloce:brewing}, and the planner happily planned them -
+     * but at EXECUTION time {@code VeloceAutoCrafter.payForOperation} looked for a
+     * {@link VeloceProcessingSource} advertising that recipe type to pay with energy.
+     * The brewing stand did not implement this interface, so the lookup was empty,
+     * the payment failed and the craft aborted every single time - while the terminal
+     * kept advertising the potion as craftable. That is the "crafting potions is
+     * completely broken; the plan exists but nothing is produced" symptom.
+     */
+    @Override
+    public String moduleId() {
+        return "craftingveloce:brewing";
+    }
+
+    @Override
+    public Set<net.minecraft.world.item.crafting.RecipeType<?>> recipeTypes() {
+        return Set.of(com.craftingveloce.crafting.VeloceRecipes.getBrewing());
+    }
+
+    @Override
+    public long availableOperations() {
+        return energy / FE_PER_BREW;
+    }
+
+    @Override
+    public void consumeOperations(long operations) {
+        if (operations <= 0) {
+            return;
+        }
+        long cost = operations * FE_PER_BREW;
+        int before = energy;
+        energy = (int) Math.max(0L, energy - cost);
+        LOG.debug("[VELOCE-DEBUG] brew deduction at {}: ops={} x {} FE = {} FE, battery {} -> {} FE",
+                worldPosition.toShortString(), operations, FE_PER_BREW, cost, before, energy);
+        setChanged();
+    }
+
+    @Override
+    public boolean isPowered() {
+        return energy >= FE_PER_BREW;
+    }
+
+    @Override
+    public String sourceName() {
+        return "Veloce Brewing Stand";
     }
 
     @Override
@@ -102,9 +186,18 @@ protected final net.minecraft.world.inventory.ContainerData dataAccess = new net
 
 public static void serverTick(net.minecraft.world.level.Level level, BlockPos pos, BlockState state, VeloceBrewingStandBlockEntity be) {
         if (!(level instanceof net.minecraft.server.level.ServerLevel sl)) return;
-
         be.chargeFromItem();
         com.craftingveloce.network.pipe.VeloceEnergyPull.pull(sl, be.networkFor(sl), be, MAX_PULL_PER_TICK);
+
+        // META-RECIPE: instantly fill glass bottles with water
+        for (int i = 0; i < 3; i++) {
+            ItemStack bottle = be.items.getItem(i);
+            if (bottle.is(net.minecraft.world.item.Items.GLASS_BOTTLE)) {
+                be.items.setItem(i, com.craftingveloce.util.VelocePotionMapper.toRealPotion(com.craftingveloce.init.VeloceRegistry.POTION_WATER.get(), bottle.getCount()));
+                setChanged(level, pos, state);
+            }
+        }
+
 
         boolean canBrew = isBrewable(level.potionBrewing(), be.items);
         boolean isBrewing = be.brewTime > 0;

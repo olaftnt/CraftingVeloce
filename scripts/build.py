@@ -280,6 +280,24 @@ def _balanced(text, open_index):
     return None
 
 
+def _strip_comments(text):
+    """
+    Java source with comments removed.
+
+    Guards that look for a CODE pattern must not be satisfied - or tripped - by the
+    documentation that describes it. This bit twice in one session: a guard forbidding
+    `if (false)` fired on the Javadoc explaining why `if (false)` is forbidden, and a
+    guard forbidding `PotionContents` fired on a comment naming the class.
+
+    Note: this is a lexer-free approximation. It does not understand string literals,
+    so a guard for something that can appear inside a string (e.g. a resource path)
+    must NOT use it.
+    """
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    text = re.sub(r"//[^\n]*", "", text)
+    return text
+
+
 def _method_body(text, signature):
     """
     Method body (inside the braces) after the given start of the signature.
@@ -1276,12 +1294,34 @@ JEI_CATEGORIES = {
         "mekanism:enriching": "VELOCE_ENRICHMENT_MODULE_ITEM",
         "mekanism:combining": "VELOCE_COMBINER_MODULE_ITEM",
         "mekanism:sawing": "VELOCE_SAWMILL_MODULE_ITEM",
+        "mekanism:smelting": "VELOCE_SMELTING_MODULE_ITEM",
+        "mekanism:compressing": "VELOCE_COMPRESSING_MODULE_ITEM",
+        "mekanism:metallurgic_infusing": "VELOCE_METALLURGIC_INFUSING_MODULE_ITEM",
+        "mekanism:purifying": "VELOCE_PURIFYING_MODULE_ITEM",
+        "mekanism:injecting": "VELOCE_INJECTING_MODULE_ITEM",
+        "mekanism:crystallizing": "VELOCE_CRYSTALLIZING_MODULE_ITEM",
+        "mekanism:dissolution": "VELOCE_DISSOLUTION_MODULE_ITEM",
+        "mekanism:washing": "VELOCE_WASHING_MODULE_ITEM",
+        "mekanism:separating": "VELOCE_SEPARATING_MODULE_ITEM",
+        "mekanism:reaction": "VELOCE_REACTION_MODULE_ITEM",
+        "mekanism:rotary": "VELOCE_ROTARY_MODULE_ITEM",
+        "mekanism:activating": "VELOCE_ACTIVATING_MODULE_ITEM",
+        "mekanism:centrifuging": "VELOCE_CENTRIFUGING_MODULE_ITEM",
+        "mekanism:nucleosynthesizing": "VELOCE_NUCLEOSYNTHESIZING_MODULE_ITEM",
+        "mekanism:pigment_extracting": "VELOCE_PIGMENT_EXTRACTING_MODULE_ITEM",
+        "mekanism:pigment_mixing": "VELOCE_PIGMENT_MIXING_MODULE_ITEM",
+        "mekanism:painting": "VELOCE_PAINTING_MODULE_ITEM",
+        "mekanism:oxidizing": "VELOCE_OXIDIZING_MODULE_ITEM",
+        "mekanism:chemical_infusing": "VELOCE_CHEMICAL_INFUSING_MODULE_ITEM",
     },
     "src/com/craftingveloce/compat/alchemistry/AlchemistryJeiCatalysts.java": {
         "alchemistry:compactor": "VELOCE_COMPACTOR_MODULE_ITEM",
         "alchemistry:combiner": "VELOCE_COMBINER_MODULE_ITEM",
         "alchemistry:fission": "VELOCE_FISSION_MODULE_ITEM",
         "alchemistry:fusion": "VELOCE_FUSION_MODULE_ITEM",
+        "alchemistry:atomizer": "VELOCE_ATOMIZER_MODULE_ITEM",
+        "alchemistry:dissolver": "VELOCE_DISSOLVER_MODULE_ITEM",
+        "alchemistry:liquifier": "VELOCE_LIQUIFIER_MODULE_ITEM",
     },
 }
 
@@ -1801,6 +1841,32 @@ def validate_brewing_stand():
             and "extends BlockEntity" not in be_text:
         problems.append("the BE inherits from the vanilla one (this causes a type crash)")
 
+    # The brewing recipe type must be PAYABLE during execution.
+    #
+    # VeloceAutoCrafter.payForOperation pays a non-furnace recipe by asking for a
+    # VeloceProcessingSource that advertises the recipe's type. The brewing stand did
+    # not implement that interface, so `craftingveloce:brewing` had no machine to pay
+    # with, the payment failed on every attempt and the craft aborted - while the
+    # terminal kept showing the potion as craftable. That was the real reason
+    # "crafting potions is completely broken" even after the recipes were fixed.
+    #
+    # Checked on the CLASS DECLARATION, not in the file: the interface is also named
+    # in the Javadoc of the methods it adds, so a whole-file search stayed green when
+    # the `implements` clause was removed (calibration caught exactly that).
+    declaration = re.search(r"public class VeloceBrewingStandBlockEntity[^{]*\{",
+                            _strip_comments(be_text))
+    if declaration is None or "VeloceProcessingSource" not in declaration.group(0):
+        problems.append("the brewing stand does not implement VeloceProcessingSource "
+                        "(nothing can pay for a craftingveloce:brewing recipe, so "
+                        "every brew craft fails at execution)")
+    if "getBrewing()" not in be_text:
+        problems.append("the brewing stand does not advertise the brewing recipe type")
+    for need, what in (("public long availableOperations()", "counting how many brews it can pay for"),
+                       ("public void consumeOperations(", "charging energy per brew"),
+                       ("public boolean isPowered()", "reporting whether it can brew at all")):
+        if need not in be_text:
+            problems.append("the brewing stand without " + what)
+
     menu_text = open(menu, encoding="utf-8").read()
     # We look for the machine slots in the addSlot CALLS, not in the constants:
     # the constant name alone stays in the file even when the slot disappears
@@ -1812,12 +1878,57 @@ def validate_brewing_stand():
                        ("new Slot(playerInv,", "the player inventory")):
         if need not in menu_text:
             problems.append("the menu without " + what)
-    if "getBatterySlot" in menu_text:
-        problems.append("the brewing menu has a battery slot (this is not a FE machine)")
+
+    # THE BREWING STAND IS AN FE MACHINE.
+    #
+    # This guard used to assert the OPPOSITE ("no battery bar, brewing has no
+    # accumulator") and only passed because it looked for the literals
+    # "drawBattery"/"energyCapacity"/"getBatterySlot", which nobody happened to
+    # write. Forge Energy was then added to the stand and the stale guard kept
+    # passing - so the "the GUI battery stays empty" report had no test behind it.
+    # The checks below describe what the code must actually do.
+    if "addDataSlots(" not in menu_text:
+        problems.append("the brewing menu never syncs its ContainerData "
+                        "(the battery gauge can never move)")
+    if "getEnergy()" not in menu_text:
+        problems.append("the brewing menu does not expose the accumulator to the screen")
+
+    # The machine slots must not be hidden behind dead code again.
+    #
+    # They once sat inside `if (false) { ... }` under a comment saying they existed
+    # only to satisfy this very guard: the guard looked for the
+    # `new Slot(container, ...)` text and passed, while the GUI had no bottle slots
+    # at all. A text check cannot tell live code from unreachable code, so we also
+    # forbid the disabling of a block outright.
+    if "if (false)" in _strip_comments(menu_text) or "if(false)" in _strip_comments(menu_text):
+        problems.append("the brewing menu disables slots with `if (false)` "
+                        "(dead code cannot satisfy a check about working slots)")
+
+    # The menu must read the BLOCK ENTITY's container data. With a throwaway
+    # SimpleContainerData nothing ever writes the accumulator and the gauge is
+    # permanently 0 - the "battery stays dead/empty" report.
+    if "getDataAccess()" not in menu_text:
+        problems.append("the brewing menu does not attach the block entity's own "
+                        "ContainerData (a throwaway SimpleContainerData is never "
+                        "written, so the battery gauge reads 0 forever)")
+
+    # The accumulator is 25 000 000 FE, which does NOT fit in the 16-bit value that
+    # ContainerData can carry - so it MUST be sent as two 16-bit halves. Losing the
+    # split silently caps the gauge at 65535 FE, which looks like a dead battery.
+    be_split = _method_body(be_text, "protected final net.minecraft.world.inventory.ContainerData dataAccess")
+    if be_split is None:
+        be_split = be_text
+    if ">> 16) & 0xFFFF" not in be_split or "& 0xFFFF0000" not in be_split:
+        problems.append("the brewing stand does not split its energy into two 16-bit "
+                        "halves for ContainerData (a 25 000 000 FE accumulator overflows "
+                        "the 16-bit data slot and the gauge stays at/near empty)")
 
     screen_text = open(screen, encoding="utf-8").read()
-    if "drawBattery" in screen_text or "energyCapacity" in screen_text:
-        problems.append("the brewing screen draws a battery (brewing has no accumulator)")
+    for need, what in (("this.menu.getEnergy()", "reading the synced accumulator"),
+                       ("this.menu.getMaxEnergy()", "reading the accumulator capacity"),
+                       ("graphics.fill(", "drawing the battery fill")):
+        if need not in screen_text:
+            problems.append("the brewing screen without " + what)
     if "electric_furnace.png" not in screen_text:
         problems.append("the brewing screen does not use the furnace texture")
 
@@ -1854,6 +1965,174 @@ def validate_brewing_stand():
     if problems:
         fail("brewing stand:\n  " + "\n  ".join(problems))
     print("    OK (brewing stand: vanilla brewing logic + menu/slots + data)")
+
+
+def validate_brewing_proxy():
+    """
+    Brewing recipes MUST live in the PROXY domain - inputs and results alike.
+
+    Vanilla brewing has no RecipeType, so a potion STATE is represented in the
+    network by its own ordinary item (a proxy registered through
+    VelocePotionMapper). Everything the planner touches - the item it is asked
+    about, the ingredient it consumes, the result it produces - therefore has to
+    be a proxy item.
+
+    The bug this guard exists for: the results were MIXED. `brewing_awkward`
+    produced a real `minecraft:potion` stack while `addMix` produced proxies and
+    demanded the awkward PROXY as an input. The chain broke at the first step, so
+    no downstream potion was ever craftable, and `producible()` advertised the
+    generic `minecraft:potion` item as craftable. In game that reads as "crafting
+    potions is completely broken; zero recipes evaluate".
+
+    Note what is checked: the RESULT EXPRESSION of every recipe builder call, not
+    the presence of a word - a word-level check would pass again the moment
+    somebody reintroduces one real-potion result.
+    """
+    path = "src/com/craftingveloce/crafting/VeloceBrewingModule.java"
+    if not os.path.exists(path):
+        fail("brewing proxy:\n  no VeloceBrewingModule")
+    text = open(path, encoding="utf-8").read()
+    problems = []
+
+    # A real potion can never be a recipe token: its identity lives in the
+    # PotionContents component, while the planner compares plain items.
+    #
+    # Checked as a CODE USE ("PotionContents."), not as a bare word: the class is
+    # also named in the explanatory comments above, and a word-level check would
+    # flag those docs (it did on the first run of this very guard).
+    if "PotionContents." in text:
+        problems.append("VeloceBrewingModule builds a real potion (PotionContents) - "
+                        "recipe results must be proxy items")
+
+    # Every ProcessingEntry.single(...) result is the expression on the line after
+    # the id. Allowed forms: proxy("..."), waterBottle(), or a stack made from a
+    # variable that getProxy() already resolved (toProxy).
+    results = re.findall(
+        r"ProcessingEntry\.single\(\s*\n\s*ResourceLocation[^\n]*\n\s*([^\n]+?),?\s*\n",
+        text)
+    if not results:
+        problems.append("no brewing recipe results found (the regexp found nothing - "
+                        "if the builder call shape changed, update this guard)")
+    for result in results:
+        expr = result.strip().rstrip(",")
+        if "potion(" in expr or "Items.POTION" in expr:
+            problems.append(f"a brewing recipe result is a REAL potion, not a proxy: {expr}")
+    if not any("proxy(" in r or "waterBottle()" in r for r in results):
+        problems.append("no brewing recipe result is built through the proxy helper")
+
+    # The awkward recipe is the specific link that was broken.
+    if 'proxy("awkward")' not in text:
+        problems.append("brewing_awkward does not output the awkward PROXY "
+                        "(the rest of the potion chain consumes it as an input)")
+
+    # The proxy registry must exist and be able to answer both directions.
+    mapper = "src/com/craftingveloce/util/VelocePotionMapper.java"
+    if not os.path.exists(mapper):
+        problems.append("no VelocePotionMapper")
+    else:
+        mapper_text = open(mapper, encoding="utf-8").read()
+        for need, what in (("registerProxy(", "proxy registration"),
+                           ("public static Item getProxy(", "potion -> proxy lookup"),
+                           ("public static ItemStack toRealPotion(", "proxy -> potion conversion"),
+                           ("public static boolean isProxy(", "the proxy predicate")):
+            if need not in mapper_text:
+                problems.append("VelocePotionMapper without " + what)
+
+    # The proxies must actually be registered at init, otherwise getProxy falls
+    # back to the plain potion item for EVERY potion and all recipes collapse into
+    # duplicates of each other.
+    reg = open("src/com/craftingveloce/init/VeloceRegistry.java", encoding="utf-8").read()
+    registered = re.findall(r'registerProxy\("([a-z_]+)"', reg)
+    if len(registered) < 10:
+        problems.append(f"only {len(registered)} potion proxies registered at init "
+                        f"(getProxy would fall back to minecraft:potion and every "
+                        f"brewing recipe would collide)")
+
+    # The water bypass: a glass bottle put into the stand must become a water
+    # potion without any water source. That is what makes the base recipe startable.
+    stand = "src/com/craftingveloce/block/entity/VeloceBrewingStandBlockEntity.java"
+    stand_text = open(stand, encoding="utf-8").read()
+    if "Items.GLASS_BOTTLE" not in stand_text:
+        problems.append("the stand does not convert a glass bottle into the water proxy "
+                        "(the water bypass is missing - the first brewing step cannot start)")
+
+    if problems:
+        fail("brewing proxy domain:\n  " + "\n  ".join(problems))
+    print(f"    OK (brewing proxy: {len(results)} recipe result(s) in the proxy domain, "
+          f"{len(registered)} proxies registered, water bypass present)")
+
+
+# Which foreign JAR holds the textures of a namespace, and how its file names start.
+FOREIGN_TEXTURE_JARS = {
+    "mekanism": "Mekanism-",
+    "alchemistry": "alchemistry-",
+    "create": "create-",
+    "chemlib": "chemlib-",
+}
+
+
+def _foreign_jar_for(namespace):
+    """The JAR of the given namespace, or None when that mod is not installed here."""
+    prefix = FOREIGN_TEXTURE_JARS.get(namespace)
+    if not prefix:
+        return None
+    for directory in COMPILE_ONLY_DIRS:
+        if not os.path.isdir(directory):
+            continue
+        hits = sorted(glob.glob(os.path.join(directory, prefix + "*.jar")))
+        if hits:
+            return hits[0]
+    return None
+
+
+def validate_module_content_textures():
+    """
+    Every module's #content texture must EXIST inside the foreign mod's JAR.
+
+    The player sees a module whose contents render as the missing-texture checker
+    board (or as nothing at all). Nothing catches that: the JAR builds, the model
+    JSON is valid, and Minecraft fails the lookup silently at RUNTIME.
+
+    This is a real regression that happened here: a rewrite changed 23 Mekanism
+    module textures to a "mekanism:block/models/..." shape, but most Mekanism
+    machines keep their GUI/block textures under "mekanism:block/<machine>/...".
+    Only a handful genuinely live under "block/models/". The rewrite therefore
+    broke 13 of them while looking like a tidy systematic improvement.
+
+    The check is against the actual JAR file list, so it cannot be satisfied by a
+    plausible-looking path.
+    """
+    problems = []
+    checked = 0
+    skipped_mods = set()
+    for path in sorted(glob.glob("assets/craftingveloce/models/item/veloce_*_module.json")):
+        try:
+            data = json.load(open(path, encoding="utf-8"))
+        except (ValueError, OSError) as exc:
+            problems.append(f"{os.path.basename(path)}: unreadable ({exc})")
+            continue
+        ref = (data.get("textures") or {}).get("content")
+        if not isinstance(ref, str) or ":" not in ref:
+            continue
+        namespace, texture = ref.split(":", 1)
+        jar = _foreign_jar_for(namespace)
+        if jar is None:
+            skipped_mods.add(namespace)
+            continue
+        with zipfile.ZipFile(jar) as z:
+            if f"assets/{namespace}/textures/{texture}.png" not in z.namelist():
+                problems.append(f"{os.path.basename(path)} -> {ref} "
+                                f"(not present in {os.path.basename(jar)})")
+        checked += 1
+
+    if checked == 0:
+        print("    OK (module content textures: no foreign-mod JAR present to check against)")
+        return
+    if problems:
+        fail("module content textures point at textures that do not exist:\n  "
+             + "\n  ".join(problems))
+    note = f", skipped namespaces without a JAR here: {sorted(skipped_mods)}" if skipped_mods else ""
+    print(f"    OK (module content textures: {checked} verified against the mod JARs{note})")
 
 
 def validate_energy_pull():
@@ -1902,11 +2181,64 @@ def validate_energy_pull():
         pull = open(pull_path, encoding="utf-8").read()
         for need, what in (("free <= 0", "no draw when the accumulator is full"),
                            ("extractEnergy(", "asking the source about the transfer (source limit)"),
-                           ("receiveEnergy(taken - accepted, false)", "returning the surplus"),
                            ("isLoaded(pos)", "skipping unloaded sources"),
                            ("Math.min(free, maxRate)", "the machine's receive limit")):
             if need not in pull:
                 problems.append("the energy draw without " + what)
+
+        # THE TRANSFER MUST BE DEMAND-DRIVEN AND BOUNDED.
+        #
+        # This guard used to REQUIRE the line
+        #     receiveEnergy(taken - accepted, false)
+        # i.e. it froze in place exactly the bug it should have caught: the source
+        # was drained FIRST and the surplus was pushed back into the source
+        # afterwards. Energy sources are usually extract-only (a Mekanism Energy
+        # Cube reports canReceive() == false), so that refund silently did nothing
+        # and the surplus FE was DESTROYED. It also made the amount taken
+        # independent of what the receiver could accept, so the drain was not
+        # demand-driven at all.
+        #
+        # The correct shape is: simulate the source's offer, simulate the
+        # receiver's acceptance, and only then move the agreed amount for real.
+        transfer_body = _method_body(pull, "private static int transfer(")
+        if transfer_body is None:
+            problems.append("no bounded, demand-driven transfer helper (transfer(...))")
+        else:
+            sim_extract = transfer_body.find("extractEnergy(want, true)")
+            sim_receive = transfer_body.find("receiveEnergy(offered, true)")
+            real_extract = transfer_body.find("extractEnergy(acceptable, false)")
+            if sim_extract < 0:
+                problems.append("the transfer does not SIMULATE what the source offers")
+            if sim_receive < 0:
+                problems.append("the transfer does not SIMULATE what the receiver accepts")
+            if real_extract < 0:
+                problems.append("the transfer never moves the agreed amount for real")
+            if sim_extract >= 0 and real_extract >= 0 and sim_extract > real_extract:
+                problems.append("the transfer extracts BEFORE the receiver has agreed "
+                                "(the surplus then cannot be refunded - energy is lost)")
+            if sim_receive >= 0 and real_extract >= 0 and sim_receive > real_extract:
+                problems.append("the transfer extracts before simulating the receiver")
+
+        # The per-source rate must be a real bound, not "as much as the source will give".
+        if "MAX_PER_SOURCE_PER_TICK = 1_000_000" not in pull:
+            problems.append("the per-source rate is not bounded to 1 000 000 FE/t "
+                            "(an unbounded request empties a whole Energy Cube in one tick)")
+        if "MAX_PER_SOURCE_PER_TICK = Integer.MAX_VALUE" in pull:
+            problems.append("the per-source rate is Integer.MAX_VALUE (the infinite-drain bug)")
+
+        # Stale world-position cache: the remembered source side must be purgeable.
+        if "public static void forget(" not in pull:
+            problems.append("the remembered-side cache cannot be purged per position "
+                            "(stale world-position entries survive a block swap)")
+
+    # The furnace's intake must be bounded too - it used to be Integer.MAX_VALUE.
+    furn_path = "src/com/craftingveloce/block/entity/VeloceElectricFurnaceBlockEntity.java"
+    furn_text_rates = open(furn_path, encoding="utf-8").read()
+    if "MAX_PULL_PER_TICK = Integer.MAX_VALUE" in furn_text_rates:
+        problems.append("the electric furnace intake is Integer.MAX_VALUE "
+                        "(it can drain an Energy Cube in a single tick)")
+    if "MAX_PULL_PER_TICK = 1_000_000" not in furn_text_rates:
+        problems.append("the electric furnace intake is not bounded to 1 000 000 FE/t")
 
     # The FE module calls the draw through its own helper (pullFromNetwork),
     # while the furnace does it directly - that is why we check the TICK + the
@@ -3184,6 +3516,8 @@ def main():
     validate_craftable_cache()
     validate_energy_pull()
     validate_brewing_stand()
+    validate_brewing_proxy()
+    validate_module_content_textures()
     validate_pipe_energy()
     validate_module_info_gui()
     validate_jade_info()

@@ -36,8 +36,25 @@ public final class VeloceEnergyPull {
     private static long lastSourceLog;
     private static long lastSummaryLog;
 
-    /** How much FE per tick we try to take from a single source at most. */
+    /**
+     * How much FE per tick we try to take from a single source at most.
+     *
+     * <p><b>Why this is bounded and not {@code Integer.MAX_VALUE}.</b> It used to
+     * be unbounded, which made the only limit the source's own internal rate and
+     * the receiver's free space. A Mekanism Energy Cube can be configured to push
+     * a very large amount per tick, so a single pipeline tick could empty a whole
+     * cube into one machine - reported as "it drains infinite power from the cube
+     * while filling the furnace". The request must be clamped on OUR side too, so
+     * the drain is a predictable FE/tick figure and not "whatever the source
+     * happens to be willing to give in one go".
+     */
     public static final int MAX_PER_SOURCE_PER_TICK = 1_000_000;
+
+    /**
+     * Upper bound on the remembered source-side cache, so a server that has seen
+     * very many positions cannot grow it without limit.
+     */
+    private static final int KNOWN_SIDE_LIMIT = 4096;
 
     private VeloceEnergyPull() {
     }
@@ -132,6 +149,44 @@ public final class VeloceEnergyPull {
     private static final java.util.Map<BlockPos, net.minecraft.core.Direction> KNOWN_SIDE =
             new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * Forgets the remembered side for a position.
+     *
+     * <p><b>Why this is needed (stale world-position cache).</b> {@link #KNOWN_SIDE}
+     * is keyed by a BLOCK POSITION, and positions are reused: break an Energy Cube
+     * and place a furnace on the same coordinates and the map still holds the old
+     * entry. {@link #findExtracting} does re-validate the capability before trusting
+     * the entry, so this could not resurrect a charge by itself - but keeping dead
+     * positions is exactly the kind of leak that made the "ghost state after
+     * replacing a block" report impossible to reason about. We drop the entry when
+     * the world tells us the block at that position is gone.
+     */
+    public static void forget(BlockPos pos) {
+        if (pos != null && KNOWN_SIDE.remove(pos) != null) {
+            LOG.debug("[VELOCE-DEBUG] energy source cache: dropped remembered side at {}", pos.toShortString());
+        }
+    }
+
+    /** Clears the whole remembered-side cache (used on world unload). */
+    public static void forgetAll() {
+        int size = KNOWN_SIDE.size();
+        KNOWN_SIDE.clear();
+        if (size > 0) {
+            LOG.debug("[VELOCE-DEBUG] energy source cache: cleared {} remembered side(s)", size);
+        }
+    }
+
+    /** Keeps the remembered-side cache bounded. */
+    private static void boundKnownSide(BlockPos pos, net.minecraft.core.Direction side) {
+        if (KNOWN_SIDE.size() >= KNOWN_SIDE_LIMIT) {
+            // Crude but sufficient: this cache is a pure optimisation, so dropping it
+            // costs one capability probe and never changes behaviour.
+            KNOWN_SIDE.clear();
+            LOG.debug("[VELOCE-DEBUG] energy source cache: hit the {} entry limit, cleared", KNOWN_SIDE_LIMIT);
+        }
+        KNOWN_SIDE.put(pos.immutable(), side);
+    }
+
     /** The block's side that gives energy (the remembered one first, then the rest). */
     private static IEnergyStorage findExtracting(ServerLevel level, BlockPos pos) {
         net.minecraft.core.Direction known = KNOWN_SIDE.get(pos);
@@ -145,13 +200,69 @@ public final class VeloceEnergyPull {
         for (net.minecraft.core.Direction side : net.minecraft.core.Direction.values()) {
             IEnergyStorage st = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, side);
             if (st != null && st.canExtract() && st.extractEnergy(MAX_PER_SOURCE_PER_TICK, true) > 0) {
-                KNOWN_SIDE.put(pos.immutable(), side);
+                boundKnownSide(pos, side);
                 return st;
             }
         }
         IEnergyStorage any = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, null);
         return any != null && any.canExtract() && any.extractEnergy(MAX_PER_SOURCE_PER_TICK, true) > 0 ? any : null;
     }
+
+    /**
+     * Moves exactly as much FE as BOTH sides agree on - and never destroys energy.
+     *
+     * <p><b>The bug this fixes.</b> The transfer used to extract the full amount
+     * from the source FIRST and then refund whatever the receiver did not accept
+     * ({@code source.receiveEnergy(taken - accepted, false)}). Energy sources are
+     * usually extract-only: a Mekanism Energy Cube reports
+     * {@code canReceive() == false}, so the refund silently did nothing and the
+     * surplus FE was DESTROYED. It also meant the amount taken was chosen before
+     * the receiver had any say, i.e. the transfer was not demand-driven.
+     *
+     * <p>The order is now: simulate what the source offers, simulate what the
+     * receiver accepts, and only then move that agreed amount for real. The
+     * refund path is kept as a last-resort safety net (another mod's storage may
+     * change its mind between the simulation and the real call), but it should
+     * never be reached - and if it is, we say so instead of losing power quietly.
+     *
+     * @return how much FE really arrived in the receiver
+     */
+    private static int transfer(IEnergyStorage source, IEnergyStorage receiver, int want, BlockPos pos) {
+        if (want <= 0) {
+            return 0;
+        }
+        // 1) What will the source really give? (bounded request, simulated)
+        int offered = source.extractEnergy(want, true);
+        if (offered <= 0) {
+            return 0;
+        }
+        // 2) What will the receiver really take? (simulated - the source is still untouched)
+        int acceptable = receiver.receiveEnergy(offered, true);
+        if (acceptable <= 0) {
+            return 0;
+        }
+        // 3) Move exactly the agreed amount.
+        int taken = source.extractEnergy(acceptable, false);
+        if (taken <= 0) {
+            return 0;
+        }
+        int inserted = receiver.receiveEnergy(taken, false);
+        if (inserted < taken) {
+            int surplus = taken - inserted;
+            int refunded = source.receiveEnergy(surplus, false);
+            if (refunded < surplus) {
+                // Worth a warning: this is real, unrecoverable energy loss and it
+                // means some implementation disagrees with its own simulation.
+                LOG.warn("[VELOCE-DEBUG] energy loss at {}: took {} FE, receiver accepted {} FE, "
+                                + "source refunded only {} FE ({} FE lost)",
+                        pos.toShortString(), taken, inserted, refunded, surplus - refunded);
+            }
+        }
+        LOG.debug("[VELOCE-DEBUG] transfer at {}: offered={} acceptable={} taken={} inserted={}",
+                pos.toShortString(), offered, acceptable, taken, inserted);
+        return inserted;
+    }
+
 
     public static int pull(ServerLevel level, VelocePipeNetwork network,
                            IEnergyStorage receiver, int maxRate) {
@@ -169,7 +280,11 @@ public final class VeloceEnergyPull {
         // placed AFTER the network scan, or a network rebuilt from a save), find
         // them now - otherwise the draw will never start and it looks like "it
         // does not work".
-int budget = Math.min(free, maxRate);
+discover(level, network);
+        int budget = Math.min(free, maxRate);
+        LOG.debug("[VELOCE-DEBUG] pull start: free={} FE, machineRate={} FE/t, budget={} FE, "
+                        + "sources={}, perSourceCap={} FE/t",
+                free, maxRate, budget, network.getEnergyEndpoints().size(), MAX_PER_SOURCE_PER_TICK);
         int total = 0;
         for (BlockPos pos : network.getEnergyEndpoints()) {
             if (budget <= 0) {
@@ -205,20 +320,18 @@ int budget = Math.min(free, maxRate);
                 }
                 continue;
             }
-            int taken = source.extractEnergy(Math.min(budget, MAX_PER_SOURCE_PER_TICK), false);
-            if (taken <= 0) {
+            // Bounded per-source request: min(what is still needed, our own per-source cap).
+            // The transfer itself then narrows it further to what BOTH sides agree on.
+            int moved = transfer(source, receiver, Math.min(budget, MAX_PER_SOURCE_PER_TICK), pos);
+            if (moved <= 0) {
                 continue;
             }
-            int accepted = receiver.receiveEnergy(taken, false);
-            if (accepted < taken) {
-                source.receiveEnergy(taken - accepted, false);
-            }
-            total += accepted;
-            budget -= accepted;
-            if (accepted > 0 && System.currentTimeMillis() - lastPullLog2 > 30_000L) {
+            total += moved;
+            budget -= moved;
+            if (System.currentTimeMillis() - lastPullLog2 > 30_000L) {
                 lastPullLog2 = System.currentTimeMillis();
                 LOG.info("[Veloce][ENERGY] took {} FE from {} ({} FE total this tick)",
-                        accepted, pos.toShortString(), total);
+                        moved, pos.toShortString(), total);
             }
         }
         if (System.currentTimeMillis() - lastSummaryLog > 30_000L) {

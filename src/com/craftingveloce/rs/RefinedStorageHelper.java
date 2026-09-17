@@ -72,7 +72,7 @@ public class RefinedStorageHelper {
 
                 for (ResourceAmount ra : storage.getAll()) {
                     if (ra.resource() instanceof ItemResource itemRes) {
-                        Item item = itemRes.item();
+                        Item item = com.craftingveloce.util.VelocePotionMapper.getProxy(itemRes.toItemStack());
                         if (item != null && ra.amount() > 0) {
                             map.merge(item, ra.amount(), Long::sum);
                         }

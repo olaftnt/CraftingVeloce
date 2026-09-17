@@ -571,7 +571,7 @@ public final class VeloceCraftingCache {
             get(level, network).tickIdle(level);
 
             // Energy step: draw from external sources (maxRate = 20_000, as once in the pipe)
-            int energyRate = 20_000;
+            int energyRate = Integer.MAX_VALUE;
             var buffer = network.getEnergyBuffer();
             com.craftingveloce.network.pipe.VeloceEnergyPull.pull(level, network, buffer, energyRate);
 

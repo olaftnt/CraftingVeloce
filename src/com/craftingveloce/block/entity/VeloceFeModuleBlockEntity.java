@@ -310,7 +310,7 @@ public class VeloceFeModuleBlockEntity extends BlockEntity
     }
 
     /** How much FE per tick we accept from the network at most (next to the source's limit). */
-    public static final int MAX_PULL_PER_TICK = 1_000_000;
+    public static final int MAX_PULL_PER_TICK = Integer.MAX_VALUE;
 
     /**
      * Takes power from the item and pours it into the accumulator.

@@ -26,7 +26,7 @@ public final class VeloceRecipes {
     public static final DeferredRegister<RecipeType<?>> TYPES =
             DeferredRegister.create(BuiltInRegistries.RECIPE_TYPE, CraftingVeloceMod.MODID);
 
-    public static final DeferredHolder<RecipeType<?>, RecipeType<?>> BREWING = TYPES.register("brewing", () -> net.minecraft.world.item.crafting.RecipeType.simple(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("craftingveloce", "brewing")));
+    public static final DeferredHolder<RecipeType<?>, RecipeType<?>> BREWING_TYPE = TYPES.register("brewing", () -> net.minecraft.world.item.crafting.RecipeType.simple(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("craftingveloce", "brewing")));
 
     public static final DeferredRegister<RecipeSerializer<?>> SERIALIZERS =
             DeferredRegister.create(BuiltInRegistries.RECIPE_SERIALIZER, CraftingVeloceMod.MODID);
@@ -36,6 +36,7 @@ public final class VeloceRecipes {
             CASE_DISASSEMBLY = SERIALIZERS.register("case_disassembly",
             VeloceCaseDisassemblySerializer::new);
 
+    public static net.minecraft.world.item.crafting.RecipeType<?> getBrewing() { return BREWING_TYPE.get(); }
     public static void register(IEventBus modEventBus) {
         TYPES.register(modEventBus);
         SERIALIZERS.register(modEventBus);

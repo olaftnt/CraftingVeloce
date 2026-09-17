@@ -76,8 +76,13 @@ public class VeloceBrewingStandBlock extends BaseEntityBlock
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level world, BlockPos pos,
                                                Player player, BlockHitResult hit) {
-        // A menu with the energy bar. The furnace has no item slots - it is a
-        // power buffer for the crafter, so the screen only shows the accumulator.
+        // Opens the brewing stand's own menu: three bottle slots, the ingredient
+        // slot, the fuel/battery slot, and the accumulator gauge.
+        //
+        // The menu resolves its ContainerData from the block entity at this
+        // position, so the gauge tracks the LIVE accumulator instead of the
+        // throwaway SimpleContainerData it used to attach (which nothing ever
+        // wrote to, leaving the battery at 0 forever).
         if (!world.isClientSide && player instanceof net.minecraft.server.level.ServerPlayer sp) {
             sp.openMenu(new net.minecraft.world.SimpleMenuProvider(
                             (id, inv, p) -> new com.craftingveloce.inventory.VeloceBrewingStandMenu(

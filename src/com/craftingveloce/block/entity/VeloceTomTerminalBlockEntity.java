@@ -44,6 +44,9 @@ import java.util.Map;
 public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         implements com.craftingveloce.block.entity.VeloceCraftCountSource {
 
+    private static final org.slf4j.Logger TERMINAL_LOG =
+            org.slf4j.LoggerFactory.getLogger("craftingveloce-terminal");
+
     private static Field itemCacheField;
     private final List<WeakReference<ServerPlayer>> activeWatchingPlayers = new ArrayList<>();
 
@@ -446,7 +449,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
                     net.getEndpoints().size(), worldPosition);
             // The player just pulled something - speed up the refresh of numbers.
 
-            ItemStack extracted = net.extractItem(sl, requested.getItem(), count);
+            Item extractProxy = com.craftingveloce.util.VelocePotionMapper.getProxy(requested);
+            ItemStack extracted = net.extractItem(sl, extractProxy, count);
+            extracted = com.craftingveloce.util.VelocePotionMapper.toRealPotion(extracted);
             if (!extracted.isEmpty()) {
                 com.craftingveloce.util.VeloceLog.Craft.success(
                         com.craftingveloce.util.VeloceLog.Side.SERVER,
@@ -730,7 +735,17 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
      */
     private PullResult craftItemFromNetwork(ServerLevel sl, VelocePipeNetwork net,
                                             ItemStack requested, int count) {
-        Item item = requested.getItem();
+        Item item = com.craftingveloce.util.VelocePotionMapper.getProxy(requested);
+
+        // Terminal/JEI parity starts here: the item the player clicked and the item the
+        // planner is asked about are NOT always the same (potions are planned in the
+        // proxy domain). Printing both makes a mismatch obvious instead of looking
+        // like "the terminal cannot craft this".
+        TERMINAL_LOG.debug("[VELOCE-DEBUG] terminal craft request: {}x {} -> plan target {} "
+                        + "(proxy={}, network={})",
+                count, requested.getHoverName().getString(), item,
+                com.craftingveloce.util.VelocePotionMapper.isProxy(item),
+                net == null ? "none" : net.getId());
 
         // DIAGNOSTIC DUMP BEFORE ANY GATE.
         //
@@ -791,9 +806,9 @@ public class VeloceTomTerminalBlockEntity extends StorageTerminalBlockEntity
         // from the buffers, and only as a fallback from the network.
         ItemStack fromBuffer = extractFromBuffers(buffers, item, count);
         if (!fromBuffer.isEmpty()) {
-            return PullResult.ok(fromBuffer);
+            return PullResult.ok(com.craftingveloce.util.VelocePotionMapper.toRealPotion(fromBuffer));
         }
-        return PullResult.ok(net.extractItem(sl, item, count));
+        return PullResult.ok(com.craftingveloce.util.VelocePotionMapper.toRealPotion(net.extractItem(sl, item, count)));
     }
 
     /**

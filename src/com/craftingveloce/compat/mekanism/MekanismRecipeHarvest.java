@@ -109,10 +109,73 @@ public final class MekanismRecipeHarvest {
         if (recipe instanceof CombinerRecipe combiner) {
             return combiner(id, combiner, type);
         }
+        if (recipe instanceof mekanism.api.recipes.ItemStackChemicalToItemStackRecipe inf) {
+            return infusion(id, inf, type);
+        }
         if (recipe instanceof ItemStackToItemStackRecipe single) {
             return singleOutput(id, single, type);
         }
         return null;
+    }
+
+    private static ProcessingEntry infusion(ResourceLocation id, mekanism.api.recipes.ItemStackChemicalToItemStackRecipe recipe, RecipeType<?> type) {
+        List<ItemStack> definitions = recipe.getOutputDefinition();
+        if (definitions.isEmpty()) return null;
+        
+        mekanism.api.recipes.ingredients.ItemStackIngredient itemInput = recipe.getItemInput();
+        mekanism.api.recipes.ingredients.ChemicalStackIngredient chemInput = recipe.getChemicalInput();
+        
+        Ingredient chemIng = Ingredient.EMPTY;
+        int chemCount = 1;
+        
+        long needed = chemInput.amount();
+        List<mekanism.api.chemical.ChemicalStack> reps = chemInput.getRepresentations();
+        if (!reps.isEmpty()) {
+            net.minecraft.resources.ResourceLocation chemId = reps.get(0).getChemical().getAsHolder().unwrapKey().map(net.minecraft.resources.ResourceKey::location).orElse(null);
+            if (chemId != null) {
+                String path = chemId.getPath();
+                if (path.equals("redstone")) {
+                    chemIng = Ingredient.of(net.minecraft.world.item.Items.REDSTONE);
+                    chemCount = (int) Math.ceil(needed / 10.0);
+                } else if (path.equals("carbon")) {
+                    chemIng = Ingredient.of(net.minecraft.world.item.Items.COAL);
+                    chemCount = (int) Math.ceil(needed / 10.0);
+                } else if (path.equals("diamond")) {
+                    chemIng = Ingredient.of(net.minecraft.world.item.Items.DIAMOND);
+                    chemCount = (int) Math.ceil(needed / 10.0);
+                } else if (path.equals("refined_obsidian")) {
+                    chemIng = Ingredient.of(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("mekanism:dust_refined_obsidian")));
+                    chemCount = (int) Math.ceil(needed / 10.0);
+                } else if (path.equals("gold")) {
+                    chemIng = Ingredient.of(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("mekanism:dust_gold")));
+                    chemCount = (int) Math.ceil(needed / 10.0);
+                } else if (path.equals("tin")) {
+                    chemIng = Ingredient.of(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("mekanism:dust_tin")));
+                    chemCount = (int) Math.ceil(needed / 10.0);
+                } else if (path.equals("fungi")) {
+                    chemIng = Ingredient.of(net.minecraft.world.item.Items.RED_MUSHROOM);
+                    chemCount = (int) Math.ceil(needed / 10.0);
+                } else if (path.equals("bio")) {
+                    chemIng = Ingredient.of(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("mekanism:bio_fuel")));
+                    chemCount = (int) Math.ceil(needed / 5.0); // usually 5mb
+                }
+            }
+        }
+        
+        if (chemIng == Ingredient.EMPTY) {
+            return null;
+        }
+
+        NonNullList<Ingredient> ingredients = NonNullList.withSize(2, Ingredient.EMPTY);
+        ingredients.set(0, itemInput.ingredient().ingredient());
+        ingredients.set(1, chemIng);
+        
+        return new ProcessingEntry(id,
+                List.of(definitions.get(0).copy()),
+                List.of(1.0f),
+                ingredients,
+                List.of(Math.max(1, itemInput.ingredient().count()), Math.max(1, chemCount)),
+                type);
     }
 
     /** One ingredient (with a unit count) -> one deterministic result. */

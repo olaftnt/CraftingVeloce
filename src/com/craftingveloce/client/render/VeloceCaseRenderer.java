@@ -197,10 +197,15 @@ public class VeloceCaseRenderer<T extends BlockEntity> implements BlockEntityRen
      * Draws the base block as an ITEM - the way it looks as an entity on the
      * ground, but rescaled and centred in the casing.
      */
+
     private void renderContent(Block content, float contentScale, float contentPitch,
                                boolean keepRotation, PoseStack pose,
                                MultiBufferSource buffers, int packedLight, int packedOverlay) {
+
+
         ItemStack stack = CONTENT_STACKS.computeIfAbsent(content,
+
+
                 block -> new ItemStack(block.asItem()));
         ItemRenderer renderer = Minecraft.getInstance().getItemRenderer();
         if (stack.isEmpty() || renderer == null) {

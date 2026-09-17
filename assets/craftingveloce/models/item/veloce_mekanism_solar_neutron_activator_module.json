@@ -6,7 +6,7 @@
     "frame": "craftingveloce:block/veloce_integrale",
     "glass": "minecraft:block/purple_stained_glass",
     "particle": "minecraft:block/purple_stained_glass",
-    "content": "mekanism:block/solar_neutron_activator"
+    "content": "mekanism:block/models/solar_neutron_activator1"
   },
   "elements": [
     {

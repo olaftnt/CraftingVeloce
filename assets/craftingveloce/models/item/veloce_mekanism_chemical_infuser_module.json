@@ -6,7 +6,7 @@
     "frame": "craftingveloce:block/veloce_integrale",
     "glass": "minecraft:block/purple_stained_glass",
     "particle": "minecraft:block/purple_stained_glass",
-    "content": "mekanism:block/chemical_infuser"
+    "content": "mekanism:block/models/chemical_infuser"
   },
   "elements": [
     {

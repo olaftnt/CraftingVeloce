@@ -6,7 +6,7 @@
     "frame": "craftingveloce:block/veloce_integrale",
     "glass": "minecraft:block/purple_stained_glass",
     "particle": "minecraft:block/purple_stained_glass",
-    "content": "mekanism:block/rotary_condensentrator"
+    "content": "mekanism:block/models/rotary_condensentrator"
   },
   "elements": [
     {

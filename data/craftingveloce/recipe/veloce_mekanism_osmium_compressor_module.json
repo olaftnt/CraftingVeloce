@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "craftingveloce:veloce_integrale"
+    },
+    {
+      "item": "mekanism:osmium_compressor"
+    },
+    {
+      "item": "mekanism:basic_control_circuit"
+    }
+  ],
+  "result": {
+    "id": "craftingveloce:veloce_mekanism_osmium_compressor_module",
+    "count": 1
+  }
+}

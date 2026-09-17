@@ -28,7 +28,7 @@ public class VelocePipeNetwork {
 
     /** Energy buffer of the pipe network. */
     private final net.neoforged.neoforge.energy.EnergyStorage energyBuffer =
-            new net.neoforged.neoforge.energy.EnergyStorage(100_000, 100_000, 100_000);
+            new net.neoforged.neoforge.energy.EnergyStorage(Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
 
     public net.neoforged.neoforge.energy.EnergyStorage getEnergyBuffer() {
         return energyBuffer;

@@ -82,7 +82,88 @@ public final class CVTestNetworkCommand {
                     // Teleport command reminder - without rebuilding the network.
                     .then(Commands.literal("where")
                         .executes(CVTestNetworkCommand::where))
+                    .then(Commands.literal("modules")
+                        .executes(CVTestNetworkCommand::buildModules))
                 ));
+    }
+
+
+    private static int buildModules(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerLevel level = source.getLevel();
+        net.minecraft.world.entity.player.Player player = source.getPlayer();
+        if (player == null) return 0;
+        
+        BlockPos start = player.blockPosition().offset(2, 0, 0);
+        int offsetZ = 0;
+        
+        for (com.craftingveloce.crafting.VeloceProcessingModule module : com.craftingveloce.crafting.VeloceProcessingRegistry.all()) {
+            if (module.id().equals("brewing") || module.id().equals("furnace") || module.id().equals("crafting")) continue;
+            
+            BlockPos netPos = start.offset(0, 0, offsetZ);
+            
+            // Terminal at (0, 0, 0)
+            level.setBlock(netPos, com.craftingveloce.init.VeloceRegistry.VELOCE_TOM_TERMINAL.get().defaultBlockState(), 3);
+            
+            // Pipe at (1, 0, 0)
+            BlockPos pipePos = netPos.offset(1, 0, 0);
+            level.setBlock(pipePos, com.craftingveloce.init.VeloceRegistry.VELOCE_PIPE.get().defaultBlockState(), 3);
+            
+            // Machine at (2, 0, 0)
+            BlockPos machinePos = netPos.offset(2, 0, 0);
+            net.minecraft.world.level.block.Block machineBlock = null;
+            for (net.minecraft.world.level.block.Block b : net.minecraft.core.registries.BuiltInRegistries.BLOCK) {
+                if (b instanceof com.craftingveloce.block.VeloceFeModuleBlock && net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(b).getPath().contains(module.id())) {
+                    machineBlock = b;
+                    break;
+                }
+            }
+            if (machineBlock == null) continue;
+            level.setBlock(machinePos, machineBlock.defaultBlockState(), 3);
+            if (level.getBlockEntity(machinePos) instanceof com.craftingveloce.block.entity.VeloceFeModuleBlockEntity be) {
+                be.receiveEnergy(1000000, false);
+            }
+            
+            // Barrel with ingredients at (-1, 0, 0)
+            BlockPos barrel1 = netPos.offset(-1, 0, 0);
+            level.setBlock(barrel1, net.minecraft.world.level.block.Blocks.BARREL.defaultBlockState(), 3);
+            
+            // Unconnected Barrel with result at (-3, 0, 0)
+            BlockPos barrel2 = netPos.offset(-3, 0, 0);
+            level.setBlock(barrel2, net.minecraft.world.level.block.Blocks.BARREL.defaultBlockState(), 3);
+            
+            
+            com.craftingveloce.crafting.ProcessingEntry recipe = null;
+            for (net.minecraft.world.item.Item item : net.minecraft.core.registries.BuiltInRegistries.ITEM) {
+                java.util.List<com.craftingveloce.crafting.ProcessingEntry> r = module.recipesAnywhere(level, item);
+                if (!r.isEmpty()) {
+                    recipe = r.get(0);
+                    break;
+                }
+            }
+            if (recipe != null) {
+                if (level.getBlockEntity(barrel1) instanceof net.minecraft.world.level.block.entity.BarrelBlockEntity be) {
+                    for (int i = 0; i < recipe.ingredients().size(); i++) {
+                        net.minecraft.world.item.crafting.Ingredient ing = recipe.ingredients().get(i);
+                        if (!ing.isEmpty() && ing.getItems().length > 0) {
+                            net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(ing.getItems()[0].getItem(), recipe.ingredientCount(i) * 10);
+                            stack.setCount(Math.min(stack.getMaxStackSize(), recipe.ingredientCount(i) * 10));
+                            be.setItem(i, stack);
+                        }
+                    }
+                }
+                if (level.getBlockEntity(barrel2) instanceof net.minecraft.world.level.block.entity.BarrelBlockEntity be) {
+                    if (!recipe.results().isEmpty()) {
+                        be.setItem(0, recipe.results().get(0).copy());
+                    }
+                }
+            }
+            offsetZ += 4;
+
+        }
+        
+        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Built module testnets!"), true);
+        return 1;
     }
 
     // ------------------------------------------------------------------

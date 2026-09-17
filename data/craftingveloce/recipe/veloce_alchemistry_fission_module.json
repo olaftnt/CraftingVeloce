@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "craftingveloce:veloce_integrale"
+    },
+    {
+      "item": "alchemistry:fission_chamber_controller"
+    },
+    {
+      "item": "minecraft:redstone"
+    }
+  ],
+  "result": {
+    "id": "craftingveloce:veloce_alchemistry_fission_module",
+    "count": 1
+  }
+}

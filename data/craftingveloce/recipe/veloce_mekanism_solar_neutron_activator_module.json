@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "craftingveloce:veloce_integrale"
+    },
+    {
+      "item": "mekanism:solar_neutron_activator"
+    },
+    {
+      "item": "mekanism:basic_control_circuit"
+    }
+  ],
+  "result": {
+    "id": "craftingveloce:veloce_mekanism_solar_neutron_activator_module",
+    "count": 1
+  }
+}

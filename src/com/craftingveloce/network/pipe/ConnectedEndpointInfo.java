@@ -357,10 +357,11 @@ public class ConnectedEndpointInfo {
                 freeSlots++;
                 continue;
             }
-            counts.merge(stack.getItem(), (long) stack.getCount(), Long::sum);
+            Item mappedItem = com.craftingveloce.util.VelocePotionMapper.getProxy(stack);
+            counts.merge(mappedItem, (long) stack.getCount(), Long::sum);
             int room = stack.getMaxStackSize() - stack.getCount();
             if (room > 0) {
-                partialSpace.merge(stack.getItem(), room, Integer::sum);
+                partialSpace.merge(mappedItem, room, Integer::sum);
             }
         }
         return new SlotScan(counts, freeSlots, partialSpace);
@@ -464,7 +465,7 @@ public class ConnectedEndpointInfo {
     public ItemStack extractNow(ServerLevel level, Item item, int maxCount) {
         if (type == Type.REFINED_STORAGE) {
             return RefinedStorageHelper.extractItem(level, pos, accessSide,
-                    new ItemStack(item), maxCount);
+                    com.craftingveloce.util.VelocePotionMapper.toRealPotion(item, 1), maxCount);
         }
         try {
             BlockState state = level.getBlockState(pos);
@@ -476,7 +477,7 @@ public class ConnectedEndpointInfo {
                 int needed = maxCount;
                 for (int i = 0; i < handler.getSlots() && needed > 0; i++) {
                     ItemStack inSlot = handler.getStackInSlot(i);
-                    if (!inSlot.isEmpty() && inSlot.getItem() == item) {
+                    if (!inSlot.isEmpty() && com.craftingveloce.util.VelocePotionMapper.getProxy(inSlot) == item) {
                         ItemStack extracted = handler.extractItem(i, needed, false);
                         if (!extracted.isEmpty()) {
                             result = result.isEmpty() ? extracted.copy() : grow(result, extracted);
@@ -491,7 +492,7 @@ public class ConnectedEndpointInfo {
                 int needed = maxCount;
                 for (int i = 0; i < container.getContainerSize() && needed > 0; i++) {
                     ItemStack inSlot = container.getItem(i);
-                    if (!inSlot.isEmpty() && inSlot.getItem() == item) {
+                    if (!inSlot.isEmpty() && com.craftingveloce.util.VelocePotionMapper.getProxy(inSlot) == item) {
                         int toTake = Math.min(needed, inSlot.getCount());
                         ItemStack taken = container.removeItem(i, toTake);
                         if (!taken.isEmpty()) {
@@ -626,8 +627,14 @@ public class ConnectedEndpointInfo {
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;
         }
+        ItemStack originalStack = stack;
+        stack = com.craftingveloce.util.VelocePotionMapper.toRealPotion(stack);
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
         if (type == Type.REFINED_STORAGE) {
-            return RefinedStorageHelper.insertItemLeftover(level, pos, accessSide, stack);
+            ItemStack rsRem = RefinedStorageHelper.insertItemLeftover(level, pos, accessSide, stack);
+            return rsRem.isEmpty() ? ItemStack.EMPTY : new ItemStack(originalStack.getItem(), rsRem.getCount());
         }
         ItemStack remaining = stack.copy();
         try {
@@ -664,7 +671,7 @@ public class ConnectedEndpointInfo {
             VeloceLog.Network.failure(VeloceLog.Side.SERVER,
                     "deferred insert at %s failed: %s", pos, t);
         }
-        return remaining;
+        return remaining.isEmpty() ? ItemStack.EMPTY : new ItemStack(originalStack.getItem(), remaining.getCount());
     }
 
     /**
@@ -680,6 +687,11 @@ public class ConnectedEndpointInfo {
      * @return what could NOT be inserted (EMPTY when everything was accepted)
      */
     public ItemStack insertItemLeftover(ServerLevel level, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack originalStack = stack;
+        stack = com.craftingveloce.util.VelocePotionMapper.toRealPotion(stack);
         if (stack.isEmpty()) {
             return ItemStack.EMPTY;
         }
@@ -705,7 +717,7 @@ public class ConnectedEndpointInfo {
             if (left.getCount() != stack.getCount()) {
                 refreshIfLoaded(level);
             }
-            return left;
+            return left.isEmpty() ? ItemStack.EMPTY : new ItemStack(originalStack.getItem(), left.getCount());
         }
 
         boolean wasLoaded = level.isLoaded(pos);
@@ -843,7 +855,7 @@ public class ConnectedEndpointInfo {
         }
         // NO release() - see the comment above. The chunk has no forcing
         // ticket, so it drops out normally whenever the game sees fit.
-        return remaining;
+        return remaining.isEmpty() ? ItemStack.EMPTY : new ItemStack(originalStack.getItem(), remaining.getCount());
     }
 
     /** Compatibility: true when everything was accepted. */
