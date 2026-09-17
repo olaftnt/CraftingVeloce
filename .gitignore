@@ -5,6 +5,10 @@
 build/
 */build/
 
+# Gradle dev-run directory (worlds, logs, downloaded assets)
+neoforge/run/
+run/
+
 # Local compileOnly dependency jars (third-party mods, never shipped)
 *.jar
 !gradle/wrapper/gradle-wrapper.jar
