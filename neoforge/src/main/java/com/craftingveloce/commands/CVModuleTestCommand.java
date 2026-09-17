@@ -172,15 +172,24 @@ public final class CVModuleTestCommand {
         // list. Modules that look the machine up through that list then report
         // "needs a machine" while one is plainly standing there - which is exactly
         // how the brewing stand first failed here.
-        VeloceNodeBlocks.onNodePlaced(level, machinePos);
-        VeloceNodeBlocks.onNodePlaced(level, terminalPos);
-        VeloceNodeBlocks.onNodePlaced(level, pipePos);
+
         level.setBlock(barrelPos, Blocks.BARREL.defaultBlockState(), Block.UPDATE_ALL);
 
         // Give the machine power so an FE-driven module is not judged on "no energy"
         // - the test is about crafting, not about the accumulator being full.
         level.getCapability(net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
                         machinePos, null);
+
+        // A player's placement runs two different hooks, and setBlock runs neither:
+        //   * the PIPE registers itself through onPipePlaced, which is what creates
+        //     the network at all;
+        //   * the terminal and the machines register through onNodePlaced.
+        // Doing only the node half left the machines attached to a pipe that was
+        // never part of any network - so a module looking its machine up through
+        // the network reported "needs a machine" with the machine right there.
+        VelocePipeNetworkManager.get(level).onPipePlaced(level, pipePos);
+        VeloceNodeBlocks.onNodePlaced(level, terminalPos);
+        VeloceNodeBlocks.onNodePlaced(level, machinePos);
 
         int ingredientsPut = fillBarrel(level, barrelPos, recipe);
 
