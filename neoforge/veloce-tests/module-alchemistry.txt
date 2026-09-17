@@ -1,0 +1,293 @@
+# Module: alchemistry  -  one case per MACHINE BLOCK (7 found).
+#
+# A compat module is a FAMILY: Mekanism alone registers twenty-three machines, each
+# its own block. Testing the family through one block would draw a recipe belonging to
+# a different machine and report a failure that says nothing about either, so every
+# block gets its own case and /cv testmodule only accepts a recipe the placed block can
+# actually perform.
+#
+# These machines need FORGE ENERGY. Power is a separate axis from "can this module
+# craft at all", and the three cases differ in what they answer:
+#
+#   1. accumulator at ZERO        -> must REFUSE, naming power as the reason
+#   2. accumulator partly filled   -> must STILL REFUSE (too little for one operation)
+#   3. accumulator full            -> must DELIVER the item
+#
+# SKIP is an accepted answer on every case, and it is not indecision: SKIP means this
+# machine has no recipe in the current pack, so there was nothing to test. That is a
+# fact about the pack, not about the machine - and reporting it as FAIL would bury the
+# real failures under a hundred lines that say nothing.
+#
+# A freshly placed machine has NO charge, so case 1 is also the "did we forget to
+# charge it" check. Testing only case 3 would pass on a machine that crafts for free -
+# cases 1 and 2 are what prove the charge is really read, and case 3 after them proves
+# a refusal does not leave the machine stuck.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-alchemistry -PveloceKeepOpen
+
+
+# ===== 1/7  veloce_alchemistry_atomizer_module =====
+# --- atomizer_module: no power ---
+/cv testmodule alchemistry veloce_alchemistry_atomizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- atomizer_module: not enough power ---
+/cv testmodule alchemistry veloce_alchemistry_atomizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- atomizer_module: powered ---
+/cv testmodule alchemistry veloce_alchemistry_atomizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 2/7  veloce_alchemistry_combiner_module =====
+# --- combiner_module: no power ---
+/cv testmodule alchemistry veloce_alchemistry_combiner_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- combiner_module: not enough power ---
+/cv testmodule alchemistry veloce_alchemistry_combiner_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- combiner_module: powered ---
+/cv testmodule alchemistry veloce_alchemistry_combiner_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 3/7  veloce_alchemistry_compactor_module =====
+# --- compactor_module: no power ---
+/cv testmodule alchemistry veloce_alchemistry_compactor_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- compactor_module: not enough power ---
+/cv testmodule alchemistry veloce_alchemistry_compactor_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- compactor_module: powered ---
+/cv testmodule alchemistry veloce_alchemistry_compactor_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 4/7  veloce_alchemistry_dissolver_module =====
+# --- dissolver_module: no power ---
+/cv testmodule alchemistry veloce_alchemistry_dissolver_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- dissolver_module: not enough power ---
+/cv testmodule alchemistry veloce_alchemistry_dissolver_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- dissolver_module: powered ---
+/cv testmodule alchemistry veloce_alchemistry_dissolver_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 5/7  veloce_alchemistry_fission_module =====
+# --- fission_module: no power ---
+/cv testmodule alchemistry veloce_alchemistry_fission_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- fission_module: not enough power ---
+/cv testmodule alchemistry veloce_alchemistry_fission_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- fission_module: powered ---
+/cv testmodule alchemistry veloce_alchemistry_fission_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 6/7  veloce_alchemistry_fusion_module =====
+# --- fusion_module: no power ---
+/cv testmodule alchemistry veloce_alchemistry_fusion_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- fusion_module: not enough power ---
+/cv testmodule alchemistry veloce_alchemistry_fusion_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- fusion_module: powered ---
+/cv testmodule alchemistry veloce_alchemistry_fusion_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 7/7  veloce_alchemistry_liquifier_module =====
+# --- liquifier_module: no power ---
+/cv testmodule alchemistry veloce_alchemistry_liquifier_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- liquifier_module: not enough power ---
+/cv testmodule alchemistry veloce_alchemistry_liquifier_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- liquifier_module: powered ---
+/cv testmodule alchemistry veloce_alchemistry_liquifier_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL

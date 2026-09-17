@@ -1,0 +1,65 @@
+# Module: create  -  one case per MACHINE BLOCK (7 found).
+#
+# A compat module is a FAMILY: Mekanism alone registers twenty-three machines, each
+# its own block. Testing the family through one block would draw a recipe belonging to
+# a different machine and report a failure that says nothing about either, so every
+# block gets its own case and /cv testmodule only accepts a recipe the placed block can
+# actually perform.
+#
+# STATUS: NOT IMPLEMENTED. Create's machines take ROTATIONAL power, which nothing in
+# this mod drives yet, so a recipe drawn from Create can never be paid for and every
+# case would report a failure that says nothing about the machine. The rig is built
+# (terminal, pipe, machine, barrel) and the run says so on the chat and in the log.
+# Nothing is crafted here.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-create -PveloceKeepOpen
+
+
+# --- 1/7  veloce_create_crushing_module ---
+/cv testmodule create veloce_create_crushing_module
+expect: not implemented
+
+/cv testmodule result
+expect: SKIP
+
+# --- 2/7  veloce_create_deployer_module ---
+/cv testmodule create veloce_create_deployer_module
+expect: not implemented
+
+/cv testmodule result
+expect: SKIP
+
+# --- 3/7  veloce_create_mechanical_crafter_module ---
+/cv testmodule create veloce_create_mechanical_crafter_module
+expect: not implemented
+
+/cv testmodule result
+expect: SKIP
+
+# --- 4/7  veloce_create_millstone_module ---
+/cv testmodule create veloce_create_millstone_module
+expect: not implemented
+
+/cv testmodule result
+expect: SKIP
+
+# --- 5/7  veloce_create_mixer_module ---
+/cv testmodule create veloce_create_mixer_module
+expect: not implemented
+
+/cv testmodule result
+expect: SKIP
+
+# --- 6/7  veloce_create_press_module ---
+/cv testmodule create veloce_create_press_module
+expect: not implemented
+
+/cv testmodule result
+expect: SKIP
+
+# --- 7/7  veloce_create_saw_module ---
+/cv testmodule create veloce_create_saw_module
+expect: not implemented
+
+/cv testmodule result
+expect: SKIP

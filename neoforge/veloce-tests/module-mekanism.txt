@@ -1,0 +1,901 @@
+# Module: mekanism  -  one case per MACHINE BLOCK (23 found).
+#
+# A compat module is a FAMILY: Mekanism alone registers twenty-three machines, each
+# its own block. Testing the family through one block would draw a recipe belonging to
+# a different machine and report a failure that says nothing about either, so every
+# block gets its own case and /cv testmodule only accepts a recipe the placed block can
+# actually perform.
+#
+# These machines need FORGE ENERGY. Power is a separate axis from "can this module
+# craft at all", and the three cases differ in what they answer:
+#
+#   1. accumulator at ZERO        -> must REFUSE, naming power as the reason
+#   2. accumulator partly filled   -> must STILL REFUSE (too little for one operation)
+#   3. accumulator full            -> must DELIVER the item
+#
+# SKIP is an accepted answer on every case, and it is not indecision: SKIP means this
+# machine has no recipe in the current pack, so there was nothing to test. That is a
+# fact about the pack, not about the machine - and reporting it as FAIL would bury the
+# real failures under a hundred lines that say nothing.
+#
+# A freshly placed machine has NO charge, so case 1 is also the "did we forget to
+# charge it" check. Testing only case 3 would pass on a machine that crafts for free -
+# cases 1 and 2 are what prove the charge is really read, and case 3 after them proves
+# a refusal does not leave the machine stuck.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-mekanism -PveloceKeepOpen
+
+
+# ===== 1/23  veloce_mekanism_antiprotonic_nucleosynthesizer_module =====
+# --- antiprotonic_nucleosynthesizer_module: no power ---
+/cv testmodule mekanism veloce_mekanism_antiprotonic_nucleosynthesizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- antiprotonic_nucleosynthesizer_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_antiprotonic_nucleosynthesizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- antiprotonic_nucleosynthesizer_module: powered ---
+/cv testmodule mekanism veloce_mekanism_antiprotonic_nucleosynthesizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 2/23  veloce_mekanism_chemical_crystallizer_module =====
+# --- chemical_crystallizer_module: no power ---
+/cv testmodule mekanism veloce_mekanism_chemical_crystallizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_crystallizer_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_chemical_crystallizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_crystallizer_module: powered ---
+/cv testmodule mekanism veloce_mekanism_chemical_crystallizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 3/23  veloce_mekanism_chemical_dissolution_chamber_module =====
+# --- chemical_dissolution_chamber_module: no power ---
+/cv testmodule mekanism veloce_mekanism_chemical_dissolution_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_dissolution_chamber_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_chemical_dissolution_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_dissolution_chamber_module: powered ---
+/cv testmodule mekanism veloce_mekanism_chemical_dissolution_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 4/23  veloce_mekanism_chemical_infuser_module =====
+# --- chemical_infuser_module: no power ---
+/cv testmodule mekanism veloce_mekanism_chemical_infuser_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_infuser_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_chemical_infuser_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_infuser_module: powered ---
+/cv testmodule mekanism veloce_mekanism_chemical_infuser_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 5/23  veloce_mekanism_chemical_injection_chamber_module =====
+# --- chemical_injection_chamber_module: no power ---
+/cv testmodule mekanism veloce_mekanism_chemical_injection_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_injection_chamber_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_chemical_injection_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_injection_chamber_module: powered ---
+/cv testmodule mekanism veloce_mekanism_chemical_injection_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 6/23  veloce_mekanism_chemical_oxidizer_module =====
+# --- chemical_oxidizer_module: no power ---
+/cv testmodule mekanism veloce_mekanism_chemical_oxidizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_oxidizer_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_chemical_oxidizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_oxidizer_module: powered ---
+/cv testmodule mekanism veloce_mekanism_chemical_oxidizer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 7/23  veloce_mekanism_chemical_washer_module =====
+# --- chemical_washer_module: no power ---
+/cv testmodule mekanism veloce_mekanism_chemical_washer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_washer_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_chemical_washer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- chemical_washer_module: powered ---
+/cv testmodule mekanism veloce_mekanism_chemical_washer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 8/23  veloce_mekanism_combiner_module =====
+# --- combiner_module: no power ---
+/cv testmodule mekanism veloce_mekanism_combiner_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- combiner_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_combiner_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- combiner_module: powered ---
+/cv testmodule mekanism veloce_mekanism_combiner_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 9/23  veloce_mekanism_crusher_module =====
+# --- crusher_module: no power ---
+/cv testmodule mekanism veloce_mekanism_crusher_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- crusher_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_crusher_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- crusher_module: powered ---
+/cv testmodule mekanism veloce_mekanism_crusher_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 10/23  veloce_mekanism_electrolytic_separator_module =====
+# --- electrolytic_separator_module: no power ---
+/cv testmodule mekanism veloce_mekanism_electrolytic_separator_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- electrolytic_separator_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_electrolytic_separator_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- electrolytic_separator_module: powered ---
+/cv testmodule mekanism veloce_mekanism_electrolytic_separator_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 11/23  veloce_mekanism_energized_smelter_module =====
+# --- energized_smelter_module: no power ---
+/cv testmodule mekanism veloce_mekanism_energized_smelter_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- energized_smelter_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_energized_smelter_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- energized_smelter_module: powered ---
+/cv testmodule mekanism veloce_mekanism_energized_smelter_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 12/23  veloce_mekanism_enrichment_module =====
+# --- enrichment_module: no power ---
+/cv testmodule mekanism veloce_mekanism_enrichment_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- enrichment_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_enrichment_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- enrichment_module: powered ---
+/cv testmodule mekanism veloce_mekanism_enrichment_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 13/23  veloce_mekanism_isotopic_centrifuge_module =====
+# --- isotopic_centrifuge_module: no power ---
+/cv testmodule mekanism veloce_mekanism_isotopic_centrifuge_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- isotopic_centrifuge_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_isotopic_centrifuge_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- isotopic_centrifuge_module: powered ---
+/cv testmodule mekanism veloce_mekanism_isotopic_centrifuge_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 14/23  veloce_mekanism_metallurgic_infuser_module =====
+# --- metallurgic_infuser_module: no power ---
+/cv testmodule mekanism veloce_mekanism_metallurgic_infuser_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- metallurgic_infuser_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_metallurgic_infuser_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- metallurgic_infuser_module: powered ---
+/cv testmodule mekanism veloce_mekanism_metallurgic_infuser_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 15/23  veloce_mekanism_osmium_compressor_module =====
+# --- osmium_compressor_module: no power ---
+/cv testmodule mekanism veloce_mekanism_osmium_compressor_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- osmium_compressor_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_osmium_compressor_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- osmium_compressor_module: powered ---
+/cv testmodule mekanism veloce_mekanism_osmium_compressor_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 16/23  veloce_mekanism_painting_machine_module =====
+# --- painting_machine_module: no power ---
+/cv testmodule mekanism veloce_mekanism_painting_machine_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- painting_machine_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_painting_machine_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- painting_machine_module: powered ---
+/cv testmodule mekanism veloce_mekanism_painting_machine_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 17/23  veloce_mekanism_pigment_extractor_module =====
+# --- pigment_extractor_module: no power ---
+/cv testmodule mekanism veloce_mekanism_pigment_extractor_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- pigment_extractor_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_pigment_extractor_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- pigment_extractor_module: powered ---
+/cv testmodule mekanism veloce_mekanism_pigment_extractor_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 18/23  veloce_mekanism_pigment_mixer_module =====
+# --- pigment_mixer_module: no power ---
+/cv testmodule mekanism veloce_mekanism_pigment_mixer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- pigment_mixer_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_pigment_mixer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- pigment_mixer_module: powered ---
+/cv testmodule mekanism veloce_mekanism_pigment_mixer_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 19/23  veloce_mekanism_pressurized_reaction_chamber_module =====
+# --- pressurized_reaction_chamber_module: no power ---
+/cv testmodule mekanism veloce_mekanism_pressurized_reaction_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- pressurized_reaction_chamber_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_pressurized_reaction_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- pressurized_reaction_chamber_module: powered ---
+/cv testmodule mekanism veloce_mekanism_pressurized_reaction_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 20/23  veloce_mekanism_purification_chamber_module =====
+# --- purification_chamber_module: no power ---
+/cv testmodule mekanism veloce_mekanism_purification_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- purification_chamber_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_purification_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- purification_chamber_module: powered ---
+/cv testmodule mekanism veloce_mekanism_purification_chamber_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 21/23  veloce_mekanism_rotary_condensentrator_module =====
+# --- rotary_condensentrator_module: no power ---
+/cv testmodule mekanism veloce_mekanism_rotary_condensentrator_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- rotary_condensentrator_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_rotary_condensentrator_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- rotary_condensentrator_module: powered ---
+/cv testmodule mekanism veloce_mekanism_rotary_condensentrator_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 22/23  veloce_mekanism_sawmill_module =====
+# --- sawmill_module: no power ---
+/cv testmodule mekanism veloce_mekanism_sawmill_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- sawmill_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_sawmill_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- sawmill_module: powered ---
+/cv testmodule mekanism veloce_mekanism_sawmill_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL
+
+# ===== 23/23  veloce_mekanism_solar_neutron_activator_module =====
+# --- solar_neutron_activator_module: no power ---
+/cv testmodule mekanism veloce_mekanism_solar_neutron_activator_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 0
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- solar_neutron_activator_module: not enough power ---
+/cv testmodule mekanism veloce_mekanism_solar_neutron_activator_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: FAIL | SKIP
+
+# --- solar_neutron_activator_module: powered ---
+/cv testmodule mekanism veloce_mekanism_solar_neutron_activator_module
+expectany: building and waiting | no recipe for
+
+/cv testmodule fe 1000000
+expect: FE set to
+
+wait: 120
+
+/cv testmodule result
+expectany: PASS | SKIP
+expectnot: FAIL

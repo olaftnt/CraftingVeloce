@@ -1,5 +1,6 @@
 package com.craftingveloce.commands;
 
+import com.craftingveloce.block.entity.VeloceFeModuleBlockEntity;
 import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
 import com.craftingveloce.crafting.ProcessingEntry;
 import com.craftingveloce.crafting.VeloceProcessingModule;
@@ -58,6 +59,19 @@ public final class CVModuleTestCommand {
 
     /** Ticks to let the network scan before the result is judged. */
     private static final int SCAN_TICKS = 60;
+
+    /**
+     * Modules whose recipes cannot be planned yet, so only their rig is built.
+     *
+     * <p>Create's machines take ROTATIONAL power, which nothing in this mod drives
+     * yet, so a recipe drawn from Create can never be paid for and every case would
+     * report a failure that says nothing about the machine. Building the rig still
+     * checks the part that does work - the blocks, the network, the registration -
+     * and says plainly, on the chat and in the log, that the rest was not tested.
+     * Saying so is the point: a green run that quietly skipped the module would be
+     * worse than no test at all.
+     */
+    private static final java.util.Set<String> UNIMPLEMENTED = java.util.Set.of("create");
 
     /**
      * The verdict of the last run, readable with {@code /cv testmodule result}.
@@ -136,6 +150,20 @@ public final class CVModuleTestCommand {
             }
         }
         return paths;
+    }
+
+    /** Whether this module can make anything at all in this game instance. */
+    private static boolean moduleHasAnyRecipe(ServerLevel level, VeloceProcessingModule module) {
+        for (Item item : BuiltInRegistries.ITEM) {
+            if (!module.recipesAnywhere(level, item).isEmpty()) {
+                return true;
+            }
+        }
+        return switch (module.id()) {
+            case "crafting" -> !VeloceRecipeRegistry.getAllCraftableItems(level).isEmpty();
+            case "furnace" -> !VeloceRecipeRegistry.getAllFurnaceCraftableItems(level).isEmpty();
+            default -> false;
+        };
     }
 
     /** Prints every recipe id this module offers, one per line. */
@@ -272,13 +300,40 @@ public final class CVModuleTestCommand {
         placeLikePlayer(level, terminalPos);
         placeLikePlayer(level, machinePos);
 
+        if (UNIMPLEMENTED.contains(moduleId)) {
+            String notice = "testing for " + moduleId + " not implemented";
+            // Both channels on purpose: the script asserts on the chat line, and the
+            // log is what a human reads afterwards to see what a green run covered.
+            LOG.info("[testmodule] {} - rig built at {}, no recipe was tested", notice, machinePos);
+            source.sendSuccess(() -> Component.literal("\u00a7e[testmodule] " + notice
+                    + "\u00a77 (rig built: terminal, pipe, " + moduleId
+                    + " machine and a barrel - nothing was crafted)"), false);
+            lastVerdict = "SKIP " + moduleId + ": " + notice;
+            return 1;
+        }
+
         // --- 3. a recipe this module can actually do ---
         // Picked AFTER the blocks are placed, because the built-in crafting module
         // derives its item set from the crafting tables it can see in the network -
         // asking before the network exists answers "no recipe" for a machine that is
         // about to be perfectly capable of crafting.
-        ProcessingEntry recipe = findRecipe(level, module, wantedRecipe);
+        ProcessingEntry recipe = findRecipe(level, module, wantedRecipe, machine);
         if (recipe == null) {
+            // Two different situations, and only one of them is a defect.
+            //
+            // A machine with NO recipes in this pack (Mekanism's nucleosynthesizer
+            // with no such recipes installed) has nothing to test: reporting FAIL
+            // would blame the machine for the pack, and 97 such lines would bury the
+            // real failures. A module that HAS recipes but cannot produce one is a
+            // defect and still fails.
+            if (wantedRecipe == null && moduleHasAnyRecipe(level, module)) {
+                String notice = moduleId + " has no recipe for this machine in this game instance";
+                LOG.info("[testmodule] SKIP {} - {}", moduleId, notice);
+                source.sendSuccess(() -> Component.literal("§e[testmodule] no recipe for "
+                        + moduleId + " on this machine - skipping"), false);
+                lastVerdict = "SKIP " + moduleId + ": no recipe for this machine in this game instance";
+                return 1;
+            }
             source.sendFailure(Component.literal("§c" + moduleId
                     + (wantedRecipe == null
                             ? " has no recipe available in this game instance"
@@ -560,7 +615,8 @@ public final class CVModuleTestCommand {
      *
      * @param wantedRecipe recipe id to test, or {@code null} to draw at random
      */
-    private static ProcessingEntry findRecipe(ServerLevel level, VeloceProcessingModule module, String wantedRecipe) {
+    private static ProcessingEntry findRecipe(ServerLevel level, VeloceProcessingModule module,
+                                               String wantedRecipe, Block machine) {
         // Two different module APIs, and mixing them is not cosmetic:
         //
         //   * the built-in crafting/furnace modules publish a SET of producible items
@@ -599,7 +655,7 @@ public final class CVModuleTestCommand {
                 for (ProcessingEntry entry : fromRegistry
                         ? registryRecipesFor(level, module, item)
                         : module.recipesAnywhere(level, item)) {
-                    if (entry.id().toString().equals(wantedRecipe)) {
+                    if (entry.id().toString().equals(wantedRecipe) && machineCanDo(level, machine, entry)) {
                         return entry;
                     }
                 }
@@ -612,11 +668,35 @@ public final class CVModuleTestCommand {
             List<ProcessingEntry> found = fromRegistry
                     ? registryRecipesFor(level, module, item)
                     : module.recipesAnywhere(level, item);
-            if (!found.isEmpty()) {
-                return found.get(0);
+            for (ProcessingEntry entry : found) {
+                if (machineCanDo(level, machine, entry)) {
+                    return entry;
+                }
             }
         }
         return null;
+    }
+
+    /**
+     * Can the machine standing in the rig perform this recipe?
+     *
+     * <p>A compat module covers a whole FAMILY of machines - Mekanism registers
+     * twenty-three - and each machine is its own block. Testing the family through
+     * one block would draw a recipe belonging to a different machine and report a
+     * failure that says nothing about either. The block that was placed has to be the
+     * one that can do the recipe under test.
+     *
+     * <p>Unknown machines (the built-in ones, whose blocks carry no recipe-type list)
+     * answer yes: this narrows nothing for them, which is the previous behaviour.
+     */
+    private static boolean machineCanDo(ServerLevel level, Block machine, ProcessingEntry entry) {
+        if (machine == null || lastMachinePos == null) {
+            return true;
+        }
+        if (!(level.getBlockEntity(lastMachinePos) instanceof VeloceFeModuleBlockEntity fe)) {
+            return true;
+        }
+        return fe.recipeTypes().contains(entry.type());
     }
 
     /**

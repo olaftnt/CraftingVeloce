@@ -58,7 +58,7 @@ import java.util.function.Consumer;
 public final class VeloceTestScript {
 
     /** What one line of the script asked for. */
-    public enum Kind { COMMAND, EXPECT, EXPECT_NOT, WAIT }
+    public enum Kind { COMMAND, EXPECT, EXPECT_NOT, WAIT, EXPECT_ANY }
 
     /** One parsed directive. */
     public record Step(Kind kind, String text, int line) {
@@ -103,7 +103,13 @@ public final class VeloceTestScript {
             if (line.isEmpty() || line.startsWith("#")) {
                 continue;
             }
-            if (line.startsWith("expectnot:")) {
+            if (line.startsWith("expectany:")) {
+                // Two answers can both be correct, and they mean different things.
+                // "PASS or SKIP" is not indecision: SKIP says the machine has no
+                // recipe in this pack, so there was nothing to test - a fact about
+                // the pack, not about the machine.
+                steps.add(new Step(Kind.EXPECT_ANY, line.substring("expectany:".length()).strip(), lineNo));
+            } else if (line.startsWith("expectnot:")) {
                 steps.add(new Step(Kind.EXPECT_NOT, line.substring("expectnot:".length()).strip(), lineNo));
             } else if (line.startsWith("expect:")) {
                 steps.add(new Step(Kind.EXPECT, line.substring("expect:".length()).strip(), lineNo));
@@ -114,7 +120,7 @@ public final class VeloceTestScript {
             } else {
                 throw new IllegalArgumentException(
                         "script line " + lineNo
-                                + ": expected '/command', 'expect:', 'expectnot:' or 'wait:', got: " + line);
+                                + ": expected '/command', 'expect:', 'expectany:', 'expectnot:' or 'wait:', got: " + line);
             }
         }
         return steps;
@@ -153,6 +159,28 @@ public final class VeloceTestScript {
                     server.tell(new TickTask(server.getTickCount() + ticks,
                             () -> advance(state, next, server, player, onDone)));
                     return;
+                }
+                case EXPECT_ANY -> {
+                    state.assertions++;
+                    String haystack = state.output.toString().toLowerCase();
+                    boolean matched = false;
+                    for (String alternative : step.text().split("\\|")) {
+                        if (haystack.contains(alternative.strip().toLowerCase())) {
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (matched) {
+                        state.passed++;
+                    } else {
+                        String seen = state.output.toString().strip();
+                        if (seen.length() > 600) {
+                            seen = seen.substring(0, 600) + " \u2026";
+                        }
+                        state.failures.add("line " + step.line()
+                                + ": expected any of \"" + step.text() + "\""
+                                + (seen.isEmpty() ? " (no output)" : " | saw: " + seen.replace("\n", " / ")));
+                    }
                 }
                 case EXPECT, EXPECT_NOT -> {
                     state.assertions++;

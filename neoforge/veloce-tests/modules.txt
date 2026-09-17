@@ -1,7 +1,0 @@
-# Builds one test network per processing module (Create / Mekanism / Alchemistry)
-# and checks none of them failed to place.
-#
-# Run it with:  /cv test run modules
-
-/cv testnet modules
-expect: Built module testnets!
