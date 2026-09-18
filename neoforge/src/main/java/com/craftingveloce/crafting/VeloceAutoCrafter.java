@@ -729,6 +729,30 @@ public final class VeloceAutoCrafter {
             ServerLevel level, VelocePipeNetwork network,
             java.util.Collection<Item> items, Set<Item> enabledItems,
             Map<Item, ResourceLocation> preferred, long budgetNanos) {
+        return countCraftableBatchResult(level, network, items, enabledItems, preferred,
+                budgetNanos, null);
+    }
+
+    /**
+     * As above, but also counting what the PLAYER is carrying.
+     *
+     * <p><b>Why the estimate needs the player at all.</b> The whole point of these numbers is
+     * the question "how many of this can I have", and until now the answer only ever counted
+     * the network. A player holding an oak log saw no number for oak planks, and a player with
+     * a log in hand and a chest of them beside the terminal saw the same number as with the
+     * chest alone - because the inventory was not part of the arithmetic.
+     *
+     * <p>The estimate is allowed to count the whole inventory, including copies of the
+     * requested item: for a "how many can I have" display, what the player is already holding
+     * is part of the answer. (CRAFTING deliberately does not do this - see snapshotStock -
+     * because the terminal has to produce the item into the network before it can hand it
+     * over. Two different questions, two different answers.)
+     */
+    public static BatchResult countCraftableBatchResult(
+            ServerLevel level, VelocePipeNetwork network,
+            java.util.Collection<Item> items, Set<Item> enabledItems,
+            Map<Item, ResourceLocation> preferred, long budgetNanos,
+            @Nullable ItemInventory inventory) {
         Map<Item, Long> out = new HashMap<>();
         if (items == null || items.isEmpty()) {
             return new BatchResult(out, true, false);
@@ -736,6 +760,11 @@ public final class VeloceAutoCrafter {
 
         // A single stock read for the whole batch.
         Map<Item, Long> stockSnapshot = network.getAllItemCounts(level);
+        if (inventory != null) {
+            for (Item carried : inventory.allItems()) {
+                stockSnapshot.merge(carried, (long) inventory.count(carried), Long::sum);
+            }
+        }
 
         // Heat for the NUMBERS: "is there a furnace in the network", not "how much
         // is in its buffer RIGHT NOW".

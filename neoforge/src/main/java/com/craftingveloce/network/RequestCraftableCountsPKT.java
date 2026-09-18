@@ -159,7 +159,13 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             // exists for everything else.
             boolean complete = true;
             if (!unknown.isEmpty()) {
-                var computed = source.computeCraftableCounts(unknown);
+                // The terminal gets the player as well: its numbers are "how many can I
+                // have", and what the player is carrying is part of that answer. The
+                // controller is unaffected - it has no player and keeps the old overload.
+                var computed =
+                        source instanceof com.craftingveloce.block.entity.VeloceTerminalBlockEntity terminal
+                                ? terminal.computeCraftableCounts(unknown, player)
+                                : source.computeCraftableCounts(unknown);
                 result.putAll(computed.counts());
                 complete = computed.complete();
                 if (network != null) {

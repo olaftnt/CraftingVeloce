@@ -117,7 +117,21 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
      * and was removed - that is why we compute only what the screen asks for.
      */
     @Override
-    public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult computeCraftableCounts(Collection<Item> items) {
+    public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult computeCraftableCounts(
+            Collection<Item> items) {
+        return computeCraftableCounts(items, null);
+    }
+
+    /**
+     * As above, but counting what the asking player is carrying.
+     *
+     * <p>The numbers the terminal shows are "how many of this can I have", and the player's
+     * own pockets were not part of that arithmetic: an oak log in hand produced no number for
+     * planks, and a log in hand plus a chest of them beside the terminal produced the same
+     * number as the chest alone.
+     */
+    public com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult computeCraftableCounts(
+            Collection<Item> items, @javax.annotation.Nullable ServerPlayer player) {
         if (!(level instanceof ServerLevel sl) || items == null || items.isEmpty()) {
             return new com.craftingveloce.crafting.VeloceAutoCrafter.BatchResult(Map.of(), true);
         }
@@ -143,7 +157,10 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         long start = System.nanoTime();
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
                 .countCraftableBatchResult(sl, net, items, enabled, preferred,
-                        com.craftingveloce.crafting.VeloceAutoCrafter.DEFAULT_ESTIMATE_BUDGET_NS);
+                        com.craftingveloce.crafting.VeloceAutoCrafter.DEFAULT_ESTIMATE_BUDGET_NS,
+                        player == null
+                                ? null
+                                : new com.craftingveloce.crafting.VelocePlayerInventory(player));
 
         com.craftingveloce.util.VeloceLog.Craft.detail(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
