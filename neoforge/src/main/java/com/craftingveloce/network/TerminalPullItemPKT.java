@@ -54,7 +54,7 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
                                        VeloceTomTerminalBlockEntity.PullResult pulled) {
         net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(serverPlayer,
                 new TerminalCraftErrorPKT(pkt.terminalPos(), pkt.itemStack(),
-                        pulled.reason(), pulled.detail()));
+                        pulled.reason(), pulled.detail(), pulled.hint()));
     }
 
     public static void resyncInventories(ServerPlayer serverPlayer) {

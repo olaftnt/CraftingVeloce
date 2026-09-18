@@ -47,6 +47,7 @@
   "block.craftingveloce.veloce_tom_terminal": "Veloce Storage Terminal",
   "block.craftingveloce.velocity_furnace": "Veloce Furnace",
   "craftingveloce.craft.error.amount": "invalid amount",
+  "craftingveloce.craft.hint.availableIn": "Available in: %s",
   "craftingveloce.craft.error.crafterDisabled": "Cannot craft: disabled in the auto-crafter",
   "craftingveloce.craft.error.disabled": "not in stock (auto-crafting disabled)",
   "craftingveloce.craft.error.extract": "could not take ingredients",

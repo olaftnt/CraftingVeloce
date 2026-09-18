@@ -229,10 +229,10 @@ public class ClientTerminalHelper {
      * open) - the screen then ignores it.
      */
     public static void handleCraftError(BlockPos pos, net.minecraft.world.item.ItemStack stack,
-                                        String reason, String detail) {
+                                        String reason, String detail, String hint) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof VeloceTerminalScreen screen) {
-            screen.setCraftError(pos, stack, reason, detail);
+            screen.setCraftError(pos, stack, reason, detail, hint);
         }
     }
 

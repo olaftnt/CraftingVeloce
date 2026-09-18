@@ -148,9 +148,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      * one) are skipped: showing the reason on the wrong screen would be
      * misleading.
      */
-    public void setCraftError(BlockPos pos, ItemStack stack, String reason, String detail) {
+    public void setCraftError(BlockPos pos, ItemStack stack, String reason, String detail,
+                              String hint) {
         if (pos != null && pos.equals(this.terminalPos)) {
-            this.craftErrors.record(stack, reason, detail);
+            this.craftErrors.record(stack, reason, detail, hint);
         }
     }
 

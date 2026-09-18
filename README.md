@@ -18,7 +18,7 @@ A mod that adds an intelligent logistics network to Minecraft, built on top of t
 - Clicking an item pulls it out of the network (1 item with LMB, up to a full stack with SHIFT+LMB)
 - Draws counts next to items (green digits) showing how many are in the network
 - Tooltip: the default MC tooltip + a **red reason for a failed craft** on any item that cannot be crafted
-- **Why it failed** is shown in the tooltip of the clicked item ("Cannot craft: no furnace in the network", "Cannot craft: missing iron ingot", "recipe tree too complex"...). The server sends the reason in a `TerminalCraftErrorPKT` packet rather than via `displayClientMessage` — the action bar is **invisible** in the terminal GUI, so the player never saw any response. The reason sticks for 30 s (`VeloceCraftErrorHints`) and is tracked per item, just like the network counters
+- **Why it failed** is shown in the tooltip of the clicked item ("Cannot craft: no furnace in the network", "Cannot craft: missing iron ingot", "recipe tree too complex"...). When the item can also be made elsewhere, a second GOLD line names those machines ("Available in: ..."): an option, not a cause — blaming a machine the player did not need sent them off to build something that would not have helped. The list comes from the installed modules only. The server sends the reason in a `TerminalCraftErrorPKT` packet rather than via `displayClientMessage` — the action bar is **invisible** in the terminal GUI, so the player never saw any response. The reason sticks for 30 s (`VeloceCraftErrorHints`) and is tracked per item, just like the network counters
 - Connects to the network through `IInventoryCable` (Tom's Storage)
 
 ### 2. Veloce Extractor (`veloce_extractor`)
@@ -575,7 +575,7 @@ All packets use the NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `SyncCraftingTableStatePKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes` |
 | `SyncExtractorFiltersPKT` | S→C | `BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting` |
 | `SyncTerminalCountsPKT` | S→C | `Map<Item, Long> itemCounts, Map<Item, Long> craftableCounts` |
-| `TerminalCraftErrorPKT` | S→C | `BlockPos terminalPos, ItemStack itemStack, String reason, String detail` |
+| `TerminalCraftErrorPKT` | S→C | `BlockPos terminalPos, ItemStack itemStack, String reason, String detail, String hint` |
 | `TerminalPullItemPKT` | C→S | `BlockPos terminalPos, ItemStack itemStack, int count` |
 | `TerminalStoreItemPKT` | C→S | `BlockPos terminalPos, int mode` |
 | `TerminalWatcherPKT` | C→S | `BlockPos pos, boolean watching` |
@@ -652,7 +652,7 @@ fall behind, the way the packet list and the GUI section once did):
 - `openCraftingTableScreen(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents)`
 - `updateCraftingTableState(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes)`
 - `handleCraftableCounts(BlockPos pos, Map<Item, Long> counts, boolean complete)` — the server's response with the "how many can be made" counts
-- `handleCraftError(BlockPos pos, ItemStack stack, String reason, String detail)` — the reason a craft from the terminal failed; it lands in the tooltip of **that item** (the action bar was not visible in the GUI). The screen compares the terminal position, so a packet from another terminal is ignored
+- `handleCraftError(BlockPos pos, ItemStack stack, String reason, String detail, String hint)` — the reason a craft from the terminal failed; it lands in the tooltip of **that item** (the action bar was not visible in the GUI). The screen compares the terminal position, so a packet from another terminal is ignored
 
 > **The "how many can be made" counts — two different things, two different measures.**
 > The number next to an item answers the question "how many of these **can I have** from what

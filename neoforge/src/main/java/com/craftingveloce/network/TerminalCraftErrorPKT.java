@@ -25,7 +25,8 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  * does the translation, so the message is in the player's language.
  */
 public record TerminalCraftErrorPKT(BlockPos terminalPos, ItemStack itemStack,
-                                    String reason, String detail) implements CustomPacketPayload {
+                                    String reason, String detail,
+                                    String hint) implements CustomPacketPayload {
 
     public static final Type<TerminalCraftErrorPKT> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(CraftingVeloceMod.MODID, "terminal_craft_error"));
@@ -36,6 +37,7 @@ public record TerminalCraftErrorPKT(BlockPos terminalPos, ItemStack itemStack,
                     ItemStack.OPTIONAL_STREAM_CODEC, TerminalCraftErrorPKT::itemStack,
                     ByteBufCodecs.STRING_UTF8, TerminalCraftErrorPKT::reason,
                     ByteBufCodecs.STRING_UTF8, TerminalCraftErrorPKT::detail,
+                    ByteBufCodecs.STRING_UTF8, TerminalCraftErrorPKT::hint,
                     TerminalCraftErrorPKT::new
             );
 
@@ -50,6 +52,6 @@ public record TerminalCraftErrorPKT(BlockPos terminalPos, ItemStack itemStack,
 
     public static void handle(TerminalCraftErrorPKT pkt, IPayloadContext ctx) {
         ctx.enqueueWork(() -> com.craftingveloce.client.ClientTerminalHelper.handleCraftError(
-                pkt.terminalPos(), pkt.itemStack(), pkt.reason(), pkt.detail()));
+                pkt.terminalPos(), pkt.itemStack(), pkt.reason(), pkt.detail(), pkt.hint()));
     }
 }

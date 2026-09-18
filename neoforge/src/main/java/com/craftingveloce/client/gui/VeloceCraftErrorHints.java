@@ -33,21 +33,30 @@ public final class VeloceCraftErrorHints {
     private static final long LIFETIME_MS = 30_000L;
 
     /** One remembered reason together with the time it was stored. */
-    private record Hint(String reason, String detail, long stamp) {
+    private record Hint(String reason, String detail, String hint, long stamp) {
     }
 
     private final Map<Item, Hint> hints = new HashMap<>();
 
     /** Stores the reason of a failed attempt for this item. */
-    public void record(ItemStack stack, String reason, String detail) {
+    public void record(ItemStack stack, String reason, String detail, String hint) {
         if (stack.isEmpty()) {
             return;
         }
-        hints.put(stack.getItem(), new Hint(reason, detail, Util.getMillis()));
+        hints.put(stack.getItem(), new Hint(reason, detail,
+                hint == null ? "" : hint, Util.getMillis()));
     }
 
     /**
-     * Appends a red line with the reason if this item failed recently.
+     * Appends the reason if this item failed recently - and, under it, where else it
+     * could have been made.
+     *
+     * <p><b>Why the second line exists.</b> When a recipe has several routes, blaming
+     * one of them is wrong: a player with a crafting table and no logs was told there
+     * was no Create saw, and went off to build a machine that would not have helped.
+     * The reason now comes from the route that was actually tried, and the machines
+     * appear underneath as OPTIONS. Entries are built from the installed modules only,
+     * so a player without Create never sees a saw mentioned.
      *
      * <p>We remove an outdated entry along the way - this is the only place that
      * knows the reason is still needed.
@@ -65,7 +74,7 @@ public final class VeloceCraftErrorHints {
             return;
         }
         tooltip.add(VeloceCraftErrors.message(hint.reason(), hint.detail(),
-                stack.getHoverName().getString()).withStyle(ChatFormatting.RED));
+                hint.hint(), stack.getHoverName().getString()).withStyle(ChatFormatting.RED));
     }
 
     /** Clears the memory - called when the screen is closed. */

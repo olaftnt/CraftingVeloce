@@ -394,13 +394,13 @@ public class VeloceTomTerminalBlockEntity extends VeloceBlockEntity
      * @param reason language key of the reason (empty = no reason, e.g. the item
      *               simply is not in the network), {@code detail} is its complement
      */
-    public record PullResult(ItemStack stack, String reason, String detail) {
+    public record PullResult(ItemStack stack, String reason, String detail, String hint) {
         static PullResult ok(ItemStack stack) {
-            return new PullResult(stack, "", "");
+            return new PullResult(stack, "", "", "");
         }
 
         static PullResult empty() {
-            return new PullResult(ItemStack.EMPTY, "", "");
+            return new PullResult(ItemStack.EMPTY, "", "", "");
         }
     }
 
@@ -802,7 +802,7 @@ public class VeloceTomTerminalBlockEntity extends VeloceBlockEntity
             com.craftingveloce.crafting.VeloceCraftTrace.log(
                     "item is NOT in the craftable set: %s (detail: %s)",
                     reason.reasonKey(), reason.detail());
-            return new PullResult(ItemStack.EMPTY, reason.reasonKey(), reason.detail());
+            return new PullResult(ItemStack.EMPTY, reason.reasonKey(), reason.detail(), "");
         }
         var preferred = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getPreferredRecipes(sl, net);
@@ -819,7 +819,7 @@ public class VeloceTomTerminalBlockEntity extends VeloceBlockEntity
             // Reason from the planner: noBase + the name of the missing
             // ingredient, tooComplex or extract. Without this the player only
             // saw a generic "item not in network".
-            return new PullResult(ItemStack.EMPTY, result.reason(), result.detail());
+            return new PullResult(ItemStack.EMPTY, result.reason(), result.detail(), result.hint());
         }
 
         // The crafting result goes first to the crafter's buffer (working memory),

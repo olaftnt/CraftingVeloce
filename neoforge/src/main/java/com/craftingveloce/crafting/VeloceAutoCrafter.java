@@ -115,17 +115,31 @@ public final class VeloceAutoCrafter {
      * only a key that NOBODY displayed - the player saw a generic "no such item in
      * the network", and one had to dig through the log to find out what was going on.
      */
-    public record CraftResult(boolean success, int produced, String reason, String detail) {
+    public record CraftResult(boolean success, int produced, String reason, String detail,
+                              String hint) {
         static CraftResult ok(int produced) {
-            return new CraftResult(true, produced, "", "");
+            return new CraftResult(true, produced, "", "", "");
         }
 
         static CraftResult fail(String reason) {
-            return new CraftResult(false, 0, reason, "");
+            return new CraftResult(false, 0, reason, "", "");
         }
 
         static CraftResult fail(String reason, String detail) {
-            return new CraftResult(false, 0, reason, detail == null ? "" : detail);
+            return new CraftResult(false, 0, reason, detail == null ? "" : detail, "");
+        }
+
+        /**
+         * A failure that also says WHERE ELSE the item could be made.
+         *
+         * <p>{@code hint} is a comma-separated list of machine names (description ids),
+         * the same convention as {@code detail}. It is shown as a separate line under
+         * the reason - an OPTION, not a cause: the whole point of the branch that
+         * builds it is that blaming a machine the player does not need was wrong.
+         */
+        static CraftResult fail(String reason, String detail, String hint) {
+            return new CraftResult(false, 0, reason, detail == null ? "" : detail,
+                    hint == null ? "" : hint);
         }
     }
 
@@ -1677,8 +1691,28 @@ public final class VeloceAutoCrafter {
                 return CraftResult.fail("craftingveloce.craft.error.furnaceUnpowered", furnaces);
             }
         }
-        // 2) Module: the machine stands in the network but is not powered (e.g. a
-        //    crusher without power or a kinetic machine without rotation).
+        // 2) Module machines - but ONLY when no other route exists.
+        //
+        // THE BUG THIS FIXES (player: "trying to make planks, and it tells me there is
+        // no Create saw"). A module was blamed whenever it COULD EVER make the item
+        // somewhere in the game, with no regard for whether that route was needed. So a
+        // network holding a crafting table and no logs got "no machine for saw" instead
+        // of "missing log" - and it never reached step 3 at all, because this step
+        // returned first. The player was sent to build a machine that would not have
+        // helped.
+        //
+        // The rule now: a module can only be the REASON when it is the ONLY route. If
+        // any base route exists (vanilla crafting, our own machines, the furnace), the
+        // useful answer is what that route is missing, and the machines become a HINT
+        // underneath it - an option, not a cause.
+        //
+        // The hint comes from VeloceProcessingRegistry.all(), which contains only the
+        // modules that are actually INSTALLED: the compat modules register themselves
+        // from inside their isPresent() gate. A player without Create therefore cannot
+        // be told about a saw, without anyone having to check for Create here.
+        boolean baseRouteExists =
+                !VeloceRecipeRegistry.getRecipesFor(level, item, true).isEmpty();
+        java.util.List<String> hintMachines = new java.util.ArrayList<>();
         for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
             if (module.recipesAnywhere(level, item).isEmpty()) {
                 continue;
@@ -1686,6 +1720,10 @@ public final class VeloceAutoCrafter {
             // The machine, not just the family: the module id ("mekanism") does not tell
             // the player which block to place, and the family has twenty-three of them.
             String machine = machineNames(module);
+            if (baseRouteExists) {
+                hintMachines.add(machine);
+                continue;
+            }
             if (!module.available(level, ctx.network)) {
                 return CraftResult.fail("craftingveloce.craft.error.noModule", machine);
             }
@@ -1694,9 +1732,11 @@ public final class VeloceAutoCrafter {
                         machine);
             }
         }
-        // 3) What remains is a missing ingredient - we say which one.
+        // 3) What remains is a missing ingredient - we say which one, and where else
+        //    the item could have been made.
         return CraftResult.fail("craftingveloce.craft.error.noBase",
-                firstMissing(level, ctx, item, stock));
+                firstMissing(level, ctx, item, stock),
+                String.join(", ", hintMachines));
     }
 
     /**

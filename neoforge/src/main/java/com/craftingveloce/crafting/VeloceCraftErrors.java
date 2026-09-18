@@ -48,13 +48,35 @@ public final class VeloceCraftErrors {
      * is none - the generic "this item is not in the network".
      */
     public static MutableComponent message(String reason, String detail, String itemName) {
+        return message(reason, detail, "", itemName);
+    }
+
+    /**
+     * The message, with the "available in" line under it when there is one.
+     *
+     * <p>{@code hint} names the machines that could ALSO make the item. It is gold and
+     * on its own line on purpose: it is not a reason for the failure, it is an option
+     * the player may not have known about. Reading it as a cause is exactly the bug
+     * this replaced.
+     */
+    public static MutableComponent message(String reason, String detail, String hint,
+                                           String itemName) {
+        MutableComponent out;
         if (!reason.isEmpty()) {
             if (!detail.isEmpty()) {
-                return Component.translatable(detailKey(reason), asArgument(detail));
+                out = Component.translatable(detailKey(reason), asArgument(detail));
+            } else {
+                out = Component.translatable(reason);
             }
-            return Component.translatable(reason);
+        } else {
+            out = Component.translatable("craftingveloce.message.itemNotInNetwork", itemName);
         }
-        return Component.translatable("craftingveloce.message.itemNotInNetwork", itemName);
+        if (hint != null && !hint.isEmpty()) {
+            out.append(Component.literal("\n")).append(
+                    Component.translatable("craftingveloce.craft.hint.availableIn",
+                            asArgument(hint)).withStyle(net.minecraft.ChatFormatting.GOLD));
+        }
+        return out;
     }
 
     /**
