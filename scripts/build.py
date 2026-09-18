@@ -3621,7 +3621,8 @@ def validate_create_mechanics():
     family = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateRecipeFamily.java",
                   encoding="utf-8").read()
     for need, what in (("pressing()", "the press type"), ("mixing()", "the mixer type"),
-                       ("itemApplication()", "the item-application type")):
+                       ("itemApplication()", "the item-application type"),
+                       ("compacting()", "the compacting type")):
         if need not in family:
             problems.append("the Create family without " + what)
 
@@ -3636,11 +3637,25 @@ def validate_create_mechanics():
     if deployer_at < 0:
         problems.append("no Deployer module in the Create machines")
     else:
-        entry = modules[deployer_at:deployer_at + 600]
+        entry = modules[deployer_at:deployer_at + 700]
         for need, what in (("CreateRecipeFamily.deploying()", "the deploying type"),
                            ("CreateRecipeFamily.itemApplication()", "the item-application type")):
             if need not in entry:
                 problems.append("the Deployer module does not declare " + what)
+
+    # Same rule for the PRESS: create:compacting is a basin recipe and the press is the
+    # machine, so a press that declares only `pressing` cannot compact anything.
+    press_at = modules.find("PRESSING = new KineticModule(")
+    if press_at < 0:
+        problems.append("no Press module in the Create machines")
+    else:
+        press_entry = modules[press_at:press_at + 600]
+        for need, what in (("CreateRecipeFamily.pressing()", "the pressing type"),
+                           ("CreateRecipeFamily.compacting()", "the compacting type")):
+            if need not in press_entry:
+                problems.append("the Press module does not declare " + what)
+    if "CreateRecipeFamily.compacting()" not in module:
+        problems.append("the Create module does not require a Basin for compacting")
     be = open("neoforge/src/main/java/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
               encoding="utf-8").read()
     for need, what in (("public static final int GRID_LIMIT = 9", "the 9x9 limit"),

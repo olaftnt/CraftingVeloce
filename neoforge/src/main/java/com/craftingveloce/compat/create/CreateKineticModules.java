@@ -73,10 +73,17 @@ public final class CreateKineticModules {
             "create:mechanical_crafting", "Veloce Mechanical Crafter Module",
             () -> Set.of(CreateRecipeFamily.mechanicalCrafting()), STRESS_SU);
 
-    /** Press: {@code create:pressing} recipes - requires a Basin in the network. */
+    /**
+     * Press: {@code create:pressing} on a belt AND {@code create:compacting} over a Basin.
+     *
+     * <p>Two types, one machine - the same shape as the Deployer. A press with a Basin
+     * under it compacts; the network looks machines up BY TYPE, so both have to be
+     * declared or the basin half of the press is invisible.
+     */
     public static final KineticModule PRESSING = new KineticModule(
             "create:pressing", "Veloce Press Module",
-            () -> Set.of(CreateRecipeFamily.pressing()), STRESS_SU);
+            () -> Set.of(CreateRecipeFamily.pressing(), CreateRecipeFamily.compacting()),
+            STRESS_SU);
 
     /** Mixer: {@code create:mixing} recipes - requires a Basin in the network. */
     public static final KineticModule MIXING = new KineticModule(

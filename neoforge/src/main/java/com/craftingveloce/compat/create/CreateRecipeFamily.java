@@ -90,6 +90,18 @@ public final class CreateRecipeFamily {
         return AllRecipeTypes.ITEM_APPLICATION.getType();
     }
 
+    /**
+     * Press over a BASIN: {@code create:compacting} recipes.
+     *
+     * <p>Same family as mixing - a basin recipe - and the same machine as pressing, which
+     * is why it rides on the Press module and inherits the "a Basin must be in the
+     * network" requirement. Without it, compacting, packing and the whole basin press
+     * tree were unreachable.
+     */
+    public static RecipeType<?> compacting() {
+        return AllRecipeTypes.COMPACTING.getType();
+    }
+
     /** Deployer, on an item: {@code create:deploying} recipes (applying one item to another). */
     public static RecipeType<?> deploying() {
         return AllRecipeTypes.DEPLOYING.getType();
@@ -117,6 +129,7 @@ public final class CreateRecipeFamily {
             out.add(mixing());
             out.add(deploying());
             out.add(itemApplication());
+            out.add(compacting());
             resolved = Set.copyOf(out);
         }
         return resolved;

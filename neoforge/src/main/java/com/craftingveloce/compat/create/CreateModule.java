@@ -159,9 +159,14 @@ public final class CreateModule implements VeloceProcessingModule {
         return true;
     }
 
-    /** The press and the mixer work on the Basin's contents - without a Basin there is nothing to mix. */
+    /**
+     * The press, the mixer and compacting work on the Basin's contents - without a Basin
+     * there is nothing to mix or to compact.
+     */
     private static boolean needsBasin(RecipeType<?> type) {
-        return type == CreateRecipeFamily.pressing() || type == CreateRecipeFamily.mixing();
+        return type == CreateRecipeFamily.pressing()
+                || type == CreateRecipeFamily.mixing()
+                || type == CreateRecipeFamily.compacting();
     }
 
     /** Whether the network has a Create item (in storage or in the crafter's buffer). */
