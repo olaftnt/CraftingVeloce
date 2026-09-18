@@ -4,6 +4,7 @@
         "0": "craftingveloce:block/veloce_terminal_back",
         "1": "craftingveloce:block/veloce_terminal_side",
         "2": "craftingveloce:block/veloce_terminal_front",
+        "3": "minecraft:block/purple_stained_glass",
         "particle": "craftingveloce:block/veloce_terminal_back"
     },
     "parent": "block/block",

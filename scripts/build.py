@@ -1505,6 +1505,56 @@ def _failure_branch(body):
     end = body.find("return;\n            }", start)
     return body[start:end if end > 0 else len(body)]
 
+def validate_model_texture_refs():
+    """
+    Every `#N` a block model references must be DEFINED in that model's `textures`.
+
+    This is not theoretical. Adding a glass pane to the terminal shipped a model whose
+    element said `"texture": "#3"` while the `textures` block never defined `#3`, because
+    the edit that added the pane was followed by a script that rewrote the file without
+    the texture entry. The build stayed green and the game loaded - the block simply
+    rendered the purple-and-black MISSING TEXTURE, which is how the player found it.
+
+    A missing reference is invisible to every check that only asks "does the model parse":
+    it parses perfectly, it just points at nothing.
+    """
+    problems = []
+    files = sorted(glob.glob("assets/craftingveloce/models/block/*.json"))
+    files += sorted(glob.glob("assets/craftingveloce/models/item/*.json"))
+    checked = 0
+    for path in files:
+        try:
+            model = json.load(open(path, encoding="utf-8"))
+        except (ValueError, OSError):
+            continue                      # other guards own malformed JSON
+        defined = set(model.get("textures", {}).keys())
+        used = set()
+        for element in model.get("elements", []):
+            for face in element.get("faces", {}).values():
+                tex = face.get("texture")
+                if isinstance(tex, str) and tex.startswith("#"):
+                    used.add(tex[1:])
+        # `particle` is a texture KEY, never referenced with '#'
+        missing = used - defined
+
+        # A model with NO `textures` of its own is a geometry-only parent: it is
+        # deliberately incomplete and expects the CHILD - the model that lists it as its
+        # `parent` - to supply the keys. `pipe_part.json` is exactly that, and
+        # `veloce_pipe_part.json` supplies its `#0`. Reporting it would be a false alarm
+        # about a pattern the mod uses on purpose, so it is skipped. A model that defines
+        # SOME textures but is missing one that its own elements use is a different thing
+        # entirely, and is still a failure.
+        if not defined:
+            continue
+        if missing:
+            problems.append(f"{os.path.basename(path)} uses {sorted(missing)} "
+                            f"but defines only {sorted(defined)}")
+        checked += 1
+    if problems:
+        fail("block models reference undefined textures:\n  " + "\n  ".join(problems))
+    print(f"    OK ({checked} models, every '#N' reference resolves)")
+
+
 def validate_jei_integrale_category():
     """
     The "Integrale conversion" JEI category - the one that shows the mod's RULE.
@@ -4256,6 +4306,7 @@ def main():
     validate_terminal_craft_error()
     validate_jei_catalysts()
     validate_jei_integrale_category()
+    validate_model_texture_refs()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))
