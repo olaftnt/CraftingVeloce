@@ -1779,6 +1779,11 @@ public final class VeloceAutoCrafter {
         boolean baseRouteExists =
                 !VeloceRecipeRegistry.getRecipesFor(level, item, true).isEmpty();
         java.util.List<String> hintMachines = new java.util.ArrayList<>();
+        // The FAMILIES, for the hint. `module.id()` is the mod's own name - "create",
+        // "mekanism", "alchemistry" - which is what the line should say. The machine list
+        // above is a different thing: it exists for the single-machine messages below
+        // ("noModule"/"moduleUnpowered"), where naming the block is the whole point.
+        java.util.Set<String> hintFamilies = new java.util.LinkedHashSet<>();
         for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
             if (module.recipesAnywhere(level, item).isEmpty()) {
                 continue;
@@ -1788,6 +1793,7 @@ public final class VeloceAutoCrafter {
             String machine = machineNames(module);
             if (baseRouteExists) {
                 hintMachines.add(machine);
+                hintFamilies.add(module.id());
                 continue;
             }
             if (!module.available(level, ctx.network)) {
@@ -1800,28 +1806,28 @@ public final class VeloceAutoCrafter {
         }
         // 3) What remains is a missing ingredient - we say which one.
         //
-        // THE "Also available in: ..." LINE IS TURNED OFF for now, at the owner's request,
-        // and it is off deliberately rather than by accident, so here is what it was doing
-        // wrong:
+        // 3) What remains is a missing ingredient - we say which one, and which MODS could
+        //    have made the item.
+        //
+        // THE HINT NAMES MODS, NOT MACHINES, and that is a deliberate retreat from what this
+        // line used to print:
         //
         //   * `machineNames` collected EVERY block of a FAMILY. For one Mekanism machine it
         //     printed "veloce crusher module, veloce enrichment module, veloce combiner
-        //     module, ..." - twenty-two names for an item that one of them can make. A hint
-        //     that long is not a hint;
-        //   * for CREATE the list came out EMPTY and fell through to the bare module id, so
-        //     the line said "create" and nothing else. That is not an oversight to be patched
-        //     here: Create's modules are `VeloceKineticModuleBlock`s, a compat type this CORE
-        //     class is not allowed to name - the isolation the build guards would break. The
-        //     only correct fix is for each module to name its own machines, which is a change
-        //     to `VeloceProcessingModule` and to the two modules, not to this method.
+        //     module, ..." - twenty-two names for an item that ONE of them can make;
+        //   * for CREATE the scan came out EMPTY, because Create's modules are
+        //     `VeloceKineticModuleBlock`s while the scan only looked at `VeloceFeModuleBlock`
+        //     - so it fell through to the bare module id and printed "create".
         //
-        // `hintMachines` is still BUILT, because the `noModule` and `moduleUnpowered` returns
-        // above need the machine name for their single-machine messages. It is simply no
-        // longer attached to this one - and an empty hint makes VeloceCraftErrors skip the
-        // line entirely.
+        // Naming the specific block cannot be fixed from here: this class is CORE and
+        // `VeloceKineticModuleBlock` is a compat type it is not allowed to name, which is
+        // what `validate_core_isolation` exists to prevent. Naming the MOD is both correct
+        // and useful - it tells the player which integration to look at - and it is what
+        // `module.id()` gives, deduplicated so one mod appears once however many of its
+        // machines match.
         return CraftResult.fail("craftingveloce.craft.error.noBase",
                 firstMissing(level, ctx, item, stock),
-                "");
+                String.join(", ", hintFamilies));
     }
 
     /**
