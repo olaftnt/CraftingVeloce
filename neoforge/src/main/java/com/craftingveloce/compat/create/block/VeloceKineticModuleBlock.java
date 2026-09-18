@@ -405,6 +405,13 @@ public class VeloceKineticModuleBlock extends KineticBlock
         Direction.Axis axis = neighbourAxis(world, fromPos, world.getBlockState(fromPos));
         if (axis != null && axis != state.getValue(BlockStateProperties.AXIS)) {
             world.setBlock(pos, state.setValue(BlockStateProperties.AXIS, axis), Block.UPDATE_ALL);
+            // The axis decides which sides can carry rotation, so changing it can create a
+            // connection that did not exist when the network was last computed. Without
+            // this the machine keeps the "no source" verdict from when it pointed the wrong
+            // way - the "it never refreshes" half of the player's report.
+            if (world.getBlockEntity(pos) instanceof VeloceKineticModuleBlockEntity machine) {
+                machine.markKineticsStale();
+            }
         }
     }
 

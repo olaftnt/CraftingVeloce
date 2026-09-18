@@ -2,12 +2,15 @@ package com.craftingveloce.compat.create.block.entity;
 
 import com.craftingveloce.block.entity.VeloceProcessingSource;
 import com.craftingveloce.compat.create.KineticModule;
+import com.simibubi.create.content.kinetics.base.KineticBlock;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 import java.util.List;
 import java.util.Set;
@@ -148,11 +151,84 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
             // addPart() is the right place and not convert(): it is called once right
             // after the conversion AND on every later right-click that adds a wheel or a
             // crafter, which is precisely when the rotation network has to be told again.
-            attachKinetics();
+            //
+            // THE ORDER HERE IS THE BUG FIX, and this is what "the module does not see the
+            // power, something does not refresh" actually was. A machine that appears by
+            // CONVERSION is placed from `resultBlock().defaultBlockState()` with only the
+            // pipe closures carried over - `VeloceIntegraleFrame.copyClosures` copies the
+            // six direction booleans and does NOT touch AXIS - so it materialises pointing
+            // along Y. Create connects two blocks only when their rotation axes agree, so
+            // a machine next to a horizontal shaft was not connected to it.
+            //
+            // Attaching in that state found no source, and because `attachKinetics()`
+            // clears the very flag `tick()` consults before trying again
+            // (`KineticBlockEntity.tick` -> `needsSpeedUpdate` -> `updateSpeed`), there was
+            // no second attempt - ever. The axis could be corrected afterwards by
+            // `neighborChanged` and it would still never be reported to the network.
+            //
+            // So: aim the axis at a neighbouring drive FIRST, then ask for the attach
+            // through Create's own one-shot flag instead of calling it inline. The tick
+            // that follows is a settled world, which is the moment Create's propagator is
+            // written for.
+            alignAxisWithDrive();
+            markKineticsStale();
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(),
                     net.minecraft.world.level.block.Block.UPDATE_ALL);
         }
         return true;
+    }
+
+    /**
+     * Aims this machine's axis at a neighbouring drive, exactly as placement would.
+     *
+     * <p>{@code getStateForPlacement} scans the six neighbours for a kinetic block and
+     * adopts its rotation axis, which is why a machine placed by hand connects to a shaft
+     * at once. A machine that arrives by CONVERSION never runs that method, so it kept the
+     * vertical default and could not connect to a horizontal shaft however long the player
+     * waited. The same scan is therefore made here, at the moment the block changes
+     * identity.
+     *
+     * <p>The first drive found wins, matching {@code getStateForPlacement} - a machine
+     * cannot follow two axes at once, and the placement path already made that choice for
+     * the by-hand case.
+     */
+    private void alignAxisWithDrive() {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+        BlockState state = getBlockState();
+        if (!state.hasProperty(BlockStateProperties.AXIS)) {
+            return;
+        }
+        for (Direction side : Direction.values()) {
+            BlockPos neighbourPos = worldPosition.relative(side);
+            BlockState neighbour = level.getBlockState(neighbourPos);
+            if (!(neighbour.getBlock() instanceof KineticBlock drive)) {
+                continue;
+            }
+            Direction.Axis axis = drive.getRotationAxis(neighbour);
+            if (axis != state.getValue(BlockStateProperties.AXIS)) {
+                level.setBlock(worldPosition, state.setValue(BlockStateProperties.AXIS, axis),
+                        net.minecraft.world.level.block.Block.UPDATE_ALL);
+            }
+            return;
+        }
+    }
+
+    /**
+     * Asks for the rotation network to be recomputed on the next tick.
+     *
+     * <p>This is Create's OWN mechanism - {@code KineticBlockEntity.tick()} calls
+     * {@code attachKinetics()} while this flag is set - used rather than calling
+     * {@code attachKinetics()} directly, so the recomputation happens in a settled world.
+     *
+     * <p>Public because the BLOCK has to ask too: when {@code neighborChanged} corrects the
+     * axis, a connection that did not exist before may exist now, and without this the
+     * machine keeps the "no source" answer it was given while it pointed the wrong way.
+     * That is the other half of "something does not refresh".
+     */
+    public void markKineticsStale() {
+        updateSpeed = true;
     }
 
     @Override

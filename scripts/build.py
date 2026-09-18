@@ -2989,6 +2989,38 @@ def validate_create_mechanics():
     if powered_body is None or "hasEnoughRotationSpeed()" not in powered_body:
         problems.append("isPowered does not require the speed threshold")
 
+    # A machine that arrives by CONVERSION is placed from `resultBlock().defaultBlockState()`
+    # with only the pipe closures carried over, so it materialises pointing along Y - and
+    # Create connects two blocks only when their rotation axes agree. The axis must therefore
+    # be aimed at a neighbouring drive, and the attach requested through Create's own
+    # one-shot flag, BEFORE anything is reported to the network. Dropping either half, or
+    # swapping their order, reproduces the player's report: "I place an Integrale, insert a
+    # Create module, and the module does not see the power - something does not refresh".
+    #
+    # The trap that made this permanent rather than transient: `attachKinetics()` clears the
+    # very flag `tick()` consults before trying again, so a single attach made while the axis
+    # was still wrong left the machine disconnected for good.
+    add_part = _method_body(be_code, "public boolean addPart()")
+    if add_part is None:
+        problems.append("no addPart in the kinetic machine")
+    else:
+        if "alignAxisWithDrive" not in add_part:
+            problems.append("addPart does not aim the axis at a neighbouring drive")
+        if "markKineticsStale" not in add_part:
+            problems.append("addPart does not ask for the rotation network to be recomputed")
+        if ("alignAxisWithDrive" in add_part and "markKineticsStale" in add_part
+                and add_part.index("alignAxisWithDrive") > add_part.index("markKineticsStale")):
+            problems.append("addPart refreshes the network BEFORE the axis matches the drive")
+    axis_fix_body = _method_body(be_code, "private void alignAxisWithDrive()")
+    if axis_fix_body is None or "getRotationAxis" not in axis_fix_body:
+        problems.append("the axis is not taken from a neighbouring drive")
+    kinetic_block = open(
+        "neoforge/src/main/java/com/craftingveloce/compat/create/block/VeloceKineticModuleBlock.java",
+        encoding="utf-8").read()
+    neighbour_body = _method_body(kinetic_block, "protected void neighborChanged(")
+    if neighbour_body is None or "markKineticsStale" not in neighbour_body:
+        problems.append("changing the axis does not refresh the rotation network")
+
     # The "not enough force" status is no longer drawn with its own text on the
     # screen.
     #
