@@ -3,13 +3,14 @@
   "category": "misc",
   "group": "craftingveloce",
   "pattern": [
-    "IGI",
-    "GGG",
-    "IGI"
+    "III",
+    "DPD",
+    "III"
   ],
   "key": {
-    "G": { "item": "minecraft:glass" },
-    "I": { "item": "minecraft:iron_ingot" }
+    "I": { "item": "minecraft:iron_ingot" },
+    "D": { "item": "minecraft:diamond" },
+    "P": { "item": "minecraft:purple_stained_glass" }
   },
   "result": { "id": "craftingveloce:veloce_pipe", "count": 8 }
 }

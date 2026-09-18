@@ -2627,6 +2627,95 @@ def validate_heat_accounting():
     print("    OK (heat accounting: a furnace run and its heat are charged atomically)")
 
 
+def validate_block_recipes():
+    """
+    Every recipe we ship is one the game will actually LOAD.
+
+    A recipe JSON fails in the quietest way in this project: a pattern character with no
+    key, a key no character uses, an ingredient object with neither `item` nor `tag` -
+    none of those is a compile error and none of them is a crash. The game logs one line
+    and SKIPS the recipe, so the block simply has no recipe in game and the only witness
+    is a log nobody reads.
+
+    The owner dictated the three block recipes by hand (terminal, pipe, Integrale) and
+    every one of them is a full 3x3 with six different ingredients - the shape in which a
+    mistake is easiest to make and hardest to notice.
+
+    Per file in data/craftingveloce/recipe/:
+      * it parses at all;
+      * a shaped recipe has a result, a rectangular grid that fits in 3x3;
+      * every character in the pattern has a key, and every key is used at least once;
+      * each key resolves to exactly one of `item` / `tag`;
+      * the result's item is one this mod actually has assets for.
+
+    The vanilla ingredient ids themselves cannot be checked from here - that needs the
+    game's registry - so they are verified by loading a world and reading the log instead.
+    """
+    root = "data/craftingveloce/recipe"
+    if not os.path.isdir(root):
+        fail("block recipes:\n  no " + root)
+    problems = []
+    checked = 0
+    for name in sorted(os.listdir(root)):
+        if not name.endswith(".json"):
+            continue
+        checked += 1
+        path = os.path.join(root, name)
+        try:
+            rec = json.load(open(path, encoding="utf-8"))
+        except Exception as exc:
+            problems.append(f"{name}: does not parse ({exc})")
+            continue
+
+        rtype = rec.get("type", "")
+        result = rec.get("result")
+        if rtype == "minecraft:crafting_shaped" and result is None:
+            problems.append(f"{name}: a shaped recipe with no result")
+        if isinstance(result, dict):
+            rid = result.get("id", "")
+            if not rid:
+                problems.append(f"{name}: result without an id")
+            else:
+                short = rid.split(":")[-1]
+                if not (os.path.exists(f"assets/craftingveloce/blockstates/{short}.json")
+                        or os.path.exists(f"assets/craftingveloce/models/item/{short}.json")
+                        or os.path.exists(f"assets/craftingveloce/models/block/{short}.json")):
+                    problems.append(f"{name}: result {rid} has no blockstate or model here")
+
+        pattern = rec.get("pattern")
+        if pattern is None:
+            continue
+        keys = rec.get("key") or {}
+        rows = pattern
+        widths = {len(row) for row in rows}
+        if not rows or len(rows) > 3:
+            problems.append(f"{name}: the pattern has {len(rows)} row(s)")
+        if len(widths) > 1:
+            problems.append(f"{name}: pattern rows are not the same length: "
+                            + ", ".join(str(w) for w in sorted(widths)))
+        elif widths and max(widths) > 3:
+            problems.append(f"{name}: the pattern is wider than 3")
+        used = {c for row in rows for c in row if c != " "}
+        missing = sorted(c for c in used if c not in keys)
+        unused = sorted(k for k in keys if k not in used)
+        if missing:
+            problems.append(f"{name}: the pattern uses {', '.join(missing)} with no key")
+        if unused:
+            problems.append(f"{name}: key(s) {', '.join(unused)} used by nothing")
+        for k, ing in sorted(keys.items()):
+            if not isinstance(ing, dict):
+                problems.append(f"{name}: key {k} is not an object")
+                continue
+            has = [f for f in ("item", "tag") if f in ing]
+            if len(has) != 1:
+                problems.append(f"{name}: key {k} needs exactly one of item/tag "
+                                f"(has {'neither' if not has else 'both'})")
+
+    if problems:
+        fail("block recipes:\n  " + "\n  ".join(problems))
+    print(f"    OK ({checked} recipe(s) parse, and every shaped grid matches its keys)")
+
+
 def validate_heat_battery():
     """
     The fuel furnace's heat battery, exactly as it was specified.
@@ -4527,6 +4616,7 @@ def main():
     # place as the data generator - see scripts/gen_loot_tables.py - so that a
     # second, hand-written register does not come into being.
     validate_block_data(names)
+    validate_block_recipes()
     validate_packet_docs()
     validate_lang_keys()
     validate_filter_labels()

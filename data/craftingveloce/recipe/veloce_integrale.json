@@ -3,13 +3,14 @@
   "category": "misc",
   "group": "craftingveloce",
   "pattern": [
-    "GGG",
-    "GIG",
-    "GGG"
+    "DID",
+    "IPI",
+    "DID"
   ],
   "key": {
-    "G": { "item": "minecraft:glass" },
-    "I": { "item": "minecraft:iron_ingot" }
+    "D": { "item": "minecraft:diamond" },
+    "I": { "item": "minecraft:iron_ingot" },
+    "P": { "item": "minecraft:purple_stained_glass" }
   },
   "result": { "id": "craftingveloce:veloce_integrale", "count": 1 }
 }

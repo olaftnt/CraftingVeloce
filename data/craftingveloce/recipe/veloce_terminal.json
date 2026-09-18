@@ -3,14 +3,17 @@
   "category": "misc",
   "group": "craftingveloce",
   "pattern": [
-    "IGI",
-    "GCG",
-    "IGI"
+    "SPS",
+    "RHR",
+    "ILI"
   ],
   "key": {
-    "G": { "item": "minecraft:glass" },
+    "S": { "item": "minecraft:stone_button" },
+    "P": { "item": "minecraft:purple_stained_glass" },
+    "R": { "item": "minecraft:redstone" },
+    "H": { "item": "minecraft:hopper" },
     "I": { "item": "minecraft:iron_ingot" },
-    "C": { "item": "minecraft:chest" }
+    "L": { "item": "minecraft:smooth_stone_slab" }
   },
   "result": { "id": "craftingveloce:veloce_terminal", "count": 1 }
 }

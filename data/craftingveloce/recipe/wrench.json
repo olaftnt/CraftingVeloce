@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "group": "craftingveloce",
+  "pattern": [
+    "N N",
+    " I ",
+    " N "
+  ],
+  "key": {
+    "N": { "item": "minecraft:iron_nugget" },
+    "I": { "item": "minecraft:iron_ingot" }
+  },
+  "result": { "id": "craftingveloce:wrench", "count": 1 }
+}
