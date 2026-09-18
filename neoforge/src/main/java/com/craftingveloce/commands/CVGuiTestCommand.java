@@ -89,7 +89,7 @@ public final class CVGuiTestCommand {
         placeLikePlayer(level, machinePos);
 
         if (level.getBlockEntity(machinePos) instanceof com.craftingveloce.block.entity.VeloceBrewingStandBlockEntity stand) {
-            stand.energy = com.craftingveloce.block.entity.VeloceBrewingStandBlockEntity.ENERGY_CAPACITY;
+            stand.energy = com.craftingveloce.block.entity.VeloceBrewingStandBlockEntity.energyCapacity();
         } else {
             source.sendFailure(Component.literal("§cno brewing stand block entity at " + machinePos));
             return 0;

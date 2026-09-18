@@ -2464,11 +2464,16 @@ def validate_energy_pull():
 
     # 4. The electric furnace still pays per smelted unit.
     furn = open(machines[0][0], encoding="utf-8").read()
+    # The cost is asked for through `fePerSmelt()` rather than read from the constant
+    # directly, because a `static final int` is INLINED by javac at every use site - so once
+    # the value became configurable, the constant could not reach these methods at all. The
+    # guard's point is unchanged: the furnace must charge, and must derive its operations
+    # from its accumulator.
     consume = _method_body(furn, "public void consumeOperations(")
-    if consume is None or "FE_PER_SMELT" not in consume:
+    if consume is None or "fePerSmelt()" not in consume:
         problems.append("the electric furnace does not deduct FE per smelting operation")
     available = _method_body(furn, "public long availableOperations()")
-    if available is None or "FE_PER_SMELT" not in available:
+    if available is None or "fePerSmelt()" not in available:
         problems.append("the electric furnace does not derive its operations from the accumulator")
 
     # The accumulator SIZE is part of the agreed specification: 25 000 000 FE is 125
@@ -2855,6 +2860,93 @@ def validate_module_drop_stacks():
         fail("the module drop puts the whole count into one stack: a full crafter grid "
              "(9x9 = 81) would drop a single stack of 81, above the vanilla maximum of 64")
     print("    OK (drops as many elements as the machine held, split into legal stacks)")
+
+
+def validate_block_config_defaults():
+    """
+    The FE config's defaults must equal the values the machines were built with.
+
+    Every machine's cost and battery size now exist TWICE: as the compiled value on its
+    `FeModule` (or as a `DEFAULT_*` constant for the two core machines) and as the literal
+    default in `VeloceBlockConfig`, because a config file needs a number written out that a
+    player can read and edit. Two copies of a number is exactly the kind of duplication that
+    drifts apart in this project, and the symptom would be quiet: a machine that suddenly
+    costs two hundred thousand FE out of the box for a pack that never opened the file.
+
+    So this guard reads both and compares them, both ways:
+      * every machine that has a config section has one whose defaults match it;
+      * and a machine that exists but has NO section is reported, because a machine nobody
+        can retune is the thing this config was added to fix.
+    """
+    import re as _re
+
+    problems = []
+
+    cfg = open("neoforge/src/main/java/com/craftingveloce/config/VeloceBlockConfig.java",
+               encoding="utf-8").read()
+    declared = {}
+    for m in _re.finditer(r'declare\(b,\s*"([a-z0-9_]+)",\s*([0-9_]+),\s*([0-9_]+)\)', cfg):
+        declared[m.group(1)] = (int(m.group(2).replace("_", "")),
+                                int(m.group(3).replace("_", "")))
+
+    machines = {}
+    for path in ("neoforge/src/main/java/com/craftingveloce/compat/mekanism/MekanismFeModules.java",
+                 "neoforge/src/main/java/com/craftingveloce/compat/alchemistry/"
+                 "AlchemistryFeModules.java"):
+        text = open(path, encoding="utf-8").read()
+        for m in _re.finditer(
+                r'new FeModule\(\s*"([^"]+)",\s*"[^"]*",\s*([0-9_]+),\s*([0-9_]+)', text):
+            machines[m.group(1).replace(":", "_").replace("/", "_")] = (
+                int(m.group(3).replace("_", "")), int(m.group(2).replace("_", "")))
+
+    # The two machines that are not FeModule-based keep their defaults as constants.
+    for key, path, cap_const, fe_const in (
+            ("electric_furnace",
+             "neoforge/src/main/java/com/craftingveloce/block/entity/"
+             "VeloceElectricFurnaceBlockEntity.java",
+             "DEFAULT_ENERGY_CAPACITY", "DEFAULT_FE_PER_SMELT"),
+            ("brewing_stand",
+             "neoforge/src/main/java/com/craftingveloce/block/entity/"
+             "VeloceBrewingStandBlockEntity.java",
+             "DEFAULT_ENERGY_CAPACITY", "DEFAULT_FE_PER_BREW")):
+        text = open(path, encoding="utf-8").read()
+        cap = _re.search(cap_const + r"\s*=\s*([0-9_]+)", text)
+        fe = _re.search(fe_const + r"\s*=\s*([0-9_]+)", text)
+        if cap is None or fe is None:
+            problems.append(f"{key}: no {cap_const}/{fe_const} to compare the config against")
+            continue
+        machines[key] = (int(cap.group(1).replace("_", "")), int(fe.group(1).replace("_", "")))
+
+    # Only the machines that are actually REGISTERED need a section; the sixteen switched-off
+    # Mekanism machines have no block in the game, so a config entry for one would be a
+    # setting that cannot do anything.
+    # NORMALISED THE SAME WAY as `machines` above. The ids in the source carry a colon
+    # ("mekanism:washing") and the dict keys do not ("mekanism_washing"), so comparing them
+    # raw never matched and every switched-off machine counted as live - the guard then
+    # demanded a config section for the sixteen machines that have no block in the game.
+    disabled = {_id.replace(":", "_").replace("/", "_") for _id in _re.findall(
+        r'"(mekanism:[a-z_]+)"', open(
+            "neoforge/src/main/java/com/craftingveloce/compat/mekanism/MekanismFeModules.java",
+            encoding="utf-8").read()
+        .split("public static final java.util.Set<String> DISABLED")[1].split(");")[0])}
+    live = {k: v for k, v in machines.items() if k not in disabled}
+
+    for key, (cap, fe) in sorted(live.items()):
+        if key not in declared:
+            problems.append(f"{key}: a machine that no config section can retune")
+            continue
+        dcap, dfe = declared[key]
+        if dcap != cap:
+            problems.append(f"{key}: config default capacity {dcap} != the machine's {cap}")
+        if dfe != fe:
+            problems.append(f"{key}: config default cost {dfe} != the machine's {fe}")
+
+    for key in sorted(set(declared) - set(live)):
+        problems.append(f"{key}: a config section for a machine that is not registered")
+
+    if problems:
+        fail("FE config defaults:\n  " + "\n  ".join(problems))
+    print(f"    OK ({len(live)} machines, every config default matches its compiled value)")
 
 
 def validate_extractor_redstone():
@@ -4143,6 +4235,7 @@ def main():
     validate_case_occlusion()
     validate_loot_item_ids()
     validate_extractor_redstone()
+    validate_block_config_defaults()
     validate_module_drop_stacks()
     validate_crafting_source_order()
     validate_no_dead_module_loot_tables()

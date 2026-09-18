@@ -60,8 +60,28 @@ public class VeloceBrewingStandBlockEntity extends BlockEntity
     private boolean[] lastPotionCount;
 
     public int energy = 0;
-    public static final int ENERGY_CAPACITY = 25_000_000;
-    public static final int FE_PER_BREW = 200_000;
+    /** Battery size out of the box; the live value comes from {@link #energyCapacity()}. */
+    public static final int DEFAULT_ENERGY_CAPACITY = 25_000_000;
+
+    /**
+     * Battery size of this stand, in FE.
+     *
+     * <p>A METHOD and not the constant, because javac INLINES a {@code static final int} into
+     * every use site - a config value could never reach any of them. The constant above stays
+     * as the compiled default that the config falls back to.
+     */
+    public static int energyCapacity() {
+        return com.craftingveloce.config.VeloceBlockConfig.capacity(
+                "brewing_stand", DEFAULT_ENERGY_CAPACITY);
+    }
+    /** Cost of one brew out of the box; the live value comes from {@link #fePerBrew()}. */
+    public static final int DEFAULT_FE_PER_BREW = 200_000;
+
+    /** Cost of ONE brew, in FE - the configured one when there is one. */
+    public static int fePerBrew() {
+        return com.craftingveloce.config.VeloceBlockConfig.fePerOperation(
+                "brewing_stand", DEFAULT_FE_PER_BREW);
+    }
 
     // REMOVED: MAX_PULL_PER_TICK and networkFor().
     //
@@ -145,7 +165,7 @@ protected final net.minecraft.world.inventory.ContainerData dataAccess = new net
 
     @Override
     public long availableOperations() {
-        return energy / FE_PER_BREW;
+        return energy / fePerBrew();
     }
 
     @Override
@@ -153,17 +173,17 @@ protected final net.minecraft.world.inventory.ContainerData dataAccess = new net
         if (operations <= 0) {
             return;
         }
-        long cost = operations * FE_PER_BREW;
+        long cost = operations * fePerBrew();
         int before = energy;
         energy = (int) Math.max(0L, energy - cost);
         LOG.debug("[VELOCE-DEBUG] brew deduction at {}: ops={} x {} FE = {} FE, battery {} -> {} FE",
-                worldPosition.toShortString(), operations, FE_PER_BREW, cost, before, energy);
+                worldPosition.toShortString(), operations, fePerBrew(), cost, before, energy);
         setChanged();
     }
 
     @Override
     public boolean isPowered() {
-        return energy >= FE_PER_BREW;
+        return energy >= fePerBrew();
     }
 
     @Override
@@ -231,7 +251,7 @@ public static void serverTick(net.minecraft.world.level.Level level, BlockPos po
                 net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.ITEM);
         if (itemEnergy == null || !itemEnergy.canExtract()) return;
 
-        int space = ENERGY_CAPACITY - energy;
+        int space = energyCapacity() - energy;
         if (space <= 0) return;
 
         int taken = itemEnergy.extractEnergy(space, false);
@@ -259,7 +279,7 @@ public static void serverTick(net.minecraft.world.level.Level level, BlockPos po
     @Override
     public int receiveEnergy(int toReceive, boolean simulate) {
         if (toReceive <= 0) return 0;
-        int space = ENERGY_CAPACITY - energy;
+        int space = energyCapacity() - energy;
         int accepted = Math.min(space, toReceive);
         if (!simulate && accepted > 0) {
             energy += accepted;
@@ -275,7 +295,7 @@ public static void serverTick(net.minecraft.world.level.Level level, BlockPos po
     public int getEnergyStored() { return energy; }
 
     @Override
-    public int getMaxEnergyStored() { return ENERGY_CAPACITY; }
+    public int getMaxEnergyStored() { return energyCapacity(); }
 
     @Override
     public boolean canExtract() { return false; }

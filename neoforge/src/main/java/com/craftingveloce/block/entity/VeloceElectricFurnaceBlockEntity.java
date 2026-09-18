@@ -28,8 +28,8 @@ import net.neoforged.neoforge.energy.IEnergyStorage;
  *
  * <p><b>Numbers (agreed with the user).</b>
  * <ul>
- *   <li>accumulator capacity: {@link #ENERGY_CAPACITY} = 25 000 000 FE</li>
- *   <li>cost of one smelt: {@link #FE_PER_SMELT} = 200 000 FE</li>
+ *   <li>accumulator capacity: {@link #energyCapacity()} = 25 000 000 FE</li>
+ *   <li>cost of one smelt: {@link #fePerSmelt()} = 200 000 FE</li>
  * </ul>
  * So a full accumulator is enough for 125 smelts, and a stack (64 items)
  * costs 12 800 000 FE.
@@ -40,15 +40,34 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
     /**
      * Capacity of the internal accumulator.
      *
-     * <p>25 000 000 FE = 125 smelts at {@link #FE_PER_SMELT}, i.e. a bit less than two
+     * <p>25 000 000 FE = 125 smelts at {@link #fePerSmelt()}, i.e. a bit less than two
      * stacks of 64. This is the figure agreed with the player and the one the class
      * documentation and the brewing stand already use - the constant had drifted to
      * 200 000 000 (1000 smelts), which made the accumulator effectively bottomless.
      */
-    public static final int ENERGY_CAPACITY = 25_000_000;
+    /** Battery size out of the box; the live value comes from {@link #energyCapacity()}. */
+    public static final int DEFAULT_ENERGY_CAPACITY = 25_000_000;
+
+    /**
+     * Battery size of this furnace, in FE.
+     *
+     * <p>A METHOD and not the constant, because javac INLINES a {@code static final int} into
+     * every use site - a config value could never reach any of them.
+     */
+    public static int energyCapacity() {
+        return com.craftingveloce.config.VeloceBlockConfig.capacity(
+                "electric_furnace", DEFAULT_ENERGY_CAPACITY);
+    }
 
     /** Cost of one instant smelt. */
-    public static final int FE_PER_SMELT = 200_000;
+    /** Cost of one smelt out of the box; the live value comes from {@link #fePerSmelt()}. */
+    public static final int DEFAULT_FE_PER_SMELT = 200_000;
+
+    /** Cost of ONE smelt, in FE - the configured one when there is one. */
+    public static int fePerSmelt() {
+        return com.craftingveloce.config.VeloceBlockConfig.fePerOperation(
+                "electric_furnace", DEFAULT_FE_PER_SMELT);
+    }
 
     /** How much FE is in the accumulator right now. */
     private int energy;
@@ -94,7 +113,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         com.craftingveloce.util.VeloceLog.Block.detail(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
                 "[VELOCE-DEBUG] electric furnace instantiated at %s, fresh energy=%s FE, capacity=%s FE",
-                pos.toShortString(), energy, ENERGY_CAPACITY);
+                pos.toShortString(), energy, energyCapacity());
     }
 
     /** The battery slot - for the menu (and for the screen that shows the hint). */
@@ -133,9 +152,9 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
             noteCharge("no item in the battery slot");
             return;
         }
-        int space = ENERGY_CAPACITY - energy;
+        int space = energyCapacity() - energy;
         if (space <= 0) {
-            noteCharge("accumulator full (" + energy + "/" + ENERGY_CAPACITY + " FE) - item left alone");
+            noteCharge("accumulator full (" + energy + "/" + energyCapacity() + " FE) - item left alone");
             return;   // accumulator full - we leave the item alone
         }
         net.neoforged.neoforge.energy.IEnergyStorage itemEnergy = stack.getCapability(
@@ -200,7 +219,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
 
     @Override
     public long availableOperations() {
-        return energy / FE_PER_SMELT;
+        return energy / fePerSmelt();
     }
 
     @Override
@@ -208,20 +227,20 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         if (operations <= 0) {
             return;
         }
-        long cost = operations * FE_PER_SMELT;
+        long cost = operations * fePerSmelt();
         int before = energy;
         energy = (int) Math.max(0L, energy - cost);
         if (level != null) {
             lastEnergyChangeTick = level.getGameTime();
         }
         // Per-operation deduction: this is the line that proves a stack of 64 really
-        // pays 64 x FE_PER_SMELT rather than a flat charge. It goes to the mod's
+        // pays 64 x fePerSmelt() rather than a flat charge. It goes to the mod's
         // gated DETAIL channel (NOT raw slf4j DEBUG, which the log config filters
         // regardless of debugEnabled, so it could never be seen in game).
         com.craftingveloce.util.VeloceLog.Block.detail(
                 com.craftingveloce.util.VeloceLog.Side.SERVER,
                 "[VELOCE-DEBUG] smelt deduction at %s: ops=%s x %s FE = %s FE, battery %s -> %s FE",
-                worldPosition.toShortString(), operations, FE_PER_SMELT, cost, before, energy);
+                worldPosition.toShortString(), operations, fePerSmelt(), cost, before, energy);
         setChanged();
     }
 
@@ -230,7 +249,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         // "Powered" = it can afford at least one smelt. A furnace with a leftover
         // of energy below the cost does not unlock recipes, because it would not
         // be able to perform them anyway.
-        return energy >= FE_PER_SMELT;
+        return energy >= fePerSmelt();
     }
 
     @Override
@@ -252,7 +271,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
         if (toReceive <= 0) {
             return 0;
         }
-        int space = ENERGY_CAPACITY - energy;
+        int space = energyCapacity() - energy;
         int accepted = Math.min(space, toReceive);
         if (!simulate && accepted > 0) {
             energy += accepted;
@@ -275,7 +294,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
 
     @Override
     public int getMaxEnergyStored() {
-        return ENERGY_CAPACITY;
+        return energyCapacity();
     }
 
     @Override
@@ -366,7 +385,7 @@ public class VeloceElectricFurnaceBlockEntity extends BlockEntity
     @Override
     protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.loadAdditional(tag, registries);
-        energy = Math.max(0, Math.min(ENERGY_CAPACITY, tag.getInt("Energy")));
+        energy = Math.max(0, Math.min(energyCapacity(), tag.getInt("Energy")));
         batterySlot.setItem(0, tag.contains("Battery")
                 ? ItemStack.parse(registries, tag.getCompound("Battery")).orElse(ItemStack.EMPTY)
                 : ItemStack.EMPTY);

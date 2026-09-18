@@ -119,7 +119,7 @@ public class VeloceElectricFurnaceScreen
         if (!isHovering(BATTERY_X, BATTERY_Y, BATTERY_W + NUB_W, BATTERY_H, mouseX, mouseY)) {
             return;
         }
-        long cycles = energy / VeloceElectricFurnaceBlockEntity.FE_PER_SMELT;
+        long cycles = energy / VeloceElectricFurnaceBlockEntity.fePerSmelt();
         List<Component> lines = new ArrayList<>();
         // Energy and the cost of one smelt in kFE / MFE - the player does not count zeros on the fly.
         lines.add(Component.translatable("gui.craftingveloce.electric.energy",
@@ -129,7 +129,7 @@ public class VeloceElectricFurnaceScreen
                 .withStyle(net.minecraft.ChatFormatting.GOLD));
         lines.add(Component.translatable("gui.craftingveloce.electric.perSmelt",
                         com.craftingveloce.util.VeloceFormat.feCompact(
-                                VeloceElectricFurnaceBlockEntity.FE_PER_SMELT))
+                                VeloceElectricFurnaceBlockEntity.fePerSmelt()))
                 .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
         graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
     }

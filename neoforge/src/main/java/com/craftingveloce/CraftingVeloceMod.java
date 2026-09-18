@@ -96,6 +96,17 @@ public class CraftingVeloceMod {
     public CraftingVeloceMod(IEventBus modEventBus, ModContainer modContainer) {
         LOGGER.info("CraftingVeloce initializing...");
 
+        // THE STARTUP CONFIG GOES FIRST, and that order is not a preference.
+        //
+        // A STARTUP config is the only one NeoForge reads at registration time - the loader
+        // opens the file inside `registerConfig` itself, before that call returns. A machine's
+        // FE values are read while the block classes are still initialising (a FeModule
+        // resolves its capacity through this config), so if the compat blocks were loaded
+        // first they would compute their defaults from a config that was not open yet. The
+        // failure would be silent: no exception, just values that ignore the file.
+        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.STARTUP,
+                com.craftingveloce.config.VeloceBlockConfig.SPEC);
+
         // Config registration (config/craftingveloce-common.toml).
         // NOTE: config values can only be read AFTER the config has been loaded.
         // Reading in the constructor throws "Cannot get config value before config

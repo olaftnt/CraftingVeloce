@@ -99,7 +99,7 @@ public class VeloceElectricFurnaceMenu extends AbstractContainerMenu {
 
     public int getMaxEnergy() {
         return furnace == null
-                ? VeloceElectricFurnaceBlockEntity.ENERGY_CAPACITY
+                ? VeloceElectricFurnaceBlockEntity.energyCapacity()
                 : furnace.getMaxEnergyStored();
     }
 

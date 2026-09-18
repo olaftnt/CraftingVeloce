@@ -120,7 +120,7 @@ public class VeloceBrewingStandMenu extends AbstractContainerMenu {
     }
 
     public int getMaxEnergy() {
-        return com.craftingveloce.block.entity.VeloceBrewingStandBlockEntity.ENERGY_CAPACITY;
+        return com.craftingveloce.block.entity.VeloceBrewingStandBlockEntity.energyCapacity();
     }
 
     @Override
