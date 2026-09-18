@@ -359,32 +359,35 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
     }
 
     /**
-     * Constant TOTAL SU draw regardless of rotation.
+     * The machine's draw expressed as SU PER RPM - the rate Create multiplies by the
+     * current speed.
      *
-     * <p>Create computes stress as {@code impact x |RPM|}, so in order for the
-     * module to always take the same amount (1024 SU, see
-     * {@code CreateKineticModules.STRESS_SU}), we divide that number by the
-     * speed. Work requires a threshold of 256 RPM
-     * ({@link #hasEnoughRotationSpeed()}), so the impact never explodes at low
-     * rotation.
+     * <p>Create computes a network's stress as {@code impact x |RPM|}, so the number
+     * returned here is not the total the machine costs, it is the rate. Returning
+     * {@code STRESS_SU / REQUIRED_SPEED} ({@code 1024 / 256 = 4.0}, see
+     * {@code CreateKineticModules}) costs exactly 1024 SU once the network turns at the
+     * required 256 RPM - and the same 1024 SU at every other speed, because the two
+     * factors cancel. Measured against Create's own source (create 6.0.10,
+     * {@code CStress.setImpact}): a millstone, a mechanical saw, a mixer and a deployer
+     * each declare an impact of 4.0, i.e. the same 1024 SU at 256 RPM. A press and a
+     * crushing wheel declare 8.0 (2048 SU), a mechanical crafter 2.0 (512 SU) - our
+     * modules are deliberately the 4.0 group, every one of them.
+     *
+     * <p><b>What this deliberately does NOT do.</b> It does not read the current speed,
+     * and it does not read the number of wheels or crafters in the casing. An earlier
+     * version divided the constant by the current speed: that reported an impact of 1024
+     * while the machine stood still, and then 1024 * 256 = 262144 SU once the shaft
+     * reached 256 RPM - the "the network screams overstressed" a player reported. A
+     * casing holding four crushing wheels has to cost the same as one holding a single
+     * saw, so there is nothing here to sum over.
      *
      * <p>{@code lastStressApplied} is a protected field in KineticBlockEntity
      * and MUST be set - Create reads it when computing the network's stress.
      */
     @Override
     public float calculateStressApplied() {
-        // HACK: build.py requires the old variables (speed compensation) to be present,
-        // but dividing by 'speed' (when the machine started from 0 RPM) reported a
-        // multiplier of 1024 to the network. Then Create, after spinning the shaft up
-        // to 256 RPM, hit an astronomical amount of 1024 * 256 = 262,144 SU (a bug
-        // reported by a player).
-        // We let the texts required by the guard through below, next to the working logic:
-        if (false) {
-            float speed = Math.abs(getTheoreticalSpeed());
-            float dummy = speed < 1f ? module.constantSu() : module.constantSu() / speed;
-        }
-        
-        float impact = module.constantSu() / com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
+        float impact = module.constantSu()
+                / com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
         this.lastStressApplied = impact;
         return impact;
     }

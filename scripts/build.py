@@ -2946,10 +2946,19 @@ def validate_create_mechanics():
     be_code = open("neoforge/src/main/java/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
                    encoding="utf-8").read()
 
-    # Rotation: a 256 RPM THRESHOLD + a 1024 SU draw. The earlier model
-    # (dividing a constant by the speed without a threshold) produced a huge
-    # "impact" at low rotation and the network screamed overstressed - the
-    # player reported it ("at 256 it jams, at 1 it spins normally").
+    # Rotation: a 256 RPM THRESHOLD + a 1024 SU draw.
+    #
+    # The draw is SU PER RPM, because Create multiplies it by the current speed
+    # (`impact x |RPM|`). The trap this test exists for is the one a player reported:
+    # an earlier version divided the constant by the CURRENT speed, which reported an
+    # impact of 1024 while the machine stood still and then 1024 * 256 = 262144 SU once
+    # the shaft reached the required 256 RPM.
+    #
+    # So the test is that the draw is a FLAT constant: built from the module's SU
+    # constant and the required speed, and reading no speed at all. This test used to
+    # assert the opposite - it demanded the literal text of the buggy division
+    # (`module.constantSu() / speed` and the `speed < 1f` guard) and so kept a dead
+    # `if (false)` block alive in the method purely to satisfy itself.
     modules = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateKineticModules.java",
                    encoding="utf-8").read()
     if "public static final int REQUIRED_SPEED = 256;" not in modules:
@@ -2959,10 +2968,21 @@ def validate_create_mechanics():
     if modules.count("STRESS_SU") < 8:
         problems.append("not every module takes 1024 SU (somebody hard-coded their own number)")
     stress_body = _method_body(be_code, "float calculateStressApplied()")
-    if stress_body is None or "module.constantSu() / speed" not in stress_body:
-        problems.append("no speed compensation in the draw")
-    if stress_body is None or "speed < 1f" not in stress_body:
-        problems.append("no safeguard at speed 0 (division by zero)")
+    if stress_body is None:
+        problems.append("no calculateStressApplied in the kinetic machine")
+    else:
+        if "module.constantSu()" not in stress_body:
+            problems.append("the kinetic draw does not come from the module's SU constant")
+        if "REQUIRED_SPEED" not in stress_body:
+            problems.append("the kinetic draw is not expressed per RPM (no REQUIRED_SPEED)")
+        if "lastStressApplied" not in stress_body:
+            problems.append("the kinetic draw does not record the applied stress")
+        if ("getTheoreticalSpeed" in stress_body or "getSpeed" in stress_body
+                or "/ speed" in stress_body):
+            problems.append("the kinetic draw depends on the current speed again "
+                            "(the 262144 SU bug: 1024 * 256)")
+        if "constantSu()" in stress_body and "caseParts" in stress_body:
+            problems.append("the kinetic draw scales with the parts in the casing")
     if "public boolean hasEnoughRotationSpeed()" not in be_code:
         problems.append("no check of the speed threshold in the machine")
     powered_body = _method_body(be_code, "public boolean isPowered()")
