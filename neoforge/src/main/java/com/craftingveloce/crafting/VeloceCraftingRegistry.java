@@ -189,6 +189,31 @@ public final class VeloceCraftingRegistry {
      * list of items that are allowed to be crafted, and instead it would get a
      * list of disabled ones, that is the exact opposite.
      */
+    /**
+     * The MODS whose machines could make this item, as one string: "create, mekanism".
+     *
+     * <p><b>What question this answers.</b> Not "can the network make it right now" - the
+     * caller only asks about items it is already showing as unavailable - but "which
+     * integration would have to be involved at all". So it looks at every installed module
+     * and keeps the ones with a recipe for the item, regardless of whether their machine is
+     * placed or powered. That is the useful answer for a player staring at a red item: it
+     * says where to go and look.
+     *
+     * <p>Names the MOD and not the machine, for two reasons that are both structural:
+     * a module is a whole FAMILY whose machines are not distinguishable from the core
+     * without naming compat types, and a family name is what tells the player which mod to
+     * attend to. Deduplicated, so a mod appears once however many of its machines match.
+     */
+    public static String modsThatCanMake(ServerLevel level, Item item) {
+        java.util.Set<String> mods = new java.util.LinkedHashSet<>();
+        for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
+            if (!module.recipesAnywhere(level, item).isEmpty()) {
+                mods.add(module.id());
+            }
+        }
+        return String.join(", ", mods);
+    }
+
     public static java.util.Set<Item> getAllEnabledItems(ServerLevel level, VelocePipeNetwork network) {
         // SUM OF MODULES: each processing module says what it can do - and only
         // when its machine stands in the network and is able to work.

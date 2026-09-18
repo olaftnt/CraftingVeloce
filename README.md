@@ -570,7 +570,7 @@ All packets use the NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `SensorConfigPKT` | C→S | `BlockPos pos, long threshold, boolean highMode` |
 | `ControllerPreferKindPKT` | C→S | `BlockPos pos, Item item, boolean preferFurnace` |
 | `SetFilterPKT` | C→S | `BlockPos pos, int filterIndex, ItemStack filterItem` |
-| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Long> changed, Set<Item> removed, Map<Item, Float> rates, boolean full` |
+| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Long> changed, Set<Item> removed, Map<Item, Float> rates, Map<Item, String> madeBy, boolean full` |
 | `SyncCraftableCountsPKT` | S→C | `BlockPos pos, Map<Item, Long> counts, boolean complete` |
 | `SyncCraftingTableStatePKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes` |
 | `SyncExtractorFiltersPKT` | S→C | `BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting` |

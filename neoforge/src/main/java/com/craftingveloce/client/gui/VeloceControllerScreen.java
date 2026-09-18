@@ -133,6 +133,16 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
     private Map<Item, Float> flowRate = new HashMap<>();
 
     /**
+     * Item -&gt; "create, mekanism": which mods could make it.
+     *
+     * <p>Sent by the SERVER because the answer needs a {@code ServerLevel}
+     * ({@code recipesAnywhere(ServerLevel, Item)}), which this screen does not have. Used
+     * only for items shown as RED - the tooltip then says where the item could have been
+     * made instead of leaving the player with a colour and no way forward.
+     */
+    private Map<Item, String> madeByMods = new HashMap<>();
+
+    /**
      * Width of the filter button.
      *
      * <p>Constant, because the build enforces it (validate_filter_labels): the label
@@ -265,6 +275,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
                            Map<Item, Long> changed,
                            Set<Item> removed,
                            Map<Item, Float> rates,
+                           Map<Item, String> madeBy,
                            boolean full) {
         if (!controllerPos.equals(pos)) {
             return;
@@ -278,6 +289,10 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
             }
         }
         this.flowRate = new HashMap<>(rates);
+        // Kept, not replaced: the server only sends the entries its delta mentions, and an
+        // answer that was sent earlier is still the same answer - an item's set of possible
+        // makers depends on which mods are installed, not on the network.
+        this.madeByMods.putAll(madeBy);
     }
 
     /**
@@ -448,6 +463,7 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
         lines.add(stack.getHoverName());
         addFlowLines(lines, stack.getItem());
         addPreferenceLines(lines, stack.getItem());
+        addMakerLine(lines, stack.getItem());
         return lines;
     }
 
@@ -460,6 +476,26 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      * server sends only such items - see VeloceFlowTracker.steadyRates). When nothing
      * steady is happening, there is no line here at all.
      */
+    /**
+     * "Also available in: create, mekanism" - for an item shown as RED.
+     *
+     * <p>Red means the network cannot supply it and nothing here can make it. Saying which
+     * MODS have a recipe for it is the difference between "you cannot have this" and "you
+     * cannot have this YET - go and look at Create". Nothing is added for an item that is
+     * available, because there the line would be noise.
+     */
+    private void addMakerLine(List<Component> lines, Item item) {
+        if (isAvailable(item)) {
+            return;
+        }
+        String mods = madeByMods.get(item);
+        if (mods == null || mods.isEmpty()) {
+            return;
+        }
+        lines.add(Component.translatable("craftingveloce.craft.hint.availableIn", mods)
+                .withStyle(ChatFormatting.GOLD));
+    }
+
     private void addFlowLines(List<Component> lines, Item item) {
         Float rate = this.flowRate.get(item);
         if (rate == null || Math.abs(rate) < FLOW_MIN) {

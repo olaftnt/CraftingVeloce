@@ -73,8 +73,17 @@ public final class VeloceCraftErrorHints {
             hints.remove(stack.getItem());
             return;
         }
+        // The "Also available in: ..." line is NOT shown in the terminal, at the owner's
+        // request. It belongs in the CONTROLLER, where an item that cannot be made is shown
+        // as a red icon with a tooltip that has room to explain where it COULD be made; in
+        // the terminal's craft-error tooltip it was a third line of noise under a message
+        // that already names the missing ingredient.
+        //
+        // The hint is still carried on the error and still produced by the server, and the
+        // controller derives the same list for itself (see VeloceControllerScreen
+        // .addMakerLine) - so this is a display decision, not a loss of information.
         tooltip.add(VeloceCraftErrors.message(hint.reason(), hint.detail(),
-                hint.hint(), stack.getHoverName().getString()).withStyle(ChatFormatting.RED));
+                "", stack.getHoverName().getString()).withStyle(ChatFormatting.RED));
     }
 
     /** Clears the memory - called when the screen is closed. */
