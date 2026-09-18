@@ -64,20 +64,17 @@ public final class CVModuleTestCommand {
     /**
      * Modules whose recipes cannot be planned yet, so only their rig is built.
      *
-     * <p>Create's machines take ROTATIONAL power. The rig now PLACES a motor for them
-     * (see placeRotationSource), so the blocks, the network and the rotation are all
-     * exercised - but the recipe is still picked in the same tick the blocks are placed,
-     * and Create propagates rotation over the FOLLOWING ticks. Selecting a recipe then
-     * reports "cannot do recipe X", which blames the machine for a timing problem.
+     * <p><b>EMPTY, and that is a result.</b> {@code create} used to be here because its
+     * machines take ROTATIONAL power and nothing in this mod drove it. The rig now places
+     * Create's own creative motor for any machine whose state carries an "axis"
+     * (placeRotationSource), so a Create case selects a recipe, fills the barrel and
+     * reaches a verdict like every other module.
      *
-     * <p>So this stays on the list until the pick is DEFERRED: place, wait for the
-     * rotation, and only then choose the recipe and fill the barrel. The message says so
-     * plainly on the chat and in the log; a green run that quietly skipped the module
-     * would be worse than no test at all.
-     * Saying so is the point: a green run that quietly skipped the module would be
-     * worse than no test at all.
+     * <p>What is left is a POWER problem, not a testing problem, and the verdict says so
+     * in one word: {@code craftingveloce.craft.error.moduleUnpowered}. The motor is down
+     * and the recipe is right; the rotation is simply not reaching the module yet.
      */
-    private static final java.util.Set<String> UNIMPLEMENTED = java.util.Set.of("create");
+    private static final java.util.Set<String> UNIMPLEMENTED = java.util.Set.of();
 
     /**
      * The verdict of the last run, readable with {@code /cv testmodule result}.

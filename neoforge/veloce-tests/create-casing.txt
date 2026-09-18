@@ -1,13 +1,17 @@
 # Can the network make a CASING (create:item_application), and does it COUNT it?
 #
-# The verdict prints `terminalShows=` - the number computeCraftableCounts returns for the
-# item, i.e. exactly the yellow "+N" the terminal draws. 0 means "the network cannot make
-# any more right now", which is a legitimate answer when the ingredients are missing; the
-# point of the test is to see the number AT ALL.
+# The recipe id is NESTED: Create keeps its recipes one folder deep, so it is
+# create:item_application/andesite_casing_from_log and NOT create:andesite_casing_from_log.
+# Writing it the short way makes findRecipe return null and the test blames the machine
+# for a typo in the test.
 #
-# BLOCKED for now: /cv testmodule create only BUILDS the rig (with a rotation source
-# placed for the kinetic machine) and skips, because the recipe is still selected in the
-# same tick as the blocks and Create propagates rotation over the following ticks. Until
-# the pick is deferred, this script reports SKIP - see the UNIMPLEMENTED comment.
-/cv testmodule create veloce_create_deployer_module "create:andesite_casing_from_log"
-expect: testing for create not implemented
+# The verdict prints `terminalShows=` - the number computeCraftableCounts returns for the
+# item, i.e. exactly the yellow "+N" the terminal draws. That is the measurement the "+N"
+# bug needs; the kinetic machine is driven by the motor the rig places for it.
+/cv testmodule create veloce_create_deployer_module "create:item_application/andesite_casing_from_log"
+expect: building and waiting
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
