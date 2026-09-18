@@ -407,7 +407,31 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
     /**
      * @param allowCrafting whether the item may be produced by auto-crafting when it is missing from the network
      */
+    /**
+     * The player on whose behalf the craft currently in progress is running.
+     *
+     * <p>Kept on the block entity only for the duration of one call, because
+     * {@code craftItemFromNetwork} sits several calls below the entry point and threading a
+     * parameter through all of them would touch code that has nothing to do with players.
+     * Cleared by the entry point on every call, so a machine's craft can never inherit one.
+     */
+    @javax.annotation.Nullable
+    private ServerPlayer craftingPlayer;
+
     public PullResult extractWithReason(ItemStack requested, int count, boolean allowCrafting) {
+        return extractWithReason(requested, count, allowCrafting, null);
+    }
+
+    /**
+     * As above, but knowing WHO is asking.
+     *
+     * <p>The player matters because they are a crafting SOURCE now: the network is consulted
+     * first, and what the player carries covers only what it could not supply. A machine
+     * calls the three-argument version and passes no player, so it behaves as before.
+     */
+    public PullResult extractWithReason(ItemStack requested, int count, boolean allowCrafting,
+                                        @javax.annotation.Nullable ServerPlayer player) {
+        this.craftingPlayer = player;
         if (level == null || level.isClientSide || !(level instanceof ServerLevel sl) || requested.isEmpty() || count <= 0) {
             return PullResult.empty();
         }
@@ -810,8 +834,14 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         var buffers = com.craftingveloce.crafting.VeloceCraftingRegistry
                 .getBuffers(sl, net);
         // The block position = the emergency drop location, in case the network were full.
+        // The player's carried items, as a crafting source. Null for a machine (there is
+        // nobody there), which is the behaviour every caller except the terminal wants.
         var ctx = new com.craftingveloce.crafting.VeloceAutoCrafter.Context(
-                sl, net, enabled, preferred, null, buffers, this.getBlockPos());
+                sl, net, enabled, preferred,
+                craftingPlayer == null
+                        ? null
+                        : new com.craftingveloce.crafting.VelocePlayerInventory(craftingPlayer),
+                buffers, this.getBlockPos());
 
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
                 .ensureAvailable(sl, net, item, count, ctx);

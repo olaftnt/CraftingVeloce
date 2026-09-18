@@ -1134,6 +1134,47 @@ return net;
     }
 
     /**
+     * EVERY network this node touches, one entry per connected side.
+     *
+     * <p><b>Why this exists next to {@link #getNetworkForTerminal}.</b> That method stops at
+     * the first pipe it finds, which is right for a block that belongs to ONE network: a
+     * terminal reads and writes through whichever side it happens to be attached by, and
+     * the answer is the same either way. It is wrong for a block deliberately wired into
+     * two separate networks. The extractor asked once and then worked with whichever side
+     * the direction loop reached first, so a player who attached two different networks to
+     * two sides watched the machine use only one of them - and there was nothing to see,
+     * because the other network was never even looked at.
+     *
+     * <p>Deduplicated by network id, because two sides can reach the SAME network when the
+     * pipes loop back around. Pulling from it twice would be harmless but pointless, and
+     * counting it twice would misreport how many sources the machine has.
+     */
+    public java.util.List<VelocePipeNetwork> getNetworksForNode(ServerLevel level, BlockPos nodePos) {
+        java.util.List<VelocePipeNetwork> found = new java.util.ArrayList<>();
+        java.util.Set<UUID> seen = new java.util.HashSet<>();
+        for (Direction d : Direction.values()) {
+            BlockPos pipePos = nodePos.relative(d);
+            if (!nodeConnectsToPipe(level, nodePos, d)) {
+                continue;
+            }
+            if (!world.hasPipe(pipePos) && !level.isLoaded(pipePos)) {
+                continue;
+            }
+            if (!world.hasPipe(pipePos)) {
+                syncPipe(level, pipePos);
+            }
+            if (!world.hasPipe(pipePos)) {
+                continue;
+            }
+            VelocePipeNetwork net = buildFromComponent(level, pipePos);
+            if (net != null && seen.add(net.getId())) {
+                found.add(net);
+            }
+        }
+        return found;
+    }
+
+    /**
      * All networks - COMPUTED from the flat structure.
      *
      * <p><b>Why not from the {@code networks} map.</b> That map is filled by

@@ -2759,6 +2759,72 @@ def validate_showcase_command():
     print("    OK (/cv showcase: blocks from the registry + parts + pipes + cleanup)")
 
 
+def validate_crafting_source_order():
+    """
+    The network is consulted BEFORE the player's inventory, in both places that decide.
+
+    The owner's requirement: "the network should also be able to take items from the
+    inventory, but only when the item is not in the network's inventory."
+
+    Two methods answer that question and they must agree:
+
+      * `ensureAvailable` decides whether anything has to be CRAFTED at all, so it counts
+        the network first and lets the player's inventory cover only the shortfall;
+      * `takeOne` decides where each individual ingredient comes from during execution.
+
+    If `ensureAvailable` counted the inventory first it would report "nothing to craft"
+    while the network was empty but a chest was full - and the plan would then be paid for
+    out of the player's pockets. If `takeOne` took from the player first, the same thing
+    would happen one layer down, silently.
+
+    Comments are stripped before looking, because both methods now carry prose explaining
+    this exact rule and a guard that a comment can satisfy checks nothing (see
+    validate_extractor_redstone for the time that actually happened).
+    """
+    path = "neoforge/src/main/java/com/craftingveloce/crafting/VeloceAutoCrafter.java"
+    code = open(path, encoding="utf-8").read()
+
+    def code_only(text):
+        return "\n".join(line.split("//")[0] for line in text.split("\n"))
+
+    # The SECOND overload, not the first. `ensureAvailable` exists twice: the short one
+    # takes no budget and does nothing but delegate to the long one, so a guard reading the
+    # first found a method with no stock lookup in it and reported the rule as broken when
+    # it was not.
+    signature = "public static CraftResult ensureAvailable("
+    first = code.find(signature)
+    second = code.find(signature, first + 1) if first >= 0 else -1
+    if second < 0:
+        return fail("no ensureAvailable with a planning budget in the auto crafter")
+    ensure = _method_body(code[second:], signature)
+    if ensure is None:
+        return fail("no ensureAvailable in the auto crafter")
+    ensure = code_only(ensure)
+    for needle, what in (("getAllItemCounts(", "the network stock"),
+                         ("ctx.inventory.count(", "the player inventory")):
+        if needle not in ensure:
+            fail(f"ensureAvailable no longer consults {what} - this guard is looking at the "
+                 "wrong method")
+    if ensure.index("getAllItemCounts(") > ensure.index("ctx.inventory.count("):
+        fail("ensureAvailable counts the PLAYER'S INVENTORY before the network, so a chest "
+             "full of the item is ignored and the plan is paid for out of the player's "
+             "pockets")
+
+    take = _method_body(code, "private static ItemStack takeOne(")
+    if take is None:
+        return fail("no takeOne in the auto crafter")
+    take = code_only(take)
+    for needle, what in (("ctx.network.extractItem(", "the network"),
+                         ("ctx.inventory.extract(", "the player inventory")):
+        if needle not in take:
+            fail(f"takeOne no longer draws on {what} - this guard is looking at the wrong "
+                 "method")
+    if take.index("ctx.network.extractItem(") > take.index("ctx.inventory.extract("):
+        fail("takeOne draws on the PLAYER'S INVENTORY before the network, so ingredients "
+             "leave the player while the same item sits in a chest in the same network")
+    print("    OK (network first, player inventory only covers the shortfall - in both places)")
+
+
 def validate_module_drop_stacks():
     """
     A machine must give back as many elements as it held, in stacks the game accepts.
@@ -4070,6 +4136,7 @@ def main():
     validate_loot_item_ids()
     validate_extractor_redstone()
     validate_module_drop_stacks()
+    validate_crafting_source_order()
     validate_no_dead_module_loot_tables()
     validate_legacy_src_submodule_removed()
     validate_showcase_command()

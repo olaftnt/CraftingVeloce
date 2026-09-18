@@ -92,7 +92,9 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
                             + " x" + toPull);
             VeloceTerminalBlockEntity.PullResult pulled;
             try {
-                pulled = terminalBE.extractWithReason(pkt.itemStack(), toPull, true);
+                // The player is passed in because they are a crafting source: the network is
+                // used first and what they carry covers the shortfall.
+                pulled = terminalBE.extractWithReason(pkt.itemStack(), toPull, true, serverPlayer);
             } catch (Throwable t) {
                 // An exception in the craft path MUST be in the trace - otherwise
                 // all you see is an interrupted series of lines with no cause.

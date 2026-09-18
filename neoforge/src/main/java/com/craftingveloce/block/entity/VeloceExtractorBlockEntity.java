@@ -212,8 +212,14 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         if (level == null || level.isClientSide || !(level instanceof ServerLevel sl)) return;
 
         VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
-        VelocePipeNetwork net = manager.getNetworkForTerminal(sl, worldPosition);
-        if (net == null) return;
+        // EVERY attached network, not just the first.
+        //
+        // A player can wire two DIFFERENT networks into two sides of one extractor. Asking
+        // for "the" network returned whichever side the direction loop reached first, so the
+        // second one was never consulted at all - the machine silently used half of what it
+        // was connected to, and there was no way to tell from the outside.
+        java.util.List<VelocePipeNetwork> networks = manager.getNetworksForNode(sl, worldPosition);
+        if (networks.isEmpty()) return;
 
         // PHASE 1: just the pull from the network - cheap, for all 9 slots.
         //
@@ -239,7 +245,16 @@ public class VeloceExtractorBlockEntity extends BlockEntity
             }
             if (needed <= 0) continue;
 
-            ItemStack direct = net.extractItem(sl, filter.getItem(), needed);
+            // The first network that has the item wins; only when NONE of them does is a
+            // craft considered, so a second network is a second source and never a reason to
+            // order work that was not needed.
+            ItemStack direct = ItemStack.EMPTY;
+            for (VelocePipeNetwork net : networks) {
+                direct = net.extractItem(sl, filter.getItem(), needed);
+                if (!direct.isEmpty()) {
+                    break;
+                }
+            }
             if (!direct.isEmpty()) {
                 depositIntoSlot(i, currentOutput, direct);
             } else {
@@ -274,7 +289,16 @@ public class VeloceExtractorBlockEntity extends BlockEntity
             }
             if (needed <= 0) continue;
 
-            ItemStack crafted = craftFromNetwork(sl, net, filter.getItem(), needed);
+            // Crafting also tries every attached network, and within one shared budget for
+            // the whole cycle - a second network is another place the recipe may exist, not
+            // a second helping of time.
+            ItemStack crafted = ItemStack.EMPTY;
+            for (VelocePipeNetwork net : networks) {
+                crafted = craftFromNetwork(sl, net, filter.getItem(), needed);
+                if (!crafted.isEmpty()) {
+                    break;
+                }
+            }
             if (!crafted.isEmpty()) {
                 depositIntoSlot(i, currentOutput, crafted);
             }

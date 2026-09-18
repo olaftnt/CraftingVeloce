@@ -341,18 +341,26 @@ public final class VeloceAutoCrafter {
         VeloceLog.Craft.attempt(VeloceLog.Side.SERVER,
                 "ensure %sx %s (enabled=%s)", count, item, ctx.isEnabled(item));
 
-        // 1. The player inventory has priority.
-        int inInventory = ctx.inventory == null ? 0 : ctx.inventory.count(item);
-        if (inInventory >= count) {
+        // 1. THE NETWORK FIRST.
+        //
+        // This was the other way round, with the player's inventory checked first and
+        // short-circuiting the whole method. The owner asked for the opposite: an item
+        // standing in a chest next to the terminal must be used before the one in the
+        // player's pocket, and the inventory is only there to cover what the network could
+        // not supply. Getting this backwards emptied a player's pockets while a chest full
+        // of the same item sat in the same network.
+        //
+        // ONE forced scan - in a moment we make a decision about taking items, so we cannot
+        // work on stale state. The same snapshot is then passed to planning.
+        Map<Item, Long> netStock = network.getAllItemCounts(level, true);
+        long inNetwork = netStock.getOrDefault(item, 0L);
+        if (inNetwork >= count) {
             return CraftResult.ok(count);
         }
 
-        // 2. The network. ONE forced scan - in a moment we make a decision
-        //    about taking items, so we cannot work on stale state. The same
-        //    snapshot is then passed to planning.
-        Map<Item, Long> netStock = network.getAllItemCounts(level, true);
-        long inNetwork = netStock.getOrDefault(item, 0L);
-        long available = inInventory + inNetwork;
+        // 2. The player's inventory covers only the shortfall.
+        int inInventory = ctx.inventory == null ? 0 : ctx.inventory.count(item);
+        long available = inNetwork + inInventory;
         long onStockBefore = inNetwork;
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
                 "%s: inventory=%d, network=%d, requested=%d",
@@ -2024,21 +2032,18 @@ public final class VeloceAutoCrafter {
      * The symptom in the log: "ingredients vanished mid-craft", and in the game -
      * materials were left unused.
      *
-     * <p>The order: player inventory -> crafter buffers -> network.
+     * <p>The order: crafter buffers -> network -> player inventory.
+     *
+     * <p>The buffers stay FIRST because the symmetry with {@link #deposit} is what makes
+     * multi-stage crafting work at all. After that the network comes before the player, for
+     * the owner's reason: what is already in the system is spent before what the player is
+     * carrying, and the inventory is the last resort rather than the first choice.
      */
     private static ItemStack takeOne(ServerLevel level, Context ctx, Ingredient ing) {
         for (ItemStack opt : nonEmpty(ing)) {
             Item item = opt.getItem();
 
-            // 1. The player inventory has priority.
-            if (ctx.inventory != null) {
-                ItemStack fromInv = ctx.inventory.extract(item, 1);
-                if (!fromInv.isEmpty()) {
-                    return fromInv;
-                }
-            }
-
-            // 2. Crafter buffers - this is where deposit puts intermediate results.
+            // 1. Crafter buffers - this is where deposit puts intermediate results.
             if (ctx.buffers != null) {
                 for (var buf : ctx.buffers) {
                     ItemStack fromBuf = extractOneFromBuffer(buf, item);
@@ -2048,10 +2053,18 @@ public final class VeloceAutoCrafter {
                 }
             }
 
-            // 3. Ordinary network endpoints (chests, RS).
+            // 2. Ordinary network endpoints (chests, RS).
             ItemStack fromNet = ctx.network.extractItem(level, item, 1);
             if (!fromNet.isEmpty()) {
                 return fromNet;
+            }
+
+            // 3. The player's inventory - only what the network could not supply.
+            if (ctx.inventory != null) {
+                ItemStack fromInv = ctx.inventory.extract(item, 1);
+                if (!fromInv.isEmpty()) {
+                    return fromInv;
+                }
             }
         }
         return ItemStack.EMPTY;
@@ -2294,14 +2307,17 @@ public final class VeloceAutoCrafter {
      *   <li>{@code VeloceExtractorBlockEntity.craftFromNetwork}</li>
      * </ul>
      *
-     * <p>All three branches of "the player inventory has priority"
-     * ({@link #ensureAvailable}, {@code takeOne}, {@code snapshotStock}) are therefore
-     * unreachable - auto-crafting uses the network EXCLUSIVELY.
+     * <p><b>Now wired up for the terminal, and only for the terminal.</b> The owner asked
+     * for the network to be able to draw on what the player is carrying, so
+     * {@code VeloceTerminalBlockEntity} passes an implementation of this interface over
+     * {@code player.getInventory()}. A machine has no player - the extractor crafts on a
+     * timer with nobody present - so it still passes {@code null} and behaves exactly as
+     * before.
      *
-     * <p>I am not wiring this up without the owner's decision, because it would
-     * change behaviour: crafting would start eating items from the player's
-     * inventory. If that is desired, it is enough to implement this interface over
-     * {@code player.getInventory()} and pass it in both places.
+     * <p><b>The priority is network first, player last.</b> Every branch below consults the
+     * player's inventory only after the network has failed to supply the item. Wiring this
+     * up without inverting the priority would have emptied a player's pockets while a chest
+     * full of the same item stood in the same network.
      */
     public interface ItemInventory {
         int count(Item item);
