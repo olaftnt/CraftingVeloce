@@ -49,7 +49,7 @@
   "craftingveloce.jei.integrale_conversion.howto": "Right-click the Integrale block",
   "craftingveloce.jei.integrale_info": "PLACE the Veloce Integrale on the ground first, then RIGHT-CLICK that placed block while holding the item shown here - the frame becomes that machine. The frame is not an item you click a block WITH: it has to be standing in the world for the click to land on it. Nothing in this mod is made in a crafting table.",
   "craftingveloce.craft.error.amount": "invalid amount",
-  "craftingveloce.craft.hint.availableIn": "Also available in: %s",
+  "craftingveloce.craft.hint.availableIn": "Available in: %s",
   "craftingveloce.craft.error.crafterDisabled": "Cannot craft: disabled in the auto-crafter",
   "craftingveloce.craft.error.disabled": "cannot be crafted",
   "craftingveloce.craft.error.extract": "could not take ingredients",
