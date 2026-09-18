@@ -2759,6 +2759,43 @@ def validate_showcase_command():
     print("    OK (/cv showcase: blocks from the registry + parts + pipes + cleanup)")
 
 
+def validate_extractor_redstone():
+    """
+    The extractor must do NOTHING while it is powered.
+
+    Player: "let it react to redstone - when it gets redstone it must not work."
+
+    The gate has to be the FIRST thing in the tick, not merely present somewhere in it:
+    checking the signal after the pull would leave a powered extractor still pulling items
+    out of the network for one tick out of every interval, which reads as "mostly works"
+    and is harder to notice than either a working or a stopped machine.
+
+    `lastPullTick` is deliberately left alone while powered, so the machine resumes on the
+    first tick the signal drops instead of waiting out a phase it burned while switched off.
+    """
+    path = ("neoforge/src/main/java/com/craftingveloce/block/entity/"
+            "VeloceExtractorBlockEntity.java")
+    code = open(path, encoding="utf-8").read()
+    body = _method_body(code, "public void serverTick()")
+    if body is None:
+        return fail("no serverTick in the extractor - nothing ticks it at all")
+    # Comments are stripped BEFORE looking, and the marker is the call rather than the bare
+    # name. The method's own explanation says "hasNeighborSignal is the same test a piston
+    # uses", so a first version of this guard found the word in that prose, was satisfied by
+    # it, and passed on a file where the gate had been moved after the pull - a guard that a
+    # COMMENT can satisfy is worse than no guard, because it reports safety it never checked.
+    code_only = "\n".join(line.split("//")[0] for line in body.split("\n"))
+    if "level.hasNeighborSignal(" not in code_only:
+        fail("the extractor works while powered: the redstone gate is gone from serverTick()")
+    if "pullFilteredItemsFromNetwork(" not in code_only:
+        fail("serverTick no longer pulls from the network - this guard is looking at the "
+             "wrong method")
+    if code_only.index("level.hasNeighborSignal(") > code_only.index("pullFilteredItemsFromNetwork("):
+        fail("the extractor checks the redstone signal AFTER it has already pulled from the "
+             "network - the gate must be the first thing in the tick")
+    print("    OK (a powered extractor does nothing: the gate is the first thing in the tick)")
+
+
 def validate_loot_item_ids():
     """
     Every loot table must point to an EXISTING item.
@@ -3999,6 +4036,7 @@ def main():
     validate_case_disassembly()
     validate_case_occlusion()
     validate_loot_item_ids()
+    validate_extractor_redstone()
     validate_no_dead_module_loot_tables()
     validate_legacy_src_submodule_removed()
     validate_showcase_command()

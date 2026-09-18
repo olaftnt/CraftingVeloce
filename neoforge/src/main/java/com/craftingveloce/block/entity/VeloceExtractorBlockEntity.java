@@ -172,6 +172,29 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         if (level == null) {
             return;
         }
+        // REDSTONE STOPS THE EXTRACTOR.
+        //
+        // Player: "let it react to redstone - when it gets redstone it must not work."
+        //
+        // The gate is the FIRST thing in the tick, so a powered extractor does nothing at
+        // all: it does not pull the filters from the network, does not auto-craft the
+        // items it is missing and does not deposit anything. Gating only the pull would
+        // have left the deposit half running, which looks like "mostly works" and is worse
+        // than either answer.
+        //
+        // `hasNeighborSignal` is the same test a piston or a dispenser uses for "is this
+        // block powered", so it matches what a player means by putting a lever or a piece
+        // of redstone dust against the machine - it covers all six sides, and both a
+        // signal fed directly into the block and one running past it.
+        //
+        // `lastPullTick` is deliberately NOT advanced while powered. The interval is
+        // phase-spread by block position (see VeloceTick.everySpread), so burning the
+        // window while switched off would make the extractor wait out a phase it never
+        // used; leaving the timer alone means it resumes on the first tick the signal
+        // drops.
+        if (level.hasNeighborSignal(worldPosition)) {
+            return;
+        }
         // A pull from the network every 10 ticks (0.5 s), but with a phase
         // depending on the block position - so that several extractors do not
         // hit the network at once.
