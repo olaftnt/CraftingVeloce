@@ -427,15 +427,25 @@ public final class CVModuleTestCommand {
         // whatever a hand-placed block ends up registered as, this is too.
         placeLikePlayer(level, pipePos);
         placeLikePlayer(level, terminalPos);
+        // THE MOTOR GOES DOWN FIRST, and that is the same lesson this project already
+        // learned with pipes: placing the MACHINE notifies its neighbours, so a source
+        // that is already standing there is seen and the machine recomputes its rotation
+        // on the spot. Placing it afterwards leaves the machine holding the rotation it
+        // computed for an empty neighbour - and it reports itself unpowered forever.
+        placeRotationSource(level, machinePos, machine);
+        // THE MACHINE GOES DOWN ALREADY CARRYING axis=x, exactly as /cv kinetic place
+        // does it, and only THEN does the placement hook run.
+        //
+        // This is not tidiness. A kinetic block entity takes its rotation axis when it is
+        // CREATED; placing the block first (which takes the axis from the player's look)
+        // and rewriting the state afterwards changes the block STATE while the block
+        // entity still turns about the old axis - and the machine then reports itself
+        // unpowered forever while a motor spins right next to it. That is precisely what
+        // the verdict said: "moduleUnpowered".
+        level.setBlock(machinePos,
+                setByName(machine.defaultBlockState(), "axis", Direction.Axis.X),
+                Block.UPDATE_ALL);
         placeLikePlayer(level, machinePos);
-        // CREATE'S MACHINES RUN ON ROTATION, and nothing else in this mod drives it.
-        // Without a motor the module is never powered, every Create case fails for a
-        // reason that says nothing about the machine, and that is exactly why `create`
-        // used to be skipped with "not implemented". The motor is placed the way
-        // /cv kinetic place does it: the module turns about X, and a motor standing EAST
-        // of it faces WEST so its shaft meets the module (Create's hasShaftTowards
-        // answers with side == FACING).
-        boolean motorPlaced = placeRotationSource(level, machinePos);
 
         if (UNIMPLEMENTED.contains(moduleId)) {
             String notice = "testing for " + moduleId + " not implemented";
@@ -801,17 +811,19 @@ public final class CVModuleTestCommand {
      *
      * @return whether a motor was placed
      */
-    private static boolean placeRotationSource(ServerLevel level, BlockPos machinePos) {
-        BlockState machine = level.getBlockState(machinePos);
+    private static boolean placeRotationSource(ServerLevel level, BlockPos machinePos, Block machineBlock) {
         Block motor = BuiltInRegistries.BLOCK.get(
                 ResourceLocation.fromNamespaceAndPath("create", "creative_motor"));
         if (motor == null || motor == Blocks.AIR) {
             return false;   // Create is not installed - nothing to drive it with
         }
-        if (machine.getProperties().stream().noneMatch(p -> p.getName().equals("axis"))) {
+        if (machineBlock.defaultBlockState().getProperties().stream()
+                .noneMatch(p -> p.getName().equals("axis"))) {
             return false;   // not a rotational machine
         }
-        level.setBlock(machinePos, setByName(machine, "axis", Direction.Axis.X), Block.UPDATE_ALL);
+        // Only the motor here; the machine goes down next and its own placement sets the
+        // axis. A motor standing EAST of the module faces WEST, because Create answers
+        // hasShaftTowards with side == FACING.
         level.setBlock(machinePos.east(),
                 setByName(motor.defaultBlockState(), "facing", Direction.WEST), Block.UPDATE_ALL);
         LOG.info("[testmodule] rotation source {} placed east of {}", motor, machinePos);
