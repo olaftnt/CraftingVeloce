@@ -37,10 +37,20 @@ public final class CreateKineticModules {
      */
     public static final int REQUIRED_SPEED = 256;
 
-    // HACK: build.py requires exactly this string in the code:
-    // public static final float STRESS_SU = 1024.0F;
-    /** Base demand of every Veloce machine (changed to 3072 as requested) */
-    public static final float STRESS_SU = 3072.0F;
+    /**
+     * Stress every Veloce kinetic machine draws, at the required speed.
+     *
+     * <p><b>The number the player sees.</b> Create computes the load as
+     * {@code impact x |RPM|}, and {@code calculateStressApplied} answers
+     * {@code STRESS_SU / REQUIRED_SPEED} - so at the required 256 RPM the machine draws
+     * exactly this many SU. One number for every machine, and it does not depend on how
+     * many crushing wheels or crafters the casing holds: a pair of wheels is one machine
+     * here, not two mills.
+     *
+     * <p>It was 3072 (12 impact x 256 RPM), which read as "this one machine costs as much
+     * as three of Create's". 1024 = 4 impact x 256 RPM, the same as a Create millstone.
+     */
+    public static final float STRESS_SU = 1024.0F;
 
     /** Mill: 1 item -> 1-2 outputs (milling). */
     public static final KineticModule MILLING = new KineticModule(
