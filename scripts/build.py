@@ -2719,6 +2719,74 @@ def validate_loot_item_ids():
     print(f"    OK ({len(files)} loot tables, every referenced item exists)")
 
 
+def validate_no_dead_module_loot_tables():
+    """
+    A module block must not ALSO have a loot table.
+
+    Every module block is a `VeloceFeModuleBlock` or a `VeloceKineticModuleBlock`, and both
+    override `getDrops` to hand back the EMPTY casing plus the item that was inserted - never
+    the finished machine, which is creative-only. A loot table for such a block is therefore
+    dead: the code path that consults loot tables never runs for it.
+
+    46 of them existed (36 of them here, plus the Mekanism and Alchemistry leftovers) and
+    were deleted. This guard keeps them deleted.
+
+    It re-checks the PREMISE instead of assuming it. If a `getDrops` override ever
+    disappears, those loot tables become load-bearing again and a guard that merely counted
+    files would go on passing while every machine dropped nothing in game.
+    """
+    problems = []
+    for path in ("neoforge/src/main/java/com/craftingveloce/block/VeloceFeModuleBlock.java",
+                 "neoforge/src/main/java/com/craftingveloce/compat/create/block/"
+                 "VeloceKineticModuleBlock.java"):
+        code = open(path, encoding="utf-8").read()
+        if "getDrops(" not in code or "@Override" not in code:
+            problems.append(f"{os.path.basename(path)} no longer overrides getDrops - its loot "
+                            "tables would be live again")
+    if problems:
+        fail("module block drops changed:\n  " + "\n  ".join(problems))
+
+    sources = ["neoforge/src/main/java/com/craftingveloce/init/VeloceRegistry.java"]
+    sources += sorted(glob.glob("neoforge/src/main/java/com/craftingveloce/compat/*/*Blocks.java"))
+    module_ids = set()
+    for path in sources:
+        module_ids.update(re.findall(r'register(?:SimpleBlockItem)?\(\s*"(veloce_[a-z0-9_]*_module)"',
+                                     open(path, encoding="utf-8").read()))
+    if not module_ids:
+        fail("found no module blocks at all - the block registration pattern changed and this "
+             "guard is no longer looking at anything")
+
+    dead = [os.path.basename(path)
+            for path in sorted(glob.glob("data/craftingveloce/loot_table/blocks/*.json"))
+            if os.path.basename(path).endswith("_module.json")]
+    if dead:
+        fail("loot tables for module blocks, which override getDrops and can never consult "
+             "them:\n  " + "\n  ".join(dead))
+    print(f"    OK (no loot table for any of the {len(module_ids)} module blocks)")
+
+
+def validate_legacy_src_submodule_removed():
+    """
+    `toms_storage_src/` must not come back.
+
+    It was recorded as a gitlink (mode 160000) with no `.gitmodules` entry, and the
+    directory on disk was EMPTY: a broken submodule reference. Nothing built from it and a
+    fresh clone could not check it out. It was removed.
+
+    A guard because the failure it produced is invisible: an empty directory is not
+    something git tracks, so nobody notices it is missing, and if it ever reappears with
+    real content then either a submodule entry has to be written or the build has a new
+    source tree it does not know about.
+    """
+    if os.path.exists("toms_storage_src"):
+        fail("toms_storage_src/ is back - nothing builds from it, and as a gitlink with no "
+             ".gitmodules entry it cannot even be checked out")
+    if ".gitmodules" in os.listdir("."):
+        fail(".gitmodules exists - the removed source tree was a submodule and something has "
+             "reintroduced one")
+    print("    OK (the broken toms_storage_src submodule is gone and has not returned)")
+
+
 def _loot_item_names(node):
     """All 'name' values from minecraft:item entries (recursively)."""
     if isinstance(node, dict):
@@ -3862,6 +3930,8 @@ def main():
     validate_case_disassembly()
     validate_case_occlusion()
     validate_loot_item_ids()
+    validate_no_dead_module_loot_tables()
+    validate_legacy_src_submodule_removed()
     validate_showcase_command()
     validate_block_probe()
     validate_craftable_cache()
