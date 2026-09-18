@@ -54,10 +54,6 @@ public final class MekanismFeModules {
             "mekanism:sawing", "Veloce Sawmill Module",
             200_000, 25_000_000, MekanismRecipeFamily::sawing);
 
-    public static final FeModule SMELTING = new FeModule(
-            "mekanism:smelting", "Veloce Energized Smelter Module",
-            200_000, 25_000_000, MekanismRecipeFamily::smelting);
-
     public static final FeModule COMPRESSING = new FeModule(
             "mekanism:compressing", "Veloce Osmium Compressor Module",
             200_000, 25_000_000, MekanismRecipeFamily::compressing);
@@ -131,6 +127,57 @@ public final class MekanismFeModules {
             200_000, 25_000_000, MekanismRecipeFamily::chemical_infusing);
 
 
+    /**
+     * Machines switched OFF - not deleted, and not registered either.
+     *
+     * <p><b>Why.</b> Every one of these works on GASES or FLUIDS, and the Veloce
+     * network carries items only: it has no way to move a gas, no way to store one,
+     * and no way to charge a machine for it. So they could never actually craft
+     * anything - a machine you can place but that can never run is worse than a
+     * machine that is not offered.
+     *
+     * <p><b>What "off" means here.</b> The constants stay, so switching one back on is
+     * deleting its id from this set - not hunting for a deleted class. Their blocks and
+     * items register into a DeferredRegister that is never handed to the event bus, so
+     * nothing appears in the game; and {@link #ALL} leaves them out, so the recipe
+     * types they would have handled are not claimed either.
+     *
+     * <p>The ids match {@link FeModule#id()}.
+     */
+    public static final java.util.Set<String> DISABLED = java.util.Set.of(
+            "mekanism:rotary",                 // Rotary Condensentrator - gas <-> fluid
+            "mekanism:dissolution",            // Chemical Dissolution Chamber - slurry
+            "mekanism:crystallizing",          // Chemical Crystallizer - from a gas
+            "mekanism:purifying",              // Purification Chamber - needs oxygen
+            "mekanism:reaction",               // Pressurized Reaction Chamber - gas + fluid
+            "mekanism:centrifuging",           // Isotopic Centrifuge - gas
+            "mekanism:washing",                // Chemical Washer - fluid
+            "mekanism:nucleosynthesizing",     // Antiprotonic Nucleosynthesizer - gas
+            "mekanism:oxidizing",              // Chemical Oxidizer - makes a gas
+            "mekanism:pigment_mixing",         // Pigment Mixer - two pigments
+            "mekanism:activating",             // Solar Neutron Activator - gas
+            "mekanism:pigment_extracting",     // Pigment Extractor - makes a pigment
+            "mekanism:injecting",              // Chemical Injection Chamber - gas
+            "mekanism:chemical_infusing",      // Chemical Infuser - two gases
+            "mekanism:separating",             // Electrolytic Separator - splits a fluid
+            "mekanism:painting"                // Painting Machine - pigment
+    );
+
+    /** Whether this machine is switched off for now. */
+    public static boolean isDisabled(FeModule module) {
+        return module != null && DISABLED.contains(module.id());
+    }
+
     /** All v1 item machines - for registration and the creative tab. */
-    public static final List<FeModule> ALL = List.of(CRUSHER, ENRICHMENT, COMBINER, SAWMILL, SMELTING, COMPRESSING, METALLURGIC_INFUSING, PURIFYING, INJECTING, CRYSTALLIZING, DISSOLUTION, WASHING, SEPARATING, REACTION, ROTARY, ACTIVATING, CENTRIFUGING, NUCLEOSYNTHESIZING, PIGMENT_EXTRACTING, PIGMENT_MIXING, PAINTING, OXIDIZING, CHEMICAL_INFUSING);
+    /** Every machine DECLARED above, enabled or not - the full list, for reference. */
+    public static final List<FeModule> EVERY = List.of(CRUSHER, ENRICHMENT, COMBINER, SAWMILL, COMPRESSING, METALLURGIC_INFUSING, PURIFYING, INJECTING, CRYSTALLIZING, DISSOLUTION, WASHING, SEPARATING, REACTION, ROTARY, ACTIVATING, CENTRIFUGING, NUCLEOSYNTHESIZING, PIGMENT_EXTRACTING, PIGMENT_MIXING, PAINTING, OXIDIZING, CHEMICAL_INFUSING);
+
+    /**
+     * Everything that is registered: the block, the item, the creative tab entry and
+     * the recipe types all come from HERE, so {@link #DISABLED} is the one place to
+     * switch a machine off.
+     */
+    public static final List<FeModule> ALL = EVERY.stream()
+            .filter(m -> !isDisabled(m))
+            .toList();
 }

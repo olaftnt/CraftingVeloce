@@ -46,7 +46,19 @@ public final class MekanismModule implements VeloceProcessingModule {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
             VeloceProcessingRegistry.register(INSTANCE);
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
-                    "[Veloce][COMPAT] {}: machine module registered", ID);
+                    "[Veloce][COMPAT] {}: machine module registered ({} machine(s) active, "
+                            + "{} switched off)",
+                    ID, MekanismFeModules.ALL.size(), MekanismFeModules.DISABLED.size());
+            // Named one per line, because "16 disabled" is not something anyone can
+            // check against the block list, and "why is there no crystallizer" is the
+            // question this is here to answer.
+            for (com.craftingveloce.crafting.FeModule module : MekanismFeModules.EVERY) {
+                if (MekanismFeModules.isDisabled(module)) {
+                    com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                            "[Veloce][COMPAT] {}: DISABLED until the network carries gases "
+                                    + "and fluids - {}", ID, module.id());
+                }
+            }
         });
     }
 

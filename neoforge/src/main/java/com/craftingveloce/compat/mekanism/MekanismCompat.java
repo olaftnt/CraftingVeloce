@@ -62,7 +62,6 @@ public final class MekanismCompat {
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_ENRICHMENT_MODULE.get(), () -> block("enrichment_chamber"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_SAWMILL_MODULE.get(), () -> block("precision_sawmill"));
 
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_SMELTING_MODULE.get(), () -> block("energized_smelter"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_COMPRESSING_MODULE.get(), () -> block("osmium_compressor"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_METALLURGIC_INFUSING_MODULE.get(), () -> block("metallurgic_infuser"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_PURIFYING_MODULE.get(), () -> block("purification_chamber"));
@@ -91,8 +90,6 @@ public final class MekanismCompat {
                     event.registerBlockEntityRenderer(MekanismBlockEntities.COMBINER_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
 
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.SMELTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(MekanismBlockEntities.COMPRESSING_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(MekanismBlockEntities.METALLURGIC_INFUSING_MODULE.get(),
@@ -132,8 +129,6 @@ public final class MekanismCompat {
                     event.registerBlockEntityRenderer(MekanismBlockEntities.CRUSHER_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
 
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.SMELTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(MekanismBlockEntities.COMPRESSING_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(MekanismBlockEntities.METALLURGIC_INFUSING_MODULE.get(),
@@ -173,8 +168,6 @@ public final class MekanismCompat {
                     event.registerBlockEntityRenderer(MekanismBlockEntities.ENRICHMENT_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
 
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.SMELTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(MekanismBlockEntities.COMPRESSING_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(MekanismBlockEntities.METALLURGIC_INFUSING_MODULE.get(),
@@ -214,8 +207,6 @@ public final class MekanismCompat {
                     event.registerBlockEntityRenderer(MekanismBlockEntities.SAWMILL_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
 
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.SMELTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(MekanismBlockEntities.COMPRESSING_MODULE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(MekanismBlockEntities.METALLURGIC_INFUSING_MODULE.get(),

@@ -69,10 +69,6 @@ public final class MekanismRecipeFamily {
         return MekanismRecipeTypes.TYPE_SAWING.get();
     }
 
-    public static RecipeType<?> smelting() {
-        return MekanismRecipeTypes.TYPE_SMELTING.get();
-    }
-
     public static RecipeType<?> compressing() {
         return MekanismRecipeTypes.TYPE_COMPRESSING.get();
     }
@@ -146,34 +142,28 @@ public final class MekanismRecipeFamily {
     }
 
 
-    /** Mekanism recipe types. May only be called when the mod is present. */
+    /**
+     * Mekanism recipe types, taken from the ENABLED modules.
+     *
+     * <p>It used to be a hand-written list of twenty-three calls, which meant a machine
+     * switched off in {@code MekanismFeModules.DISABLED} still had its recipe type
+     * claimed here - and the module then offered to handle recipes no machine of ours
+     * could run. Reading the list from {@code ALL} instead keeps the two in step by
+     * construction, and the Energized Smelter's type went with its module.
+     *
+     * <p>May only be called when the mod is present: the suppliers resolve Deferred
+     * holders of the foreign mod.
+     */
     public static Set<RecipeType<?>> types() {
         if (resolved == null) {
             Set<RecipeType<?>> out = new LinkedHashSet<>();
-            out.add(crushing());
-            out.add(enriching());
-            out.add(combining());
-            out.add(sawing());
-            out.add(smelting());
-            out.add(compressing());
-            out.add(metallurgic_infusing());
-            out.add(purifying());
-            out.add(injecting());
-            out.add(crystallizing());
-            out.add(dissolution());
-            out.add(washing());
-            out.add(separating());
-            out.add(reaction());
-            out.add(rotary());
-            out.add(activating());
-            out.add(centrifuging());
-            out.add(nucleosynthesizing());
-            out.add(pigment_extracting());
-            out.add(pigment_mixing());
-            out.add(painting());
-            out.add(oxidizing());
-            out.add(chemical_infusing());
-            resolved = Set.copyOf(out);
+            for (com.craftingveloce.crafting.FeModule module : MekanismFeModules.ALL) {
+                RecipeType<?> type = module.recipeType().get();
+                if (type != null) {
+                    out.add(type);
+                }
+            }
+            resolved = out;
         }
         return resolved;
     }
