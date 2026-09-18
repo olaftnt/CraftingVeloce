@@ -27,6 +27,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 
 import java.util.List;
+import net.minecraft.core.Direction;
+import net.minecraft.resources.ResourceLocation;
 
 /**
  * End-to-end test of one processing module: build a network, feed it a real
@@ -62,11 +64,16 @@ public final class CVModuleTestCommand {
     /**
      * Modules whose recipes cannot be planned yet, so only their rig is built.
      *
-     * <p>Create's machines take ROTATIONAL power, which nothing in this mod drives
-     * yet, so a recipe drawn from Create can never be paid for and every case would
-     * report a failure that says nothing about the machine. Building the rig still
-     * checks the part that does work - the blocks, the network, the registration -
-     * and says plainly, on the chat and in the log, that the rest was not tested.
+     * <p>Create's machines take ROTATIONAL power. The rig now PLACES a motor for them
+     * (see placeRotationSource), so the blocks, the network and the rotation are all
+     * exercised - but the recipe is still picked in the same tick the blocks are placed,
+     * and Create propagates rotation over the FOLLOWING ticks. Selecting a recipe then
+     * reports "cannot do recipe X", which blames the machine for a timing problem.
+     *
+     * <p>So this stays on the list until the pick is DEFERRED: place, wait for the
+     * rotation, and only then choose the recipe and fill the barrel. The message says so
+     * plainly on the chat and in the log; a green run that quietly skipped the module
+     * would be worse than no test at all.
      * Saying so is the point: a green run that quietly skipped the module would be
      * worse than no test at all.
      */
@@ -424,6 +431,14 @@ public final class CVModuleTestCommand {
         placeLikePlayer(level, pipePos);
         placeLikePlayer(level, terminalPos);
         placeLikePlayer(level, machinePos);
+        // CREATE'S MACHINES RUN ON ROTATION, and nothing else in this mod drives it.
+        // Without a motor the module is never powered, every Create case fails for a
+        // reason that says nothing about the machine, and that is exactly why `create`
+        // used to be skipped with "not implemented". The motor is placed the way
+        // /cv kinetic place does it: the module turns about X, and a motor standing EAST
+        // of it faces WEST so its shaft meets the module (Create's hasShaftTowards
+        // answers with side == FACING).
+        boolean motorPlaced = placeRotationSource(level, machinePos);
 
         if (UNIMPLEMENTED.contains(moduleId)) {
             String notice = "testing for " + moduleId + " not implemented";
@@ -777,6 +792,52 @@ public final class CVModuleTestCommand {
         com.craftingveloce.util.VeloceLog.Block.error(
                 com.craftingveloce.util.VeloceLog.Side.SERVER, null,
                 "[testmodule] FAIL %s: %s", moduleId, why);
+    }
+
+    /**
+     * Puts Create's creative motor against a kinetic machine, if the machine takes
+     * rotation at all.
+     *
+     * <p>Generic on purpose: it does not test for the Create module by name, it tests
+     * whether the placed state HAS an "axis" property, which is what makes a block
+     * kinetic. A Mekanism or Alchemistry machine has no such property and is left alone.
+     *
+     * @return whether a motor was placed
+     */
+    private static boolean placeRotationSource(ServerLevel level, BlockPos machinePos) {
+        BlockState machine = level.getBlockState(machinePos);
+        Block motor = BuiltInRegistries.BLOCK.get(
+                ResourceLocation.fromNamespaceAndPath("create", "creative_motor"));
+        if (motor == null || motor == Blocks.AIR) {
+            return false;   // Create is not installed - nothing to drive it with
+        }
+        if (machine.getProperties().stream().noneMatch(p -> p.getName().equals("axis"))) {
+            return false;   // not a rotational machine
+        }
+        level.setBlock(machinePos, setByName(machine, "axis", Direction.Axis.X), Block.UPDATE_ALL);
+        level.setBlock(machinePos.east(),
+                setByName(motor.defaultBlockState(), "facing", Direction.WEST), Block.UPDATE_ALL);
+        LOG.info("[testmodule] rotation source {} placed east of {}", motor, machinePos);
+        return true;
+    }
+
+    /**
+     * Sets a block state property BY NAME.
+     *
+     * <p>The property instance has to come from the block itself: Create's
+     * {@code DirectionalKineticBlock.FACING} is its own DirectionProperty and not
+     * vanilla's, and setting a property the block does not own throws.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static BlockState setByName(BlockState state, String name, Comparable value) {
+        for (net.minecraft.world.level.block.state.properties.Property<?> property
+                : state.getProperties()) {
+            if (property.getName().equals(name) && property.getPossibleValues().contains(value)) {
+                return state.setValue(
+                        (net.minecraft.world.level.block.state.properties.Property) property, value);
+            }
+        }
+        return state;
     }
 
     /** Runs the placement hook the game runs when a player places this block. */
