@@ -1320,6 +1320,10 @@ JEI_CATEGORIES = {
         "create:pressing": "VELOCE_PRESS_MODULE_ITEM",
         "create:mixing": "VELOCE_MIXER_MODULE_ITEM",
         "create:deploying": "VELOCE_DEPLOYER_MODULE_ITEM",
+        # The Deployer has TWO pages in Create's JEI ("Deploying" and "Manual Item
+        # Application", the latter being where every casing recipe lives). Create
+        # registers its Deployer as the catalyst for both, so we have to as well.
+        "create:item_application": "VELOCE_DEPLOYER_MODULE_ITEM",
     },
     # Only the ENABLED machines appear. The gas and fluid ones are switched off in
     # MekanismFeModules.DISABLED, and the Energized Smelter is gone - so a catalyst
@@ -3616,9 +3620,27 @@ def validate_create_mechanics():
             problems.append(f"{name} does not filter recipes by grid and requirements")
     family = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateRecipeFamily.java",
                   encoding="utf-8").read()
-    for need, what in (("pressing()", "the press type"), ("mixing()", "the mixer type")):
+    for need, what in (("pressing()", "the press type"), ("mixing()", "the mixer type"),
+                       ("itemApplication()", "the item-application type")):
         if need not in family:
             problems.append("the Create family without " + what)
+
+    # ONE MACHINE, TWO TYPES. Create registers its Deployer as the catalyst for BOTH of
+    # its deployer categories, and every CASING (andesite, brass, copper, railway) is an
+    # item_application recipe. A Deployer that declares only `deploying` is invisible to
+    # the network for exactly those recipes - the player had a Deployer in the network,
+    # JEI showed the machine, and the casing still could not be made.
+    modules = open("neoforge/src/main/java/com/craftingveloce/compat/create/CreateKineticModules.java",
+                   encoding="utf-8").read()
+    deployer_at = modules.find("DEPLOYING = new KineticModule(")
+    if deployer_at < 0:
+        problems.append("no Deployer module in the Create machines")
+    else:
+        entry = modules[deployer_at:deployer_at + 600]
+        for need, what in (("CreateRecipeFamily.deploying()", "the deploying type"),
+                           ("CreateRecipeFamily.itemApplication()", "the item-application type")):
+            if need not in entry:
+                problems.append("the Deployer module does not declare " + what)
     be = open("neoforge/src/main/java/com/craftingveloce/compat/create/block/entity/VeloceKineticModuleBlockEntity.java",
               encoding="utf-8").read()
     for need, what in (("public static final int GRID_LIMIT = 9", "the 9x9 limit"),

@@ -37,5 +37,11 @@ public final class CreateJeiCatalysts {
                 () -> CreateBlocks.VELOCE_MIXER_MODULE_ITEM.get());
         VeloceJeiCatalysts.register("create:deploying",
                 () -> CreateBlocks.VELOCE_DEPLOYER_MODULE_ITEM.get());
+        // The Deployer's SECOND page. Create's own JEI registers the Deployer as the
+        // catalyst for "Manual Item Application" as well, which is the page every casing
+        // recipe lives on - so a catalyst only on "Deploying" would advertise half a
+        // machine.
+        VeloceJeiCatalysts.register("create:item_application",
+                () -> CreateBlocks.VELOCE_DEPLOYER_MODULE_ITEM.get());
     }
 }

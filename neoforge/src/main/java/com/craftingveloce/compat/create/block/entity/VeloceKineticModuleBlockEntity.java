@@ -524,9 +524,12 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
 
     @Override
     public Set<RecipeType<?>> recipeTypes() {
-        // We resolve the recipe type only here - Create's DeferredHolder is bound
-        // after the registration events.
-        return Set.of(module.recipeType().get());
+        // We resolve the recipe types only here - Create's DeferredHolder is bound
+        // after the registration events. A machine may own more than one (the Deployer
+        // owns deploying AND item_application), and the network looks machines up BY
+        // TYPE, so all of them have to be declared here or half of the machine is
+        // invisible to it.
+        return module.recipeTypes().get();
     }
 
     @Override

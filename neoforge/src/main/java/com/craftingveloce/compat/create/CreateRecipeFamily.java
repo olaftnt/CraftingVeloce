@@ -76,7 +76,21 @@ public final class CreateRecipeFamily {
         return AllRecipeTypes.MIXING.getType();
     }
 
-    /** Deployer: {@code create:deploying} recipes (applying one item to another). */
+    /**
+     * Deployer, on a block in the world: {@code create:item_application} recipes.
+     *
+     * <p><b>EVERY CASING COMES FROM HERE.</b> {@code create:andesite_casing} is
+     * "a stripped log + andesite alloy" as an item_application recipe, and so are the
+     * brass, copper, railway and shadow casings. Create's own name for the JEI page is
+     * "Manual Item Application", which reads as "by hand", but Create registers the
+     * DEPLOYER as the catalyst for it - so a network with a Deployer in it can make
+     * casings, and this family was the only thing standing in the way.
+     */
+    public static RecipeType<?> itemApplication() {
+        return AllRecipeTypes.ITEM_APPLICATION.getType();
+    }
+
+    /** Deployer, on an item: {@code create:deploying} recipes (applying one item to another). */
     public static RecipeType<?> deploying() {
         return AllRecipeTypes.DEPLOYING.getType();
     }
@@ -102,6 +116,7 @@ public final class CreateRecipeFamily {
             out.add(pressing());
             out.add(mixing());
             out.add(deploying());
+            out.add(itemApplication());
             resolved = Set.copyOf(out);
         }
         return resolved;

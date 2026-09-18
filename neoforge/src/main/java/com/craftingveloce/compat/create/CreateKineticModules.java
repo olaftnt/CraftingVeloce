@@ -1,6 +1,7 @@
 package com.craftingveloce.compat.create;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Create kinetic machines - one row of data per machine.
@@ -55,37 +56,46 @@ public final class CreateKineticModules {
     /** Mill: 1 item -> 1-2 outputs (milling). */
     public static final KineticModule MILLING = new KineticModule(
             "create:milling", "Veloce Millstone Module",
-            CreateRecipeFamily::milling, STRESS_SU);
+            () -> Set.of(CreateRecipeFamily.milling()), STRESS_SU);
 
     /** Saw: 1 item -> 1-2 outputs (cutting). */
     public static final KineticModule CUTTING = new KineticModule(
             "create:cutting", "Veloce Saw Module",
-            CreateRecipeFamily::cutting, STRESS_SU);
+            () -> Set.of(CreateRecipeFamily.cutting()), STRESS_SU);
 
     /** Crusher: 1 item -> outputs with a probability. */
     public static final KineticModule CRUSHING = new KineticModule(
             "create:crushing", "Veloce Crushing Module",
-            CreateRecipeFamily::crushing, STRESS_SU);
+            () -> Set.of(CreateRecipeFamily.crushing()), STRESS_SU);
 
     /** Mechanical crafter: recipes with a grid larger than 3x3. */
     public static final KineticModule MECHANICAL_CRAFTING = new KineticModule(
             "create:mechanical_crafting", "Veloce Mechanical Crafter Module",
-            CreateRecipeFamily::mechanicalCrafting, STRESS_SU);
+            () -> Set.of(CreateRecipeFamily.mechanicalCrafting()), STRESS_SU);
 
     /** Press: {@code create:pressing} recipes - requires a Basin in the network. */
     public static final KineticModule PRESSING = new KineticModule(
             "create:pressing", "Veloce Press Module",
-            CreateRecipeFamily::pressing, STRESS_SU);
+            () -> Set.of(CreateRecipeFamily.pressing()), STRESS_SU);
 
     /** Mixer: {@code create:mixing} recipes - requires a Basin in the network. */
     public static final KineticModule MIXING = new KineticModule(
             "create:mixing", "Veloce Mixer Module",
-            CreateRecipeFamily::mixing, STRESS_SU);
+            () -> Set.of(CreateRecipeFamily.mixing()), STRESS_SU);
 
-    /** Deployer: {@code create:deploying} recipes (precision mechanism etc.). */
+    /**
+     * Deployer: {@code create:deploying} AND {@code create:item_application}.
+     *
+     * <p>Two types on one machine, and that is Create's own shape rather than a
+     * convenience: Create registers the Deployer as the catalyst for both of its deployer
+     * JEI categories. The second type is where every CASING comes from, so without it a
+     * network with a Deployer in it could not make a single casing - which is what the
+     * player reported, with JEI plainly showing the machine they had.
+     */
     public static final KineticModule DEPLOYING = new KineticModule(
             "create:deploying", "Veloce Deployer Module",
-            CreateRecipeFamily::deploying, STRESS_SU);
+            () -> Set.of(CreateRecipeFamily.deploying(),
+                    CreateRecipeFamily.itemApplication()), STRESS_SU);
 
     /** All machines - for registration and the creative tab. */
     public static final List<KineticModule> ALL =

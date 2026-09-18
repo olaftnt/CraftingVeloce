@@ -1,0 +1,11 @@
+# The Create module must cover the Deployer's BOTH recipe types.
+#
+# Every casing in Create (andesite, brass, copper, railway) is a create:item_application
+# recipe, and Create registers its Deployer as the catalyst for that JEI page as well as
+# for "Deploying". A family that lists only deploying cannot make a single casing, and the
+# audit below prints the types it covers together with their recipe counts - so this
+# script exists to be read in the log, not to assert on chat output.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=create-types
+/cv testmodule audit create
+wait: 20
