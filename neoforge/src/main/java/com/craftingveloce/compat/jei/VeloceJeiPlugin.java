@@ -13,6 +13,9 @@ import mezz.jei.api.registration.IRecipeRegistration;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import mezz.jei.api.registration.IRecipeCategoryRegistration;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.network.chat.Component;
 
 /**
  * JEI plugin: our blocks on the "this recipe can be made in this" list.
@@ -90,6 +93,42 @@ public class VeloceJeiPlugin implements IModPlugin {
         for (var proxy : com.craftingveloce.init.VeloceRegistry.handAuthoredProxyItems()) {
             proxies.add(new net.minecraft.world.item.ItemStack(proxy.get()));
         }
+        // ---- "Integrale conversion": the frame + an item becomes a machine ----
+        //
+        // Built from the SAME table the block consults on right-click, so what JEI shows
+        // and what actually works cannot drift. Only rows whose result block resolves to
+        // something real are listed: the table keys on IDs precisely because another
+        // mod's block may not exist yet when its row is registered, and a row pointing at
+        // an empty block would be a recipe for nothing.
+        java.util.List<IntegraleConversionRecipe> conversions = new java.util.ArrayList<>();
+        for (com.craftingveloce.block.VeloceIntegraleConversions.Conversion conversion
+                : com.craftingveloce.block.VeloceIntegraleConversions.all()) {
+            net.minecraft.world.level.block.Block result = conversion.resultBlock();
+            if (result == null || result == net.minecraft.world.level.block.Blocks.AIR) {
+                continue;
+            }
+            net.minecraft.world.item.Item input =
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM.get(conversion.inputId());
+            if (input == net.minecraft.world.item.Items.AIR) {
+                continue;
+            }
+            conversions.add(new IntegraleConversionRecipe(new ItemStack(input),
+                    new ItemStack(result.asItem())));
+        }
+        if (!conversions.isEmpty()) {
+            registration.addRecipes(IntegraleConversionCategory.TYPE, conversions);
+            LOGGER.info("[Veloce][JEI] Integrale conversions shown: {}", conversions.size());
+        } else {
+            LOGGER.warn("[Veloce][JEI] no Integrale conversions to show - the frame "
+                    + "would appear unable to make anything");
+        }
+
+        // The information PAGE (the "c" of the request): the rule in words, on the item
+        // itself, for a player who has the frame in hand and no idea what it is for.
+        registration.addIngredientInfo(
+                com.craftingveloce.init.VeloceRegistry.VELOCE_INTEGRALE_ITEM.get(),
+                Component.translatable("craftingveloce.jei.integrale_info"));
+
         if (proxies.isEmpty()) {
             return;
         }
@@ -102,6 +141,18 @@ public class VeloceJeiPlugin implements IModPlugin {
                 mezz.jei.api.constants.VanillaTypes.ITEM_STACK,
                 proxies,
                 java.util.Set.of(mezz.jei.api.ingredients.subtypes.UidContext.Ingredient));
+    }
+
+    /**
+     * The "Integrale conversion" category - see {@link IntegraleConversionCategory}.
+     *
+     * <p>Registered in {@code registerCategories} because this is the phase where a
+     * plugin DECLARES its own categories; {@code registerRecipes} may only fill them.
+     */
+    @Override
+    public void registerCategories(IRecipeCategoryRegistration registration) {
+        registration.addRecipeCategories(
+                new IntegraleConversionCategory(registration.getJeiHelpers().getGuiHelper()));
     }
 
     @Override
@@ -123,6 +174,13 @@ public class VeloceJeiPlugin implements IModPlugin {
             LOGGER.debug("[VELOCE-DEBUG] JEI catalyst: {} -> category {}",
                     catalyst.item().get(), catalyst.category());
         }
+        // The frame is the catalyst of our own category - without this the row "Integrale
+        // conversion" does not appear next to the frame in JEI's ingredient list, and the
+        // category is only findable by scrolling the category bar.
+        registration.addRecipeCatalysts(IntegraleConversionCategory.TYPE,
+                com.craftingveloce.init.VeloceRegistry.VELOCE_INTEGRALE_ITEM.get());
+        added++;
+
         LOGGER.info("[Veloce][JEI] catalysts: {} added, {} without a category {}",
                 added, unknown.size(), unknown);
         if (!unknown.isEmpty()) {
