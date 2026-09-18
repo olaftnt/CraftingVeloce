@@ -392,7 +392,17 @@ public final class CVModuleTestCommand {
 
         level.setBlock(terminalPos, VeloceRegistry.VELOCE_TERMINAL.get().defaultBlockState(), Block.UPDATE_ALL);
         level.setBlock(pipePos, VeloceRegistry.VELOCE_PIPE.get().defaultBlockState(), Block.UPDATE_ALL);
-        level.setBlock(machinePos, machine.defaultBlockState(), Block.UPDATE_ALL);
+        // THE MOTOR GOES DOWN BEFORE THE MACHINE. Our kinetic block takes its rotation
+        // axis from a NEIGHBOUR THAT ALREADY HAS A DRIVE (see
+        // VeloceKineticModuleBlock.getStateForPlacement), so a motor placed afterwards is
+        // never seen and the machine stands there with no axis to match. The rig used to
+        // place the machine from defaultBlockState() and the motor after it, which is why
+        // every Create case ended in "moduleUnpowered" while /cv kinetic place - which
+        // puts the machine down already turning about x - worked.
+        placeRotationSource(level, machinePos, machine);
+        level.setBlock(machinePos,
+                setByName(machine.defaultBlockState(), "axis", Direction.Axis.X),
+                Block.UPDATE_ALL);
         lastMachinePos = machinePos;
 
         // Register the machine as a network node, which is what a player's
@@ -427,24 +437,6 @@ public final class CVModuleTestCommand {
         // whatever a hand-placed block ends up registered as, this is too.
         placeLikePlayer(level, pipePos);
         placeLikePlayer(level, terminalPos);
-        // THE MOTOR GOES DOWN FIRST, and that is the same lesson this project already
-        // learned with pipes: placing the MACHINE notifies its neighbours, so a source
-        // that is already standing there is seen and the machine recomputes its rotation
-        // on the spot. Placing it afterwards leaves the machine holding the rotation it
-        // computed for an empty neighbour - and it reports itself unpowered forever.
-        placeRotationSource(level, machinePos, machine);
-        // THE MACHINE GOES DOWN ALREADY CARRYING axis=x, exactly as /cv kinetic place
-        // does it, and only THEN does the placement hook run.
-        //
-        // This is not tidiness. A kinetic block entity takes its rotation axis when it is
-        // CREATED; placing the block first (which takes the axis from the player's look)
-        // and rewriting the state afterwards changes the block STATE while the block
-        // entity still turns about the old axis - and the machine then reports itself
-        // unpowered forever while a motor spins right next to it. That is precisely what
-        // the verdict said: "moduleUnpowered".
-        level.setBlock(machinePos,
-                setByName(machine.defaultBlockState(), "axis", Direction.Axis.X),
-                Block.UPDATE_ALL);
         placeLikePlayer(level, machinePos);
 
         if (UNIMPLEMENTED.contains(moduleId)) {
