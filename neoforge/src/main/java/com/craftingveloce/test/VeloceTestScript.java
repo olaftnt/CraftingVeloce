@@ -5,7 +5,6 @@ import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.phys.Vec2;
@@ -153,11 +152,8 @@ public final class VeloceTestScript {
                 case WAIT -> {
                     int ticks = parseTicks(step);
                     final int next = index + 1;
-                    // Suspend and resume on a later tick. Scheduled against the server
-                    // tick counter, so this is real game time and not wall-clock time
-                    // that a paused server would skip.
-                    server.tell(new TickTask(server.getTickCount() + ticks,
-                            () -> advance(state, next, server, player, onDone)));
+                    scheduleWait(server, ticks,
+                            () -> advance(state, next, server, player, onDone));
                     return;
                 }
                 case EXPECT_ANY -> {
@@ -270,5 +266,82 @@ public final class VeloceTestScript {
             VeloceLog.Block.error(VeloceLog.Side.SERVER, t, "[test] command failed: %s", command);
         }
         return captured.toString();
+    }
+
+    /**
+     * Waits that have not come due yet.
+     *
+     * <p><b>Why a wait is NOT {@code server.tell(new TickTask(...))}.</b> That is what this
+     * used to do, and it never waited once. The driver runs on the server thread, and
+     * {@code MinecraftServer} is a reentrant blockable event loop: a task submitted from
+     * the thread that owns the loop runs IMMEDIATELY, and the tick number baked into the
+     * {@code TickTask} is never consulted.
+     *
+     * <p>The bug was invisible because a script that skips its waits still runs to
+     * completion - it simply measures a world that never moved. It was finally caught by
+     * timing a {@code wait: 200} with a wall clock: two milliseconds passed instead of ten
+     * seconds. Everything downstream of a wait had been reading the state of the world as
+     * it was when the command was typed, which is why a machine bolted to a spinning shaft
+     * reported 0 RPM - Create had had no tick in which to propagate rotation.
+     *
+     * <p>Waits are therefore pumped from a real server tick, which the thread the script
+     * happens to run on cannot short-circuit.
+     */
+    private static final List<Pending> PENDING = new ArrayList<>();
+
+    /** One suspended script, due at a given server tick. */
+    private record Pending(long dueTick, Runnable action) {
+    }
+
+    /**
+     * Starts the pump. Called once during setup.
+     *
+     * <p>Cheap when idle: the listener does nothing until a script actually waits.
+     */
+    public static void installWaitPump() {
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.event.tick.ServerTickEvent.Post.class,
+                event -> pumpWaits(event.getServer()));
+    }
+
+    /**
+     * Resumes every wait that has come due. Called once per server tick.
+     *
+     * <p>The due waits are collected before any of them runs, because a resumed script may
+     * suspend again immediately and would otherwise be adding to the list under iteration.
+     */
+    private static void pumpWaits(MinecraftServer server) {
+        if (PENDING.isEmpty()) {
+            return;
+        }
+        long now = server.getTickCount();
+        List<Pending> due = new ArrayList<>();
+        for (Pending pending : PENDING) {
+            if (now >= pending.dueTick()) {
+                due.add(pending);
+            }
+        }
+        if (due.isEmpty()) {
+            return;
+        }
+        PENDING.removeAll(due);
+        for (Pending pending : due) {
+            pending.action().run();
+        }
+    }
+
+    /**
+     * Runs {@code action} after {@code ticks} real server ticks.
+     *
+     * <p>Public because {@code CVModuleTestCommand} carried the same defect in its scan
+     * delay: it judged a crafting network in the very tick it built it, before the scan it
+     * was nominally waiting for had run.
+     */
+    public static void scheduleWait(MinecraftServer server, int ticks, Runnable action) {
+        if (ticks <= 0) {
+            action.run();
+            return;
+        }
+        PENDING.add(new Pending(server.getTickCount() + ticks, action));
     }
 }

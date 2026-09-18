@@ -45,7 +45,8 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         implements VeloceProcessingSource, com.craftingveloce.block.VeloceCaseSpin,
         com.craftingveloce.block.VeloceCaseBuildable,
         com.craftingveloce.block.entity.VeloceModuleInfoSource,
-        com.craftingveloce.block.entity.VeloceModuleDisplay {
+        com.craftingveloce.block.entity.VeloceModuleDisplay,
+        com.craftingveloce.block.VeloceKineticInfo {
 
     /**
      * Operation pool for the planner while the machine is spinning.
@@ -390,6 +391,40 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
                 / com.craftingveloce.compat.create.CreateKineticModules.REQUIRED_SPEED;
         this.lastStressApplied = impact;
         return impact;
+    }
+
+    // ------------------------------------------------------------------
+    // VeloceKineticInfo
+    // ------------------------------------------------------------------
+    //
+    // The three answers a test needs in order to tell "this machine is taking power from
+    // a network" apart from "this machine is standing next to a network". They are the
+    // raw values and not the status sentence shown to a player, because a tooltip reading
+    // "not enough force" is equally consistent with a machine that is correctly starved
+    // and with one that was never connected to anything.
+
+    /**
+     * The network's speed in RPM, as seen by this machine.
+     *
+     * <p>{@code getSpeed()} and not {@code getTheoreticalSpeed()}: the theoretical speed
+     * is what the network WOULD deliver, which stays non-zero even when this machine has
+     * no source - and that is precisely the distinction the test exists to make.
+     */
+    @Override
+    public float kineticRpm() {
+        return getSpeed();
+    }
+
+    /** SU per RPM, i.e. what {@link #calculateStressApplied()} hands to the network. */
+    @Override
+    public float kineticStressImpact() {
+        return calculateStressApplied();
+    }
+
+    /** Whether a rotation source reaches this machine at all. */
+    @Override
+    public boolean kineticHasSource() {
+        return hasSource();
     }
 
     // ------------------------------------------------------------------

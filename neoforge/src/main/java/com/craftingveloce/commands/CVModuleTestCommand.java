@@ -17,7 +17,6 @@ import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -470,8 +469,11 @@ public final class CVModuleTestCommand {
 
         // --- 4. judge after the scan has had time to run ---
         var server = level.getServer();
-        server.tell(new TickTask(server.getTickCount() + SCAN_TICKS,
-                () -> judge(level, terminalPos, wanted, moduleId, recipe.id().toString())));
+        // Through the script runner's wait pump, NOT server.tell(TickTask): see
+        // VeloceTestScript for why that ran the judgement immediately, leaving the network
+        // judged in the same tick it was built in.
+        com.craftingveloce.test.VeloceTestScript.scheduleWait(server, SCAN_TICKS,
+                () -> judge(level, terminalPos, wanted, moduleId, recipe.id().toString()));
 
         return 1;
     }

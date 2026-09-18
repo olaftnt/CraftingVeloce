@@ -1,65 +1,101 @@
-# Module: create  -  one case per MACHINE BLOCK (7 found).
+# Module: create  -  does a placed machine module actually TAKE POWER from a network?
 #
-# A compat module is a FAMILY: Mekanism alone registers twenty-three machines, each
-# its own block. Testing the family through one block would draw a recipe belonging to
-# a different machine and report a failure that says nothing about either, so every
-# block gets its own case and /cv testmodule only accepts a recipe the placed block can
-# actually perform.
+# A player reported that placing an Integrale and inserting a Create module left the
+# module unable to see power. That cannot be settled by reading the code: the attachment
+# happens on a tick, inside Create's own rotation propagator, and the difference between
+# "attached and turning" and "standing next to a network" is a single number that only a
+# running game produces.
 #
-# STATUS: NOT IMPLEMENTED. Create's machines take ROTATIONAL power, which nothing in
-# this mod drives yet, so a recipe drawn from Create can never be paid for and every
-# case would report a failure that says nothing about the machine. The rig is built
-# (terminal, pipe, machine, barrel) and the run says so on the chat and in the log.
-# Nothing is crafted here.
+# So every case below builds the smallest rig that can have that number - the module with
+# Create's creative motor's shaft against it - waits for the network to turn, and reads
+# the speed and the stress impact back off the machine itself.
+#
+# WHY THE WAIT IS NOT OPTIONAL. Create propagates rotation over the ticks that FOLLOW a
+# placement, so a speed read in the same tick as the motor is zero for a reason that has
+# nothing to do with the bug. Reading without waiting would produce a failure that means
+# nothing, which is worse than no test.
+#
+# WHAT IS ASSERTED, and why these numbers:
+#   source=true     - a rotation source reaches the machine at all;
+#   impact=4.0      - the machine's draw is 4.0 SU per RPM. Create computes a network's
+#                     load as `impact x |RPM|`, so at the required 256 RPM this is
+#                     exactly 1024 SU. Create's own millstone, saw, mixer and deployer
+#                     declare the same 4.0; its press and crushing wheel declare 8.0
+#                     (2048 SU) and its crafter 2.0 (512 SU). Every one of our modules is
+#                     deliberately in the 1024 SU group, whatever the casing holds - so
+#                     this number must not change with the number of wheels inside;
+#   verdict: PASS   - the machine is turning and has a source.
+#
+# The speed itself is printed on the read line but NOT asserted by value: the rig proves
+# rotation ARRIVES, and pinning the exact RPM would turn a working machine red the moment
+# Create changes its default motor speed.
+#
+# The crafting half of this module is still not covered here: these machines need to be
+# driven to do work, which is what this rig now provides, but pairing that drive with a
+# drawn recipe is a separate piece of work (see UNIMPLEMENTED in CVModuleTestCommand).
 #
 # Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-create -PveloceKeepOpen
 
 
-# --- 1/7  veloce_create_crushing_module ---
-/cv testmodule create veloce_create_crushing_module
-expect: not implemented
+# --- 1/7  veloce_create_millstone_module ---
+/cv kinetic place veloce_create_millstone_module
+wait: 40
+/cv kinetic read
+expect: rig=OK
+expect: source=true
+expect: impact=4.0
+expect: verdict: PASS
 
-/cv testmodule result
-expect: SKIP
+# --- 2/7  veloce_create_saw_module ---
+/cv kinetic place veloce_create_saw_module
+wait: 40
+/cv kinetic read
+expect: rig=OK
+expect: source=true
+expect: impact=4.0
+expect: verdict: PASS
 
-# --- 2/7  veloce_create_deployer_module ---
-/cv testmodule create veloce_create_deployer_module
-expect: not implemented
+# --- 3/7  veloce_create_crushing_module ---
+/cv kinetic place veloce_create_crushing_module
+wait: 40
+/cv kinetic read
+expect: rig=OK
+expect: source=true
+expect: impact=4.0
+expect: verdict: PASS
 
-/cv testmodule result
-expect: SKIP
+# --- 4/7  veloce_create_mechanical_crafter_module ---
+/cv kinetic place veloce_create_mechanical_crafter_module
+wait: 40
+/cv kinetic read
+expect: rig=OK
+expect: source=true
+expect: impact=4.0
+expect: verdict: PASS
 
-# --- 3/7  veloce_create_mechanical_crafter_module ---
-/cv testmodule create veloce_create_mechanical_crafter_module
-expect: not implemented
+# --- 5/7  veloce_create_press_module ---
+/cv kinetic place veloce_create_press_module
+wait: 40
+/cv kinetic read
+expect: rig=OK
+expect: source=true
+expect: impact=4.0
+expect: verdict: PASS
 
-/cv testmodule result
-expect: SKIP
+# --- 6/7  veloce_create_mixer_module ---
+/cv kinetic place veloce_create_mixer_module
+wait: 40
+/cv kinetic read
+expect: rig=OK
+expect: source=true
+expect: impact=4.0
+expect: verdict: PASS
 
-# --- 4/7  veloce_create_millstone_module ---
-/cv testmodule create veloce_create_millstone_module
-expect: not implemented
-
-/cv testmodule result
-expect: SKIP
-
-# --- 5/7  veloce_create_mixer_module ---
-/cv testmodule create veloce_create_mixer_module
-expect: not implemented
-
-/cv testmodule result
-expect: SKIP
-
-# --- 6/7  veloce_create_press_module ---
-/cv testmodule create veloce_create_press_module
-expect: not implemented
-
-/cv testmodule result
-expect: SKIP
-
-# --- 7/7  veloce_create_saw_module ---
-/cv testmodule create veloce_create_saw_module
-expect: not implemented
-
-/cv testmodule result
-expect: SKIP
+# --- 7/7  veloce_create_deployer_module ---
+/cv kinetic place veloce_create_deployer_module
+wait: 40
+/cv kinetic read
+expect: rig=OK
+expect: source=true
+expect: impact=4.0
+expect: verdict: PASS

@@ -107,6 +107,9 @@ public final class VeloceTestDriver {
                 return;
             }
             autoRunDone = true;
+            // The waits in the script are pumped by a server tick, not by the thread the
+            // script runs on - see VeloceTestScript for the bug that made this necessary.
+            VeloceTestScript.installWaitPump();
             // A short delay: the world is still settling when the player joins
             // (chunks loading, block entities appearing), and a script that runs
             // into that would report failures that are not real.

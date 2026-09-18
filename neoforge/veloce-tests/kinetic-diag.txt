@@ -1,0 +1,20 @@
+# TEMPORARY DIAGNOSTIC - not part of the suite.
+#
+# Two questions at once, and the answers need BOTH clocks:
+#
+#   ticksSincePlace > 0  -> the world ticks during a wait: and Create really is not
+#                           propagating rotation to our machine (a mod bug);
+#   ticksSincePlace == 0 and millisSincePlace ~ 10000
+#                        -> the wait really lasted 200 ticks but the world stood still,
+#                           so no in-game measurement of anything is possible;
+#   ticksSincePlace == 0 and millisSincePlace ~ 0
+#                        -> `wait:` never waited at all: the driver's TickTask ran
+#                           immediately, and every tick-dependent script in the suite has
+#                           been running its steps back to back.
+#
+# Delete this file once the question is answered.
+
+/cv kinetic place create:shaft
+wait: 200
+/cv kinetic read
+expect: rig=OK

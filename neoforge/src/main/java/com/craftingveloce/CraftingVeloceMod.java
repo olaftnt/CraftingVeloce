@@ -253,6 +253,10 @@ public class CraftingVeloceMod {
         // (VeloceModuleInfoLines), so there is no custom on-screen drawing
         // anymore.
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
+            // Automated runs must not be paused: a paused client stops ticking its
+            // integrated server, and every `wait:` in a script would then measure a world
+            // that is standing still. Installs nothing unless a script is configured.
+            com.craftingveloce.client.VeloceTestPauseGuard.install();
         }
 
         // Automatic test run: with -Dveloce.test.script=<path> the script runs on
@@ -273,6 +277,11 @@ public class CraftingVeloceMod {
             com.craftingveloce.test.VeloceTestDriver.register(event.getDispatcher());
             // /cv testmodule <id>: end-to-end test of one processing module.
             com.craftingveloce.commands.CVModuleTestCommand.register(event.getDispatcher());
+            // /cv kinetic place|read: builds a module against Create's creative motor and
+            // reads back the speed and the stress impact it applies. The only way to tell
+            // "the machine took power from the network" apart from "the machine is
+            // standing next to one", which is the state a player reported.
+            com.craftingveloce.commands.CVKineticTestCommand.register(event.getDispatcher());
             // The terminal GUI in combination with a brewing stand - see CVGuiTestCommand
             // for why the server cannot answer this on its own.
             com.craftingveloce.commands.CVGuiTestCommand.register(event.getDispatcher());
