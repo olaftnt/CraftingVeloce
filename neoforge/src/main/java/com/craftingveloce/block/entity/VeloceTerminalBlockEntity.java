@@ -860,7 +860,30 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         if (!fromBuffer.isEmpty()) {
             return PullResult.ok(com.craftingveloce.util.VelocePotionMapper.toRealPotion(fromBuffer));
         }
-        return PullResult.ok(com.craftingveloce.util.VelocePotionMapper.toRealPotion(net.extractItem(sl, item, count)));
+        ItemStack extracted = net.extractItem(sl, item, count);
+        if (extracted.isEmpty()) {
+            // REPORTING HOLE, and it cost a long hunt.
+            //
+            // `ensureAvailable` has just said the item could be supplied - and then BOTH the
+            // buffers and the network came back empty, so this returned `PullResult.ok(EMPTY)`:
+            // a SUCCESS carrying no reason. The caller logged `reason=` with nothing after it
+            // and told the player only that auto-crafting "yielded nothing". Every attempt
+            // produced that same empty line, so nothing in the log distinguished "the plan
+            // failed", "the craft never ran" and "the result went somewhere else" - and it was
+            // read as all three in turn.
+            //
+            // The planner believing it produced the item, with the result in neither the
+            // buffers nor the network, means it went to the emergency drop (Context.dropPos) -
+            // what happens when no container accepts the output. Saying that out loud turns an
+            // unexplainable click into a diagnosis.
+            String where = getBlockPos().toShortString();
+            com.craftingveloce.crafting.VeloceCraftTrace.log(
+                    "produced, but the result is in NEITHER the buffers NOR the network - it "
+                            + "was dropped at %s", where);
+            return new PullResult(ItemStack.EMPTY, "craftingveloce.craft.error.dropFull",
+                    "no container accepted the crafted item; it is on the ground near " + where, "");
+        }
+        return PullResult.ok(com.craftingveloce.util.VelocePotionMapper.toRealPotion(extracted));
     }
 
     /**

@@ -57,6 +57,7 @@
   "craftingveloce.craft.error.furnaceUnpowered": "Cannot craft: %s has no fuel/power",
   "craftingveloce.craft.error.moduleUnpowered": "Cannot craft: %s has no power",
   "craftingveloce.craft.error.noBase": "missing base ingredients",
+  "craftingveloce.craft.error.dropFull": "Made, but no container accepted it - the item is on the ground.",
   "craftingveloce.craft.error.noBaseItem": "Cannot craft: missing %s",
   "craftingveloce.craft.error.noCrafter": "Cannot craft: no auto-crafter in the network",
   "craftingveloce.craft.error.noFurnace": "Cannot craft: no furnace in the network (needs %s)",
