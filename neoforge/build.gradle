@@ -140,7 +140,15 @@ dependencies {
 processResources {
     from(rootProject.projectDir) {
         include "assets/**"
-        include "data/**"
+        // ONLY our own namespaces, listed one by one.
+        //
+        // This used to be `include "data/**"`, which swept up whatever happened to sit in
+        // data/ - and data/toms_storage/ (a leftover from a mod this one no longer depends
+        // on) was being shipped inside our own jar. A wildcard cannot tell whose data it is
+        // collecting; a list can.
+        include "data/craftingveloce/**"
+        include "data/minecraft/**"
+        include "data/c/**"
     }
     from(rootProject.file("src_meta")) {
         include "META-INF/**"
