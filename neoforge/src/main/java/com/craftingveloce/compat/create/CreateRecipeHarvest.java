@@ -157,6 +157,20 @@ public final class CreateRecipeHarvest {
      *       offered; only a single guaranteed output ({@code track}) is.</li>
      * </ul>
      */
+    /**
+     * Why a sequence produced no entry.
+     *
+     * <p>Four refusals live in {@link #sequenced}, and a refusal and an absence are
+     * indistinguishable from the outside: the filtered `/cv testmodule list` said "offers 0
+     * recipe(s)" and three rounds were spent guessing which of the four it was. This names
+     * it, which is the same lesson the test rig taught when its one-line state dump ended
+     * three rounds of the same guessing about power.
+     */
+    private static void LOG_REFUSAL(ResourceLocation id, String why) {
+        com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                "[create] sequenced assembly {} not offered: {}", id, why);
+    }
+
     private static ProcessingEntry sequenced(ResourceLocation id, SequencedAssemblyRecipe recipe,
                                              RecipeType<?> type) {
         int loops = Math.max(1, recipe.getLoops());
@@ -179,11 +193,13 @@ public final class CreateRecipeHarvest {
             // already converts through, so that is what is read here.
             ProcessingRecipe<?, ?> stepRecipe = step.getRecipe();
             if (stepRecipe == null) {
+                LOG_REFUSAL(id, "a step with no recipe");
                 return null;
             }
             if (!stepRecipe.getFluidIngredients().isEmpty()
                     || !stepRecipe.getFluidResults().isEmpty()) {
-                return null;   // a fluid step puts the whole sequence out of scope
+                LOG_REFUSAL(id, "a step needs a fluid");
+                return null;
             }
             for (Ingredient stepIngredient : stepRecipe.getIngredients()) {
                 if (stepIngredient == null || stepIngredient.isEmpty()) {
@@ -198,10 +214,12 @@ public final class CreateRecipeHarvest {
 
         List<ProcessingOutput> pool = recipe.resultPool;
         if (pool.size() != 1) {
+            LOG_REFUSAL(id, "a result pool of " + pool.size() + " outcome(s)");
             return null;
         }
         ItemStack result = pool.get(0).getStack();
         if (result.isEmpty()) {
+            LOG_REFUSAL(id, "an empty result");
             return null;
         }
         List<ItemStack> results = new ArrayList<>();
