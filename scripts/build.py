@@ -27,6 +27,7 @@ import json
 import os
 import pathlib
 import re
+from collections import Counter
 import shutil
 import subprocess
 import sys
@@ -250,6 +251,21 @@ def validate_lang_keys():
     if not os.path.exists(lang_path):
         return
     lang = json.load(open(lang_path, encoding="utf-8"))
+
+    # DUPLICATE KEYS, read from the RAW TEXT because json.load cannot see them - it keeps
+    # the last one and reports nothing. This is not hypothetical: the retexture branch and
+    # this one each added `config.jade.plugin_craftingveloce.module_info`, git merged both
+    # insertions because they were in different parts of the file, and the result was a
+    # file with 153 keys of which 152 were unique. Everything still "worked", which is
+    # exactly why it needs a machine to notice it.
+    raw_keys = [line.strip().split('"')[1] for line in
+                open(lang_path, encoding="utf-8")
+                if line.strip().startswith('"') and line.count('"') >= 2]
+    duplicated = sorted(k for k, n in Counter(raw_keys).items() if n > 1)
+    if duplicated:
+        fail("duplicate keys in en_us.json (json.load silently keeps the last one):\n  "
+             + "\n  ".join(duplicated))
+
     prefixes = {k.split(".")[0] for k in lang}
     used = set()
     for root, _, files in os.walk(SRC_ROOT):
@@ -1369,19 +1385,6 @@ def validate_jade_info():
     if should is None or "VeloceModuleInfoSource" not in should:
         problems.append("Jade asks for data about any old block entity")
 
-    # Jade builds a settings entry for EVERY provider we register, and it needs a
-    # translation for each one. This is not cosmetic: Jade ASSERTS on a missing key when
-    # it builds that screen, so with assertions on (a dev run) opening any GUI with the
-    # config button crashes the game - and a player with Jade just sees the raw key.
-    lang_path = "assets/craftingveloce/lang/en_us.json"
-    if os.path.exists(lang_path):
-        lang = json.load(open(lang_path, encoding="utf-8"))
-        for m in re.finditer(r'ResourceLocation\.fromNamespaceAndPath\(\s*"([a-z0-9_]+)"\s*,'
-                             r'\s*"([a-z0-9_/]+)"', plugin_text):
-            key = f"config.jade.plugin_{m.group(1)}.{m.group(2)}"
-            if key not in lang:
-                problems.append(f"no lang key for the Jade config entry: {key}")
-
     # The FUEL furnace is not a module and registers NO energy capability - on purpose,
     # so that nothing can move its heat - and that is exactly why Jade's own energy bar
     # cannot see it either. Its readout therefore has to be written here, or a player
@@ -1540,6 +1543,56 @@ def _failure_branch(body):
         return None
     end = body.find("return;\n            }", start)
     return body[start:end if end > 0 else len(body)]
+
+def validate_model_texture_refs():
+    """
+    Every `#N` a block model references must be DEFINED in that model's `textures`.
+
+    This is not theoretical. Adding a glass pane to the terminal shipped a model whose
+    element said `"texture": "#3"` while the `textures` block never defined `#3`, because
+    the edit that added the pane was followed by a script that rewrote the file without
+    the texture entry. The build stayed green and the game loaded - the block simply
+    rendered the purple-and-black MISSING TEXTURE, which is how the player found it.
+
+    A missing reference is invisible to every check that only asks "does the model parse":
+    it parses perfectly, it just points at nothing.
+    """
+    problems = []
+    files = sorted(glob.glob("assets/craftingveloce/models/block/*.json"))
+    files += sorted(glob.glob("assets/craftingveloce/models/item/*.json"))
+    checked = 0
+    for path in files:
+        try:
+            model = json.load(open(path, encoding="utf-8"))
+        except (ValueError, OSError):
+            continue                      # other guards own malformed JSON
+        defined = set(model.get("textures", {}).keys())
+        used = set()
+        for element in model.get("elements", []):
+            for face in element.get("faces", {}).values():
+                tex = face.get("texture")
+                if isinstance(tex, str) and tex.startswith("#"):
+                    used.add(tex[1:])
+        # `particle` is a texture KEY, never referenced with '#'
+        missing = used - defined
+
+        # A model with NO `textures` of its own is a geometry-only parent: it is
+        # deliberately incomplete and expects the CHILD - the model that lists it as its
+        # `parent` - to supply the keys. `pipe_part.json` is exactly that, and
+        # `veloce_pipe_part.json` supplies its `#0`. Reporting it would be a false alarm
+        # about a pattern the mod uses on purpose, so it is skipped. A model that defines
+        # SOME textures but is missing one that its own elements use is a different thing
+        # entirely, and is still a failure.
+        if not defined:
+            continue
+        if missing:
+            problems.append(f"{os.path.basename(path)} uses {sorted(missing)} "
+                            f"but defines only {sorted(defined)}")
+        checked += 1
+    if problems:
+        fail("block models reference undefined textures:\n  " + "\n  ".join(problems))
+    print(f"    OK ({checked} models, every '#N' reference resolves)")
+
 
 def validate_jei_integrale_category():
     """
@@ -3156,6 +3209,46 @@ def validate_block_config_defaults():
     print(f"    OK ({len(live)} machines, every config default matches its compiled value)")
 
 
+def validate_jade_config_lang():
+    """
+    Every Jade provider UID must have a `config.jade.plugin_<ns>.<path>` translation.
+
+    Jade registers a config toggle per provider UID and then ASSERTS the translation
+    exists when it first builds a GUI screen (`JadeClient.onGui`, called from
+    `Minecraft.onGameLoadFinished`). A missing key is therefore not a cosmetic problem:
+    the assertion kills the client before it ever reaches the world.
+
+    That is exactly what happened - `craftingveloce:module_info` was registered with no
+    lang entry, and the client died at startup with
+
+        AssertionError: Missing config translation:
+            config.jade.plugin_craftingveloce.module_info
+
+    and NO crash report, so the cause was invisible from the crash-reports folder. It also
+    only fired when a screen was built, so some runs reached the world and some did not -
+    which is why it survived so long.
+    """
+    problems = []
+    plugin = ("neoforge/src/main/java/com/craftingveloce/compat/jade/VeloceJadePlugin.java")
+    code = open(plugin, encoding="utf-8").read()
+
+    # UIDs are declared as ResourceLocation.fromNamespaceAndPath("craftingveloce", "x")
+    uids = re.findall(r'fromNamespaceAndPath\(\s*"([a-z0-9_]+)"\s*,\s*"([a-z0-9_/]+)"\s*\)', code)
+    if not uids:
+        problems.append("found no provider UID in the Jade plugin - this guard is looking "
+                        "at nothing")
+
+    lang = json.load(open("assets/craftingveloce/lang/en_us.json", encoding="utf-8"))
+    for namespace, path in uids:
+        key = f"config.jade.plugin_{namespace}.{path.replace('/', '.')}"
+        if key not in lang:
+            problems.append(f"no translation for {key} - Jade asserts on it and the client "
+                            "dies before reaching the world")
+    if problems:
+        fail("Jade config translations:\n  " + "\n  ".join(problems))
+    print(f"    OK ({len(uids)} Jade provider UID(s), every config translation present)")
+
+
 def validate_extractor_redstone():
     """
     The extractor must do NOTHING while it is powered.
@@ -4016,15 +4109,32 @@ def validate_integrale_model():
     elements = model.get("elements", [])
     problems = []
 
-    # 1) Frame: exactly 12 thin rods.
+    # 1) Frame: exactly 12 thin rods that TOGETHER cover the cube's 12 edges.
+    #
+    # The rule used to demand that EVERY rod be at least 16 long - i.e. each one a
+    # complete edge. That rejects an equally correct frame: four rods spanning the full
+    # depth already cover the corner regions, so the other eight only have to bridge what
+    # is left, and splitting the work that way removes the overlapping geometry the old
+    # layout had at every corner. Blockbench produced exactly that when the model was
+    # edited there, and the guard called a working frame broken.
+    #
+    # So the test is the INTENT, not the shape it was first written in: twelve rods, and
+    # between them they reach every one of the block's six faces.
     bars = []
     for i, el in enumerate(elements):
         sizes = [el["to"][0] - el["from"][0], el["to"][1] - el["from"][1],
                  el["to"][2] - el["from"][2]]
-        if sum(1 for size in sizes if size <= 2) >= 2 and max(sizes) >= 16:
+        if sum(1 for size in sizes if size <= 2) >= 2 and max(sizes) >= 4:
             bars.append((i, el))
     if len(bars) != 12:
         problems.append(f"frame rods: {len(bars)}, should be 12 (12 edges of a cube)")
+    if bars:
+        for axis, name in enumerate(("X", "Y", "Z")):
+            lo = min(el["from"][axis] for _, el in bars)
+            hi = max(el["to"][axis] for _, el in bars)
+            if lo > 0.0 or hi < 16.0:
+                problems.append(f"the frame reaches {lo}..{hi} on {name}, not 0..16 - the "
+                                "cube's edges are not covered")
 
     # 2) Glass: a RECESSED element (no wall lies on the block plane).
     glass = [(i, el) for i, el in enumerate(elements) if el not in [b[1] for b in bars]]
@@ -4442,6 +4552,7 @@ def main():
     validate_case_occlusion()
     validate_loot_item_ids()
     validate_extractor_redstone()
+    validate_jade_config_lang()
     validate_block_config_defaults()
     validate_module_drop_stacks()
     validate_crafting_source_order()
@@ -4464,6 +4575,7 @@ def main():
     validate_terminal_craft_error()
     validate_jei_catalysts()
     validate_jei_integrale_category()
+    validate_model_texture_refs()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))

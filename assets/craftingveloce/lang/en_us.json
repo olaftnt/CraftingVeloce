@@ -45,7 +45,6 @@
   "block.craftingveloce.veloce_pipe": "Veloce Pipe",
   "block.craftingveloce.veloce_terminal": "Veloce Storage Terminal",
   "block.craftingveloce.velocity_furnace": "Veloce Furnace",
-  "config.jade.plugin_craftingveloce.module_info": "Veloce machine info",
   "craftingveloce.jei.integrale_conversion": "Integrale Conversion",
   "craftingveloce.jei.integrale_conversion.howto": "Right-click the Integrale block",
   "craftingveloce.jei.integrale_info": "PLACE the Veloce Integrale on the ground first, then RIGHT-CLICK that placed block while holding the item shown here - the frame becomes that machine. The frame is not an item you click a block WITH: it has to be standing in the world for the click to land on it. Nothing in this mod is made in a crafting table.",
@@ -149,5 +148,7 @@
   "item.craftingveloce.potion_strength": "Potion of Strength",
   "item.craftingveloce.potion_weakness": "Potion of Weakness",
   "item.craftingveloce.potion_slow_falling": "Potion of Slow Falling",
-  "item.craftingveloce.potion_turtle_master": "Potion of the Turtle Master"
+  "item.craftingveloce.potion_turtle_master": "Potion of the Turtle Master",
+  "config.jade.plugin_craftingveloce.module_info": "Veloce machine info",
+  "config.jade.plugin_craftingveloce.module_info_desc": "Speed and SU draw, the energy accumulator, the pipe network state and the status (including \"not enough power\") for Veloce machines."
 }
