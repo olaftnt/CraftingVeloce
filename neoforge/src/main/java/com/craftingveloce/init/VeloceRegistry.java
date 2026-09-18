@@ -228,7 +228,9 @@ public class VeloceRegistry {
                             net.minecraft.world.level.block.state.BlockBehaviour.Properties.of()
                                     .mapColor(net.minecraft.world.level.material.MapColor.METAL)
                                     .sound(net.minecraft.world.level.block.SoundType.METAL)
-                                    .strength(2.0F)
+                                    // The frame is a machine too, so it is broken like one:
+                                    // vanilla furnace hardness, and a pickaxe yields it.
+                                    .strength(3.5F)
                                     .noOcclusion()
                                     .isViewBlocking((state, world, pos) -> false)
                                     .isSuffocating((state, world, pos) -> false)

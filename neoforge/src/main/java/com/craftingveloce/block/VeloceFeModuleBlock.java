@@ -189,7 +189,9 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
         java.util.List<net.minecraft.world.item.ItemStack> out = new java.util.ArrayList<>();
         out.add(new net.minecraft.world.item.ItemStack(
                 com.craftingveloce.init.VeloceRegistry.VELOCE_INTEGRALE_ITEM.get()));
-        VeloceIntegraleConversions.Conversion back = VeloceIntegraleConversions.forBlock(this);
+        // REVERSE lookup: forBlock() answers the other direction and returned
+        // null here on every break, so the inserted block was never given back.
+        VeloceIntegraleConversions.Conversion back = VeloceIntegraleConversions.forResult(this);
         if (back != null) {
             net.minecraft.world.item.Item in =
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.get(back.inputId());

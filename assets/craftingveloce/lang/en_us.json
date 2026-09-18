@@ -90,7 +90,7 @@
   "gui.craftingveloce.furnace.filterEmpty": "Empty filter",
   "gui.craftingveloce.furnace.filterHint": "With no filters the furnace accepts ANY fuel",
   "gui.craftingveloce.furnace.ticks": "%s/%s",
-  "gui.craftingveloce.integrale.convert": "Insert a block to build a Veloce machine:",
+  "gui.craftingveloce.integrale.convert": "Right-click the block with an item in hand to create the desired module.",
   "gui.craftingveloce.module.energy": "Energy: %s / %s FE (%s / %s operations)",
   "gui.craftingveloce.module.info.energy": "Energy: %s / %s FE",
   "gui.craftingveloce.module.info.minimum": "Min: %s RPM - %s SU",

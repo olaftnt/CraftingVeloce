@@ -1,13 +1,18 @@
 {
   "replace": false,
   "values": [
+    "craftingveloce:brewing_stand",
     "craftingveloce:electric_furnace",
     "craftingveloce:threshold_sensor",
+    "craftingveloce:veloce_alchemistry_atomizer_module",
     "craftingveloce:veloce_alchemistry_combiner_module",
     "craftingveloce:veloce_alchemistry_compactor_module",
+    "craftingveloce:veloce_alchemistry_dissolver_module",
     "craftingveloce:veloce_alchemistry_fission_module",
     "craftingveloce:veloce_alchemistry_fusion_module",
+    "craftingveloce:veloce_alchemistry_liquifier_module",
     "craftingveloce:veloce_controller",
+    "craftingveloce:veloce_crafting_table",
     "craftingveloce:veloce_create_crushing_module",
     "craftingveloce:veloce_create_deployer_module",
     "craftingveloce:veloce_create_mechanical_crafter_module",
@@ -20,8 +25,11 @@
     "craftingveloce:veloce_mekanism_combiner_module",
     "craftingveloce:veloce_mekanism_crusher_module",
     "craftingveloce:veloce_mekanism_enrichment_module",
+    "craftingveloce:veloce_mekanism_metallurgic_infuser_module",
+    "craftingveloce:veloce_mekanism_osmium_compressor_module",
     "craftingveloce:veloce_mekanism_sawmill_module",
     "craftingveloce:veloce_pipe",
+    "craftingveloce:veloce_terminal",
     "craftingveloce:velocity_furnace"
   ]
 }

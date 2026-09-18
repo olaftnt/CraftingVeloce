@@ -87,7 +87,12 @@ public class VeloceTerminalBlock extends BaseEntityBlock
         super(Block.Properties.of()
                 .mapColor(MapColor.WOOD)
                 .sound(SoundType.WOOD)
-                .strength(3)
+                                // Vanilla's furnace: hardness 3.5 and a PICKAXE is the tool that
+                // yields the block. Both halves are needed - a block that requires the
+                // correct tool but is missing from mineable/pickaxe is dropped by
+                // NOTHING at all, which is worse than having no requirement.
+                .strength(3.5F)
+                .requiresCorrectToolForDrops()
                 .lightLevel(s -> 6));
         registerDefaultState(defaultBlockState()
                 .setValue(TERMINAL_POS, TerminalPos.CENTER)

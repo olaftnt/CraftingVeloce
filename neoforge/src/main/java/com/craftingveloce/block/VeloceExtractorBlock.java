@@ -44,7 +44,12 @@ public class VeloceExtractorBlock extends BaseEntityBlock
         super(BlockBehaviour.Properties.of()
                 .mapColor(MapColor.COLOR_PURPLE)
                 .sound(SoundType.METAL)
-                .strength(3.0F)
+                                // Vanilla's furnace: hardness 3.5 and a PICKAXE is the tool that
+                // yields the block. Both halves are needed - a block that requires the
+                // correct tool but is missing from mineable/pickaxe is dropped by
+                // NOTHING at all, which is worse than having no requirement.
+                .strength(3.5F)
+                .requiresCorrectToolForDrops()
                 .noOcclusion()
                 .isViewBlocking((state, world, pos) -> false)
                 .isSuffocating((state, world, pos) -> false)

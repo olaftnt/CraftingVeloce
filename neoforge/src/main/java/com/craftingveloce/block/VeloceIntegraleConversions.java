@@ -115,6 +115,30 @@ public final class VeloceIntegraleConversions {
         return conversion != null && conversion.resultBlock() != null ? conversion : null;
     }
 
+    /**
+     * The conversion that PRODUCES this block, or {@code null}.
+     *
+     * <p><b>Why this is a separate method and not {@link #forBlock}.</b> The two directions
+     * are different lookups and the names invite exactly this mistake. {@code forBlock}
+     * answers "given the block in the player's hand, what does it make" - the direction the
+     * right-click uses. Breaking a machine needs the OPPOSITE: "given the machine block, what
+     * was put in to make it", so that the drop can hand the ingredients back.
+     *
+     * <p>Both {@code getDrops} implementations called {@code forBlock(this)} with the MODULE
+     * block, which can never match a row keyed on the input. It returned null on every break,
+     * so no machine ever gave back what had been inserted into it - the player broke a
+     * crushing wheel and got an empty frame. Nothing caught it because an empty frame plus
+     * nothing is a perfectly valid-looking drop.
+     */
+    public static Conversion forResult(Block result) {
+        for (Conversion conversion : CONVERSIONS) {
+            if (conversion.resultBlock() == result) {
+                return conversion;
+            }
+        }
+        return null;
+    }
+
     /** The conversion for a block, or {@code null}. */
     public static Conversion forBlock(Block block) {
         ResourceLocation id = BuiltInRegistries.BLOCK.getKey(block);

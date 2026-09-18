@@ -32,11 +32,27 @@ public class CraftingVeloceMod {
                     .title(Component.literal("Crafting Veloce"))
                     .icon(() -> new ItemStack(VeloceRegistry.VELOCE_TERMINAL_ITEM.get()))
                     .displayItems((params, output) -> {
+                        // THE ORDER IS THE ORDER THINGS ARE USED IN, at the player's request:
+                        // the terminal is what a network is built around, the pipe joins the
+                        // blocks together, the wrench configures those connections, and the
+                        // frame is what every single machine is made from. Only then come the
+                        // machines - first the ones built from vanilla blocks, then one group
+                        // per integration, in the order a player meets them.
                         output.accept(VeloceRegistry.VELOCE_TERMINAL_ITEM.get());
+                        output.accept(VeloceRegistry.VELOCE_PIPE_ITEM.get());
+                        // The wrench was registered but MISSING from this tab - the same
+                        // "registered, but unobtainable except by command" bug the furnaces
+                        // and the brewing stand had before it: registration and the tab are
+                        // two separate places, and nothing in the build compares them.
+                        output.accept(VeloceRegistry.VELOCE_WRENCH.get());
+                        // The frame EVERY machine is now made from. Without it in the
+                        // tab there is no way to start a network and no way to test.
+                        output.accept(VeloceRegistry.VELOCE_INTEGRALE_ITEM.get());
+
+                        // --- the machines made from vanilla blocks ---
                         output.accept(VeloceRegistry.VELOCE_EXTRACTOR_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CRAFTING_TABLE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CONTROLLER_ITEM.get());
-                        output.accept(VeloceRegistry.VELOCE_PIPE_ITEM.get());
                         // BUG this fixes: the furnaces were registered, but they
                         // were NOT in the tab - so there was no way to obtain them
                         // other than a command. A new block is easy to get wrong
@@ -49,9 +65,9 @@ public class CraftingVeloceMod {
                         // except by command.
                         output.accept(VeloceRegistry.BREWING_STAND_ITEM.get());
                         output.accept(VeloceRegistry.THRESHOLD_SENSOR_ITEM.get());
-                        // The frame EVERY machine is now made from. Without it in the
-                        // tab there is no way to start a network and no way to test.
-                        output.accept(VeloceRegistry.VELOCE_INTEGRALE_ITEM.get());
+
+                        // --- one group per integration ---
+                        //
                         // Module blocks of the integrations that are installed.
                         //
                         // BUG this fixes: every compat module had its own
@@ -64,14 +80,14 @@ public class CraftingVeloceMod {
                         // Guarded exactly like the registration above: reaching into a
                         // compat class loads it, so it may only load when its mod is
                         // there.
+                        if (com.craftingveloce.compat.mekanism.MekanismCompat.isPresent()) {
+                            com.craftingveloce.compat.mekanism.MekanismCompat.addCreativeItems(output);
+                        }
                         if (com.craftingveloce.compat.create.CreateCompat.isPresent()) {
                             com.craftingveloce.compat.create.CreateCompat.addCreativeItems(output);
                         }
                         if (com.craftingveloce.compat.alchemistry.AlchemistryCompat.isPresent()) {
                             com.craftingveloce.compat.alchemistry.AlchemistryCompat.addCreativeItems(output);
-                        }
-                        if (com.craftingveloce.compat.mekanism.MekanismCompat.isPresent()) {
-                            com.craftingveloce.compat.mekanism.MekanismCompat.addCreativeItems(output);
                         }
                     })
                     .build()

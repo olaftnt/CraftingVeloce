@@ -261,7 +261,9 @@ public class VeloceKineticModuleBlock extends KineticBlock
                 instanceof VeloceKineticModuleBlockEntity be && be.caseParts() > 0) {
             parts = be.caseParts();
         }
-        VeloceIntegraleConversions.Conversion back = VeloceIntegraleConversions.forBlock(this);
+        // REVERSE lookup: forBlock() answers the other direction and returned
+        // null here on every break, so the inserted block was never given back.
+        VeloceIntegraleConversions.Conversion back = VeloceIntegraleConversions.forResult(this);
         if (back != null) {
             net.minecraft.world.item.Item in =
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.get(back.inputId());
