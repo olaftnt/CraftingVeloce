@@ -4,12 +4,12 @@
   "group": "craftingveloce",
   "pattern": [
     "III",
-    "DPD",
+    "RPR",
     "III"
   ],
   "key": {
     "I": { "item": "minecraft:iron_ingot" },
-    "D": { "item": "minecraft:diamond" },
+    "R": { "item": "minecraft:redstone" },
     "P": { "item": "minecraft:purple_stained_glass" }
   },
   "result": { "id": "craftingveloce:veloce_pipe", "count": 8 }

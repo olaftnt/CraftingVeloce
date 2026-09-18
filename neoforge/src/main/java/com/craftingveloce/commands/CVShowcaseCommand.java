@@ -132,8 +132,12 @@ public final class CVShowcaseCommand {
         String what = layout == Layout.WALL
                 ? "wall: " + columns + " per row, no gap, stacked upwards"
                 : "grid: " + columns + " per row, spacing " + SPACING;
+        // The "Veloce showcase: " prefix is LOAD-BEARING: veloce-tests/smoke.txt asserts
+        // on it, and it caught this very change when the arrangement was first put in
+        // front of it. The layout description goes INSIDE the parentheses, where it can
+        // grow without moving the part a test reads.
         context.getSource().sendSuccess(() -> Component.literal(
-                "Veloce showcase (" + what + "): " + total + " blocks"
+                "Veloce showcase: " + total + " blocks (" + what + ")"
                         + (withPipes ? " + pipes" : "")), true);
         CraftingVeloceMod.LOGGER.info("[Veloce][SHOWCASE] placed {} blocks ({}) at {}",
                 placed, layout, player.blockPosition());
