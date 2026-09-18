@@ -358,9 +358,24 @@ public final class VeloceAutoCrafter {
             return CraftResult.ok(count);
         }
 
-        // 2. The player's inventory covers only the shortfall.
+        // 2. The player's inventory is an INGREDIENT source, never a deliverable.
+        //
+        // THE BUG, and it was mine: `available` used to be `inNetwork + inInventory`, so an
+        // item the player was merely CARRYING made this method answer "you already have it"
+        // and return ok without crafting anything. The terminal then went to hand the item
+        // over, found nothing in the NETWORK - which is the only place it can deliver from -
+        // and returned an empty result with an empty reason. The player saw a click that did
+        // nothing and no explanation, which is exactly the report: "I have a log in my
+        // inventory and a log in the chest and it will not make the doors" (the trace showed
+        // `in inventory=3` oak doors already carried, so the request short-circuited every
+        // time).
+        //
+        // The inventory still counts as a source: `snapshotStock` merges it into the
+        // planning stock and `takeOne` draws on it last of all. What it must not do is
+        // satisfy the "nothing left to do" test, because being in the player's pocket is not
+        // being in the network.
         int inInventory = ctx.inventory == null ? 0 : ctx.inventory.count(item);
-        long available = inNetwork + inInventory;
+        long available = inNetwork;
         long onStockBefore = inNetwork;
         VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
                 "%s: inventory=%d, network=%d, requested=%d",
