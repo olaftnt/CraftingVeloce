@@ -5,6 +5,9 @@ import com.simibubi.create.content.kinetics.crafter.MechanicalCraftingRecipe;
 import com.simibubi.create.content.processing.recipe.HeatCondition;
 import com.simibubi.create.content.processing.recipe.ProcessingOutput;
 import com.simibubi.create.content.processing.recipe.ProcessingRecipe;
+import com.simibubi.create.content.processing.sequenced.IAssemblyRecipe;
+import com.simibubi.create.content.processing.sequenced.SequencedAssemblyRecipe;
+import com.simibubi.create.content.processing.sequenced.SequencedRecipe;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.NonNullList;
 import net.minecraft.resources.ResourceLocation;
@@ -16,8 +19,11 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -61,6 +67,23 @@ public final class CreateRecipeHarvest {
     private static final Map<RecipeManager, Map<RecipeType<?>, Map<Item, List<ProcessingEntry>>>> CACHE =
             Collections.synchronizedMap(new WeakHashMap<>());
 
+    /**
+     * recipe id -> the recipe types its SEQUENCE steps through.
+     *
+     * <p>A sequence is not one machine, and our model is "machine owns types", so the
+     * steps are required per RECIPE instead: this side map is what
+     * {@code CreateModule.requirementsMet} consults, and without it a network with a
+     * single Deployer would happily promise a {@code create:track}.
+     */
+    private static final Map<ResourceLocation, Set<RecipeType<?>>> STEP_TYPES =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** The recipe types a sequence steps through - empty for every other recipe. */
+    public static Set<RecipeType<?>> stepTypesFor(ResourceLocation recipeId) {
+        Set<RecipeType<?>> out = STEP_TYPES.get(recipeId);
+        return out == null ? Set.of() : out;
+    }
+
     /** The "result -> recipes" index for a given Create recipe type. */
     public static Map<Item, List<ProcessingEntry>> index(ServerLevel level, RecipeType<?> type) {
         RecipeManager manager = level.getRecipeManager();
@@ -77,6 +100,7 @@ public final class CreateRecipeHarvest {
     /** Clears the memory - called on world change, together with the other caches. */
     public static void invalidate() {
         CACHE.clear();
+        STEP_TYPES.clear();
     }
 
     private static Map<Item, List<ProcessingEntry>> build(ServerLevel level, RecipeType<?> type) {
@@ -105,6 +129,9 @@ public final class CreateRecipeHarvest {
     private static ProcessingEntry convert(ResourceLocation id, Recipe<?> recipe,
                                            RecipeType<?> type,
                                            HolderLookup.Provider registries) {
+        if (recipe instanceof SequencedAssemblyRecipe sequenced) {
+            return sequenced(id, sequenced, type);
+        }
         if (recipe instanceof MechanicalCraftingRecipe mechanical) {
             return mechanical(id, mechanical, type, registries);
         }
@@ -112,6 +139,75 @@ public final class CreateRecipeHarvest {
             return processing(id, processing, type);
         }
         return null;
+    }
+
+    /**
+     * A SEQUENCE of machines acting on one transitional item.
+     *
+     * <p>Everything the model needs comes from the step's own {@link IAssemblyRecipe}:
+     * {@code addAssemblyIngredients} for what the step consumes,
+     * {@code addAssemblyFluidIngredients} to detect a fluid step, and
+     * {@code getRecipe().getType()} for which machine has to be in the network.
+     *
+     * <p>Two refusals, both deliberate:
+     * <ul>
+     *   <li>a step needing a FLUID puts the whole sequence out of scope - our network has
+     *       no fluid layer, and half a recipe is not a recipe (this is what removes
+     *       {@code sturdy_sheet}, whose first step fills 500 mB of lava);</li>
+     *   <li>a result POOL of several outcomes is not a promise the auto-crafter can keep.
+     *       {@code precision_mechanism} rolls one of eight weighted entries, so it is not
+     *       offered; only a single guaranteed output ({@code track}) is.</li>
+     * </ul>
+     */
+    private static ProcessingEntry sequenced(ResourceLocation id, SequencedAssemblyRecipe recipe,
+                                             RecipeType<?> type) {
+        int loops = Math.max(1, recipe.getLoops());
+        NonNullList<Ingredient> ingredients = NonNullList.create();
+        List<Integer> counts = new ArrayList<>();
+        Set<RecipeType<?>> steps = new LinkedHashSet<>();
+
+        // The item the sequence starts from.
+        ingredients.add(recipe.getIngredient());
+        counts.add(1);
+
+        for (SequencedRecipe<?> step : recipe.getSequence()) {
+            IAssemblyRecipe assembly = step.getAsAssemblyRecipe();
+            if (assembly == null || !assembly.supportsAssembly()) {
+                return null;
+            }
+            List<SizedFluidIngredient> fluids = new ArrayList<>();
+            assembly.addAssemblyFluidIngredients(fluids);
+            if (!fluids.isEmpty()) {
+                return null;
+            }
+            List<Ingredient> stepIngredients = new ArrayList<>();
+            assembly.addAssemblyIngredients(stepIngredients);
+            for (Ingredient stepIngredient : stepIngredients) {
+                if (stepIngredient == null || stepIngredient.isEmpty()) {
+                    continue;
+                }
+                ingredients.add(stepIngredient);
+                // The sequence repeats, so the step's items are consumed `loops` times.
+                counts.add(loops);
+            }
+            steps.add(step.getRecipe().getType());
+        }
+
+        List<ProcessingOutput> pool = recipe.resultPool;
+        if (pool.size() != 1) {
+            return null;
+        }
+        ItemStack result = pool.get(0).getStack();
+        if (result.isEmpty()) {
+            return null;
+        }
+        List<ItemStack> results = new ArrayList<>();
+        List<Float> chances = new ArrayList<>();
+        results.add(result.copy());
+        chances.add(Math.max(0.0f, pool.get(0).getChance()));
+
+        STEP_TYPES.put(id, Set.copyOf(steps));
+        return new ProcessingEntry(id, results, chances, ingredients, counts, type, 0, 0, false);
     }
 
     /**

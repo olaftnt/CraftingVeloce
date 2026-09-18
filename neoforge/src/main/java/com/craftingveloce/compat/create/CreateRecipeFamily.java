@@ -117,6 +117,24 @@ public final class CreateRecipeFamily {
         return AllRecipeTypes.SANDPAPER_POLISHING.getType();
     }
 
+    /**
+     * A SEQUENCE of machines on one transitional item: {@code create:sequenced_assembly}.
+     *
+     * <p>Not a {@code ProcessingRecipe} - it holds a list of steps, each with its own
+     * machine and ingredients, and the result is rolled from a POOL. Two consequences,
+     * both handled in {@code CreateRecipeHarvest.sequenced}:
+     * <ul>
+     *   <li>every step's recipe type has to be powered in the network, not just one, so a
+     *       sequence is only offered when the player really has the whole chain;</li>
+     *   <li>a recipe whose result is a POOL of several outcomes is NOT offered: the
+     *       auto-crafter promises exact amounts, and "one of these, weighted" is not a
+     *       promise. Only a single guaranteed output is modelled.</li>
+     * </ul>
+     */
+    public static RecipeType<?> sequencedAssembly() {
+        return AllRecipeTypes.SEQUENCED_ASSEMBLY.getType();
+    }
+
     /** Deployer, on an item: {@code create:deploying} recipes (applying one item to another). */
     public static RecipeType<?> deploying() {
         return AllRecipeTypes.DEPLOYING.getType();
@@ -146,6 +164,7 @@ public final class CreateRecipeFamily {
             out.add(itemApplication());
             out.add(compacting());
             out.add(sandpaperPolishing());
+            out.add(sequencedAssembly());
             resolved = Set.copyOf(out);
         }
         return resolved;

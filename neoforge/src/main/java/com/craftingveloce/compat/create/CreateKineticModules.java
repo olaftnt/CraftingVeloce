@@ -104,7 +104,14 @@ public final class CreateKineticModules {
             "create:deploying", "Veloce Deployer Module",
             () -> Set.of(CreateRecipeFamily.deploying(),
                     CreateRecipeFamily.itemApplication(),
-                    CreateRecipeFamily.sandpaperPolishing()), STRESS_SU);
+                    CreateRecipeFamily.sandpaperPolishing(),
+                    // Sequences run ON a Deployer (it is the first step of every one of
+                    // them), so it is the machine that OWNS the type. The other machines
+                    // in the chain are required per RECIPE instead - see
+                    // CreateModule.requirementsMet - because a sequence is not one
+                    // machine and must not be promised by a network that has only this
+                    // one.
+                    CreateRecipeFamily.sequencedAssembly()), STRESS_SU);
 
     /** All machines - for registration and the creative tab. */
     public static final List<KineticModule> ALL =

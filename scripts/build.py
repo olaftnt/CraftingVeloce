@@ -3623,7 +3623,8 @@ def validate_create_mechanics():
     for need, what in (("pressing()", "the press type"), ("mixing()", "the mixer type"),
                        ("itemApplication()", "the item-application type"),
                        ("compacting()", "the compacting type"),
-                       ("sandpaperPolishing()", "the sandpaper type")):
+                       ("sandpaperPolishing()", "the sandpaper type"),
+                       ("sequencedAssembly()", "the sequenced-assembly type")):
         if need not in family:
             problems.append("the Create family without " + what)
 
@@ -3638,10 +3639,14 @@ def validate_create_mechanics():
     if deployer_at < 0:
         problems.append("no Deployer module in the Create machines")
     else:
-        entry = modules[deployer_at:deployer_at + 700]
+        # The entry runs to the first blank line after it, NOT to a fixed character
+        # count: a count silently truncated the entry the moment a fourth type was
+        # added, and the check then reported a missing type that was right there.
+        entry = modules[deployer_at:modules.find("\n\n", deployer_at)]
         for need, what in (("CreateRecipeFamily.deploying()", "the deploying type"),
                            ("CreateRecipeFamily.itemApplication()", "the item-application type"),
-                           ("CreateRecipeFamily.sandpaperPolishing()", "the sandpaper type")):
+                           ("CreateRecipeFamily.sandpaperPolishing()", "the sandpaper type"),
+                           ("CreateRecipeFamily.sequencedAssembly()", "the sequenced type")):
             if need not in entry:
                 problems.append("the Deployer module does not declare " + what)
 
@@ -3651,7 +3656,7 @@ def validate_create_mechanics():
     if press_at < 0:
         problems.append("no Press module in the Create machines")
     else:
-        press_entry = modules[press_at:press_at + 600]
+        press_entry = modules[press_at:modules.find("\n\n", press_at)]
         for need, what in (("CreateRecipeFamily.pressing()", "the pressing type"),
                            ("CreateRecipeFamily.compacting()", "the compacting type")):
             if need not in press_entry:

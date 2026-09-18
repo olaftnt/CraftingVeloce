@@ -150,6 +150,14 @@ public final class CreateModule implements VeloceProcessingModule {
      */
     private static boolean requirementsMet(ServerLevel level, VelocePipeNetwork network,
                                            RecipeType<?> type, ProcessingEntry entry) {
+        // A SEQUENCE is not one machine. Every step's type must be powered here, or a
+        // network holding a single Deployer would promise a create:track it cannot
+        // finish - the whole point of the side table the harvest fills in.
+        for (RecipeType<?> step : CreateRecipeHarvest.stepTypesFor(entry.id())) {
+            if (!VeloceProcessingSources.hasPowered(level, network, step)) {
+                return false;
+            }
+        }
         if (entry.requiresHeat() && !hasItem(level, network, "blaze_burner")) {
             return false;
         }
