@@ -54,9 +54,25 @@ Polls once a second.
 **Veloce Crafting Table** — decides what the network is allowed to auto-craft.
 Click an item to toggle it on or off.
 
-**Velocity Furnace** — a furnace that smelts items for auto-crafting using burning
-material. You can set filters for what it is allowed to burn in its GUI; by default
-it burns everything burnable.
+**Velocity Furnace** — the fuel-powered heat source for the auto-crafter. It does not
+physically smelt anything itself: it burns fuel continuously and banks the burn as heat,
+and the auto-crafter spends that heat to make furnace recipes instantly. You can set
+filters for what it is allowed to burn in its GUI; by default it burns everything
+burnable.
+
+The numbers are round on purpose: **one coal per smelt**, an internal battery that holds
+**a full stack** (64 smelts), and a full charge in **15 minutes** — 64 coal burned over
+that quarter of an hour. Once the battery is full the furnace empties a whole stack of
+raw material in a single go. The battery is the upright bar on the right of the window:
+it fills from the bottom up and reads in degrees Celsius, and until it has banked a whole
+smelt it says *not hot enough for smelting*. Because one smelt is one coal, a full battery
+costs exactly as much fuel as it can then smelt. The same two lines are on the block in
+Jade.
+
+The heat is internal: the furnace registers no energy capability, so no cable or battery
+from another mod can pull it out — or push power in. It is fed by fuel and by nothing
+else. Put several in one network and a dry one is simply skipped while the others keep
+crafting.
 
 **Velocity Electric Furnace** — uses FE to smelt items used in crafting.
 

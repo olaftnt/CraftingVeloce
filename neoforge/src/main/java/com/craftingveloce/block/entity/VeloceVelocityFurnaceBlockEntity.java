@@ -24,24 +24,46 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p><b>How it works.</b> This is NOT a furnace that physically smelts the raw
  * material. It is a <b>heat source</b> for the crafter:
  * <ol>
- *   <li>It burns ALL THE TIME, regardless of whether anything is being crafted.
- *       That is the cost the player pays for instant smelting.</li>
+ *   <li>It burns ALL THE TIME - that is the cost the player pays for instant
+ *       smelting. It stops only when its accumulator is full, because burning
+ *       past that point would destroy fuel and store nothing.</li>
+ *   <li>Every server tick of that burn puts {@link #BURN_PER_TICK_NUM}/
+ *       {@link #BURN_PER_TICK_DEN} burn ticks - {@link #FE_PER_BURN_TICK} FE each - into
+ *       an <b>internal accumulator</b>, up to {@link #ENERGY_CAPACITY}. That rate is
+ *       what makes a FULL charge take exactly fifteen minutes.</li>
  *   <li>It pulls fuel from the network according to 6 filters, in priority
  *       order: first it exhausts filter 1, then 2, then 3...</li>
- *   <li>A crafter that finds this furnace in the network and sees that it is
- *       burning may use furnace recipes (smelting/blasting/smoking) INSTANTLY.</li>
- *   <li>Each such smelt takes {@link #SMELT_HEAT_COST} heat units from the
- *       furnace. When the heat drops to zero, the furnace must pull another
- *       fuel item - so the more the crafter smelts, the faster the furnace
- *       devours fuel.</li>
+ *   <li>A crafter that finds this furnace in the network and sees that the
+ *       accumulator can pay for a smelt may use furnace recipes
+ *       (smelting/blasting/smoking) INSTANTLY.</li>
+ *   <li>Each such smelt takes {@link #FE_PER_SMELT} out of the accumulator. Once
+ *       that drops below one smelt the furnace reports itself as unpowered, which
+ *       makes it count as <b>absent</b> for the crafter - the other furnaces in
+ *       the network take over, and this one is skipped rather than failing the
+ *       craft.</li>
  * </ol>
  *
- * <p><b>Fuel cost.</b> Vanilla smelts 1 item in 200 ticks, so coal (1600 t)
- * lasts for 8 pieces. Here a smelt costs {@link #SMELT_HEAT_COST} = 300 ticks,
- * that is <b>1.5x more fuel</b>: coal lasts for 5 pieces. The multiplier sits
- * in the cost, and not in the burn value - thanks to that it works uniformly
- * for every fuel (including modded ones), because we take the burn values from
- * vanilla.
+ * <p><b>The FE here is INTERNAL - it cannot be moved in or out.</b> No energy
+ * capability is registered for this block, on purpose: a cable from another mod
+ * must not be able to drain the heat out of a furnace, and must not be able to
+ * push FE into it either. The number exists so that the accumulator has a unit
+ * and so that the GUI has something to show (as a temperature). It deliberately
+ * stays out of the charging path {@code VeloceFeModuleBlockEntity} implements.
+ *
+ * <p><b>Fuel cost.</b> One burn tick becomes one FE, so the accumulator is
+ * measured in burn ticks: coal is {@link #COAL_BURN_TICKS} ticks, and the agreed
+ * price of one instant smelt is {@link #COAL_PER_SMELT} coal, that is
+ * {@link #FE_PER_SMELT} FE. The accumulator holds {@link #SMELTS_PER_BATTERY}
+ * such smelts, so a full furnace can empty a whole stack of raw material in one
+ * go. The price sits in the cost, and not in the burn value - thanks to that it
+ * works uniformly for every fuel (including modded ones), because we take the
+ * burn values from vanilla.
+ *
+ * <p>The agreed numbers line up neatly: <b>one coal per smelt</b>, a battery that holds
+ * <b>a full stack</b> (64 smelts), and a full charge in <b>fifteen minutes</b> - which is
+ * 64 coal burned over a quarter of an hour. The burn is spent at
+ * {@link #BURN_PER_TICK_NUM}/{@link #BURN_PER_TICK_DEN} of a tick per tick, so the
+ * furnace is neither slower nor faster than the player asked for.
  */
 public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         implements MenuProvider, VeloceHeatSource, VeloceFilterHost {
@@ -49,12 +71,63 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
     /** How many fuel filters there are (priority from 0 upwards). */
     public static final int FUEL_FILTERS = 6;
 
+    /** How much of the burn goes into the accumulator per burn tick. */
+    public static final int FE_PER_BURN_TICK = 1;
+
     /**
-     * The cost of one instant smelt, in burn ticks.
+     * The conversion rate, as a fraction: this many burn ticks are consumed - and this
+     * many FE banked - per server tick.
      *
-     * <p>Vanilla: 200 ticks per item. Here 300 = a 1.5x multiplier.
+     * <p>Written as a fraction because the agreed numbers do not meet on a whole number.
+     * The specification is: one coal per smelt, a battery that holds a full stack (64
+     * smelts), and a full charge in <b>15 minutes</b>. That is 64 x 1600 = 102 400 FE in
+     * 18 000 ticks, or 5.688... burn ticks per tick - and the nearest whole numbers are
+     * 6 (a full charge in 14:13) and 5 (17:04). Carrying the remainder instead of
+     * rounding keeps the one number the player actually named.
      */
-    public static final long SMELT_HEAT_COST = 300L;
+    public static final int BURN_PER_TICK_NUM = 256;
+    public static final int BURN_PER_TICK_DEN = 45;
+
+    /** Ticks a full accumulator takes to charge: the agreed 15 minutes. */
+    public static long ticksToFullCharge() {
+        return (long) ENERGY_CAPACITY * BURN_PER_TICK_DEN / BURN_PER_TICK_NUM;
+    }
+
+    /**
+     * Burn ticks in one coal.
+     *
+     * <p>The yardstick the price below is written in - it is what makes
+     * {@link #FE_PER_SMELT} mean "one coal" rather than an arbitrary number.
+     */
+    public static final int COAL_BURN_TICKS = 1600;
+
+    /** How many coal one instant smelt costs. */
+    public static final int COAL_PER_SMELT = 1;
+
+    /**
+     * The price of one instant smelt, in FE.
+     *
+     * <p>NOT a build tick count any more: it is the accumulator's currency, and
+     * the accumulator is filled one FE per burn tick. That is how "one coal"
+     * turns into a single number the crafter can be charged.
+     */
+    public static final int FE_PER_SMELT = COAL_PER_SMELT * COAL_BURN_TICKS;
+
+    /** How many instant smelts a full accumulator pays for. */
+    public static final int SMELTS_PER_BATTERY = 64;
+
+    /** The accumulator size: {@link #SMELTS_PER_BATTERY} smelts, that is 192 coal. */
+    public static final int ENERGY_CAPACITY = SMELTS_PER_BATTERY * FE_PER_SMELT;
+
+    /**
+     * The temperature the GUI shows for a FULL accumulator, in degrees Celsius.
+     *
+     * <p>The accumulator's unit is FE, but FE is not what a player reads off a
+     * furnace - temperature is. The scale is linear from 0 to this, so the bar and
+     * the number always tell the same story; the value itself is a display choice
+     * (a blast furnace runs at roughly this heat).
+     */
+    public static final int MAX_TEMPERATURE_C = 1500;
 
     /** Every how many ticks we try to pull fuel from the network. */
     private static final int PULL_INTERVAL_TICKS = 10;
@@ -71,6 +144,26 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
 
     /** How many burn ticks are left in the heat buffer. */
     private long burnTicksRemaining;
+
+    /**
+     * The accumulator, in FE - the ONLY thing the crafter pays with.
+     *
+     * <p>It outlives the fuel item: {@link #burnTicksRemaining} is how much of the
+     * CURRENT item is left (what the flame shows), while this is the heat the furnace
+     * has banked. One coal has to burn before even one smelt can be paid for, so the two
+     * numbers cannot be the same one.
+     */
+    private int energy;
+
+    /**
+     * The fraction of a burn tick carried over from the previous server tick.
+     *
+     * <p>See {@link #BURN_PER_TICK_NUM}: the agreed rate is not a whole number, so the
+     * part that does not divide is kept here rather than thrown away. Without it the
+     * furnace would lose up to one burn tick per tick, and a full charge would drift
+     * away from the agreed 15 minutes.
+     */
+    private int chargeCarry;
 
     /**
      * How many burn ticks the last burned item gave.
@@ -114,7 +207,7 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
 
     @Override
     public long availableOperations() {
-        return burnTicksRemaining / SMELT_HEAT_COST;
+        return energy / FE_PER_SMELT;
     }
 
     @Override
@@ -122,10 +215,14 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         if (operations <= 0) {
             return;
         }
-        burnTicksRemaining = Math.max(0L, burnTicksRemaining - operations * SMELT_HEAT_COST);
-        // The buffer dropped below one smelt - the furnace must reach for more
-        // fuel as soon as possible, otherwise it stops being "powered".
-        if (burnTicksRemaining < SMELT_HEAT_COST) {
+        long cost = operations * (long) FE_PER_SMELT;
+        energy = (int) Math.max(0L, energy - cost);
+        // The accumulator dropped below one smelt - the furnace must reach for more
+        // fuel as soon as possible. Without this the furnace would wait out
+        // PULL_INTERVAL_TICKS, and for that whole window it would report itself as
+        // unpowered even though the coal is already sitting in the network - so a
+        // craft that paid with heat could not pay for the next unit.
+        if (energy < FE_PER_SMELT) {
             wantImmediatePull = true;
         }
         setChanged();
@@ -133,10 +230,13 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
 
     @Override
     public boolean isPowered() {
-        // "Powered" = the flame is burning. A furnace with an empty heat buffer
-        // does not unlock recipes, even if it has fuel in the slot - it must
-        // burn it first.
-        return burnTicksRemaining > 0;
+        // ONE WHOLE SMELT, and not one FE. The price of an instant smelt is three
+        // coal, so a furnace that has banked only one or two of them has nothing the
+        // crafter can buy - and the agreement is that such a furnace counts as if it
+        // were NOT THERE AT ALL. That is what makes several furnaces work together:
+        // the dry one is skipped instead of failing the craft, and the next one in
+        // priority order pays.
+        return availableOperations() > 0;
     }
 
     @Override
@@ -203,6 +303,73 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
     }
 
     // ------------------------------------------------------------------
+    // The accumulator (GUI + diagnostics)
+    // ------------------------------------------------------------------
+
+    /**
+     * FE in the accumulator.
+     *
+     * <p>Internal by construction: there is no energy capability on this block, so
+     * this number can be read here and shown in the GUI, and that is all anyone can
+     * do with it.
+     */
+    public int getEnergy() {
+        return energy;
+    }
+
+    /** The accumulator's size, for the GUI. */
+    public int getMaxEnergyStored() {
+        return ENERGY_CAPACITY;
+    }
+
+    /** How many instant smelts the accumulator can still pay for. */
+    public int getAffordableSmelts() {
+        return energy / FE_PER_SMELT;
+    }
+
+    /**
+     * Whether the accumulator can pay for at least one smelt.
+     *
+     * <p>The GUI says "not hot enough for smelting" on exactly this condition, so it
+     * is asked in one place rather than spelled out again in the screen.
+     */
+    public boolean isHotEnough() {
+        return energy >= FE_PER_SMELT;
+    }
+
+    /**
+     * The banked heat as a temperature, for the GUI.
+     *
+     * <p>What the player reads off a furnace is a temperature and not a FE count, so
+     * the battery bar is labelled in degrees. Linear from 0 to
+     * {@link #MAX_TEMPERATURE_C}, which keeps the bar and the number in step.
+     */
+    public int getTemperatureC() {
+        return (int) ((long) MAX_TEMPERATURE_C * energy / ENERGY_CAPACITY);
+    }
+
+    /** The temperature of a full accumulator - the second number in the tooltip. */
+    public int getMaxTemperatureC() {
+        return MAX_TEMPERATURE_C;
+    }
+
+    /**
+     * Sets the accumulator directly. <b>For the automated tests only.</b>
+     *
+     * <p>There is no other way in, and that is the point: with no energy capability on
+     * this block, a test that wants a charged furnace cannot use a cable, an item or a
+     * command that goes through the energy API - because none of those can reach it.
+     * Reaching into the block entity is what proves the accumulator is unreachable by
+     * anything else, and it keeps a fuel-furnace test from having to burn 4800 ticks of
+     * real fuel.
+     */
+    public void setEnergyForTesting(int amount) {
+        energy = Math.max(0, Math.min(ENERGY_CAPACITY, amount));
+        setChanged();
+        syncToClients();
+    }
+
+    // ------------------------------------------------------------------
     // Background work
     // ------------------------------------------------------------------
 
@@ -225,12 +392,25 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         // schedule), so that there are not two places deciding about the pull.
 
         // 1. The furnace burns ALL THE TIME - this is the cost of instant crafting.
-        //    The heat buffer drains regardless of whether anyone is crafting.
+        //    Every tick of that burn is banked as FE in the accumulator, and the
+        //    accumulator is what the crafter actually pays with.
+        //
+        //    NOT the same number as burnTicksRemaining: that one is how much of the
+        //    current item is left (the flame), and it dies with the item, while the
+        //    accumulator lives on. Three coal must burn before one smelt can be paid
+        //    for, which is exactly why the two had to be split.
+        //
+        //    A FULL accumulator HOLDS the burn where it is - the tick is not spent, so
+        //    the rest of the item stays in the flame for when there is room for it
+        //    again. Letting the countdown run on would destroy fuel and bank nothing;
+        //    bankBurn() is what enforces that, tick by tick.
         if (burnTicksRemaining > 0) {
-            burnTicksRemaining--;
+            bankBurn();
         }
 
-        // 2. Buffer empty -> burn one item of fuel.
+        // 2. Buffer empty -> burn one item of fuel. tryBurnFuel refuses once the
+        //    accumulator is full, so a full furnace stops eating the network's coal
+        //    instead of burning it into nothing.
         if (burnTicksRemaining <= 0) {
             tryBurnFuel();
         }
@@ -265,14 +445,60 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         // "burning" state alone is not enough - the value must be sent too. Once
         // every 10 ticks is twice per second: smooth for the eye, and negligible
         // for the network (a few bytes).
+        //
+        // The accumulator is pushed on the same schedule (it rides in the same update
+        // tag), and the chunk is flagged as changed here rather than on every tick:
+        // the accumulator moves by one FE per tick, and marking the chunk dirty 20
+        // times a second forever is a cost with nothing to show for it.
         if (--clientSyncCooldown <= 0) {
             clientSyncCooldown = CLIENT_SYNC_INTERVAL_TICKS;
+            setChanged();
             syncToClients();
         }
     }
 
+    /**
+     * Turns this tick's share of the flame into stored heat.
+     *
+     * <p>The ONLY place that raises {@link #energy}, so "when does the furnace charge"
+     * has a single answer: while the flame is alight, at the agreed rate, and never past
+     * {@link #ENERGY_CAPACITY}.
+     *
+     * <p>The rate is a fraction, so what does not divide is carried in
+     * {@link #chargeCarry} - the furnace consumes 5 burn ticks one tick and 6 the next,
+     * and averages the number the specification asked for.
+     *
+     * <p>Burns and stores AT MOST what there is room for. A nearly full accumulator must
+     * not eat burn ticks and keep the heat of none of them - the burn is held back
+     * instead, and spent once the crafter has taken a smelt out again.
+     */
+    private void bankBurn() {
+        if (burnTicksRemaining <= 0 || energy >= ENERGY_CAPACITY) {
+            return;
+        }
+        chargeCarry += BURN_PER_TICK_NUM;
+        long burn = chargeCarry / BURN_PER_TICK_DEN;
+        if (burn <= 0) {
+            return;
+        }
+        long room = ENERGY_CAPACITY - energy;
+        burn = Math.min(burn, Math.min(burnTicksRemaining, room / Math.max(1, FE_PER_BURN_TICK)));
+        if (burn <= 0) {
+            return;
+        }
+        chargeCarry -= (int) (burn * BURN_PER_TICK_DEN);
+        burnTicksRemaining -= burn;
+        energy += (int) (burn * FE_PER_BURN_TICK);
+    }
+
     /** Burns one item from the fuel reserve, if it is fuel at all. */
     private void tryBurnFuel() {
+        // A FULL accumulator stops the burn. Continuing would destroy coal and store
+        // nothing - the furnace is not a trash can, so it simply waits, and starts
+        // again the moment the crafter takes a smelt out of the accumulator.
+        if (energy >= ENERGY_CAPACITY) {
+            return;
+        }
         ItemStack fuel = fuelSlot.getItem(0);
         if (fuel.isEmpty()) {
             return;
@@ -574,6 +800,12 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
         }
         tag.putLong("Heat", burnTicksRemaining);
         tag.putLong("HeatTotal", burnTicksTotal);
+        // The accumulator is saved here AND sent to the client from here: getUpdateTag
+        // calls saveAdditional, so the GUI reads the very same number the world holds.
+        tag.putInt("Energy", energy);
+        // The fractional carry too - half a burn tick saved is half a burn tick not lost
+        // to a reload.
+        tag.putInt("ChargeCarry", chargeCarry);
     }
 
     @Override
@@ -600,6 +832,10 @@ public class VeloceVelocityFurnaceBlockEntity extends BlockEntity
                 : ItemStack.EMPTY);
         burnTicksRemaining = tag.getLong("Heat");
         burnTicksTotal = tag.getLong("HeatTotal");
+        // A world saved before the accumulator existed simply has no "Energy" - it
+        // loads as empty, which is the same thing a freshly placed furnace has.
+        energy = Math.max(0, Math.min(ENERGY_CAPACITY, tag.getInt("Energy")));
+        chargeCarry = Math.max(0, tag.getInt("ChargeCarry"));
     }
 
     @Override

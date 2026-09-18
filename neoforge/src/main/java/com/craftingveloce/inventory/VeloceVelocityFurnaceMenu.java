@@ -137,6 +137,24 @@ public class VeloceVelocityFurnaceMenu extends AbstractContainerMenu {
         return furnace == null ? ItemStack.EMPTY : furnace.getFuelFilter(index);
     }
 
+    /**
+     * FE banked in the furnace's accumulator (0 when the block entity is unavailable).
+     *
+     * <p>Read straight off the client's block entity, exactly like the flame: the
+     * furnace pushes its state in the block update packet, so a second "here is the
+     * battery" packet would be a parallel path for the same number - the thing that
+     * drifts apart.
+     */
+    public int getEnergy() {
+        return furnace == null ? 0 : furnace.getEnergy();
+    }
+
+    public int getMaxEnergy() {
+        return furnace == null
+                ? VeloceVelocityFurnaceBlockEntity.ENERGY_CAPACITY
+                : furnace.getMaxEnergyStored();
+    }
+
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
         ItemStack copy = ItemStack.EMPTY;

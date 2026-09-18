@@ -1,6 +1,7 @@
 package com.craftingveloce.client.gui;
 
 import com.craftingveloce.CraftingVeloceMod;
+import com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity;
 import com.craftingveloce.inventory.VeloceVelocityFurnaceMenu;
 import com.craftingveloce.network.OpenFilterPKT;
 import com.craftingveloce.network.SetFilterPKT;
@@ -33,6 +34,18 @@ import java.util.List;
  * <p>The filters are GHOST slots: they cannot be filled by dragging. They are
  * picked from a list of items (left click on an empty slot), and they are kept
  * by the block entity.
+ *
+ * <p><b>Two gauges, and they are not the same number.</b> The FLAME is how much of
+ * the fuel item currently in the slot is left - it dies with that item. The BATTERY
+ * below the filters is the furnace's accumulator: the heat that has been banked and
+ * that the crafter actually pays with. One instant smelt costs one coal, so the
+ * battery fills over several items, and it is the accumulator that says whether the
+ * furnace can smelt at all.
+ *
+ * <p>The battery is a VERTICAL cell that fills from the bottom up, and it is painted in
+ * the colours of heat rather than in the green used for Forge Energy elsewhere: the unit
+ * behind it is FE, but what the player reads here is temperature, and the tooltip is in
+ * degrees Celsius to match.
  */
 public class VeloceVelocityFurnaceScreen
         extends AbstractContainerScreen<VeloceVelocityFurnaceMenu> {
@@ -74,6 +87,10 @@ public class VeloceVelocityFurnaceScreen
     private long burnRemaining;
     private long burnTotal;
 
+    /** The accumulator from the last update - the battery must not flicker either. */
+    private int heatEnergy;
+    private int heatMax;
+
     public VeloceVelocityFurnaceScreen(VeloceVelocityFurnaceMenu menu,
                                        Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -91,13 +108,57 @@ public class VeloceVelocityFurnaceScreen
             this.burnRemaining = menu.getFurnace().getBurnTicksRemaining();
             this.burnTotal = menu.getFurnace().getBurnTicksTotal();
         }
+        this.heatEnergy = menu.getEnergy();
+        this.heatMax = menu.getMaxEnergy();
     }
 
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         graphics.blit(GUI_TEXTURE, this.leftPos, this.topPos, 0, 0, this.imageWidth, this.imageHeight);
         renderFlame(graphics);
+        renderHeatBattery(graphics);
         renderFilterIcons(graphics);
+    }
+
+    /**
+     * The accumulator: a VERTICAL cell that fills from the BOTTOM UP.
+     *
+     * <p>Purely additive - the flame, the filters and the fuel slot are untouched and
+     * are drawn exactly as before. This is a second gauge next to them, because the
+     * two say different things (see the class comment).
+     *
+     * <p>Heat rises, and so does the fill: the charge starts in the bottom row and
+     * climbs, the way a column of hot air or a mercury thermometer reads. It is the
+     * mirror of the other batteries in the mod, which are horizontal - this one was
+     * asked for upright.
+     */
+    private void renderHeatBattery(GuiGraphics graphics) {
+        int x = this.leftPos + HEAT_BATTERY_X;
+        int y = this.topPos + HEAT_BATTERY_Y;
+
+        // Empty first, over the whole body: without it a discharged accumulator looks
+        // like an empty groove in the panel rather than like an empty battery.
+        graphics.fill(x, y, x + HEAT_BATTERY_W, y + HEAT_BATTERY_H,
+                COLOR_HEAT_BATTERY_EMPTY);
+
+        int filled = heatMax > 0
+                ? (int) Math.min(HEAT_BATTERY_H, ((long) HEAT_BATTERY_H * heatEnergy) / heatMax)
+                : 0;
+        if (filled > 0) {
+            // FROM THE BOTTOM: the top of the fill is moved down by however much is
+            // still missing, and the bottom edge never moves. Growing it from the top
+            // instead would read as a gauge draining away.
+            int top = y + HEAT_BATTERY_H - filled;
+            graphics.fill(x, top, x + HEAT_BATTERY_W, y + HEAT_BATTERY_H,
+                    COLOR_HEAT_BATTERY_FILL);
+            // The bright edge runs down the LEFT side - the same "readable level" cue
+            // the horizontal batteries get from theirs along the top.
+            graphics.fill(x, top, x + 1, y + HEAT_BATTERY_H, COLOR_HEAT_BATTERY_HIGHLIGHT);
+        }
+        // The terminal that every other battery in the mod carries is deliberately
+        // ABSENT here (player: "it looks like a candle wick - I want a plain
+        // rectangle"). The upright cell is therefore just the body: no nub, on top or
+        // anywhere else. build.py pins that, so it cannot come back by accident.
     }
 
     /**
@@ -159,6 +220,42 @@ public class VeloceVelocityFurnaceScreen
     private static final int FLAME_X = 135;
     private static final int FLAME_Y = 19;
 
+    /**
+     * The heat accumulator: a VERTICAL cell in the right part of the panel, filling
+     * from the BOTTOM UP.
+     *
+     * <p>Upright on purpose. The other batteries in the mod are horizontal bars, and
+     * this one was asked to stand - so it is the tall cell next to the fuel column.
+     * It has NO terminal, unlike every other battery here: the player asked for a plain
+     * rectangle, because the small nub on top of an upright cell reads as a candle wick
+     * rather than as a battery. It must agree with the recess in gen_furnace_gui.py
+     * (build.py checks it, including that it is taller than it is wide and carries no
+     * terminal).
+     */
+    private static final int HEAT_BATTERY_X = 154;
+    private static final int HEAT_BATTERY_Y = 17;
+    private static final int HEAT_BATTERY_W = 14;
+    private static final int HEAT_BATTERY_H = 36;
+
+    /**
+     * Accumulator background - a dark ember, NOT the grey of a slot.
+     *
+     * <p><b>The bug this fixes (player: "the battery is vertical").</b> The empty body
+     * used the same grey as every slot in the panel, so with a nearly empty accumulator
+     * the trough was invisible against the panel and the ONLY thing left to see was the
+     * small orange terminal - a 2x6 px vertical tick, which is exactly what a player
+     * then reads as "the battery". Painting the body in the colour of cold embers makes
+     * the horizontal bar - 52 px wide, 14 px tall - the shape that dominates, at any
+     * charge, including zero.
+     */
+    private static final int COLOR_HEAT_BATTERY_EMPTY = 0xFF5A2C12;
+
+    /** Charge - ORANGE-RED, the colour of heat, and deliberately not the green of FE. */
+    private static final int COLOR_HEAT_BATTERY_FILL = 0xFFE25822;
+
+    /** A lighter edge along the top of the fill, so the level is readable at a glance. */
+    private static final int COLOR_HEAT_BATTERY_HIGHLIGHT = 0xFFFFA23F;
+
     private static int filterX(int index) {
         return FILTER_X + (index % 3) * 18;
     }
@@ -171,8 +268,45 @@ public class VeloceVelocityFurnaceScreen
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         super.render(graphics, mouseX, mouseY, partialTick);
         renderHeatTooltip(graphics, mouseX, mouseY);
+        renderHeatBatteryTooltip(graphics, mouseX, mouseY);
         renderFilterTooltip(graphics, mouseX, mouseY);
         this.renderTooltip(graphics, mouseX, mouseY);
+    }
+
+    /**
+     * On the battery: the temperature, the number of smelts it can pay for, and -
+     * when it cannot pay for even one - that it is not hot enough.
+     *
+     * <p>The number shown is DEGREES CELSIUS, not FE. The accumulator is FE under the
+     * hood, but a player standing in front of a furnace reads a temperature; the FE
+     * count would only invite the question of which mod's energy this is, and the
+     * answer is none - it cannot be moved.
+     */
+    private void renderHeatBatteryTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!isHovering(HEAT_BATTERY_X, HEAT_BATTERY_Y,
+                HEAT_BATTERY_W, HEAT_BATTERY_H, mouseX, mouseY)) {
+            return;
+        }
+        List<Component> lines = new ArrayList<>();
+        int cycles = VeloceVelocityFurnaceBlockEntity.FE_PER_SMELT > 0
+                ? heatEnergy / VeloceVelocityFurnaceBlockEntity.FE_PER_SMELT
+                : 0;
+        int tempC = heatMax > 0
+                ? (int) ((long) VeloceVelocityFurnaceBlockEntity.MAX_TEMPERATURE_C
+                         * heatEnergy / heatMax)
+                : 0;
+        lines.add(Component.translatable("gui.craftingveloce.furnace.temperature",
+                tempC, VeloceVelocityFurnaceBlockEntity.MAX_TEMPERATURE_C));
+        lines.add(Component.translatable("gui.craftingveloce.furnace.cycles", cycles)
+                .withStyle(net.minecraft.ChatFormatting.GOLD));
+        if (cycles <= 0) {
+            // The one case the player has to be told about: a furnace with a flame and
+            // with coal in the slot that still cannot smelt, because the accumulator has
+            // not banked one coal yet.
+            lines.add(Component.translatable("gui.craftingveloce.furnace.notHotEnough")
+                    .withStyle(net.minecraft.ChatFormatting.RED));
+        }
+        graphics.renderComponentTooltip(this.font, lines, mouseX, mouseY);
     }
 
     /**
@@ -295,6 +429,8 @@ public class VeloceVelocityFurnaceScreen
         }
         this.burnRemaining = be.getBurnTicksRemaining();
         this.burnTotal = be.getBurnTicksTotal();
+        this.heatEnergy = be.getEnergy();
+        this.heatMax = be.getMaxEnergyStored();
         for (int i = 0; i < clientFilters.size(); i++) {
             clientFilters.set(i, be.getFuelFilter(i));
         }

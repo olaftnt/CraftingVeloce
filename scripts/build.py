@@ -480,6 +480,7 @@ def validate_gui_layout():
              "FLAME_X", "FLAME_Y",
              "BATTERY_X", "BATTERY_Y", "BATTERY_W", "BATTERY_H", "NUB_W", "NUB_H",
              "BATTERY_SLOT_X", "BATTERY_SLOT_Y",
+             "HEAT_BATTERY_X", "HEAT_BATTERY_Y", "HEAT_BATTERY_W", "HEAT_BATTERY_H",
              "FILTER_SLOT_X", "FILTER_SLOT_Y"]
     # By default we compare the FUEL furnace triple: menu, screen, generator.
     # The remaining elements have their own lists below.
@@ -492,6 +493,11 @@ def validate_gui_layout():
         who[n] = ["ekran", "generator"]         # the menu does not need them
     for n in ("BATTERY_X", "BATTERY_Y", "BATTERY_W", "BATTERY_H", "NUB_W", "NUB_H"):
         who[n] = ["ekran_el", "generator"]      # battery of the electric furnace
+    for n in ("HEAT_BATTERY_X", "HEAT_BATTERY_Y", "HEAT_BATTERY_W", "HEAT_BATTERY_H"):
+        # The FUEL furnace's accumulator. Its own names, because the electric furnace
+        # has a battery of the same size somewhere else - one shared name would make
+        # this compare the wrong pair, and the two are supposed to be independent.
+        who[n] = ["ekran", "generator"]
     for n in ("BATTERY_SLOT_X", "BATTERY_SLOT_Y"):
         # The electric screen USES the constant from the menu (it has no copy
         # of its own) - and that is how it should be: one source. The generator
@@ -1363,13 +1369,43 @@ def validate_jade_info():
     if should is None or "VeloceModuleInfoSource" not in should:
         problems.append("Jade asks for data about any old block entity")
 
+    # Jade builds a settings entry for EVERY provider we register, and it needs a
+    # translation for each one. This is not cosmetic: Jade ASSERTS on a missing key when
+    # it builds that screen, so with assertions on (a dev run) opening any GUI with the
+    # config button crashes the game - and a player with Jade just sees the raw key.
+    lang_path = "assets/craftingveloce/lang/en_us.json"
+    if os.path.exists(lang_path):
+        lang = json.load(open(lang_path, encoding="utf-8"))
+        for m in re.finditer(r'ResourceLocation\.fromNamespaceAndPath\(\s*"([a-z0-9_]+)"\s*,'
+                             r'\s*"([a-z0-9_/]+)"', plugin_text):
+            key = f"config.jade.plugin_{m.group(1)}.{m.group(2)}"
+            if key not in lang:
+                problems.append(f"no lang key for the Jade config entry: {key}")
+
+    # The FUEL furnace is not a module and registers NO energy capability - on purpose,
+    # so that nothing can move its heat - and that is exactly why Jade's own energy bar
+    # cannot see it either. Its readout therefore has to be written here, or a player
+    # looking at a furnace with a battery in it would be told nothing at all.
     component_text = open(component, encoding="utf-8").read()
+    heat = _method_body(component_text, "private static void appendFuelFurnaceHeat(")
+    if heat is None:
+        problems.append("the Jade tooltip never shows the fuel furnace's heat, and Jade's "
+                        "own bar cannot: that furnace has no energy capability")
+    elif "gui.craftingveloce.furnace.temperature" not in heat:
+        problems.append("the Jade line for the fuel furnace does not show a temperature")
+
     tooltip = _method_body(component_text, "public void appendTooltip(")
     if tooltip is None:
         problems.append("the Jade tooltip has no method")
     else:
         if "VeloceModuleStatus.message(" not in tooltip:
             problems.append("Jade does not show the working status")
+        # The method existing is not enough - the failure this catches is the CALL being
+        # dropped, which leaves the furnace silently back to showing nothing while every
+        # other check here still passes.
+        if "appendFuelFurnaceHeat(" not in tooltip:
+            problems.append("the Jade tooltip never calls the fuel furnace's heat lines, "
+                            "so a furnace with a battery in it shows nothing")
         extra = [line.strip() for line in tooltip.splitlines()
                  if "tooltip.add" in line and "VeloceModuleStatus.message(" not in line
                  and "addAll" not in line]
@@ -2536,6 +2572,177 @@ def validate_heat_accounting():
     if problems:
         fail("heat accounting:\n  " + "\n  ".join(problems))
     print("    OK (heat accounting: a furnace run and its heat are charged atomically)")
+
+
+def validate_heat_battery():
+    """
+    The fuel furnace's heat battery, exactly as it was specified.
+
+    The player's specification, in his own numbers: the furnace burns all the time and
+    every tick of that burn puts ONE unit into a battery; one instant smelt costs THREE
+    COAL; and the battery holds SIXTY-FOUR such cycles, so a full one smelts a stack in
+    one go. The unit is Forge Energy, but it is the furnace's own - it must NOT be
+    reachable from outside.
+
+    Every one of those is a number that can be quietly edited and still compile, and the
+    symptom of a wrong one is invisible (a furnace that is merely slower looks exactly
+    like a furnace that is working). So the numbers are pinned here, the way the electric
+    furnace's 25 000 000 FE is pinned in validate_energy_pull.
+
+    The last two checks are the ones a player cannot test for himself - they exist
+    because the failure would be a duplicated resource, not a crash:
+      * the FUEL delivered by burning must land in the battery (one charge site);
+      * the block must register NO energy capability, so no cable from another mod can
+        pull the accumulated heat out.
+    """
+    path = ("neoforge/src/main/java/com/craftingveloce/block/entity/"
+            "VeloceVelocityFurnaceBlockEntity.java")
+    text = open(path, encoding="utf-8").read()
+    problems = []
+
+    def const(name):
+        m = re.search(r"\b" + name + r"\s*=\s*([^;]+);", text)
+        if m is None:
+            problems.append(f"no {name}")
+            return None
+        return m.group(1).strip()
+
+    values = {n: const(n) for n in ("FE_PER_BURN_TICK", "BURN_PER_TICK_NUM",
+                                    "BURN_PER_TICK_DEN", "COAL_BURN_TICKS",
+                                    "COAL_PER_SMELT", "FE_PER_SMELT",
+                                    "SMELTS_PER_BATTERY", "ENERGY_CAPACITY")}
+
+    # Each expected value is written as the ARITHMETIC, not as the answer, so that the
+    # guard fails on a changed number and not on a reformatted one.
+    expected = {
+        "FE_PER_BURN_TICK": "1",
+        # The rate is a FRACTION (see the class): 256/45 burn ticks per server tick is
+        # what turns "a full stack in fifteen minutes" into a whole number of ticks. It
+        # must not be folded into FE_PER_BURN_TICK - that would make one coal worth more
+        # than one smelt and quietly break the price below.
+        "BURN_PER_TICK_NUM": "256",
+        "BURN_PER_TICK_DEN": "45",
+        "COAL_BURN_TICKS": "1600",
+        # ONE COAL PER SMELT - the price the player settled on, and what makes a full
+        # battery cost exactly as many coal as it can smelt items.
+        "COAL_PER_SMELT": "1",
+        "FE_PER_SMELT": "COAL_PER_SMELT * COAL_BURN_TICKS",
+        "SMELTS_PER_BATTERY": "64",
+        "ENERGY_CAPACITY": "SMELTS_PER_BATTERY * FE_PER_SMELT",
+    }
+    for name, want in expected.items():
+        got = values.get(name)
+        if got is not None and got != want:
+            problems.append(f"{name} = {got}, expected {want}")
+
+    # ...and the three agreed numbers have to meet: a stack of smelts, one coal each,
+    # charged in fifteen minutes. Recomputed from the constants above, because the two
+    # knobs interact - 64 smelts at 1600 FE is 102 400 FE, and a whole rate would put the
+    # charge at 14:13 or 17:04 instead of the 15:00 that was asked for.
+    try:
+        fe_per_smelt = int(values["COAL_PER_SMELT"]) * int(values["COAL_BURN_TICKS"])
+        capacity = int(values["SMELTS_PER_BATTERY"]) * fe_per_smelt
+        num, den = int(values["BURN_PER_TICK_NUM"]), int(values["BURN_PER_TICK_DEN"])
+        if num <= 0 or den <= 0:
+            problems.append("the burn rate is not a positive fraction")
+        else:
+            ticks = capacity * den // num
+            want_ticks = 15 * 60 * 20
+            if ticks != want_ticks:
+                problems.append(
+                    f"a full accumulator takes {ticks} ticks to charge "
+                    f"({ticks // 1200}:{ticks % 1200 // 20:02d}), expected {want_ticks} "
+                    f"(15:00) - {int(values['SMELTS_PER_BATTERY'])} smelts at "
+                    f"{fe_per_smelt} FE and {num}/{den} per tick")
+    except (TypeError, ValueError):
+        problems.append("cannot recompute the charge time from the constants")
+
+    # Charging: every tick of flame banks heat, and it is the SAME method that spends
+    # the burn - a charge that ran on its own would fill the battery out of nothing.
+    tick = _method_body(text, "public void serverTick()")
+    if tick is None:
+        problems.append("no serverTick")
+    elif "bankBurn()" not in tick:
+        problems.append("serverTick never banks the burn into the battery")
+    bank = _method_body(text, "private void bankBurn()")
+    if bank is None:
+        problems.append("no bankBurn - nothing turns burning into FE")
+    else:
+        if "burnTicksRemaining -=" not in bank:
+            problems.append("bankBurn stores heat without spending the burn")
+        if "energy +=" not in bank:
+            problems.append("bankBurn spends the burn without storing heat")
+        if "BURN_PER_TICK_NUM" not in bank:
+            problems.append("bankBurn ignores the conversion rate")
+        if "chargeCarry" not in bank:
+            problems.append("bankBurn throws away the fraction of a burn tick it cannot "
+                            "spend - a full charge would drift away from 15 minutes")
+        if "room" not in bank and "ENERGY_CAPACITY" not in bank:
+            problems.append("bankBurn can charge past the accumulator's size")
+
+    # What the crafter sees: a whole smelt, and nothing less.
+    avail = _method_body(text, "public long availableOperations()")
+    if avail is None or "energy" not in avail or "FE_PER_SMELT" not in avail:
+        problems.append("availableOperations does not divide the accumulator by the price "
+                        "of a smelt")
+    powered = _method_body(text, "public boolean isPowered()")
+    if powered is None or "availableOperations()" not in powered:
+        problems.append("a furnace that cannot pay for one whole smelt still reports "
+                        "itself as powered")
+    consume = _method_body(text, "public void consumeOperations(long operations)")
+    if consume is None or "FE_PER_SMELT" not in consume or "energy" not in consume:
+        problems.append("consumeOperations does not take the accumulator down")
+
+    # INTERNAL: no energy capability on the block or the block entity, in any form.
+    for other, what in (
+            ("neoforge/src/main/java/com/craftingveloce/block/VeloceVelocityFurnaceBlock.java",
+             "the fuel furnace block"),
+            (path, "the fuel furnace block entity")):
+        other_text = open(other, encoding="utf-8").read()
+        for forbidden, why in (("Capabilities.EnergyStorage", "registers an energy capability"),
+                               ("IEnergyStorage", "implements IEnergyStorage")):
+            if forbidden in other_text:
+                problems.append(f"{what} {why} - the accumulated heat could then be "
+                                f"pulled out by another mod's cable")
+
+    # The GUI: VERTICAL, filling from the bottom up, and in the colours of heat rather
+    # than the green of energy.
+    screen = ("neoforge/src/main/java/com/craftingveloce/client/gui/"
+              "VeloceVelocityFurnaceScreen.java")
+    screen_text = open(screen, encoding="utf-8").read()
+    bw = re.search(r"\bHEAT_BATTERY_W\s*=\s*(\d+)", screen_text)
+    bh = re.search(r"\bHEAT_BATTERY_H\s*=\s*(\d+)", screen_text)
+    if bw is None or bh is None:
+        problems.append("the screen has no HEAT_BATTERY_W/H")
+    elif int(bh.group(1)) <= int(bw.group(1)):
+        problems.append(f"the heat battery is drawn {bw.group(1)}x{bh.group(1)} - that is "
+                        f"horizontal (or square); it was asked to STAND, filling upwards")
+    # Bottom-up: the TOP edge of the fill is the one that moves, so the drawn rectangle
+    # has to start at `y + HEAT_BATTERY_H - filled` and end at the fixed bottom edge.
+    # Drawing it from the top down would read as a gauge draining away, which is the
+    # opposite of what was asked for.
+    if "y + HEAT_BATTERY_H - filled" not in screen_text:
+        problems.append("the heat battery does not fill FROM THE BOTTOM UP")
+    # NO terminal. Every other battery in the mod carries a 2x6 nub, and on an upright
+    # cell the player read it as a candle wick and asked for a plain rectangle - so a
+    # HEAT_NUB_* coming back is the regression this catches.
+    if "HEAT_NUB" in screen_text or "HEAT_NUB" in open(
+            "scripts/gen_furnace_gui.py", encoding="utf-8").read():
+        problems.append("the heat battery has a terminal again - it was asked to be a "
+                        "plain rectangle (a nub on an upright cell reads as a candle wick)")
+    if "0xFF39D353" in screen_text:
+        problems.append("the heat battery uses the green of Forge Energy - it was asked "
+                        "to be the colour of heat")
+    if "gui.craftingveloce.furnace.temperature" not in screen_text:
+        problems.append("the battery tooltip does not show a temperature")
+    if re.search(r"feCompact\(", screen_text) is not None:
+        problems.append("the heat battery tooltip counts FE - the player asked for "
+                        "degrees Celsius")
+
+    if problems:
+        fail("heat battery:\n  " + "\n  ".join(problems))
+    print("    OK (heat battery: 1 coal per smelt, 64 smelts, a full charge in 15:00, "
+          "internal only, upright and filling upwards, hot-coloured)")
 
 
 def validate_partial_delivery():
@@ -4246,6 +4453,7 @@ def main():
     validate_energy_pull()
     validate_partial_delivery()
     validate_heat_accounting()
+    validate_heat_battery()
     validate_brewing_stand()
     validate_brewing_proxy()
     validate_module_content_textures()

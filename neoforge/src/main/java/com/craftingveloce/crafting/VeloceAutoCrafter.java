@@ -1754,6 +1754,13 @@ public final class VeloceAutoCrafter {
                 return CraftResult.fail("craftingveloce.craft.error.noFurnace", furnaces);
             }
             if (!VeloceHeatSources.hasPower(level, ctx.network)) {
+                // A fuel furnace that is merely still charging gets its own wording: it
+                // has the coal, it just has not banked three of them yet, and "no
+                // fuel/power" would send the player looking for a problem that is not
+                // there. Anything else keeps the old message.
+                if (VeloceHeatSources.hasColdFuelFurnace(level, ctx.network)) {
+                    return CraftResult.fail("craftingveloce.craft.error.furnaceNotHot", furnaces);
+                }
                 return CraftResult.fail("craftingveloce.craft.error.furnaceUnpowered", furnaces);
             }
         }

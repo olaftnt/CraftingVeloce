@@ -1,0 +1,78 @@
+# Module: furnace  -  machine: FUEL furnace (velocity_furnace)
+#
+# The twin of module-furnace.txt, which tests the ELECTRIC one. Both matter, because
+# the two furnaces answer "can I smelt?" from completely different numbers:
+#   * electric  -> an accumulator charged through the energy capability,
+#   * fuel      -> an accumulator that only BURNING fills, one FE per burn tick.
+#
+# The price of one instant smelt here is ONE COAL, that is 1600 FE - one coal, one item,
+# so a full battery (64 smelts) costs exactly the 64 coal that charge it. That number is
+# the whole test: a furnace with a flame and fuel in the slot can still be unable to
+# smelt, and it must report itself as ABSENT rather than as a failure, so that another
+# furnace in the network takes over.
+#
+#   case 1  empty accumulator              -> must refuse
+#   case 2  1599 FE, one short of a smelt   -> must STILL refuse (the off-by-one that
+#                                             would let a furnace smelt on nothing)
+#   case 3  full accumulator                -> must deliver
+#
+# /cv testmodule fe reaches into the block entity for this furnace, because it has NO
+# energy capability on purpose - see setEnergyForTesting. A cable cannot charge it.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-furnace-fuel -PveloceKeepOpen
+
+# --- case 1: nothing banked ---
+/cv testmodule furnace velocity_furnace
+expect: building and waiting
+
+/cv testmodule fe 0
+expect: heat set to
+
+wait: 120
+
+/cv testmodule result
+expect: FAIL
+
+# --- case 2: one FE short of one smelt ---
+/cv testmodule furnace velocity_furnace
+expect: building and waiting
+
+/cv testmodule fe 1599
+expect: heat set to
+
+wait: 120
+
+/cv testmodule result
+expect: FAIL
+
+# --- case 3: enough for at least one smelt ---
+/cv testmodule furnace velocity_furnace
+expect: building and waiting
+
+/cv testmodule fe 1000000
+expect: heat set to
+
+wait: 120
+
+/cv testmodule result
+expect: PASS
+
+# --- case 4: the furnace EARNS its charge, by burning ---
+#
+# The other three cases hand the accumulator a number. This one empties it, puts coal
+# in the network, and comes back 320 ticks later to see whether the number went up on
+# its own - which is the only way to tell "burning charges the battery" from "the
+# battery is a number somebody set".
+#
+# The bounds come from the furnace's own burn rate, so this keeps measuring the real
+# rate instead of a copy of it.
+/cv testmodule furnace velocity_furnace
+expect: building and waiting
+
+/cv testmodule chargecheck
+expect: charging check started
+
+wait: 320
+
+/cv testmodule result
+expect: charging PASS

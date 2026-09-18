@@ -65,6 +65,16 @@ NUB_H = 6
 BATTERY_SLOT_X = 130    # the slot for the energy item - to the right of the battery
 BATTERY_SLOT_Y = 32
 
+# The FUEL furnace's heat accumulator. A separate set of names on purpose: the two
+# furnaces have their battery in a different place, and build.py reads these
+# constants by name - one shared name would make it compare the wrong pair.
+HEAT_BATTERY_X = 154    # VERTICAL cell in the right part of the panel
+HEAT_BATTERY_Y = 17     # top, level with the first filter row
+HEAT_BATTERY_W = 14
+HEAT_BATTERY_H = 36
+# NO terminal for this one. Every other battery in the mod has a small nub; on an
+# upright cell the player read it as a candle wick and asked for a plain rectangle.
+
 
 def panel(draw):
     """A panel in the vanilla container style: a raised frame + an inner shadow."""
@@ -138,7 +148,7 @@ def recess(draw, x0, y0, x1, y1):
 
 
 def velocity_furnace():
-    """Fuel furnace: 6 filters + a fuel slot + the flame window."""
+    """Fuel furnace: 6 filters + a fuel slot + the flame window + the heat battery."""
     img = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     panel(d)
@@ -148,6 +158,13 @@ def velocity_furnace():
         slot(d, FILTER_X + (i % 3) * 18, FILTER_Y + (i // 3) * 18)
     # The actual fuel slot.
     slot(d, FUEL_X, FUEL_Y)
+
+    # The heat accumulator's recess: an UPRIGHT cell, whose screen fills it from the
+    # BOTTOM UP. Only the recess is painted here, exactly as for the electric
+    # furnace's battery - but with NO terminal: the player asked for a plain
+    # rectangle, because a nub on top of an upright cell reads as a candle wick.
+    recess(d, HEAT_BATTERY_X, HEAT_BATTERY_Y,
+           HEAT_BATTERY_X + HEAT_BATTERY_W - 1, HEAT_BATTERY_Y + HEAT_BATTERY_H - 1)
 
     # We do NOT paint the flame: the screen draws it with sprites from the
     # vanilla furnace (the outline + the lit part). Painting anything under it
@@ -224,9 +241,15 @@ def self_check(img):
     if dirty:
         bad.append(f"flame place is soiled ({dirty} px)")
 
+    # The heat battery body must be a RECESS (the slot background), not panel grey -
+    # otherwise a discharged battery looks like an empty groove and the screen's fill
+    # has nothing to sit in.
+    if img.getpixel((HEAT_BATTERY_X + 2, HEAT_BATTERY_Y + 2)) != BG:
+        bad.append("the heat battery body is not a recess")
+
     if bad:
         raise SystemExit("ERROR: the texture does not match the constants: " + ", ".join(bad))
-    print("  self-check: slot frames and the flame place OK")
+    print("  self-check: slot frames, the flame place and the heat battery OK")
 
 
 def self_check_electric(img):
@@ -283,6 +306,9 @@ def main():
     print(f"  battery:   x={BATTERY_X} y={BATTERY_Y} w={BATTERY_W} h={BATTERY_H}"
           f" (terminal {NUB_W}x{NUB_H} on the right)")
     print(f"  bat. slot: x={BATTERY_SLOT_X} y={BATTERY_SLOT_Y} (16x16)")
+    print(f"  heat bat.: x={HEAT_BATTERY_X} y={HEAT_BATTERY_Y} "
+          f"w={HEAT_BATTERY_W} h={HEAT_BATTERY_H}"
+          f" (NO terminal) - fuel furnace only, fills from the BOTTOM up")
     print(f"  inventory: x={PLAYER_X} y={PLAYER_Y}, hotbar y={PLAYER_Y + 58}")
 
 

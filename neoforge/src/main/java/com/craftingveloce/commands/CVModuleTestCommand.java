@@ -84,6 +84,12 @@ public final class CVModuleTestCommand {
     /** Where the last built machine stands, so a later step can set its power. */
     private static BlockPos lastMachinePos;
 
+    /**
+     * The barrel of the last build - the network's storage, which is where the fuel
+     * furnace pulls its fuel from.
+     */
+    private static BlockPos lastBarrelPos;
+
     /** Diagnostic of the last run, appended to the verdict so a test can read it. */
     private static String diag = "none";
 
@@ -119,6 +125,11 @@ public final class CVModuleTestCommand {
                             ctx.getSource().sendSuccess(() -> Component.literal(lastVerdict), false);
                             return 1;
                         }))
+                        // The FUEL furnace's one behaviour that no other command can
+                        // reach: burning fills the battery. Everything else here treats
+                        // power as something handed to a machine; this one has to watch
+                        // the machine earn it, one FE per tick of flame.
+                        .then(Commands.literal("chargecheck").executes(ctx -> chargeCheck(ctx.getSource())))
                         .then(Commands.argument("module", StringArgumentType.word())
                                 .suggests((ctx, builder) ->
                                         SharedSuggestionProvider.suggest(VeloceProcessingRegistry.ids(), builder))
@@ -388,6 +399,7 @@ public final class CVModuleTestCommand {
         // how the brewing stand first failed here.
 
         level.setBlock(barrelPos, Blocks.BARREL.defaultBlockState(), Block.UPDATE_ALL);
+        lastBarrelPos = barrelPos;
 
         // Give the machine power so an FE-driven module is not judged on "no energy"
         // - the test is about crafting, not about the accumulator being full.
@@ -610,6 +622,24 @@ public final class CVModuleTestCommand {
             return 0;
         }
         ServerLevel level = source.getLevel();
+
+        // The FUEL furnace has no energy capability ON PURPOSE - its accumulator must not
+        // be reachable by a cable from another mod - so the capability route below cannot
+        // serve it. This is the one place that writes its accumulator from outside, and it
+        // does it by reaching into the block entity, which is exactly the statement that
+        // nothing else can: no cable, no item, no other mod's pipe. Without it the only way
+        // to charge a fuel furnace for a test would be to burn a whole coal and wait
+        // out its flame, which no script can do.
+        if (level.getBlockEntity(lastMachinePos)
+                instanceof com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity fuelFurnace) {
+            fuelFurnace.setEnergyForTesting(amount);
+            int now = fuelFurnace.getEnergy();
+            source.sendSuccess(() -> Component.literal("§6[testmodule] §7heat set to §f" + now
+                    + " §7(" + fuelFurnace.getAffordableSmelts() + " smelt(s), asked "
+                    + amount + ")"), false);
+            return now;
+        }
+
         var storage = level.getCapability(
                 net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK, lastMachinePos, null);
         if (storage == null) {
@@ -628,6 +658,98 @@ public final class CVModuleTestCommand {
         source.sendSuccess(() -> Component.literal("§6[testmodule] §7FE set to §f" + now
                 + " §7(asked " + amount + ", accepted " + accepted + ")"), false);
         return now;
+    }
+
+    /**
+     * How long the charging check watches the fuel furnace, and how much coal it feeds it.
+     *
+     * <p>Long enough that the pull (up to PULL_INTERVAL_TICKS) and the first burn are
+     * comfortably inside the window, and short enough that the check costs a few seconds.
+     */
+    private static final int CHARGE_CHECK_TICKS = 320;
+    private static final int CHARGE_CHECK_COAL = 8;
+
+    /**
+     * How much heat {@code ticks} server ticks of burning should put into the accumulator.
+     *
+     * <p>Asked of the furnace rather than written down here, because it is exactly the
+     * number this check exists to measure: the rate is what the player asked to change,
+     * and a copy of it in the test would keep passing after the furnace changed. The rate
+     * is a fraction, so the answer is rounded up - the carry can put one burn tick more
+     * into the window than the exact average.
+     */
+    private static long chargeAfter(int ticks) {
+        return (long) ticks
+                * com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity.BURN_PER_TICK_NUM
+                / com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity.BURN_PER_TICK_DEN
+                + 1;
+    }
+
+    /**
+     * Proves the fuel furnace CHARGES ITS BATTERY BY BURNING - the whole point of it.
+     *
+     * <p>Nothing else in this command can see that. Every other power check hands a
+     * machine its charge; this one empties the accumulator, puts coal where the furnace
+     * pulls from, and comes back later to see whether the number went up on its own.
+     *
+     * <p>Both bounds matter, and they are the reason this is not just "energy &gt; 0":
+     * <ul>
+     *   <li>too little - the furnace is not charging (or is charging from nothing);</li>
+     *   <li>too much - more than one FE per tick got in, which would mean the burn and
+     *       the charge had been double-counted somewhere.</li>
+     * </ul>
+     */
+    private static int chargeCheck(CommandSourceStack source) {
+        if (lastMachinePos == null || lastBarrelPos == null) {
+            source.sendFailure(Component.literal("§cRun /cv testmodule furnace velocity_furnace first"));
+            return 0;
+        }
+        ServerLevel level = source.getLevel();
+        if (!(level.getBlockEntity(lastMachinePos)
+                instanceof com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity furnace)) {
+            source.sendFailure(Component.literal("§cThe machine under test is not a fuel furnace - "
+                    + "only it charges by burning"));
+            return 0;
+        }
+        if (!(level.getBlockEntity(lastBarrelPos) instanceof BarrelBlockEntity barrel)) {
+            source.sendFailure(Component.literal("§cNo barrel for the last build - the furnace "
+                    + "would have nothing to pull fuel from"));
+            return 0;
+        }
+
+        furnace.setEnergyForTesting(0);
+        // Slot 0 of the barrel: the network's storage, which is exactly where the furnace
+        // looks for fuel. Any ingredient left there from the build is irrelevant here -
+        // this check measures charging, not crafting.
+        barrel.setItem(0, new ItemStack(net.minecraft.world.item.Items.COAL, CHARGE_CHECK_COAL));
+
+        lastVerdict = "charging: waiting " + CHARGE_CHECK_TICKS + " ticks for the burn";
+        // On the command channel as well as the log: a script asserts on the reply, and
+        // "the command ran" has to be distinguishable from "the command failed to parse"
+        // - a parse failure echoes the input back and would satisfy a looser assertion.
+        source.sendSuccess(() -> Component.literal("§6[testmodule] §7charging check started: §f"
+                + CHARGE_CHECK_COAL + " coal§7 in the network, accumulator emptied, watching "
+                + CHARGE_CHECK_TICKS + " ticks"), false);
+        LOG.info("[testmodule] charging check started: energy=0, {} coal placed in the network",
+                CHARGE_CHECK_COAL);
+
+        var server = level.getServer();
+        com.craftingveloce.test.VeloceTestScript.scheduleWait(server, CHARGE_CHECK_TICKS, () -> {
+            int now = furnace.getEnergy();
+            // The ceiling is what the rate allows; the floor is three quarters of it,
+            // because the furnace has to pull the coal out of the network first and that
+            // costs it a few ticks of flame. A quarter of slack still catches a rate
+            // that is wrong by half, which is what this check is really for.
+            long max = chargeAfter(CHARGE_CHECK_TICKS);
+            long min = max * 3 / 4;
+            boolean ok = now >= min && now <= max;
+            lastVerdict = (ok ? "charging PASS" : "charging FAIL")
+                    + ": " + now + " FE after " + CHARGE_CHECK_TICKS + " ticks of burning"
+                    + " (expected " + min + ".." + max + "), "
+                    + furnace.getAffordableSmelts() + " smelt(s) banked";
+            LOG.info("[testmodule] {}", lastVerdict);
+        });
+        return 1;
     }
 
     private static void pass(String moduleId, ItemStack wanted, String recipeId, long stockBefore,

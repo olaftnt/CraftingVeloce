@@ -83,6 +83,26 @@ public final class VeloceHeatSources {
     }
 
     /**
+     * Whether a FUEL furnace stands in the network with an accumulator below one smelt.
+     *
+     * <p>Only used to pick the right words for the failure. "No fuel/power" is true but
+     * useless when the player has just fed the furnace coal: one instant smelt costs
+     * one whole coal, so a furnace that has not finished banking one IS cold, and the
+     * player needs to hear that rather than "no fuel" while looking at fuel. The
+     * electric furnace is deliberately not included - its accumulator has nothing to
+     * do with coal, and "not hot enough" would be a wrong explanation for it.
+     */
+    public static boolean hasColdFuelFurnace(ServerLevel level, VelocePipeNetwork network) {
+        for (VeloceHeatSource heat : allIn(level, network)) {
+            if (heat instanceof com.craftingveloce.block.entity.VeloceVelocityFurnaceBlockEntity fuel
+                    && !fuel.isHotEnough()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * How many smelting operations the network can perform RIGHT NOW in TOTAL.
      *
      * <p>This is the budget for the planner: there is no point planning a

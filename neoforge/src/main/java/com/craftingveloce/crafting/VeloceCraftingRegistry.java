@@ -134,6 +134,12 @@ public final class VeloceCraftingRegistry {
                 return new DisabledReason("craftingveloce.craft.error.noFurnace", "");
             }
             if (!VeloceHeatSources.hasPower(level, network)) {
+                // See VeloceAutoCrafter: a fuel furnace that is still banking its first
+                // one coal is "not hot enough", not out of fuel - the two are the same
+                // state to hasPower() and must not be the same words to the player.
+                if (VeloceHeatSources.hasColdFuelFurnace(level, network)) {
+                    return new DisabledReason("craftingveloce.craft.error.furnaceNotHot", "");
+                }
                 return new DisabledReason("craftingveloce.craft.error.furnaceUnpowered", "");
             }
         }

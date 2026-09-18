@@ -11,11 +11,18 @@ package com.craftingveloce.block.entity;
  * <p>There is one unit: an <b>OPERATION</b> - one instant smelt.
  * Each furnace converts its own energy into operations by itself:
  * <ul>
- *   <li>fuel-powered: {@code burnTicks / SMELT_HEAT_COST}</li>
+ *   <li>fuel-powered: {@code accumulatorFe / FE_PER_SMELT} - the accumulator is
+ *       filled by burning fuel, one FE per burn tick</li>
  *   <li>electric: {@code storedFe / FE_PER_SMELT}</li>
  * </ul>
  * Thanks to that the crafter does not know, and does not need to know, what
  * powers the furnace.
+ *
+ * <p><b>An "operation" is a WHOLE smelt, never a fraction of one.</b> A source that
+ * cannot pay for one full operation reports {@code availableOperations() == 0} and
+ * {@link #isPowered()} {@code == false} - so it counts as ABSENT rather than as a
+ * failure. That is what lets a network hold several furnaces and keep crafting
+ * while one of them runs dry: the dry one is skipped, and the next one pays.
  */
 public interface VeloceHeatSource {
 
