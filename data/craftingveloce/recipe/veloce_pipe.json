@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "group": "craftingveloce",
+  "pattern": [
+    "IGI",
+    "GGG",
+    "IGI"
+  ],
+  "key": {
+    "G": { "item": "minecraft:glass" },
+    "I": { "item": "minecraft:iron_ingot" }
+  },
+  "result": { "id": "craftingveloce:veloce_pipe", "count": 8 }
+}

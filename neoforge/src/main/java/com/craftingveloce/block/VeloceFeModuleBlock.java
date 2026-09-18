@@ -20,6 +20,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 
 import javax.annotation.Nullable;
+import com.craftingveloce.block.VeloceIntegraleConversions;
 
 /**
  * A FE-powered Mekanism module machine - one block for every family.
@@ -165,5 +166,37 @@ public class VeloceFeModuleBlock extends BaseEntityBlock
                                      BlockState facingState, net.minecraft.world.level.LevelAccessor world,
                                      BlockPos pos, BlockPos facingPos) {
         return com.craftingveloce.block.VeloceIntegraleFrame.withClosure(state, facing, facingState);
+    }
+
+    /**
+     * What breaking this machine gives back: an EMPTY Integrale, and the block that was
+     * put into it - never the module itself.
+     *
+     * <p><b>Why.</b> A module is no longer crafted; it EXISTS only as a block in the
+     * world, made by right-clicking an Integrale with a foreign machine. Dropping "the
+     * module" would hand the player an item they cannot otherwise obtain, and would eat
+     * both the frame and the block they spent. So the drop is the reverse of the same
+     * one table that builds the machine - which is why this lives here and not in 28
+     * loot tables: two sources of truth for drops is how the two drift apart.
+     *
+     * <p>Hardness and tool are vanilla's furnace ({@code strength(3.5F)} +
+     * {@code requiresCorrectToolForDrops()}), so a pickaxe is what is needed, exactly
+     * as the player asked for.
+     */
+    @Override
+    public java.util.List<net.minecraft.world.item.ItemStack> getDrops(
+            BlockState state, net.minecraft.world.level.storage.loot.LootParams.Builder params) {
+        java.util.List<net.minecraft.world.item.ItemStack> out = new java.util.ArrayList<>();
+        out.add(new net.minecraft.world.item.ItemStack(
+                com.craftingveloce.init.VeloceRegistry.VELOCE_INTEGRALE_ITEM.get()));
+        VeloceIntegraleConversions.Conversion back = VeloceIntegraleConversions.forBlock(this);
+        if (back != null) {
+            net.minecraft.world.item.Item in =
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM.get(back.inputId());
+            if (in != net.minecraft.world.item.Items.AIR) {
+                out.add(new net.minecraft.world.item.ItemStack(in));
+            }
+        }
+        return out;
     }
 }

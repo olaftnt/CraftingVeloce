@@ -49,6 +49,30 @@ public class CraftingVeloceMod {
                         // except by command.
                         output.accept(VeloceRegistry.BREWING_STAND_ITEM.get());
                         output.accept(VeloceRegistry.THRESHOLD_SENSOR_ITEM.get());
+                        // The frame EVERY machine is now made from. Without it in the
+                        // tab there is no way to start a network and no way to test.
+                        output.accept(VeloceRegistry.VELOCE_INTEGRALE_ITEM.get());
+                        // Module blocks of the integrations that are installed.
+                        //
+                        // BUG this fixes: every compat module had its own
+                        // addCreativeItems and the tab called NONE of them, so a
+                        // Mekanism, Alchemistry or Create module could not be taken in
+                        // creative at all. Registration and the tab are two separate
+                        // places - the same way the furnaces and the brewing stand were
+                        // once registered and missing from here.
+                        //
+                        // Guarded exactly like the registration above: reaching into a
+                        // compat class loads it, so it may only load when its mod is
+                        // there.
+                        if (com.craftingveloce.compat.create.CreateCompat.isPresent()) {
+                            com.craftingveloce.compat.create.CreateCompat.addCreativeItems(output);
+                        }
+                        if (com.craftingveloce.compat.alchemistry.AlchemistryCompat.isPresent()) {
+                            com.craftingveloce.compat.alchemistry.AlchemistryCompat.addCreativeItems(output);
+                        }
+                        if (com.craftingveloce.compat.mekanism.MekanismCompat.isPresent()) {
+                            com.craftingveloce.compat.mekanism.MekanismCompat.addCreativeItems(output);
+                        }
                     })
                     .build()
     );

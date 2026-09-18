@@ -26,6 +26,7 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 import javax.annotation.Nullable;
+import com.craftingveloce.block.VeloceIntegraleConversions;
 
 /**
  * Veloce kinetic machine - one block for every Create family.
@@ -241,16 +242,34 @@ public class VeloceKineticModuleBlock extends KineticBlock
     @Override
     protected java.util.List<ItemStack> getDrops(BlockState state,
                                                  net.minecraft.world.level.storage.loot.LootParams.Builder params) {
-        ItemStack stack = new ItemStack(this);
+        // RULE: breaking a module gives back an EMPTY Integrale and the block that was
+        // put into it - NEVER the module. A module is not an item a player can hold any
+        // more; dropping "itself" would hand out something unobtainable AND eat the frame
+        // and the block that were spent. This replaces the old drop, which was the block.
+        //
+        // The casing elements are returned as REAL BLOCKS, one per part, and that is why
+        // the NBT counter is gone: the counter existed to carry "how many crafters are
+        // inside" through an item, and the frame has no block entity to carry it on. The
+        // blocks themselves cannot be lost that way, and the player gets back exactly
+        // what they clicked in.
+        java.util.List<ItemStack> out = new java.util.ArrayList<>();
+        out.add(new ItemStack(
+                com.craftingveloce.init.VeloceRegistry.VELOCE_INTEGRALE_ITEM.get()));
+        int parts = 1;
         if (params.getOptionalParameter(
                 net.minecraft.world.level.storage.loot.parameters.LootContextParams.BLOCK_ENTITY)
                 instanceof VeloceKineticModuleBlockEntity be && be.caseParts() > 0) {
-            net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
-            tag.putInt("VeloceParts", be.caseParts());
-            net.minecraft.world.item.BlockItem.setBlockEntityData(stack,
-                    blockEntityType.get(), tag);
+            parts = be.caseParts();
         }
-        return java.util.List.of(stack);
+        VeloceIntegraleConversions.Conversion back = VeloceIntegraleConversions.forBlock(this);
+        if (back != null) {
+            net.minecraft.world.item.Item in =
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM.get(back.inputId());
+            if (in != net.minecraft.world.item.Items.AIR) {
+                out.add(new ItemStack(in, parts));
+            }
+        }
+        return out;
     }
 
     /**

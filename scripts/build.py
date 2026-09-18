@@ -3136,9 +3136,14 @@ def validate_case_disassembly():
     if drops is None:
         problems.append("the machine has no drop of its own (the counter will not reach the NBT)")
     else:
-        for need, what in (('tag.putInt("VeloceParts"', "writing the number of parts"),
-                           ("BlockItem.setBlockEntityData", "writing the data into the item"),
-                           ("LootContextParams.BLOCK_ENTITY", "reading the block entity on break")):
+        # The counter used to travel in the dropped item's NBT. That carrier is gone:
+        # the drop is now the Integrale frame, which has NO block entity, so there is
+        # nothing to read "VeloceParts" back from. The parts come back as REAL BLOCKS
+        # instead - one per part, read from the block entity at break time - which the
+        # player cannot lose and which needs no round trip at all.
+        for need, what in (("LootContextParams.BLOCK_ENTITY", "reading the block entity on break"),
+                           ("caseParts()", "asking the block entity how many parts stand in it"),
+                           ("VELOCE_INTEGRALE_ITEM", "dropping the frame instead of the module")):
             if need not in drops:
                 problems.append("the machine drop without " + what)
 
