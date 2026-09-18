@@ -3369,6 +3369,48 @@ def validate_jade_config_lang():
     print(f"    OK ({len(uids)} Jade provider UID(s), every config translation present)")
 
 
+def validate_container_dedupe():
+    """
+    A container enters the network ONCE, however many pipes touch it.
+
+    The player: "when a double chest is connected by two pipes in the network, the terminal
+    shows its items twice". A double chest is ONE inventory reachable at TWO positions -
+    NeoForge answers the item handler capability at EITHER half with the same
+    CompoundContainer - so a network that keys its endpoints by the position a pipe happens
+    to touch counts every stack twice.
+
+    This is the property that prevents it, and it is invisible without a test: nothing
+    crashes, nothing logs, the numbers are merely doubled. Two things have to hold together
+    and either one alone is useless - the endpoint must be keyed by the CANONICAL position,
+    and the canonicalisation must fold a double chest's two halves onto one key.
+    """
+    path = ("neoforge/src/main/java/com/craftingveloce/network/pipe/"
+            "VelocePipeNetworkManager.java")
+    text = open(path, encoding="utf-8").read()
+    problems = []
+
+    # 1. the INVENTORY branch keys on the CANONICAL position, not on the pipe's neighbour
+    if "discoveredEndpoints.put(canonicalPos, ep)" not in text:
+        problems.append("an inventory is keyed by the position a pipe touches, so a second "
+                        "pipe against the other half of the same container adds a SECOND "
+                        "endpoint and every stack is counted twice")
+
+    # 2. the canonicalisation folds the two halves of a double chest together
+    body = _method_body(text, "public static BlockPos getCanonicalInventoryPos(")
+    if body is None:
+        problems.append("no getCanonicalInventoryPos - nothing folds a multi-block container")
+    else:
+        for need, what in (("ChestBlock", "the vanilla double chest"),
+                           ("ChestType.RIGHT", "the right half"),
+                           ("getConnectedDirection", "the direction to the other half")):
+            if need not in body:
+                problems.append("the container canonicalisation does not handle " + what)
+
+    if problems:
+        fail("container dedupe:\n  " + "\n  ".join(problems))
+    print("    OK (a container enters the network once, however many pipes touch it)")
+
+
 def validate_extractor_redstone():
     """
     The extractor must do NOTHING while it is powered.
@@ -4688,6 +4730,7 @@ def main():
     # second, hand-written register does not come into being.
     validate_block_data(names)
     validate_block_recipes()
+    validate_container_dedupe()
     validate_packet_docs()
     validate_lang_keys()
     validate_filter_labels()
