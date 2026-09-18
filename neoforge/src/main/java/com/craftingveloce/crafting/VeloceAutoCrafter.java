@@ -1798,11 +1798,30 @@ public final class VeloceAutoCrafter {
                         machine);
             }
         }
-        // 3) What remains is a missing ingredient - we say which one, and where else
-        //    the item could have been made.
+        // 3) What remains is a missing ingredient - we say which one.
+        //
+        // THE "Also available in: ..." LINE IS TURNED OFF for now, at the owner's request,
+        // and it is off deliberately rather than by accident, so here is what it was doing
+        // wrong:
+        //
+        //   * `machineNames` collected EVERY block of a FAMILY. For one Mekanism machine it
+        //     printed "veloce crusher module, veloce enrichment module, veloce combiner
+        //     module, ..." - twenty-two names for an item that one of them can make. A hint
+        //     that long is not a hint;
+        //   * for CREATE the list came out EMPTY and fell through to the bare module id, so
+        //     the line said "create" and nothing else. That is not an oversight to be patched
+        //     here: Create's modules are `VeloceKineticModuleBlock`s, a compat type this CORE
+        //     class is not allowed to name - the isolation the build guards would break. The
+        //     only correct fix is for each module to name its own machines, which is a change
+        //     to `VeloceProcessingModule` and to the two modules, not to this method.
+        //
+        // `hintMachines` is still BUILT, because the `noModule` and `moduleUnpowered` returns
+        // above need the machine name for their single-machine messages. It is simply no
+        // longer attached to this one - and an empty hint makes VeloceCraftErrors skip the
+        // line entirely.
         return CraftResult.fail("craftingveloce.craft.error.noBase",
                 firstMissing(level, ctx, item, stock),
-                String.join(", ", hintMachines));
+                "");
     }
 
     /**
