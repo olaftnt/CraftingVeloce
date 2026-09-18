@@ -396,6 +396,10 @@ public final class VeloceAutoCrafter {
             VeloceCraftTrace.log("task: %sx %s (%s), in network=%d, in inventory=%d, missing=%d",
                     count, VeloceCraftTrace.name(item), VeloceCraftTrace.id(item),
                     inNetwork, inInventory, missing);
+            // The enabled set is printed because it is the switch the planner consults
+            // before it will craft ANYTHING, and a report of "it will not use my log" is
+            // unanswerable without knowing whether planks are in here.
+            VeloceCraftTrace.log("auto-crafting enabled for: %s", ctx.enabledItems);
             VeloceCraftTrace.dumpStock(netStock, item,
                     VeloceRecipeFinder.all(level, item));
         }
@@ -1008,9 +1012,19 @@ public final class VeloceAutoCrafter {
                 return true;
             }
 
-            // Recursion only for enabled items.
-
-            if (!enabled.contains(item)) {
+            // Recursion only for the item the player ASKED for - not for its ingredients.
+            //
+            // The gate said "may this item be auto-crafted", and applying it at every depth
+            // meant a request for oak doors REFUSED to make the oak planks for them. So an
+            // oak log sitting right there - in a chest, or in the player's own inventory -
+            // was ignored, and the request failed with "not supplied". The player asked for
+            // doors; the planks are a step towards them, not a request of their own, and
+            // nobody who clicks a door expects to have to go and enable planks first.
+            //
+            // depth == 0 is the requested item, and its switch has already been honoured by
+            // the caller (ensureAvailable returns early when the item is not enabled), so
+            // this now only refuses what was never asked for.
+            if (!enabled.contains(item) && depth == 0) {
                 if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NOT ENABLED");
                 return false;
             }
