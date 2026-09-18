@@ -95,11 +95,31 @@ public final class VeloceCraftErrors {
             if (i > 0) {
                 out.append(", ");
             }
-            out.append(looksLikeKey(parts[i]) ? Component.translatable(parts[i])
-                    : Component.literal(parts[i]));
+            out.append(asPart(parts[i]));
         }
         return out;
     }
+
+    /**
+     * One part of the detail: a count in front of a key, a key, or plain text.
+     *
+     * <p>The count form exists because a recipe can want the same ingredient more than
+     * once - a door needs six planks - and the player was shown "oak planks oak planks
+     * oak planks..." rather than "6x oak planks". The count is the SERVER's text (it is
+     * a number), so only the name behind it needs translating, and that is why the
+     * prefix is stripped here rather than being part of the key.
+     */
+    private static MutableComponent asPart(String value) {
+        java.util.regex.Matcher count = COUNTED.matcher(value);
+        if (count.matches()) {
+            return Component.literal(count.group(1)).append(Component.translatable(count.group(2)));
+        }
+        return looksLikeKey(value) ? Component.translatable(value) : Component.literal(value);
+    }
+
+    /** "6x item.minecraft.oak_planks" -> "6x " + the key. */
+    private static final java.util.regex.Pattern COUNTED =
+            java.util.regex.Pattern.compile("(\\d+x )(.+)");
 
     private static boolean looksLikeKey(String value) {
         return value.startsWith("block.") || value.startsWith("item.")

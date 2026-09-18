@@ -1775,7 +1775,12 @@ public final class VeloceAutoCrafter {
                 // EVERY unsatisfied ingredient of this recipe, not just the first one.
                 // "missing nether wart" sends the player back for one trip per attempt;
                 // the recipe already says all of them, so they are all named.
-                java.util.List<String> gaps = new java.util.ArrayList<>();
+                // Counted, not listed. A door needs six planks, so the ingredient appears
+                // six times - and the player got "missing oak planks oak planks oak
+                // planks ..." instead of "missing 6x oak planks". A LinkedHashMap so the
+                // order is still the recipe's, and the count is the number of SLOTS that
+                // want it (which is what the player has to supply).
+                java.util.Map<String, Integer> gapCounts = new java.util.LinkedHashMap<>();
                 List<Ingredient> ingredients = recipe.ingredients();
                 for (int i = 0; i < ingredients.size(); i++) {
                     if (!hasOptions(ingredients.get(i))) {
@@ -1791,12 +1796,15 @@ public final class VeloceAutoCrafter {
                         }
                     }
                     if (!satisfied) {
-                        gaps.add(firstOptionName(ingredients.get(i)));
+                        gapCounts.merge(firstOptionName(ingredients.get(i)), 1, Integer::sum);
                     }
                 }
-                if (gaps.isEmpty()) {
+                if (gapCounts.isEmpty()) {
                     return null;               // this recipe is feasible
                 }
+                java.util.List<String> gaps = new java.util.ArrayList<>();
+                gapCounts.forEach((name, count) ->
+                        gaps.add(count == 1 ? name : count + "x " + name));
                 if (firstGaps == null) {
                     firstGaps = String.join(", ", gaps);
                 }
