@@ -3092,10 +3092,36 @@ def validate_showcase_command():
     problems = []
     if "getStateForPlacement" not in text:
         problems.append("the showcase command without a state with its own placement logic")
-    for need, what in (('literal("pipes")', "pipe mode"),
+    for need, what in (('literal("showcase")', "the floor arrangement"),
+                       ('literal("showpanel")', "the wall arrangement"),
+                       ('literal("pipes")', "pipe mode"),
                        ('literal("clear")', "cleanup mode")):
         if need not in text:
             problems.append("the showcase command without " + what)
+
+    # THE WALL MUST STACK UPWARDS AND MUST NOT BE SPACED OUT. Those two are the entire
+    # difference from the floor grid, and each is one deleted line away from quietly
+    # becoming the grid again - which looks like a working command and shows the wrong
+    # thing.
+    slot_body = _method_body(text, "private static BlockPos slot(")
+    if slot_body is None:
+        problems.append("showcase has no slot() to place blocks with")
+    else:
+        wall_at = slot_body.find("Layout.WALL")
+        spacing_at = slot_body.find("SPACING")
+        if wall_at < 0:
+            problems.append("slot() does not branch on the arrangement")
+        if ".above(" not in slot_body:
+            problems.append("the wall arrangement never stacks upwards")
+        if wall_at >= 0 and spacing_at >= 0 and wall_at > spacing_at:
+            problems.append("the WALL branch sits after the spacing arithmetic - the "
+                            "blocks would be laid out on the floor again")
+
+    # clear() must know BOTH arrangements: they overlap in the world, so a clear() that
+    # walks only its own would leave the other one standing.
+    clear_body = _method_body(text, "private static int clear(")
+    if clear_body is None or "Layout.values()" not in clear_body:
+        problems.append("clear() only cleans one of the two arrangements")
     # Method bodies, not the whole file: the name "BuiltInRegistries.BLOCK"
     # occurs in several places, so removing it from the block list alone would
     # not be visible.
@@ -3110,7 +3136,8 @@ def validate_showcase_command():
         problems.append("the showcase command is not registered")
     if problems:
         fail("showcase:\n  " + "\n  ".join(problems))
-    print("    OK (/cv showcase: blocks from the registry + parts + pipes + cleanup)")
+    print("    OK (/cv showcase + showpanel: blocks from the registry, both layouts, "
+          "parts, pipes, one cleanup that knows both)")
 
 
 def validate_crafting_source_order():

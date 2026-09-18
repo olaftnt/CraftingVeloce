@@ -1,0 +1,18 @@
+# /cv showpanel: every Veloce block as a WALL - side by side and one on top of another,
+# with no gap at all, instead of the floor grid /cv showcase builds.
+#
+# The two arrangements are the same collection and the same code, so what is worth
+# asserting here is not the geometry (build.py reads the layout out of the source) but
+# that the command runs, and that clearing still removes what it placed: the wall and the
+# grid OVERLAP in the world, so a clear() that only knew about one of them would leave
+# litter behind - which is the exact thing that subcommand exists to prevent.
+#
+# Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=showpanel -PveloceKeepOpen
+
+/cv showpanel
+expect: stacked upwards
+
+wait: 40
+
+/cv showcase clear
+expect: removed
