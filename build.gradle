@@ -3,7 +3,7 @@
 // `verifyGuards` is the bridge between the two build systems: Gradle builds the
 // jar, then the existing scripts/build.py guards are run against it. They are the
 // project's real test suite (~38 checks) and are being rewritten as Gradle tests
-// incrementally - see MULTILOADER.md.
+// incrementally, against the built jar.
 allprojects {
     group = project.mod_group
     version = project.mod_version

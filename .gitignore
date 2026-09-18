@@ -33,3 +33,6 @@ __pycache__/
 # Logs from isolation test runs (scripts/isolation/L1Test.java).
 logs/
 run-tests/
+
+# Generated classpath dump (machine-specific absolute paths).
+scripts/cp.txt

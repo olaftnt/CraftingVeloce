@@ -3967,6 +3967,14 @@ def step(n, text):
 def main():
     # --- 1. compilation ------------------------------------------------
     step(1, "Compiling sources")
+    # cp.txt was a generated dump of the local classpath, with absolute paths from one
+    # machine and a reference to a jar from a Modrinth profile. It is not part of the
+    # repository any more; the Gradle build owns the classpath (see neoforge/build.gradle)
+    # and `./gradlew verifyGuards` is the gate that is actually run. This legacy pipeline is
+    # kept only for the guards, so it says so instead of dying with a FileNotFoundError.
+    if not os.path.exists("scripts/cp.txt"):
+        fail("scripts/cp.txt is gone (it held machine-specific paths). Use "
+             "`./gradlew build verifyGuards` - the Gradle build owns the classpath now.")
     cp = open("scripts/cp.txt").read().strip()
     toms = os.path.join(MODS, "toms_storage-1.21-2.4.2.jar")
     rs = os.path.join(MODS, "refinedstorage-neoforge-2.0.9.jar")
