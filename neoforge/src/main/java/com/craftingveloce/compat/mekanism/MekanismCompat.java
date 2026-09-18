@@ -106,167 +106,32 @@ public final class MekanismCompat {
 
     }
 
-    /** Casing contents renderer for the module block entities - CLIENT ONLY. */
+    /**
+     * Casing contents renderer for the module block entities - CLIENT ONLY.
+     *
+     * <p><b>Why this is a loop and not a list.</b> This method used to spell out every
+     * machine by name, in four near-identical copies - and every copy included the 16
+     * gas and fluid machines that are switched off further up this class. Those machines
+     * register their block entity type into a register that is never sent to the bus, so
+     * the `.get()` here threw before the title screen:
+     *
+     * <pre>Trying to access unbound value:
+     *   ResourceKey[block_entity_type / craftingveloce:veloce_mekanism_purification_chamber_module]</pre>
+     *
+     * <p>Walking {@link MekanismFeModules#ALL} means the renderers can only ever cover the
+     * machines that are actually on: switching one off removes its renderer in the same
+     * edit, with nothing left to remember.
+     */
     private static void registerCaseRenderers(IEventBus modEventBus) {
         modEventBus.addListener(
                 net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class,
                 event -> {
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.COMBINER_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.COMPRESSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.METALLURGIC_INFUSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PURIFYING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.INJECTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CRYSTALLIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.DISSOLUTION_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.WASHING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.SEPARATING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.REACTION_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.ROTARY_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.ACTIVATING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CENTRIFUGING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.NUCLEOSYNTHESIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PIGMENT_EXTRACTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PIGMENT_MIXING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PAINTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.OXIDIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CHEMICAL_INFUSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CRUSHER_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.COMPRESSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.METALLURGIC_INFUSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PURIFYING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.INJECTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CRYSTALLIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.DISSOLUTION_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.WASHING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.SEPARATING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.REACTION_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.ROTARY_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.ACTIVATING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CENTRIFUGING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.NUCLEOSYNTHESIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PIGMENT_EXTRACTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PIGMENT_MIXING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PAINTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.OXIDIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CHEMICAL_INFUSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.ENRICHMENT_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.COMPRESSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.METALLURGIC_INFUSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PURIFYING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.INJECTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CRYSTALLIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.DISSOLUTION_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.WASHING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.SEPARATING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.REACTION_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.ROTARY_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.ACTIVATING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CENTRIFUGING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.NUCLEOSYNTHESIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PIGMENT_EXTRACTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PIGMENT_MIXING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PAINTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.OXIDIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CHEMICAL_INFUSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.SAWMILL_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.COMPRESSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.METALLURGIC_INFUSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PURIFYING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.INJECTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CRYSTALLIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.DISSOLUTION_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.WASHING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.SEPARATING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.REACTION_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.ROTARY_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.ACTIVATING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CENTRIFUGING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.NUCLEOSYNTHESIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PIGMENT_EXTRACTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PIGMENT_MIXING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.PAINTING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.OXIDIZING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
-                    event.registerBlockEntityRenderer(MekanismBlockEntities.CHEMICAL_INFUSING_MODULE.get(),
-                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    for (com.craftingveloce.crafting.FeModule module
+                            : MekanismFeModules.ALL) {
+                        event.registerBlockEntityRenderer(
+                                MekanismBlockEntities.holderFor(module).get(),
+                                com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    }
                 });
     }
 
