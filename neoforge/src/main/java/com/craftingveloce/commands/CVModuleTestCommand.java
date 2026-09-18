@@ -511,6 +511,24 @@ public final class CVModuleTestCommand {
      * "does the network produce the item and hand it over".
      */
     private static void judge(ServerLevel level, BlockPos terminalPos, ItemStack wanted, String moduleId, String recipeId) {
+        // THE RIG STATE, IN ONE LINE.
+        //
+        // Three rounds were spent changing the rig and hoping, and each answer was the
+        // same "moduleUnpowered" - while /cv kinetic place drives the SAME machine at
+        // -16 rpm. This dump is what should have come first: the machine's own speed, its
+        // state, and what stands on both sides of it. A kinetic module is powered when
+        // getSpeed() != 0 and by nothing else, so this line says whether the rotation is
+        // missing, or whether it arrives and something downstream ignores it.
+        if (lastMachinePos != null
+                && level.getBlockEntity(lastMachinePos) instanceof
+                com.craftingveloce.compat.create.block.entity.VeloceKineticModuleBlockEntity kinetic) {
+            LOG.info("[testmodule] RIG speed={} state={} east={} west={} be={}",
+                    kinetic.getSpeed(), level.getBlockState(lastMachinePos),
+                    level.getBlockState(lastMachinePos.east()),
+                    level.getBlockState(lastMachinePos.west()),
+                    kinetic.getClass().getSimpleName());
+        }
+
         var manager = VelocePipeNetworkManager.get(level);
         var net = manager.getNetworkForTerminal(level, terminalPos);
         if (net == null) {
