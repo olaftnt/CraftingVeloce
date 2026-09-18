@@ -425,7 +425,7 @@ public final class VeloceAutoCrafter {
         // On exceeding it we say "too complex", not "missing ingredients" - those
         // are two different situations.
         startEstimate(planBudgetNanos);
-        Map<Item, Long> stock = snapshotStock(ctx, netStock);
+        Map<Item, Long> stock = snapshotStock(ctx, netStock, item);
         Plan plan = new Plan(ctx.heatOps());
 
         // How much we MANAGED to plan (may be less than missing).
@@ -2304,10 +2304,28 @@ public final class VeloceAutoCrafter {
      * inventories.
      */
 
-    private static Map<Item, Long> snapshotStock(Context ctx, Map<Item, Long> networkCounts) {
+    private static Map<Item, Long> snapshotStock(Context ctx, Map<Item, Long> networkCounts,
+                                                Item requested) {
         Map<Item, Long> stock = new HashMap<>(networkCounts);
         if (ctx.inventory != null) {
             for (Item it : ctx.inventory.allItems()) {
+                // THE REQUESTED ITEM IS NOT AN INGREDIENT OF ITSELF.
+                //
+                // Merging the player's inventory wholesale meant that asking for something
+                // they were already carrying put it in the planning stock - and the planner,
+                // needing 1 more, simply "took" it from the stock and reported success
+                // WITHOUT CRAFTING ANYTHING. The hand-over then found nothing in the buffers
+                // and nothing in the network (it can only deliver from there) and reported
+                // `dropFull`. That is the whole of "it works when I have no doors and fails
+                // when I do", and it is why the log in the player's inventory was never
+                // consumed: the plan never needed it.
+                //
+                // The player's inventory is a source of INGREDIENTS. The thing they asked
+                // for has to be produced into the network, because that is the only place
+                // the terminal can hand it over from.
+                if (it == requested) {
+                    continue;
+                }
                 stock.merge(it, (long) ctx.inventory.count(it), Long::sum);
             }
         }
