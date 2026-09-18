@@ -9,6 +9,7 @@ import com.craftingveloce.crafting.VeloceRecipeRegistry;
 import com.craftingveloce.init.VeloceRegistry;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
 import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
+import com.craftingveloce.block.entity.VeloceRotationSources;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.commands.CommandSourceStack;
@@ -852,12 +853,9 @@ public final class CVModuleTestCommand {
         // 256 RPM, NOT the motor's default of 16. REQUIRED_SPEED is 256, so a default
         // motor leaves the module spinning AND unpowered at the same time - which is how
         // three rounds were spent looking for a missing drive that was there all along.
-        if (level.getBlockEntity(motorPos)
-                instanceof com.simibubi.create.content.kinetics.motor.CreativeMotorBlockEntity motorBe) {
-            motorBe.generatedSpeed.setValue(256);
-            motorBe.setChanged();
-            motorBe.notifyUpdate();
-        }
+        // Configured through a registry of setters: the core must not name a Create type
+        // (validate_jar_isolation rejects it, and the core has to work with Create absent).
+        VeloceRotationSources.tune(level, motorPos);
         LOG.info("[testmodule] rotation source {} placed east of {}", motor, machinePos);
         return true;
     }

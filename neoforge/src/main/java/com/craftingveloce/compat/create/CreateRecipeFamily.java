@@ -45,6 +45,9 @@ public final class CreateRecipeFamily {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
             Set<RecipeType<?>> types = types();
             VeloceRecipeFamilies.registerModFamily(ID, types);
+            // The rotation source's tuner lives in the integration, and the core asks for
+            // it by block id - see VeloceRotationSources.
+            CreateRotationSource.register();
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
                     "[Veloce][COMPAT] {}: registered {} recipe types",
                     ID, types.size());
