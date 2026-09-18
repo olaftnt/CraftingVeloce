@@ -51,6 +51,23 @@ public final class MekanismBlockEntities {
                     (pos, state) -> factory(MekanismFeModules.SAWMILL).create(pos, state),
                     MekanismBlocks.VELOCE_SAWMILL_MODULE.get()).build(null));
 
+    /**
+     * Where the types of the SWITCHED-OFF machines register - and never get registered.
+     *
+     * <p><b>Why this is not optional.</b> Each of those type declarations ends in
+     * {@code MekanismBlocks.VELOCE_XXX_MODULE.get()} inside the registration lambda.
+     * Their blocks live in a DeferredRegister that is never handed to the bus, so that
+     * {@code .get()} would throw "Trying to access unbound value" the moment the types
+     * were registered - the client would not start. Keeping them in a register that is
+     * equally never sent means the lambda never runs.
+     *
+     * <p>That is the same deferral the whole file already relies on, used one level up:
+     * these machines stay written down, and stay inert.
+     */
+    private static final DeferredRegister<BlockEntityType<?>> DISABLED_TYPES =
+            DeferredRegister.create(net.minecraft.core.registries.Registries.BLOCK_ENTITY_TYPE,
+                    com.craftingveloce.CraftingVeloceMod.MODID);
+
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceFeModuleBlockEntity>> COMPRESSING_MODULE =
             TYPES.register("veloce_mekanism_osmium_compressor_module",
                     () -> BlockEntityType.Builder.of((pos, state) -> factory(MekanismFeModules.COMPRESSING).create(pos, state),
@@ -141,23 +158,6 @@ public final class MekanismBlockEntities {
                     () -> BlockEntityType.Builder.of((pos, state) -> factory(MekanismFeModules.CHEMICAL_INFUSING).create(pos, state),
                             MekanismBlocks.VELOCE_CHEMICAL_INFUSING_MODULE.get()).build(null));
 
-
-    /**
-     * Where the types of the SWITCHED-OFF machines register - and never get registered.
-     *
-     * <p><b>Why this is not optional.</b> Each of those type declarations ends in
-     * {@code MekanismBlocks.VELOCE_XXX_MODULE.get()} inside the registration lambda.
-     * Their blocks live in a DeferredRegister that is never handed to the bus, so that
-     * {@code .get()} would throw "Trying to access unbound value" the moment the types
-     * were registered - the client would not start. Keeping them in a register that is
-     * equally never sent means the lambda never runs.
-     *
-     * <p>That is the same deferral the whole file already relies on, used one level up:
-     * these machines stay written down, and stay inert.
-     */
-    private static final DeferredRegister<BlockEntityType<?>> DISABLED_TYPES =
-            DeferredRegister.create(net.minecraft.core.registries.Registries.BLOCK_ENTITY_TYPE,
-                    com.craftingveloce.CraftingVeloceMod.MODID);
 
     public static void register(IEventBus modEventBus) {
         TYPES.register(modEventBus);

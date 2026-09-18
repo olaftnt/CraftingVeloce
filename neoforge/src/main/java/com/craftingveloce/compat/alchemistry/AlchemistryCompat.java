@@ -3,6 +3,7 @@ package com.craftingveloce.compat.alchemistry;
 import com.craftingveloce.block.VeloceCaseContents;
 import com.craftingveloce.compat.VeloceMods;
 import net.neoforged.bus.api.IEventBus;
+import com.craftingveloce.block.VeloceIntegraleConversions;
 
 /**
  * Integration gate for Alchemistry.
@@ -48,6 +49,11 @@ public final class AlchemistryCompat {
     }
 
     /** Base block from the mod by ID (the registry name, not a class field). */
+    /** The id form, for the conversion table - which keys on ids, not on blocks. */
+    private static net.minecraft.resources.ResourceLocation alchId(String id) {
+        return net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("alchemistry", id);
+    }
+
     private static net.minecraft.world.level.block.Block block(String id) {
         return net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("alchemistry", id));
@@ -63,6 +69,18 @@ public final class AlchemistryCompat {
         VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_DISSOLVER_MODULE.get(), () -> block("dissolver"));
         VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_LIQUIFIER_MODULE.get(), () -> block("liquifier"));
         VeloceCaseContents.register(() -> AlchemistryBlocks.VELOCE_ATOMIZER_MODULE.get(), () -> block("atomizer"));
+        // ---- Integrale conversions ----
+        //
+        // Same rule as Mekanism: the module is no longer crafted, so this is the only
+        // way to make one, and a module missing from here is unobtainable.
+        VeloceIntegraleConversions.register(alchId("atomizer"), AlchemistryBlocks.VELOCE_ATOMIZER_MODULE::get);
+        VeloceIntegraleConversions.register(alchId("combiner"), AlchemistryBlocks.VELOCE_COMBINER_MODULE::get);
+        VeloceIntegraleConversions.register(alchId("compactor"), AlchemistryBlocks.VELOCE_COMPACTOR_MODULE::get);
+        VeloceIntegraleConversions.register(alchId("dissolver"), AlchemistryBlocks.VELOCE_DISSOLVER_MODULE::get);
+        VeloceIntegraleConversions.register(alchId("fission_chamber_controller"), AlchemistryBlocks.VELOCE_FISSION_MODULE::get);
+        VeloceIntegraleConversions.register(alchId("fusion_chamber_controller"), AlchemistryBlocks.VELOCE_FUSION_MODULE::get);
+        VeloceIntegraleConversions.register(alchId("liquifier"), AlchemistryBlocks.VELOCE_LIQUIFIER_MODULE::get);
+
 
     }
 

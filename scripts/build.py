@@ -1299,30 +1299,16 @@ JEI_CATEGORIES = {
         "create:mixing": "VELOCE_MIXER_MODULE_ITEM",
         "create:deploying": "VELOCE_DEPLOYER_MODULE_ITEM",
     },
+    # Only the ENABLED machines appear. The gas and fluid ones are switched off in
+    # MekanismFeModules.DISABLED, and the Energized Smelter is gone - so a catalyst
+    # for any of them would be a link to a block that cannot exist.
     "neoforge/src/main/java/com/craftingveloce/compat/mekanism/MekanismJeiCatalysts.java": {
         "mekanism:crushing": "VELOCE_CRUSHER_MODULE_ITEM",
         "mekanism:enriching": "VELOCE_ENRICHMENT_MODULE_ITEM",
         "mekanism:combining": "VELOCE_COMBINER_MODULE_ITEM",
         "mekanism:sawing": "VELOCE_SAWMILL_MODULE_ITEM",
-        "mekanism:smelting": "VELOCE_SMELTING_MODULE_ITEM",
         "mekanism:compressing": "VELOCE_COMPRESSING_MODULE_ITEM",
         "mekanism:metallurgic_infusing": "VELOCE_METALLURGIC_INFUSING_MODULE_ITEM",
-        "mekanism:purifying": "VELOCE_PURIFYING_MODULE_ITEM",
-        "mekanism:injecting": "VELOCE_INJECTING_MODULE_ITEM",
-        "mekanism:crystallizing": "VELOCE_CRYSTALLIZING_MODULE_ITEM",
-        "mekanism:dissolution": "VELOCE_DISSOLUTION_MODULE_ITEM",
-        "mekanism:washing": "VELOCE_WASHING_MODULE_ITEM",
-        "mekanism:separating": "VELOCE_SEPARATING_MODULE_ITEM",
-        "mekanism:reaction": "VELOCE_REACTION_MODULE_ITEM",
-        "mekanism:rotary": "VELOCE_ROTARY_MODULE_ITEM",
-        "mekanism:activating": "VELOCE_ACTIVATING_MODULE_ITEM",
-        "mekanism:centrifuging": "VELOCE_CENTRIFUGING_MODULE_ITEM",
-        "mekanism:nucleosynthesizing": "VELOCE_NUCLEOSYNTHESIZING_MODULE_ITEM",
-        "mekanism:pigment_extracting": "VELOCE_PIGMENT_EXTRACTING_MODULE_ITEM",
-        "mekanism:pigment_mixing": "VELOCE_PIGMENT_MIXING_MODULE_ITEM",
-        "mekanism:painting": "VELOCE_PAINTING_MODULE_ITEM",
-        "mekanism:oxidizing": "VELOCE_OXIDIZING_MODULE_ITEM",
-        "mekanism:chemical_infusing": "VELOCE_CHEMICAL_INFUSING_MODULE_ITEM",
     },
     "neoforge/src/main/java/com/craftingveloce/compat/alchemistry/AlchemistryJeiCatalysts.java": {
         "alchemistry:compactor": "VELOCE_COMPACTOR_MODULE_ITEM",

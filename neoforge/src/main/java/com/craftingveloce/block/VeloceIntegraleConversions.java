@@ -65,6 +65,11 @@ public final class VeloceIntegraleConversions {
         add(Blocks.DISPENSER, () -> VeloceRegistry.VELOCE_EXTRACTOR.get());
         add(Blocks.OBSERVER, () -> VeloceRegistry.THRESHOLD_SENSOR.get());
         add(Blocks.FURNACE, () -> VeloceRegistry.VELOCITY_FURNACE.get());
+        // The second furnace takes the SECOND vanilla furnace, so the two do not
+        // compete for the same block: velocity burns fuel, electric has an accumulator,
+        // and a player holding a plain furnace means the fuel one.
+        add(Blocks.BLAST_FURNACE, () -> VeloceRegistry.ELECTRIC_FURNACE.get());
+        add(Blocks.BREWING_STAND, () -> VeloceRegistry.BREWING_STAND.get());
     }
 
     private VeloceIntegraleConversions() {

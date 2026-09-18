@@ -3,6 +3,7 @@ package com.craftingveloce.compat.mekanism;
 import com.craftingveloce.block.VeloceCaseContents;
 import com.craftingveloce.compat.VeloceMods;
 import net.neoforged.bus.api.IEventBus;
+import com.craftingveloce.block.VeloceIntegraleConversions;
 
 /**
  * Gate for the Mekanism integration.
@@ -50,6 +51,11 @@ public final class MekanismCompat {
     }
 
     /** Base block from the mod by ID (registry name, not a class field). */
+    /** The id form, for the conversion table - which keys on ids, not on blocks. */
+    private static net.minecraft.resources.ResourceLocation mekId(String id) {
+        return net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("mekanism", id);
+    }
+
     private static net.minecraft.world.level.block.Block block(String id) {
         return net.minecraft.core.registries.BuiltInRegistries.BLOCK.get(
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("mekanism", id));
@@ -80,6 +86,24 @@ public final class MekanismCompat {
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_PAINTING_MODULE.get(), () -> block("painting_machine"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_OXIDIZING_MODULE.get(), () -> block("chemical_oxidizer"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_CHEMICAL_INFUSING_MODULE.get(), () -> block("chemical_infuser"));
+        // ---- Integrale conversions ----
+        //
+        // WHERE THE MACHINE COMES FROM NOW. These modules used to be crafted in a
+        // crafting table; that is gone, and the ONLY way to make one is to right-click
+        // an Integrale frame with the real machine from the other mod. Without these
+        // rows the module would be unobtainable - not crafted, and not convertible
+        // either - which is a hole nothing in the build can see.
+        //
+        // Only the ENABLED modules appear here. See MekanismFeModules.DISABLED: the gas
+        // and fluid machines are switched off, so offering a conversion for one would
+        // produce a block that cannot run.
+        VeloceIntegraleConversions.register(mekId("crusher"), MekanismBlocks.VELOCE_CRUSHER_MODULE::get);
+        VeloceIntegraleConversions.register(mekId("enrichment_chamber"), MekanismBlocks.VELOCE_ENRICHMENT_MODULE::get);
+        VeloceIntegraleConversions.register(mekId("combiner"), MekanismBlocks.VELOCE_COMBINER_MODULE::get);
+        VeloceIntegraleConversions.register(mekId("precision_sawmill"), MekanismBlocks.VELOCE_SAWMILL_MODULE::get);
+        VeloceIntegraleConversions.register(mekId("osmium_compressor"), MekanismBlocks.VELOCE_COMPRESSING_MODULE::get);
+        VeloceIntegraleConversions.register(mekId("metallurgic_infuser"), MekanismBlocks.VELOCE_METALLURGIC_INFUSING_MODULE::get);
+
     }
 
     /** Casing contents renderer for the module block entities - CLIENT ONLY. */
