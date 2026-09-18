@@ -1505,6 +1505,75 @@ def _failure_branch(body):
     end = body.find("return;\n            }", start)
     return body[start:end if end > 0 else len(body)]
 
+def validate_jei_integrale_category():
+    """
+    The "Integrale conversion" JEI category - the one that shows the mod's RULE.
+
+    Item 1 of the cleanup, in the player's words: nothing in this mod is made in a crafting
+    table, so JEI has to show that you right-click a Veloce Integrale with item X and get
+    machine Y. Every link of that breaks SILENTLY - JEI simply shows an empty tab, or a tab
+    that disagrees with the block - so each one is pinned here:
+
+      1. the category exists and is a real JEI category, and it owns its own RecipeType
+         (a category with no type cannot be filled, and the tab stays empty);
+      2. the rows are built from `VeloceIntegraleConversions.all()`, the SAME table the
+         block consults on right-click - so what JEI shows and what actually works cannot
+         drift apart;
+      3. rows whose result does not resolve are SKIPPED. The table keys on ids precisely
+         because another mod's block may not exist yet when its row is registered, so
+         without this a player without that mod would be shown a recipe for nothing;
+      4. the information page is registered on the frame item, because the category alone
+         does not say the rule in words;
+      5. the three language keys exist - a missing key shows the raw key to the player.
+    """
+    problems = []
+    category = "neoforge/src/main/java/com/craftingveloce/compat/jei/IntegraleConversionCategory.java"
+    recipe = "neoforge/src/main/java/com/craftingveloce/compat/jei/IntegraleConversionRecipe.java"
+    plugin_path = "neoforge/src/main/java/com/craftingveloce/compat/jei/VeloceJeiPlugin.java"
+    for path, what in ((category, "Integrale conversion category"), (recipe, "its recipe type"),
+                       (plugin_path, "JEI plugin")):
+        if not os.path.exists(path):
+            problems.append("no " + what)
+    if problems:
+        return fail("JEI Integrale conversion:\n  " + "\n  ".join(problems))
+
+    category_text = open(category, encoding="utf-8").read()
+    if "implements IRecipeCategory<IntegraleConversionRecipe>" not in category_text:
+        problems.append("the category is not an IRecipeCategory of its own recipe type")
+    if "RecipeType<IntegraleConversionRecipe> TYPE" not in category_text:
+        problems.append("the category declares no RecipeType of its own - the tab stays empty")
+
+    plugin_text = open(plugin_path, encoding="utf-8").read()
+    if "IntegraleConversionCategory" not in _method_body(plugin_text,
+                                                        "public void registerCategories("):
+        problems.append("the category is never registered in registerCategories")
+    recipes_body = _method_body(plugin_text, "public void registerRecipes(")
+    if recipes_body is None:
+        problems.append("no registerRecipes - nothing ever fills the category")
+    else:
+        if "VeloceIntegraleConversions.all()" not in recipes_body:
+            problems.append("the rows do NOT come from VeloceIntegraleConversions.all(), so JEI "
+                            "can drift from the table that performs the conversion")
+        if "Blocks.AIR" not in recipes_body and "== null" not in recipes_body:
+            problems.append("rows whose result does not resolve are not skipped - a player "
+                            "without that mod would be shown a recipe for nothing")
+    if "addIngredientInfo(" not in plugin_text:
+        problems.append("no information page on the frame item - the category shows the "
+                        "examples but never states the rule")
+
+    lang = json.load(open("assets/craftingveloce/lang/en_us.json", encoding="utf-8"))
+    for key in ("craftingveloce.jei.integrale_conversion",
+                "craftingveloce.jei.integrale_conversion.howto",
+                "craftingveloce.jei.integrale_info"):
+        if key not in lang:
+            problems.append("missing language key " + key)
+
+    if problems:
+        fail("JEI Integrale conversion:\n  " + "\n  ".join(problems))
+    print("    OK (category exists, filled from the conversion table, unresolved rows skipped, "
+          "info page and 3 language keys present)")
+
+
 def validate_jei_catalysts():
     """
     JEI: our blocks on the "this is where you can make this recipe" list.
@@ -3947,6 +4016,7 @@ def main():
     validate_jade_info()
     validate_terminal_craft_error()
     validate_jei_catalysts()
+    validate_jei_integrale_category()
     validate_auto_crafter_ingredient_rule()
 
     classes = sum(1 for n in names if n.endswith(".class"))
