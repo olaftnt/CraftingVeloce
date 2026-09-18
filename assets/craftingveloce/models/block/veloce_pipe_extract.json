@@ -1,7 +1,7 @@
 {
-	"parent": "craftingveloce:block/pipe_extract",
-	"textures": {
-		"0": "craftingveloce:block/veloce_pipe",
-		"particle": "craftingveloce:block/veloce_pipe"
-	}
+    "parent": "craftingveloce:block/pipe_extract",
+    "textures": {
+        "0": "craftingveloce:block/veloce_pipe",
+        "particle": "craftingveloce:block/veloce_pipe"
+    }
 }

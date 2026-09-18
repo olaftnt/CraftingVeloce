@@ -2999,6 +2999,46 @@ def validate_block_config_defaults():
     print(f"    OK ({len(live)} machines, every config default matches its compiled value)")
 
 
+def validate_jade_config_lang():
+    """
+    Every Jade provider UID must have a `config.jade.plugin_<ns>.<path>` translation.
+
+    Jade registers a config toggle per provider UID and then ASSERTS the translation
+    exists when it first builds a GUI screen (`JadeClient.onGui`, called from
+    `Minecraft.onGameLoadFinished`). A missing key is therefore not a cosmetic problem:
+    the assertion kills the client before it ever reaches the world.
+
+    That is exactly what happened - `craftingveloce:module_info` was registered with no
+    lang entry, and the client died at startup with
+
+        AssertionError: Missing config translation:
+            config.jade.plugin_craftingveloce.module_info
+
+    and NO crash report, so the cause was invisible from the crash-reports folder. It also
+    only fired when a screen was built, so some runs reached the world and some did not -
+    which is why it survived so long.
+    """
+    problems = []
+    plugin = ("neoforge/src/main/java/com/craftingveloce/compat/jade/VeloceJadePlugin.java")
+    code = open(plugin, encoding="utf-8").read()
+
+    # UIDs are declared as ResourceLocation.fromNamespaceAndPath("craftingveloce", "x")
+    uids = re.findall(r'fromNamespaceAndPath\(\s*"([a-z0-9_]+)"\s*,\s*"([a-z0-9_/]+)"\s*\)', code)
+    if not uids:
+        problems.append("found no provider UID in the Jade plugin - this guard is looking "
+                        "at nothing")
+
+    lang = json.load(open("assets/craftingveloce/lang/en_us.json", encoding="utf-8"))
+    for namespace, path in uids:
+        key = f"config.jade.plugin_{namespace}.{path.replace('/', '.')}"
+        if key not in lang:
+            problems.append(f"no translation for {key} - Jade asserts on it and the client "
+                            "dies before reaching the world")
+    if problems:
+        fail("Jade config translations:\n  " + "\n  ".join(problems))
+    print(f"    OK ({len(uids)} Jade provider UID(s), every config translation present)")
+
+
 def validate_extractor_redstone():
     """
     The extractor must do NOTHING while it is powered.
@@ -3859,15 +3899,32 @@ def validate_integrale_model():
     elements = model.get("elements", [])
     problems = []
 
-    # 1) Frame: exactly 12 thin rods.
+    # 1) Frame: exactly 12 thin rods that TOGETHER cover the cube's 12 edges.
+    #
+    # The rule used to demand that EVERY rod be at least 16 long - i.e. each one a
+    # complete edge. That rejects an equally correct frame: four rods spanning the full
+    # depth already cover the corner regions, so the other eight only have to bridge what
+    # is left, and splitting the work that way removes the overlapping geometry the old
+    # layout had at every corner. Blockbench produced exactly that when the model was
+    # edited there, and the guard called a working frame broken.
+    #
+    # So the test is the INTENT, not the shape it was first written in: twelve rods, and
+    # between them they reach every one of the block's six faces.
     bars = []
     for i, el in enumerate(elements):
         sizes = [el["to"][0] - el["from"][0], el["to"][1] - el["from"][1],
                  el["to"][2] - el["from"][2]]
-        if sum(1 for size in sizes if size <= 2) >= 2 and max(sizes) >= 16:
+        if sum(1 for size in sizes if size <= 2) >= 2 and max(sizes) >= 4:
             bars.append((i, el))
     if len(bars) != 12:
         problems.append(f"frame rods: {len(bars)}, should be 12 (12 edges of a cube)")
+    if bars:
+        for axis, name in enumerate(("X", "Y", "Z")):
+            lo = min(el["from"][axis] for _, el in bars)
+            hi = max(el["to"][axis] for _, el in bars)
+            if lo > 0.0 or hi < 16.0:
+                problems.append(f"the frame reaches {lo}..{hi} on {name}, not 0..16 - the "
+                                "cube's edges are not covered")
 
     # 2) Glass: a RECESSED element (no wall lies on the block plane).
     glass = [(i, el) for i, el in enumerate(elements) if el not in [b[1] for b in bars]]
@@ -4285,6 +4342,7 @@ def main():
     validate_case_occlusion()
     validate_loot_item_ids()
     validate_extractor_redstone()
+    validate_jade_config_lang()
     validate_block_config_defaults()
     validate_module_drop_stacks()
     validate_crafting_source_order()

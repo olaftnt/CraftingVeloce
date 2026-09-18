@@ -3,8 +3,8 @@
     "ambientocclusion": false,
     "render_type": "minecraft:translucent",
     "textures": {
-        "panel": "craftingveloce:block/veloce_integrale",
-        "particle": "craftingveloce:block/veloce_integrale"
+        "panel": "craftingveloce:block/veloce_integrale_panel",
+        "particle": "craftingveloce:block/veloce_integrale_panel"
     },
     "elements": [
         {
