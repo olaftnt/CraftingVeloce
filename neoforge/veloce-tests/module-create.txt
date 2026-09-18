@@ -1,44 +1,54 @@
-# Module: create  -  does a placed machine module actually TAKE POWER from a network?
+# Module: create  -  does a machine a player BUILDS actually take power from a network?
 #
-# A player reported that placing an Integrale and inserting a Create module left the
-# module unable to see power. That cannot be settled by reading the code: the attachment
-# happens on a tick, inside Create's own rotation propagator, and the difference between
-# "attached and turning" and "standing next to a network" is a single number that only a
-# running game produces.
+# This is the player's own sequence, not an approximation of it. The report was:
 #
-# So every case below builds the smallest rig that can have that number - the module with
-# Create's creative motor's shaft against it - waits for the network to turn, and reads
-# the speed and the stress impact back off the machine itself.
+#   "I place an Integrale, insert a Create module, and the module does not see the
+#    power - something does not refresh."
 #
-# WHY THE WAIT IS NOT OPTIONAL. Create propagates rotation over the ticks that FOLLOW a
-# placement, so a speed read in the same tick as the motor is zero for a reason that has
-# nothing to do with the bug. Reading without waiting would produce a failure that means
-# nothing, which is worse than no test.
+# So each case builds the rig the same way: an empty Integrale next to Create's
+# creative motor, then the module item INSERTED into it, then the reading.
 #
-# WHAT IS ASSERTED, and why these numbers:
-#   source=true     - a rotation source reaches the machine at all;
-#   impact=4.0      - the machine's draw is 4.0 SU per RPM. Create computes a network's
-#                     load as `impact x |RPM|`, so at the required 256 RPM this is
-#                     exactly 1024 SU. Create's own millstone, saw, mixer and deployer
-#                     declare the same 4.0; its press and crushing wheel declare 8.0
-#                     (2048 SU) and its crafter 2.0 (512 SU). Every one of our modules is
-#                     deliberately in the 1024 SU group, whatever the casing holds - so
-#                     this number must not change with the number of wheels inside;
-#   verdict: PASS   - the machine is turning and has a source.
+# WHY INSERTING AND NOT PLACING THE MODULE BLOCK DIRECTLY. Those two paths are not the
+# same, and the difference was the entire bug. A block placed with `setBlock` runs
+# `getStateForPlacement`, which scans the neighbours and adopts their rotation axis. A
+# block that arrives by CONVERSION does not: it is built from `defaultBlockState()` with
+# only the pipe covers copied over, so it materialised pointing along Y. Create connects
+# two blocks only when their axes agree, so the module was never connected to a
+# horizontal shaft - and because the attach had already consumed the one flag Create's
+# tick uses to try again, it stayed disconnected for good.
 #
-# The speed itself is printed on the read line but NOT asserted by value: the rig proves
-# rotation ARRIVES, and pinning the exact RPM would turn a working machine red the moment
-# Create changes its default motor speed.
+# A version of this file that placed the module block directly passed on a machine that
+# was broken for every player. `insert` therefore goes through
+# `VeloceIntegraleBlock.convertAt`, the same code the right-click runs.
 #
-# The crafting half of this module is still not covered here: these machines need to be
-# driven to do work, which is what this rig now provides, but pairing that drive with a
-# drawn recipe is a separate piece of work (see UNIMPLEMENTED in CVModuleTestCommand).
+# WHAT IS ASSERTED, and why these values:
+#   rig=OK          - the motor itself is turning, so a zero means the MACHINE and not the
+#                     rig. Without this the two are indistinguishable, and blaming the mod
+#                     for a dead test motor is exactly the mistake this file exists to stop;
+#   source=true     - a rotation source reaches the machine at all. This is the assertion
+#                     the player's bug failed;
+#   impact=4.0      - the draw is 4.0 SU per RPM, so exactly 1024 SU at the required 256 RPM.
+#                     Create's own millstone, saw, mixer and deployer declare 4.0; its press
+#                     and crushing wheel declare 8.0 (2048 SU) and its crafter 2.0 (512 SU).
+#                     Every one of our modules is deliberately in the 1024 SU group,
+#                     whatever the casing holds - so this must not move with the number of
+#                     wheels inside;
+#   verdict: PASS   - turning, and with a source.
+#
+# The speed is printed on the read line but NOT asserted by value: the rig proves rotation
+# ARRIVES, and pinning the exact RPM would turn a working machine red the moment Create
+# changes its default motor speed. Note Create's creative motor defaults to 16 RPM
+# (`CreativeMotorBlockEntity.DEFAULT_SPEED`), which is below the 256 our machines require -
+# so a machine can legitimately read `rpm=16` with a source and still report "not enough
+# force". Raise the motor in its own GUI to see full power.
 #
 # Watch it:  ./gradlew :neoforge:runTestClient -PveloceTest=module-create -PveloceKeepOpen
 
 
-# --- 1/7  veloce_create_millstone_module ---
-/cv kinetic place veloce_create_millstone_module
+# --- 1/7  veloce_create_millstone_module  <- create:millstone ---
+/cv kinetic place craftingveloce:veloce_integrale
+wait: 20
+/cv kinetic insert create:millstone
 wait: 40
 /cv kinetic read
 expect: rig=OK
@@ -46,8 +56,10 @@ expect: source=true
 expect: impact=4.0
 expect: verdict: PASS
 
-# --- 2/7  veloce_create_saw_module ---
-/cv kinetic place veloce_create_saw_module
+# --- 2/7  veloce_create_saw_module  <- create:mechanical_saw ---
+/cv kinetic place craftingveloce:veloce_integrale
+wait: 20
+/cv kinetic insert create:mechanical_saw
 wait: 40
 /cv kinetic read
 expect: rig=OK
@@ -55,8 +67,10 @@ expect: source=true
 expect: impact=4.0
 expect: verdict: PASS
 
-# --- 3/7  veloce_create_crushing_module ---
-/cv kinetic place veloce_create_crushing_module
+# --- 3/7  veloce_create_crushing_module  <- create:crushing_wheel ---
+/cv kinetic place craftingveloce:veloce_integrale
+wait: 20
+/cv kinetic insert create:crushing_wheel
 wait: 40
 /cv kinetic read
 expect: rig=OK
@@ -64,8 +78,10 @@ expect: source=true
 expect: impact=4.0
 expect: verdict: PASS
 
-# --- 4/7  veloce_create_mechanical_crafter_module ---
-/cv kinetic place veloce_create_mechanical_crafter_module
+# --- 4/7  veloce_create_mechanical_crafter_module  <- create:mechanical_crafter ---
+/cv kinetic place craftingveloce:veloce_integrale
+wait: 20
+/cv kinetic insert create:mechanical_crafter
 wait: 40
 /cv kinetic read
 expect: rig=OK
@@ -73,8 +89,10 @@ expect: source=true
 expect: impact=4.0
 expect: verdict: PASS
 
-# --- 5/7  veloce_create_press_module ---
-/cv kinetic place veloce_create_press_module
+# --- 5/7  veloce_create_press_module  <- create:mechanical_press ---
+/cv kinetic place craftingveloce:veloce_integrale
+wait: 20
+/cv kinetic insert create:mechanical_press
 wait: 40
 /cv kinetic read
 expect: rig=OK
@@ -82,8 +100,10 @@ expect: source=true
 expect: impact=4.0
 expect: verdict: PASS
 
-# --- 6/7  veloce_create_mixer_module ---
-/cv kinetic place veloce_create_mixer_module
+# --- 6/7  veloce_create_mixer_module  <- create:mechanical_mixer ---
+/cv kinetic place craftingveloce:veloce_integrale
+wait: 20
+/cv kinetic insert create:mechanical_mixer
 wait: 40
 /cv kinetic read
 expect: rig=OK
@@ -91,8 +111,10 @@ expect: source=true
 expect: impact=4.0
 expect: verdict: PASS
 
-# --- 7/7  veloce_create_deployer_module ---
-/cv kinetic place veloce_create_deployer_module
+# --- 7/7  veloce_create_deployer_module  <- create:deployer ---
+/cv kinetic place craftingveloce:veloce_integrale
+wait: 20
+/cv kinetic insert create:deployer
 wait: 40
 /cv kinetic read
 expect: rig=OK

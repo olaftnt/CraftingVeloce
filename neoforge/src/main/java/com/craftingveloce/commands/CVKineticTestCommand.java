@@ -14,6 +14,9 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.state.properties.Property;
 
 /**
@@ -118,6 +121,12 @@ public final class CVKineticTestCommand {
                                         .executes(ctx -> place(ctx.getSource(),
                                                 net.minecraft.commands.arguments.ResourceLocationArgument
                                                         .getId(ctx, "block")))))
+                        .then(Commands.literal("insert")
+                                .then(Commands.argument("item",
+                                                net.minecraft.commands.arguments.ResourceLocationArgument.id())
+                                        .executes(ctx -> insert(ctx.getSource(),
+                                                net.minecraft.commands.arguments.ResourceLocationArgument
+                                                        .getId(ctx, "item")))))
                         .then(Commands.literal("read")
                                 .executes(ctx -> read(ctx.getSource())))));
     }
@@ -185,6 +194,51 @@ public final class CVKineticTestCommand {
         source.sendSuccess(() -> Component.literal("§e[kinetic] placed " + blockId + " at "
                 + describe(machinePos) + " with " + MOTOR + " at " + describe(motorPos)
                 + " §7- now wait a few ticks and run §f/cv kinetic read"), false);
+        return 1;
+    }
+
+    /**
+     * Inserts an item into the casing that is already standing, through the REAL conversion.
+     *
+     * <p>This is the half of the rig that reproduces the player's report. Placing the module
+     * block directly would exercise {@code getStateForPlacement} and quietly dodge the bug:
+     * the module would come out with a correct axis and the test would go green on a machine
+     * that a player cannot make work. Inserting goes through
+     * {@code VeloceIntegraleBlock.convertAt}, which is the same code the right-click runs -
+     * the module arrives from {@code defaultBlockState()} with only the pipe covers copied.
+     */
+    private static int insert(CommandSourceStack source, ResourceLocation itemId) {
+        lastPlaceReport = "entered insert with item='" + itemId + "'";
+        ServerLevel level = source.getLevel();
+        if (lastMachinePos == null) {
+            lastPlaceReport = "refused: nothing is standing to insert into";
+            source.sendFailure(Component.literal("§c[kinetic] " + lastPlaceReport));
+            return 0;
+        }
+        Item item = BuiltInRegistries.ITEM.get(itemId);
+        if (item == Items.AIR) {
+            lastPlaceReport = "refused: no such item '" + itemId + "'";
+            source.sendFailure(Component.literal("§c[kinetic] " + lastPlaceReport));
+            return 0;
+        }
+        BlockState before = level.getBlockState(lastMachinePos);
+        BlockState after = com.craftingveloce.block.VeloceIntegraleBlock.convertAt(
+                level, lastMachinePos, new ItemStack(item));
+        if (after == null || after == before) {
+            lastPlaceReport = "refused: '" + itemId + "' does not convert the casing (still "
+                    + before + ")";
+            source.sendFailure(Component.literal("§c[kinetic] " + lastPlaceReport));
+            return 0;
+        }
+        // The clocks restart at the INSERTION, not at the placement of the empty frame: the
+        // conversion is the moment the machine appears, and therefore the moment that has to
+        // be given ticks before the reading means anything.
+        lastPlaceTick = level.getServer().getTickCount();
+        lastPlaceMillis = System.currentTimeMillis();
+        lastPlaceReport = "inserted " + itemId + ": " + before + " -> " + after
+                + " at tick=" + lastPlaceTick;
+        String report = lastPlaceReport;
+        source.sendSuccess(() -> Component.literal("§e[kinetic] " + report), false);
         return 1;
     }
 

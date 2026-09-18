@@ -152,6 +152,30 @@ public class VeloceIntegraleBlock extends Block implements VeloceNetworkNode {
     }
 
     /**
+     * Runs the conversion that a right-click with {@code stack} would run, at {@code pos}.
+     *
+     * <p><b>Why this is exposed rather than reimplemented by the test.</b> A module placed
+     * by {@code setBlock} and a module that arrives by CONVERSION are not the same thing,
+     * and the difference is the entire bug: the first goes through
+     * {@code getStateForPlacement} and comes out with a sensible rotation axis, the second
+     * does not. A test that placed the module directly would pass happily on a machine that
+     * breaks the moment a player actually builds it - so the in-game test drives THIS
+     * method, the same code the right-click runs.
+     *
+     * @return the block state now at {@code pos}, or {@code null} when the stack converts
+     *         to nothing at all
+     */
+    public static BlockState convertAt(Level world, BlockPos pos, ItemStack stack) {
+        VeloceIntegraleConversions.Conversion conversion =
+                VeloceIntegraleConversions.forItem(stack);
+        if (conversion == null) {
+            return null;
+        }
+        convert(world, pos, world.getBlockState(pos), conversion);
+        return world.getBlockState(pos);
+    }
+
+    /**
      * The frame connects to a pipe from EVERY side - like the other machines in
      * the mod (there is no front or back).
      */
