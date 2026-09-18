@@ -300,8 +300,23 @@ public final class CVKineticTestCommand {
         // property of the Create material and belongs in the test, where it is written
         // down next to the assertion it justifies.
         boolean turning = rpm != 0.0F;
+
+        // Whether the machine's rotation axis actually agrees with the drive's.
+        //
+        // This is the fix of "I insert a Create module and it does not see the power"
+        // reduced to ONE PRINTED FACT. A module that arrives by conversion used to
+        // materialise along Y while the motor's shaft ran along X, and Create connects two
+        // blocks only when their axes agree - so the machine was simply not attached to the
+        // drive. Comparing the two axes turns that whole story into a boolean the test can
+        // assert, instead of a block state a human has to read and interpret.
+        Direction.Axis machineAxis = axisOf(level.getBlockState(lastMachinePos), "axis");
+        Direction.Axis motorAxis = axisOf(level.getBlockState(lastMotorPos), "facing");
+        boolean axisMatch = machineAxis != null && machineAxis == motorAxis;
+        String axisReport = "axis=" + machineAxis + " motorAxis=" + motorAxis
+                + " axisMatch=" + axisMatch;
+
         String machineReport = "rpm=" + rpm + " impact=" + impact + " source=" + hasSource
-                + " ours=" + ours + " be="
+                + " ours=" + ours + " " + axisReport + " be="
                 + (blockEntity == null ? "NONE" : blockEntity.getClass().getSimpleName());
         source.sendSuccess(() -> Component.literal("§e[kinetic] " + machineReport), false);
 
@@ -312,10 +327,14 @@ public final class CVKineticTestCommand {
         if (!rigOk) {
             verdict = "FAIL (THE RIG IS BROKEN - the motor itself is not turning, "
                     + "so this run says nothing about the machine)";
-        } else if (turning && hasSource) {
+        } else if (turning && hasSource && axisMatch) {
             verdict = "PASS";
         } else {
             verdict = "FAIL";
+            if (ours && !axisMatch) {
+                verdict += " (the machine's axis is " + machineAxis + " but the drive's is "
+                        + motorAxis + " - Create connects only matching axes)";
+            }
             if (!turning) {
                 verdict += " (speed is 0 - the machine is not attached to the network)";
             }
@@ -325,7 +344,7 @@ public final class CVKineticTestCommand {
         }
         String finalVerdict = verdict;
         source.sendSuccess(() -> Component.literal("[kinetic] verdict: " + finalVerdict), false);
-        return rigOk && turning && hasSource ? 1 : 0;
+        return rigOk && turning && hasSource && axisMatch ? 1 : 0;
     }
 
     /**
@@ -418,6 +437,30 @@ public final class CVKineticTestCommand {
      * other ids in this command are all foreign and are always written with their own
      * namespace.
      */
+    /**
+     * The axis a block state's named property carries, or {@code null}.
+     *
+     * <p>Read by NAME off the state's own properties because the two sides are different
+     * blocks with different property objects: our machine exposes {@code axis}, Create's
+     * motor exposes {@code facing}. The property instance has to come from the block that
+     * owns it - setting or reading a property object the block does not own throws.
+     */
+    private static Direction.Axis axisOf(BlockState state, String propertyName) {
+        for (Property<?> property : state.getProperties()) {
+            if (!property.getName().equals(propertyName)) {
+                continue;
+            }
+            Object value = state.getValue(property);
+            if (value instanceof Direction.Axis axis) {
+                return axis;
+            }
+            if (value instanceof Direction direction) {
+                return direction.getAxis();
+            }
+        }
+        return null;
+    }
+
     private static Block resolve(ResourceLocation id) {
         Block block = BuiltInRegistries.BLOCK.get(id);
         if (block != Blocks.AIR || !"minecraft".equals(id.getNamespace())) {
