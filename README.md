@@ -570,8 +570,8 @@ All packets use the NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `SensorConfigPKT` | C→S | `BlockPos pos, long threshold, boolean highMode` |
 | `ControllerPreferKindPKT` | C→S | `BlockPos pos, Item item, boolean preferFurnace` |
 | `SetFilterPKT` | C→S | `BlockPos pos, int filterIndex, ItemStack filterItem` |
-| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Long> changed, Set<Item> removed, Map<Item, Float> rates, Map<Item, String> madeBy, boolean full` |
-| `SyncCraftableCountsPKT` | S→C | `BlockPos pos, Map<Item, Long> counts, boolean complete` |
+| `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Long> changed, Set<Item> removed, Map<Item, Float> rates, boolean full` |
+| `SyncCraftableCountsPKT` | S→C | `BlockPos pos, Map<Item, Long> counts, Map<Item, String> madeBy, boolean complete` |
 | `SyncCraftingTableStatePKT` | S→C | `BlockPos pos, Set<Item> enabledItems, Map<Item, ResourceLocation> preferredRecipes` |
 | `SyncExtractorFiltersPKT` | S→C | `BlockPos pos, List<ItemStack> filters, List<Boolean> allowCrafting` |
 | `SyncTerminalCountsPKT` | S→C | `Map<Item, Long> itemCounts, Map<Item, Long> craftableCounts` |
@@ -651,7 +651,7 @@ fall behind, the way the packet list and the GUI section once did):
 - `getClientHitResult()` — what the player sees under the cursor (client)
 - `openCraftingTableScreen(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes, List<ItemStack> bufferContents)`
 - `updateCraftingTableState(BlockPos pos, Set<Item> disabledItems, Map<Item, ResourceLocation> preferredRecipes)`
-- `handleCraftableCounts(BlockPos pos, Map<Item, Long> counts, boolean complete)` — the server's response with the "how many can be made" counts
+- `handleCraftableCounts(BlockPos pos, Map<Item, Long> counts, Map<Item, String> madeBy, boolean complete)` — the server's response with the "how many can be made" counts
 - `handleCraftError(BlockPos pos, ItemStack stack, String reason, String detail, String hint)` — the reason a craft from the terminal failed; it lands in the tooltip of **that item** (the action bar was not visible in the GUI). The screen compares the terminal position, so a packet from another terminal is ignored
 
 > **The "how many can be made" counts — two different things, two different measures.**

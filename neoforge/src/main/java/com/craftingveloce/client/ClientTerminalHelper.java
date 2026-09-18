@@ -238,14 +238,16 @@ public class ClientTerminalHelper {
 
     /** The server's response with the "how many can still be crafted" numbers. */
     public static void handleCraftableCounts(BlockPos pos, Map<Item, Long> counts,
-                                             boolean complete) {        Minecraft mc = Minecraft.getInstance();
+                                             Map<Item, String> madeBy, boolean complete) {        Minecraft mc = Minecraft.getInstance();
         if (mc.screen instanceof VeloceTerminalScreen screen) {
             screen.updateCraftableCounts(counts, complete);
         } else if (mc.screen instanceof com.craftingveloce.client.gui.VeloceControllerScreen screen) {
             // The same response is handled by the controller - it asks for
             // EXACTLY the same numbers, so it uses the same packet and the same
             // path.
-            screen.updateCraftableCounts(counts, complete);
+            // The controller alone takes the maker list: it is the screen that shows items it
+            // cannot make as a red icon, and the tooltip there has room for the explanation.
+            screen.updateCraftableCounts(counts, madeBy, complete);
         }
     }
 

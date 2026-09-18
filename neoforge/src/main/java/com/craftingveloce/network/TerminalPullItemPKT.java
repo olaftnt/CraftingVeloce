@@ -146,8 +146,11 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
                     com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
                             .markDirty();
                     PacketDistributor.sendToPlayer(serverPlayer,
+                            // An EMPTY maker map on purpose: it is the controller that shows
+                            // items it cannot make as a red icon with a tooltip to explain,
+                            // and the terminal does not draw that line at all.
                             new SyncCraftableCountsPKT(pkt.terminalPos(),
-                                    net.getCraftableMemo(), false));
+                                    net.getCraftableMemo(), java.util.Map.of(), false));
                 }
             }
 

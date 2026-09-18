@@ -25,7 +25,8 @@ import java.util.Map;
  * the client does NOT discard the previous values - otherwise the counts
  * disappeared and never came back.
  */
-public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts, boolean complete)
+public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts,
+                                    Map<Item, String> madeBy, boolean complete)
         implements CustomPacketPayload {
 
     public static final Type<SyncCraftableCountsPKT> TYPE =
@@ -43,6 +44,13 @@ public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts, boole
             buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(e.getKey()));
             buf.writeVarLong(e.getValue());
         }
+        // "Which mods could make this" - only for the items that came out UNAVAILABLE, which
+        // are the ones the GUI paints red and the only ones whose tooltip asks the question.
+        buf.writeInt(pkt.madeBy.size());
+        for (Map.Entry<Item, String> e : pkt.madeBy.entrySet()) {
+            buf.writeResourceLocation(BuiltInRegistries.ITEM.getKey(e.getKey()));
+            buf.writeUtf(e.getValue());
+        }
     }
 
     private static SyncCraftableCountsPKT decode(FriendlyByteBuf buf) {
@@ -57,7 +65,16 @@ public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts, boole
                 counts.put(item, v);
             }
         }
-        return new SyncCraftableCountsPKT(pos, counts, complete);
+        int m = buf.readInt();
+        Map<Item, String> madeBy = new HashMap<>(m);
+        for (int i = 0; i < m; i++) {
+            Item item = BuiltInRegistries.ITEM.get(buf.readResourceLocation());
+            String mods = buf.readUtf();
+            if (item != null) {
+                madeBy.put(item, mods);
+            }
+        }
+        return new SyncCraftableCountsPKT(pos, counts, madeBy, complete);
     }
 
     @Override
@@ -67,6 +84,6 @@ public record SyncCraftableCountsPKT(BlockPos pos, Map<Item, Long> counts, boole
 
     public static void handle(SyncCraftableCountsPKT pkt, IPayloadContext context) {
         context.enqueueWork(() -> com.craftingveloce.client.ClientTerminalHelper
-                .handleCraftableCounts(pkt.pos(), pkt.counts(), pkt.complete()));
+                .handleCraftableCounts(pkt.pos(), pkt.counts(), pkt.madeBy(), pkt.complete()));
     }
 }

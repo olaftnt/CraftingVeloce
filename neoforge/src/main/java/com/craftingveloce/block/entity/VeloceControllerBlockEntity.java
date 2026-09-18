@@ -172,34 +172,9 @@ public class VeloceControllerBlockEntity extends BlockEntity
         com.craftingveloce.crafting.VeloceStockDeltas.Delta delta =
                 stockDeltas.diff(stock, gameTime);
 
-        // "Which mods could make this" - for the tooltip of an item the GUI shows as RED.
-        //
-        // Only for the items this delta actually MENTIONS, and memoised, because the answer
-        // costs a recipe lookup per module: without the memo a full dump of a large network
-        // would re-derive the same strings on every sync.
-        Map<Item, String> madeBy = new java.util.HashMap<>();
-        if (serverLevel != null) {
-            for (Item changedItem : delta.changed().keySet()) {
-                ServerLevel lookupLevel = serverLevel;
-                madeBy.put(changedItem, madeByMemo.computeIfAbsent(changedItem,
-                        it -> com.craftingveloce.crafting.VeloceCraftingRegistry
-                                .modsThatCanMake(lookupLevel, it)));
-            }
-        }
-
         PacketDistributor.sendToPlayer(player, new com.craftingveloce.network.SyncControllerFlowPKT(
-                worldPosition, delta.changed(), delta.removed(), flow.steadyRates(), madeBy,
-                delta.full()));
+                worldPosition, delta.changed(), delta.removed(), flow.steadyRates(), delta.full()));
     }
-
-    /**
-     * Memo for {@link #sendFlowTo}: item -&gt; "create, mekanism".
-     *
-     * <p>An item's set of possible makers is a property of the mods that are installed, not of
-     * the network, so it cannot change while the game runs - which is exactly what makes a
-     * permanent memo safe here and not merely a speed-up.
-     */
-    private final Map<Item, String> madeByMemo = new java.util.HashMap<>();
 
     /** Collects the current network state and sends it to the player's GUI. */
     public void syncToPlayer(ServerPlayer player) {

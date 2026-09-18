@@ -275,7 +275,6 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
                            Map<Item, Long> changed,
                            Set<Item> removed,
                            Map<Item, Float> rates,
-                           Map<Item, String> madeBy,
                            boolean full) {
         if (!controllerPos.equals(pos)) {
             return;
@@ -289,10 +288,6 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
             }
         }
         this.flowRate = new HashMap<>(rates);
-        // Kept, not replaced: the server only sends the entries its delta mentions, and an
-        // answer that was sent earlier is still the same answer - an item's set of possible
-        // makers depends on which mods are installed, not on the network.
-        this.madeByMods.putAll(madeBy);
     }
 
     /**
@@ -337,6 +332,22 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
 
     /** The server sends the computed numbers - as in the terminal. */
     public void updateCraftableCounts(Map<Item, Long> counts, boolean complete) {
+        craftableCounts.update(counts, complete);
+    }
+
+    /**
+     * As above, and with the mods that could make each UNAVAILABLE item.
+     *
+     * <p>Merged rather than replaced: the server answers per request, one request covers the
+     * page on screen, and a player who pages through the list would otherwise lose the answer
+     * for everything they had already looked at - and the tooltip is drawn for whatever they
+     * hover, whenever they hover it.
+     */
+    public void updateCraftableCounts(Map<Item, Long> counts, Map<Item, String> madeBy,
+                                      boolean complete) {
+        if (madeBy != null && !madeBy.isEmpty()) {
+            this.madeByMods.putAll(madeBy);
+        }
         craftableCounts.update(counts, complete);
     }
 

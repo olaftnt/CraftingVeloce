@@ -127,7 +127,7 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                 var memo = network.getCraftableMemo();
                 if (!memo.isEmpty()) {
                     PacketDistributor.sendToPlayer(player,
-                            new SyncCraftableCountsPKT(pkt.pos(), memo, false));
+                            new SyncCraftableCountsPKT(pkt.pos(), memo, java.util.Map.of(), false));
                 }
             }
 
@@ -176,8 +176,30 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                             .markDirty();
                 }
             }
+            // WHICH MODS COULD MAKE THE UNAVAILABLE ONES.
+            //
+            // Computed HERE and not from the stock delta, and that is the whole point: an
+            // item the GUI paints red is by definition one the network does NOT have, so it
+            // never appears in a stock change - the first attempt at this sent the list
+            // alongside the stock and the tooltip was empty for every red item.
+            //
+            // Only items that came out at zero are asked about: those are the red ones, and
+            // the work is then bounded by what is actually on screen rather than by the
+            // request.
+            java.util.Map<Item, String> madeBy = new java.util.HashMap<>();
+            for (Item shown : pkt.items()) {
+                if (result.getOrDefault(shown, 0L) > 0L
+                        || madeBy.containsKey(shown)
+                        || !com.craftingveloce.crafting.VeloceCraftingRegistry
+                                .getAllEnabledItems(serverLevel, network).contains(shown)) {
+                    // available, already asked about, or the crafter would do it anyway
+                    continue;
+                }
+                madeBy.put(shown, com.craftingveloce.crafting.VeloceCraftingRegistry
+                        .modsThatCanMake(serverLevel, shown));
+            }
             PacketDistributor.sendToPlayer(player,
-                    new SyncCraftableCountsPKT(pkt.pos(), result, complete));
+                    new SyncCraftableCountsPKT(pkt.pos(), result, madeBy, complete));
         });
     }
 }

@@ -41,7 +41,6 @@ public record SyncControllerFlowPKT(BlockPos pos,
                                     Map<Item, Long> changed,
                                     Set<Item> removed,
                                     Map<Item, Float> rates,
-                                    Map<Item, String> madeBy,
                                     boolean full)
         implements CustomPacketPayload {
 
@@ -62,7 +61,6 @@ public record SyncControllerFlowPKT(BlockPos pos,
         writeStock(buf, pkt.changed);
         writeRemoved(buf, pkt.removed);
         writeRates(buf, pkt.rates);
-        writeMadeBy(buf, pkt.madeBy);
     }
 
     private static SyncControllerFlowPKT decode(FriendlyByteBuf buf) {
@@ -71,42 +69,7 @@ public record SyncControllerFlowPKT(BlockPos pos,
         Map<Item, Long> changed = readStock(buf);
         Set<Item> removed = readRemoved(buf);
         Map<Item, Float> rates = readRates(buf);
-        Map<Item, String> madeBy = readMadeBy(buf);
-        return new SyncControllerFlowPKT(pos, changed, removed, rates, madeBy, full);
-    }
-
-    /**
-     * Which mods could make each item - "create, mekanism" - for the tooltip of an item the
-     * controller shows as RED.
-     *
-     * <p><b>Why the server has to send this.</b> The answer comes from
-     * {@code VeloceProcessingModule.recipesAnywhere(ServerLevel, Item)}, and that takes a
-     * SERVER level: the client's screen holds a ClientLevel and cannot ask the question at
-     * all. So it is computed where the answer exists and carried alongside the stock.
-     *
-     * <p>A plain string rather than a list, because it is a sentence fragment that is only
-     * ever shown as one. It is also CACHED on the controller and only computed for items the
-     * delta actually mentions, so a recipe lookup never happens twice for the same item.
-     */
-    private static void writeMadeBy(FriendlyByteBuf buf, Map<Item, String> madeBy) {
-        buf.writeVarInt(madeBy.size());
-        for (Map.Entry<Item, String> e : madeBy.entrySet()) {
-            buf.writeVarInt(BuiltInRegistries.ITEM.getId(e.getKey()));
-            buf.writeUtf(e.getValue());
-        }
-    }
-
-    private static Map<Item, String> readMadeBy(FriendlyByteBuf buf) {
-        int size = buf.readVarInt();
-        Map<Item, String> out = new HashMap<>(Math.max(4, size));
-        for (int i = 0; i < size; i++) {
-            Item item = BuiltInRegistries.ITEM.byId(buf.readVarInt());
-            String mods = buf.readUtf();
-            if (item != null) {
-                out.put(item, mods);
-            }
-        }
-        return out;
+        return new SyncControllerFlowPKT(pos, changed, removed, rates, full);
     }
 
     /** Stock: the same format as in SyncTerminalCountsPKT (item id + varint long). */
@@ -183,7 +146,7 @@ public record SyncControllerFlowPKT(BlockPos pos,
             if (net.minecraft.client.Minecraft.getInstance().screen
                     instanceof com.craftingveloce.client.gui.VeloceControllerScreen screen) {
                 screen.updateFlow(pkt.pos(), pkt.changed(), pkt.removed(),
-                        pkt.rates(), pkt.madeBy(), pkt.full());
+                        pkt.rates(), pkt.full());
             }
         });
     }
