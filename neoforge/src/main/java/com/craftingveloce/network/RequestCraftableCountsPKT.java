@@ -188,12 +188,14 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             // request.
             java.util.Map<Item, String> madeBy = new java.util.HashMap<>();
             for (Item shown : pkt.items()) {
-                if (result.getOrDefault(shown, 0L) > 0L
-                        || madeBy.containsKey(shown)
-                        || !com.craftingveloce.crafting.VeloceCraftingRegistry
-                                .getAllEnabledItems(serverLevel, network).contains(shown)) {
-                    // available, already asked about, or the crafter would do it anyway
-                    continue;
+                // ONLY the count decides. There was a third clause here - "skip it if the
+                // crafter has it enabled" - and it was exactly backwards: an item is painted
+                // RED because it is NOT in that set, so the clause discarded precisely the
+                // items the tooltip asks about and every red icon came back with an empty
+                // list. It also called `getAllEnabledItems` once per item, which walks the
+                // whole module registry each time.
+                if (result.getOrDefault(shown, 0L) > 0L || madeBy.containsKey(shown)) {
+                    continue;   // available, or already asked about
                 }
                 madeBy.put(shown, com.craftingveloce.crafting.VeloceCraftingRegistry
                         .modsThatCanMake(serverLevel, shown));
