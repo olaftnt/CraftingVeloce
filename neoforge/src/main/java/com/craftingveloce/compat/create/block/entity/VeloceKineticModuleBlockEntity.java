@@ -226,6 +226,16 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
      * axis, a connection that did not exist before may exist now, and without this the
      * machine keeps the "no source" answer it was given while it pointed the wrong way.
      * That is the other half of "something does not refresh".
+     *
+     * <p><b>Safe to call on every part, which is what {@code addPart()} does.</b> Create
+     * keeps a network's load as a map keyed by the block entity and {@code updateStressFor}
+     * is a plain {@code Map.put} (create 6.0.10, {@code KineticNetwork}), summed over the
+     * distinct block entities by {@code calculateStress()}. A repeated attach therefore
+     * REPLACES this machine's entry rather than adding a second one - so a casing holding
+     * four crushing wheels does not cost four times a casing holding one, which is the
+     * requirement exactly. Verified in Create's bytecode rather than assumed, because the
+     * opposite behaviour would have been a plausible reading of the player's "it consumes
+     * the wrong amount of stress" report.
      */
     public void markKineticsStale() {
         updateSpeed = true;
