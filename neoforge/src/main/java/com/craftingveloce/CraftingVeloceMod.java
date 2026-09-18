@@ -96,15 +96,14 @@ public class CraftingVeloceMod {
     public CraftingVeloceMod(IEventBus modEventBus, ModContainer modContainer) {
         LOGGER.info("CraftingVeloce initializing...");
 
-        // THE STARTUP CONFIG GOES FIRST, and that order is not a preference.
+        // A SERVER config, and that is the whole point of it: NeoForge SYNCS server configs
+        // to the client, so a player joining a server receives that server's FE values
+        // without copying any file. A COMMON or STARTUP config would leave every client on
+        // its own numbers, which for a battery size is a disagreement about the game.
         //
-        // A STARTUP config is the only one NeoForge reads at registration time - the loader
-        // opens the file inside `registerConfig` itself, before that call returns. A machine's
-        // FE values are read while the block classes are still initialising (a FeModule
-        // resolves its capacity through this config), so if the compat blocks were loaded
-        // first they would compute their defaults from a config that was not open yet. The
-        // failure would be silent: no exception, just values that ignore the file.
-        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.STARTUP,
+        // The cost of the type: it does not exist until a world does, so a read before that
+        // answers with the compiled default instead of throwing - see VeloceBlockConfig.
+        modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER,
                 com.craftingveloce.config.VeloceBlockConfig.SPEC);
 
         // Config registration (config/craftingveloce-common.toml).

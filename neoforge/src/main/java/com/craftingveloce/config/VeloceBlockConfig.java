@@ -8,19 +8,26 @@ import java.util.Map;
 /**
  * Per-block FE settings: how big a battery each machine has, and how much one operation costs.
  *
- * <p><b>Why this is a STARTUP config and not a COMMON one.</b> A COMMON config is read before
- * {@code FMLCommonSetupEvent}, which is AFTER the registration events - so a value from it
- * cannot influence whether a block is registered. STARTUP is the only type NeoForge reads
- * immediately on registration: {@code ConfigTracker.registerConfig} opens the file inside the
- * call itself, before returning. That is what makes it possible to add an option that
- * <em>removes</em> a block from the game, and it is also why the values here must already be
- * loaded before any block class is touched - see the registration in the mod constructor.
+ * <p><b>Why this is a SERVER config.</b> NeoForge SYNCS server configs to the client, so a
+ * player who joins a server receives that server's numbers automatically - which is the only
+ * behaviour that makes sense for a gameplay value: a battery size that differs between the
+ * two sides is a disagreement about the game, not a preference. Server configs live per world
+ * ({@code saves/<world>/serverconfig/craftingveloce-server.toml}), so a pack can also set
+ * them differently per world.
  *
- * <p><b>THE SAME VALUES MUST BE SET ON THE CLIENT AND THE SERVER.</b> STARTUP configs are not
- * synced across the network, and NeoForge's own documentation warns that using one to disable
- * content can desync a client from a server. The defaults here change nothing, so an install
- * that never opens the file behaves exactly as before; but a server that switches a machine
- * off must have clients that do the same.
+ * <p>A COMMON or STARTUP config would NOT have worked here: neither is synced, so every client
+ * would keep its own copy of the file and nothing would tell them they disagree.
+ *
+ * <p><b>A SERVER config does not exist until a world does</b>, and that is the one thing this
+ * class has to handle. Before the world loads - in a menu, in JEI, on the main screen - a read
+ * would throw "Cannot get config value before config is loaded". Every accessor below answers
+ * with the machine's compiled value in that window instead, which is also the value the file
+ * starts with, so nothing observable happens before the real numbers arrive.
+ *
+ * <p><b>This is not the place for a "disable this machine" switch.</b> Removing a block from
+ * the game has to happen at REGISTRATION time, and a SERVER config is read far too late for
+ * that. Such an option would need a STARTUP config, and would then genuinely require the same
+ * file on both sides - a server cannot send a player a block they are missing.
  *
  * <p><b>Why the defaults are written out here as well as in the modules.</b> The numbers exist
  * twice: once as the compiled value on each {@code FeModule}, and once here as the default in
@@ -47,8 +54,9 @@ public final class VeloceBlockConfig {
                 "capacity      - the size of that machine's internal battery, in FE.",
                 "fePerOperation - what ONE operation costs that machine, in FE.",
                 "",
-                "CHANGING THESE SPLITS CLIENT AND SERVER. This file is a STARTUP config, which",
-                "NeoForge does not sync, so a server and its players must agree on the values.",
+                "This is a SERVER config, so NeoForge sends these values to every player who",
+                "joins - nobody has to copy this file. It lives per world, under that world's",
+                "serverconfig folder, so different worlds can differ.",
                 "The defaults below are the values the machines were built with, so leaving the",
                 "file alone changes nothing.",
                 "",
@@ -106,16 +114,40 @@ public final class VeloceBlockConfig {
         return moduleId.replace(':', '_').replace('/', '_');
     }
 
-    /** Battery size for a machine, or {@code fallback} when the config does not know it. */
+    /**
+     * Battery size for a machine, or {@code fallback} when the config does not know it.
+     *
+     * <p>The {@code catch} is not defensive padding: a SERVER config is only loaded once a
+     * world is, and these are read from block entities whose screens, JEI entries and menus can
+     * exist before that. NeoForge's own check throws "Cannot get config value before config is
+     * loaded" there, and taking that at face value would crash a client on a menu. Before the
+     * world the answer is the machine's compiled value - the same number the file starts with -
+     * so nothing observable happens; after it, the real one, including the server's when this
+     * client joined one.
+     */
     public static int capacity(String key, int fallback) {
         Entry entry = ENTRIES.get(key);
-        return entry == null ? fallback : entry.capacity().get();
+        if (entry == null) {
+            return fallback;
+        }
+        try {
+            return entry.capacity().get();
+        } catch (IllegalStateException beforeTheWorldIsLoaded) {
+            return fallback;
+        }
     }
 
-    /** Cost of one operation for a machine, or {@code fallback} when the config knows no such machine. */
+    /** Cost of one operation for a machine - see {@link #capacity} for the {@code catch}. */
     public static int fePerOperation(String key, int fallback) {
         Entry entry = ENTRIES.get(key);
-        return entry == null ? fallback : entry.fePerOperation().get();
+        if (entry == null) {
+            return fallback;
+        }
+        try {
+            return entry.fePerOperation().get();
+        } catch (IllegalStateException beforeTheWorldIsLoaded) {
+            return fallback;
+        }
     }
 
     /** Battery size for a machine named by its module id. */
