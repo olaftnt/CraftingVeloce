@@ -268,7 +268,26 @@ public class VeloceKineticModuleBlock extends KineticBlock
             net.minecraft.world.item.Item in =
                     net.minecraft.core.registries.BuiltInRegistries.ITEM.get(back.inputId());
             if (in != net.minecraft.world.item.Items.AIR) {
-                out.add(new ItemStack(in, parts));
+                // AS MANY AS WERE INSIDE, in legal stacks.
+                //
+                // `parts` is the number of elements the machine actually held - 1 or 2
+                // wheels, up to 9x9 = 81 crafter eyes - so the COUNT is right. What was not
+                // right is handing that count to a single `ItemStack`: 81 is above the
+                // vanilla maximum of 64, and one stack claiming to hold 81 is a stack no
+                // vanilla code path will move, split or save sensibly. A machine with a full
+                // grid would have dropped most of its contents in a form that behaves unlike
+                // every other item in the game.
+                //
+                // Splitting on the ITEM's own maximum instead of a hard-coded 64 keeps this
+                // correct for an input that stacks differently (an unstackable one gives one
+                // stack per element, which is the honest answer).
+                int remaining = Math.max(1, parts);
+                int perStack = Math.max(1, new ItemStack(in).getMaxStackSize());
+                while (remaining > 0) {
+                    int n = Math.min(perStack, remaining);
+                    out.add(new ItemStack(in, n));
+                    remaining -= n;
+                }
             }
         }
         return out;

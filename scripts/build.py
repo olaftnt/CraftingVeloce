@@ -2759,6 +2759,38 @@ def validate_showcase_command():
     print("    OK (/cv showcase: blocks from the registry + parts + pipes + cleanup)")
 
 
+def validate_module_drop_stacks():
+    """
+    A machine must give back as many elements as it held, in stacks the game accepts.
+
+    Two separate ways this goes wrong, and both are silent:
+
+      * the count is not taken from the machine, so every wheel and every crafter drops a
+        fixed number regardless of what the player built;
+      * the count is put into ONE `ItemStack`. The crafter grid is 9x9, so a full machine
+        holds 81 - above the vanilla maximum of 64. A single stack claiming to hold 81 is
+        a stack no vanilla code path will move, split or save sensibly, so a full crafter
+        would drop most of its contents in a form that behaves unlike every other item.
+
+    So the count must come from `caseParts()` and must be split on the ITEM's own maximum
+    rather than a hard-coded 64 - an unstackable input then gives one stack per element,
+    which is the honest answer.
+    """
+    path = ("neoforge/src/main/java/com/craftingveloce/compat/create/block/"
+            "VeloceKineticModuleBlock.java")
+    code = open(path, encoding="utf-8").read()
+    body = _method_body(code, "protected java.util.List<ItemStack> getDrops(")
+    if body is None:
+        return fail("no getDrops in the kinetic module block - the module would drop itself")
+    if "caseParts()" not in body:
+        fail("the module drop does not ask the machine how many elements it holds, so a "
+             "crushing wheel with one wheel drops as much as one with two")
+    if "getMaxStackSize()" not in body:
+        fail("the module drop puts the whole count into one stack: a full crafter grid "
+             "(9x9 = 81) would drop a single stack of 81, above the vanilla maximum of 64")
+    print("    OK (drops as many elements as the machine held, split into legal stacks)")
+
+
 def validate_extractor_redstone():
     """
     The extractor must do NOTHING while it is powered.
@@ -4037,6 +4069,7 @@ def main():
     validate_case_occlusion()
     validate_loot_item_ids()
     validate_extractor_redstone()
+    validate_module_drop_stacks()
     validate_no_dead_module_loot_tables()
     validate_legacy_src_submodule_removed()
     validate_showcase_command()
