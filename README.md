@@ -1,5 +1,5 @@
-# CraftingVeloce — NeoForge 1.21.1
-
+# CraftingVeloce
+![example](https://cdn.modrinth.com/data/cached_images/0f0bb04a0bfa7e368c184d1c4d1f8c2d96afd8e3.png)
 ## How to use
 
 1. **Craft a few Veloce Integrale blocks, a terminal and some pipes.**
