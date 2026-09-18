@@ -116,7 +116,11 @@ public final class CVModuleTestCommand {
                                         .suggests((ctx, builder) ->
                                                 SharedSuggestionProvider.suggest(VeloceProcessingRegistry.ids(), builder))
                                         .executes(ctx -> list(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "module")))))
+                                                StringArgumentType.getString(ctx, "module"), null))
+                                        .then(Commands.argument("filter", StringArgumentType.word())
+                                                .executes(ctx -> list(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "module"),
+                                                        StringArgumentType.getString(ctx, "filter"))))))
                         // Which machines exist, what each one handles, and whether that
                         // type has any recipes at all. Answers "did we add a block that
                         // makes nothing" and "is there a recipe nothing can make".
@@ -296,7 +300,7 @@ public final class CVModuleTestCommand {
     }
 
     /** Prints every recipe id this module offers, one per line. */
-    private static int list(CommandSourceStack source, String moduleId) {
+    private static int list(CommandSourceStack source, String moduleId, String filter) {
         ServerLevel level = source.getLevel();
         VeloceProcessingModule module = null;
         for (VeloceProcessingModule candidate : VeloceProcessingRegistry.all()) {
@@ -327,6 +331,15 @@ public final class CVModuleTestCommand {
                     ids.add(entry.id().toString());
                 }
             }
+        }
+        // AN OPTIONAL FILTER, and it is not a convenience. A module can answer for hundreds
+        // of recipes (Create: 434), the command prints one line each, and the chat buffer
+        // TRUNCATES - so a test asserting "this recipe is offered" on the full list passes
+        // or fails for reasons that have nothing to do with the module. An assertion on
+        // truncated output proves nothing; the filter is what makes the answer small enough
+        // to be worth asserting on.
+        if (filter != null && !filter.isEmpty()) {
+            ids.removeIf(id -> !id.contains(filter));
         }
         // Also on the log: command feedback goes to the player's chat and does NOT reach
         // the server log, so without this the list is invisible to a test harness that

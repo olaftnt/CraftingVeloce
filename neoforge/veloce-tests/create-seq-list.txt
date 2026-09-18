@@ -1,0 +1,14 @@
+# A, the converter half: does the module OFFER the sequenced recipes it should, and only
+# those? `list <module> <filter>` prints the recipes the module answers for (recipesAnywhere,
+# so no machine and no network are involved) whose id CONTAINS the filter.
+#
+# The filter is the point: Create answers for 434 recipes, the command prints one line each,
+# and the chat truncates - so asserting on the whole list proves nothing either way.
+#
+#   track              -> offered: one guaranteed output, item->item steps, no fluid
+#   precision_mechanism -> NOT offered: its result is a weighted pool of eight outcomes
+#   sturdy_sheet       -> NOT offered: its first step fills 500 mB of lava
+/cv testmodule list create sequenced_assembly
+expect: sequenced_assembly/track
+expectnot: sequenced_assembly/precision_mechanism
+expectnot: sequenced_assembly/sturdy_sheet
