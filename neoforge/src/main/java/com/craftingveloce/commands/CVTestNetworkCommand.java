@@ -103,7 +103,7 @@ public final class CVTestNetworkCommand {
             BlockPos netPos = start.offset(0, 0, offsetZ);
             
             // Terminal at (0, 0, 0)
-            level.setBlock(netPos, com.craftingveloce.init.VeloceRegistry.VELOCE_TOM_TERMINAL.get().defaultBlockState(), 3);
+            level.setBlock(netPos, com.craftingveloce.init.VeloceRegistry.VELOCE_TERMINAL.get().defaultBlockState(), 3);
             
             // Pipe at (1, 0, 0)
             BlockPos pipePos = netPos.offset(1, 0, 0);
@@ -257,7 +257,7 @@ public final class CVTestNetworkCommand {
                 // The pipes run NORTH, the terminal stands south of them, so we
                 // turn its front (that is, its "non-connectable" side) to SOUTH -
                 // then the connectable side faces NORTH, towards the pipes.
-                BlockState terminalState = VeloceRegistry.VELOCE_TOM_TERMINAL.get()
+                BlockState terminalState = VeloceRegistry.VELOCE_TERMINAL.get()
                         .defaultBlockState();
                 if (terminalState.hasProperty(
                         net.minecraft.world.level.block.HorizontalDirectionalBlock.FACING)) {
@@ -395,7 +395,7 @@ public final class CVTestNetworkCommand {
             cursor.set(start.getX(), start.getY(), start.getZ() + (start.getZ() > end.getZ() ? -i : i));
             var st = level.getBlockState(cursor);
             if (st.getBlock() instanceof VelocePipeBlock
-                    || st.is(VeloceRegistry.VELOCE_TOM_TERMINAL.get())
+                    || st.is(VeloceRegistry.VELOCE_TERMINAL.get())
                     || st.is(Blocks.BARREL)) {
                 level.removeBlock(cursor.immutable(), false);
                 removed++;

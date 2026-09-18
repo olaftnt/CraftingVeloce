@@ -1,7 +1,7 @@
 package com.craftingveloce.network;
 
 import com.craftingveloce.CraftingVeloceMod;
-import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
+import com.craftingveloce.block.entity.VeloceTerminalBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -71,7 +71,7 @@ public record TerminalStoreItemPKT(BlockPos terminalPos, int mode) implements Cu
                 return;
             }
             BlockEntity be = player.level().getBlockEntity(pkt.terminalPos());
-            if (be instanceof VeloceTomTerminalBlockEntity terminal) {
+            if (be instanceof VeloceTerminalBlockEntity terminal) {
                 terminal.storeFromPlayer(player, pkt.mode());
             }
         });

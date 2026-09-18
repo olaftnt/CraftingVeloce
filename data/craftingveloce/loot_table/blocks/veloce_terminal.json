@@ -6,7 +6,7 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "craftingveloce:veloce_tom_terminal"
+          "name": "craftingveloce:veloce_terminal"
         }
       ],
       "conditions": [

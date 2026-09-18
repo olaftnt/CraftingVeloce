@@ -1,7 +1,7 @@
 package com.craftingveloce.network;
 
 import com.craftingveloce.CraftingVeloceMod;
-import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
+import com.craftingveloce.block.entity.VeloceTerminalBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;

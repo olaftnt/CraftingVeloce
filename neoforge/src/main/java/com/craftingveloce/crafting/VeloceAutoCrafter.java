@@ -2290,7 +2290,7 @@ public final class VeloceAutoCrafter {
      * implementation, and both places that create a {@link Context} pass
      * {@code null}:
      * <ul>
-     *   <li>{@code VeloceTomTerminalBlockEntity.craftItemFromNetwork}</li>
+     *   <li>{@code VeloceTerminalBlockEntity.craftItemFromNetwork}</li>
      *   <li>{@code VeloceExtractorBlockEntity.craftFromNetwork}</li>
      * </ul>
      *

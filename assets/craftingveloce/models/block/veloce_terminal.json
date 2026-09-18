@@ -1,10 +1,10 @@
 {
-    "__comment": "Model for veloce_tom_terminal based on Tom's Storage crafting_terminal",
+    "__comment": "Model for veloce_terminal based on Tom's Storage crafting_terminal",
     "textures": {
-        "0": "craftingveloce:block/veloce_tom_terminal_back",
-        "1": "craftingveloce:block/veloce_tom_terminal_side",
-        "2": "craftingveloce:block/veloce_tom_terminal_front",
-        "particle": "craftingveloce:block/veloce_tom_terminal_back"
+        "0": "craftingveloce:block/veloce_terminal_back",
+        "1": "craftingveloce:block/veloce_terminal_side",
+        "2": "craftingveloce:block/veloce_terminal_front",
+        "particle": "craftingveloce:block/veloce_terminal_back"
     },
     "parent": "block/block",
     "display": {

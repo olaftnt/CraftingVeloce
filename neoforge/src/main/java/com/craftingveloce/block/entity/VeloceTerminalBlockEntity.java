@@ -35,7 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public class VeloceTomTerminalBlockEntity extends VeloceBlockEntity
+public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         implements com.craftingveloce.block.entity.VeloceCraftCountSource {
 
     private static final org.slf4j.Logger TERMINAL_LOG =
@@ -43,8 +43,8 @@ public class VeloceTomTerminalBlockEntity extends VeloceBlockEntity
 
     private final List<WeakReference<ServerPlayer>> activeWatchingPlayers = new ArrayList<>();
 
-    public VeloceTomTerminalBlockEntity(BlockPos pos, BlockState state) {
-        super(VeloceRegistry.VELOCE_TOM_TERMINAL_BE.get(), pos, state);
+    public VeloceTerminalBlockEntity(BlockPos pos, BlockState state) {
+        super(VeloceRegistry.VELOCE_TERMINAL_BE.get(), pos, state);
     }
 
     @Override
@@ -53,7 +53,7 @@ public class VeloceTomTerminalBlockEntity extends VeloceBlockEntity
     }
 
     public Direction getConnectionDirection() {
-        return com.craftingveloce.block.VeloceTomTerminalBlock.facingOf(getBlockState());
+        return com.craftingveloce.block.VeloceTerminalBlock.facingOf(getBlockState());
     }
 
     /**
@@ -261,7 +261,7 @@ public class VeloceTomTerminalBlockEntity extends VeloceBlockEntity
         }
     }
 
-    /** Called by the ticker registered in {@link com.craftingveloce.block.VeloceTomTerminalBlock}. */
+    /** Called by the ticker registered in {@link com.craftingveloce.block.VeloceTerminalBlock}. */
     public void updateServer() {
         // We do NOT call getStacks() here.
         //

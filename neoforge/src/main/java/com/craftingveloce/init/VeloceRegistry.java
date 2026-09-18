@@ -1,9 +1,9 @@
 package com.craftingveloce.init;
 
 import com.craftingveloce.block.VelocePipeBlock;
-import com.craftingveloce.block.VeloceTomTerminalBlock;
+import com.craftingveloce.block.VeloceTerminalBlock;
 import com.craftingveloce.block.entity.VelocePipeBlockEntity;
-import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
+import com.craftingveloce.block.entity.VeloceTerminalBlockEntity;
 import com.craftingveloce.item.VeloceWrenchItem;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.BlockItem;
@@ -28,20 +28,20 @@ public class VeloceRegistry {
             DeferredRegister.create(BuiltInRegistries.BLOCK_ENTITY_TYPE, MODID);
 
     // 1. Veloce Terminal
-    public static final DeferredBlock<VeloceTomTerminalBlock> VELOCE_TOM_TERMINAL = BLOCKS.register(
-            "veloce_tom_terminal",
-            VeloceTomTerminalBlock::new
+    public static final DeferredBlock<VeloceTerminalBlock> VELOCE_TERMINAL = BLOCKS.register(
+            "veloce_terminal",
+            VeloceTerminalBlock::new
     );
 
-    public static final DeferredItem<BlockItem> VELOCE_TOM_TERMINAL_ITEM = ITEMS.registerSimpleBlockItem(
-            "veloce_tom_terminal",
-            VELOCE_TOM_TERMINAL
+    public static final DeferredItem<BlockItem> VELOCE_TERMINAL_ITEM = ITEMS.registerSimpleBlockItem(
+            "veloce_terminal",
+            VELOCE_TERMINAL
     );
 
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceTomTerminalBlockEntity>> VELOCE_TOM_TERMINAL_BE =
-            BLOCK_ENTITY_TYPES.register("veloce_tom_terminal", () -> createBEType(
-                    (pos, state) -> new VeloceTomTerminalBlockEntity(pos, state),
-                    VELOCE_TOM_TERMINAL.get()
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VeloceTerminalBlockEntity>> VELOCE_TERMINAL_BE =
+            BLOCK_ENTITY_TYPES.register("veloce_terminal", () -> createBEType(
+                    (pos, state) -> new VeloceTerminalBlockEntity(pos, state),
+                    VELOCE_TERMINAL.get()
             ));
 
     // 2. Veloce Pipe (Pipez-style smart pipe)

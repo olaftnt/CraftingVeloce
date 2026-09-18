@@ -211,7 +211,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
         }
 
         // 2. Storage Terminal (connects from any side except the front screen)
-        if (neighborState.getBlock() instanceof VeloceTomTerminalBlock terminal) {
+        if (neighborState.getBlock() instanceof VeloceTerminalBlock terminal) {
             return terminal.canConnectFrom(neighborState, dir.getOpposite());
         }
 

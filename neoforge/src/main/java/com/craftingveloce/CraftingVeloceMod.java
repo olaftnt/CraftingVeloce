@@ -30,9 +30,9 @@ public class CraftingVeloceMod {
             "craftingveloce_tab",
             () -> new CreativeModeTab.Builder(CreativeModeTab.Row.TOP, 0)
                     .title(Component.literal("Crafting Veloce"))
-                    .icon(() -> new ItemStack(VeloceRegistry.VELOCE_TOM_TERMINAL_ITEM.get()))
+                    .icon(() -> new ItemStack(VeloceRegistry.VELOCE_TERMINAL_ITEM.get()))
                     .displayItems((params, output) -> {
-                        output.accept(VeloceRegistry.VELOCE_TOM_TERMINAL_ITEM.get());
+                        output.accept(VeloceRegistry.VELOCE_TERMINAL_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_EXTRACTOR_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CRAFTING_TABLE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CONTROLLER_ITEM.get());

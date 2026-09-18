@@ -1,7 +1,7 @@
 package com.craftingveloce.commands;
 
 import com.craftingveloce.block.entity.VeloceFeModuleBlockEntity;
-import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
+import com.craftingveloce.block.entity.VeloceTerminalBlockEntity;
 import com.craftingveloce.crafting.ProcessingEntry;
 import com.craftingveloce.crafting.VeloceProcessingModule;
 import com.craftingveloce.crafting.VeloceProcessingRegistry;
@@ -38,7 +38,7 @@ import java.util.List;
  * a crusher actually crushes, whether the planner finds the recipe, or whether
  * the ingredients in the chest are really consumed and the result really
  * produced. This does: it goes through
- * {@link VeloceTomTerminalBlockEntity#extractWithReason} - the exact call a
+ * {@link VeloceTerminalBlockEntity#extractWithReason} - the exact call a
  * player makes by clicking an item in the terminal - so the whole chain runs:
  * network scan, planning, heat/energy, crafting, delivery.
  *
@@ -376,7 +376,7 @@ public final class CVModuleTestCommand {
         BlockPos machinePos = base.offset(2, 0, 0);
         BlockPos barrelPos = base.offset(1, 0, 1);
 
-        level.setBlock(terminalPos, VeloceRegistry.VELOCE_TOM_TERMINAL.get().defaultBlockState(), Block.UPDATE_ALL);
+        level.setBlock(terminalPos, VeloceRegistry.VELOCE_TERMINAL.get().defaultBlockState(), Block.UPDATE_ALL);
         level.setBlock(pipePos, VeloceRegistry.VELOCE_PIPE.get().defaultBlockState(), Block.UPDATE_ALL);
         level.setBlock(machinePos, machine.defaultBlockState(), Block.UPDATE_ALL);
         lastMachinePos = machinePos;
@@ -489,7 +489,7 @@ public final class CVModuleTestCommand {
             fail(moduleId, recipeId, "the terminal is not connected to a network after " + SCAN_TICKS + " ticks");
             return;
         }
-        if (!(level.getBlockEntity(terminalPos) instanceof VeloceTomTerminalBlockEntity terminal)) {
+        if (!(level.getBlockEntity(terminalPos) instanceof VeloceTerminalBlockEntity terminal)) {
             fail(moduleId, recipeId, "no terminal block entity at " + terminalPos);
             return;
         }
@@ -526,7 +526,7 @@ public final class CVModuleTestCommand {
                 + " machineIsTerminal=" + (lastMachinePos != null && net.getTerminals().contains(lastMachinePos))
                 + " nodes=[" + nodes.toString().trim() + "]";
 
-        VeloceTomTerminalBlockEntity.PullResult pulled;
+        VeloceTerminalBlockEntity.PullResult pulled;
         try {
             // count=1, allowCrafting=true: the player path. The result stack is sent
             // whole - components included - so the terminal resolves the same proxy a

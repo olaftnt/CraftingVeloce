@@ -77,7 +77,7 @@ public final class CVGuiTestCommand {
         BlockPos machinePos = base.offset(2, 0, 0);
         BlockPos barrelPos = base.offset(1, 0, 1);
 
-        level.setBlock(base, VeloceRegistry.VELOCE_TOM_TERMINAL.get().defaultBlockState(), Block.UPDATE_ALL);
+        level.setBlock(base, VeloceRegistry.VELOCE_TERMINAL.get().defaultBlockState(), Block.UPDATE_ALL);
         level.setBlock(pipePos, VeloceRegistry.VELOCE_PIPE.get().defaultBlockState(), Block.UPDATE_ALL);
         level.setBlock(machinePos, VeloceRegistry.BREWING_STAND.get().defaultBlockState(), Block.UPDATE_ALL);
         level.setBlock(barrelPos, Blocks.BARREL.defaultBlockState(), Block.UPDATE_ALL);

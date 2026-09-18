@@ -1,7 +1,7 @@
 package com.craftingveloce.commands;
 
 import com.craftingveloce.block.entity.VelocePipeBlockEntity;
-import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
+import com.craftingveloce.block.entity.VeloceTerminalBlockEntity;
 import com.craftingveloce.network.pipe.ConnectedEndpointInfo;
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
 import com.craftingveloce.network.pipe.VelocePipeNetworkManager;
@@ -10,7 +10,7 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import com.craftingveloce.block.VelocePipeBlock;
-import com.craftingveloce.block.VeloceTomTerminalBlock;
+import com.craftingveloce.block.VeloceTerminalBlock;
 import com.craftingveloce.network.pipe.VelocePipeWorld;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -498,7 +498,7 @@ public class CVDebugCommand {
         if (b instanceof com.craftingveloce.block.VelocePipeBlock) {
             return "§7pipe " + loadedTag(sl, p);
         }
-        if (b instanceof com.craftingveloce.block.VeloceTomTerminalBlock) {
+        if (b instanceof com.craftingveloce.block.VeloceTerminalBlock) {
             return "§aTERMINAL " + loadedTag(sl, p);
         }
         if (b instanceof com.craftingveloce.block.VeloceExtractorBlock) {
@@ -616,7 +616,7 @@ public class CVDebugCommand {
         BlockEntity be = player.level().getBlockEntity(pos);
         ServerLevel sl = player.serverLevel();
 
-        if (be instanceof VeloceTomTerminalBlockEntity terminalBE) {
+        if (be instanceof VeloceTerminalBlockEntity terminalBE) {
             terminalBE.printDebugInfo(player);
             return 1;
         } else if (be instanceof com.craftingveloce.block.entity.VeloceExtractorBlockEntity extractorBE) {

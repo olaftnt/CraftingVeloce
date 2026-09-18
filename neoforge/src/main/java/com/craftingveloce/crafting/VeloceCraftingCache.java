@@ -535,7 +535,7 @@ public final class VeloceCraftingCache {
      * A maintenance step for ALL networks of this dimension.
      *
      * <p><b>The BUG this fixes.</b> {@code tickIdle} was called EXCLUSIVELY by the
-     * terminal ({@code VeloceTomTerminalBlockEntity.tickCraftingCache}). A network
+     * terminal ({@code VeloceTerminalBlockEntity.tickCraftingCache}). A network
      * without a terminal - e.g. just a crafter with a furnace and chests - therefore
      * did not maintain its chunks EVEN ONCE: the crafter and the furnaces stopped
      * working when the player walked away, and the expiry of "hot" tickets did not

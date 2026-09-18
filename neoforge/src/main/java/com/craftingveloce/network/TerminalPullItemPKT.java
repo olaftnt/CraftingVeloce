@@ -1,7 +1,7 @@
 package com.craftingveloce.network;
 
 import com.craftingveloce.CraftingVeloceMod;
-import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
+import com.craftingveloce.block.entity.VeloceTerminalBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -51,7 +51,7 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
      * its own language.
      */
     private static void sendCraftError(ServerPlayer serverPlayer, TerminalPullItemPKT pkt,
-                                       VeloceTomTerminalBlockEntity.PullResult pulled) {
+                                       VeloceTerminalBlockEntity.PullResult pulled) {
         net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(serverPlayer,
                 new TerminalCraftErrorPKT(pkt.terminalPos(), pkt.itemStack(),
                         pulled.reason(), pulled.detail(), pulled.hint()));
@@ -75,7 +75,7 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             }
 
             BlockEntity be = serverPlayer.level().getBlockEntity(pkt.terminalPos());
-            if (!(be instanceof VeloceTomTerminalBlockEntity terminalBE)) {
+            if (!(be instanceof VeloceTerminalBlockEntity terminalBE)) {
                 serverPlayer.displayClientMessage(Component.translatable("craftingveloce.message.terminalNotFound")
                         .withStyle(net.minecraft.ChatFormatting.RED), true);
                 resyncInventories(serverPlayer);
@@ -90,7 +90,7 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
                             + serverPlayer.getGameProfile().getName()
                             + " item=" + pkt.itemStack().getHoverName().getString()
                             + " x" + toPull);
-            VeloceTomTerminalBlockEntity.PullResult pulled;
+            VeloceTerminalBlockEntity.PullResult pulled;
             try {
                 pulled = terminalBE.extractWithReason(pkt.itemStack(), toPull, true);
             } catch (Throwable t) {

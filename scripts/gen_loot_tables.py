@@ -43,7 +43,7 @@ MODID = "craftingveloce"
 # new block with no decision immediately screams a warning instead of quietly
 # getting a pickaxe.
 TOOL_BY_BLOCK = {
-    "veloce_tom_terminal": "axe",        # the terminal's wooden casing
+    "veloce_terminal": "axe",        # the terminal's wooden casing
     "veloce_crafting_table": "axe",      # like the vanilla crafting table
     "veloce_pipe": "pickaxe",            # metal pipe
     "veloce_extractor": "pickaxe",       # machine

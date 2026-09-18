@@ -1,7 +1,7 @@
 package com.craftingveloce.network;
 
 import com.craftingveloce.CraftingVeloceMod;
-import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
+import com.craftingveloce.block.entity.VeloceTerminalBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -59,7 +59,7 @@ public record TerminalWatcherPKT(BlockPos pos, boolean watching) implements Cust
                 return;
             }
             BlockEntity be = player.level().getBlockEntity(pkt.pos());
-            if (be instanceof VeloceTomTerminalBlockEntity terminal) {
+            if (be instanceof VeloceTerminalBlockEntity terminal) {
                 terminal.setPlayerWatching(player, pkt.watching());
             }
         });

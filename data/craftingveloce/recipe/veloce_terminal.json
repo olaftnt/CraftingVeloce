@@ -12,5 +12,5 @@
     "I": { "item": "minecraft:iron_ingot" },
     "C": { "item": "minecraft:chest" }
   },
-  "result": { "id": "craftingveloce:veloce_tom_terminal", "count": 1 }
+  "result": { "id": "craftingveloce:veloce_terminal", "count": 1 }
 }

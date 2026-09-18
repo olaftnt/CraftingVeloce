@@ -1,6 +1,6 @@
 package com.craftingveloce.block;
 
-import com.craftingveloce.block.entity.VeloceTomTerminalBlockEntity;
+import com.craftingveloce.block.entity.VeloceTerminalBlockEntity;
 import com.craftingveloce.network.OpenTerminalScreenPKT;
 import com.craftingveloce.network.pipe.VeloceNetworkNode;
 import com.craftingveloce.network.pipe.VeloceNodeBlocks;
@@ -60,15 +60,15 @@ import javax.annotation.Nullable;
  *
  * <p><b>The property names are deliberately identical</b> ({@code facing},
  * {@code pos}, {@code waterlogged}) because
- * {@code assets/craftingveloce/blockstates/veloce_tom_terminal.json} keys its
+ * {@code assets/craftingveloce/blockstates/veloce_terminal.json} keys its
  * variants on them; renaming one would break every model lookup and the block
  * would render as a missing texture.
  */
-public class VeloceTomTerminalBlock extends BaseEntityBlock
+public class VeloceTerminalBlock extends BaseEntityBlock
         implements SimpleWaterloggedBlock, VeloceNetworkNode {
 
-    public static final MapCodec<VeloceTomTerminalBlock> CODEC =
-            ChestBlock.simpleCodec(properties -> new VeloceTomTerminalBlock());
+    public static final MapCodec<VeloceTerminalBlock> CODEC =
+            ChestBlock.simpleCodec(properties -> new VeloceTerminalBlock());
 
     /** Where the screen sits: centred on a side, or facing up / down. */
     public static final EnumProperty<TerminalPos> TERMINAL_POS =
@@ -83,7 +83,7 @@ public class VeloceTomTerminalBlock extends BaseEntityBlock
     private static final VoxelShape SHAPE_U = Block.box(0, 10, 0, 16, 16, 16);
     private static final VoxelShape SHAPE_D = Block.box(0, 0, 0, 16, 6, 16);
 
-    public VeloceTomTerminalBlock() {
+    public VeloceTerminalBlock() {
         super(Block.Properties.of()
                 .mapColor(MapColor.WOOD)
                 .sound(SoundType.WOOD)
@@ -106,14 +106,14 @@ public class VeloceTomTerminalBlock extends BaseEntityBlock
 
     @Override
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
-        return new VeloceTomTerminalBlockEntity(pos, state);
+        return new VeloceTerminalBlockEntity(pos, state);
     }
 
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level world, BlockState state,
                                                                   BlockEntityType<T> type) {
         return world.isClientSide ? null : (lvl, pos, st, be) -> {
-            if (be instanceof VeloceTomTerminalBlockEntity terminal) {
+            if (be instanceof VeloceTerminalBlockEntity terminal) {
                 terminal.updateServer();
             }
         };
@@ -128,7 +128,7 @@ public class VeloceTomTerminalBlock extends BaseEntityBlock
                 pos, player.getName().getString(), world.isClientSide);
         if (!world.isClientSide && player instanceof ServerPlayer serverPlayer) {
             BlockEntity be = world.getBlockEntity(pos);
-            if (be instanceof VeloceTomTerminalBlockEntity terminalBE) {
+            if (be instanceof VeloceTerminalBlockEntity terminalBE) {
                 terminalBE.onPlayerOpenTerminal(serverPlayer);
             }
             // Our terminal is a client-side screen fed by our own packets, not a

@@ -12,7 +12,7 @@ A mod that adds an intelligent logistics network to Minecraft, built on top of t
 
 ## 📦 Blocks and items
 
-### 1. Veloce Storage Terminal (`veloce_tom_terminal`)
+### 1. Veloce Storage Terminal (`veloce_terminal`)
 - Extends `AbstractStorageTerminalBlock` from Tom's Storage
 - Opens a Creative Inventory style screen (no hotbar) listing every item in the network
 - Clicking an item pulls it out of the network (1 item with LMB, up to a full stack with SHIFT+LMB)
@@ -181,12 +181,12 @@ A mod that adds an intelligent logistics network to Minecraft, built on top of t
 │   │   │   ├── VelocePipeBlock.java
 │   │   │   ├── VeloceExtractorBlock.java
 │   │   │   ├── VeloceCraftingTableBlock.java
-│   │   │   ├── VeloceTomTerminalBlock.java
+│   │   │   ├── VeloceTerminalBlock.java
 │   │   │   └── entity/                     # Block Entities
 │   │   │       ├── VelocePipeBlockEntity.java
 │   │   │       ├── VeloceExtractorBlockEntity.java
 │   │   │       ├── VeloceCraftingTableBlockEntity.java
-│   │   │       └── VeloceTomTerminalBlockEntity.java
+│   │   │       └── VeloceTerminalBlockEntity.java
 │   │   ├── client/
 │   │   │   ├── ClientTerminalHelper.java   # Dispatcher for packet handlers (client-side)
 │   │   │   └── gui/
@@ -322,7 +322,7 @@ git add -A && git commit -m "..." && git push origin main
 
 | System | How |
 |--------|-----|
-| Tom's Simple Storage | `VeloceTomTerminalBlock extends AbstractStorageTerminalBlock`; all blocks implement `IInventoryCable` |
+| Tom's Simple Storage | `VeloceTerminalBlock extends AbstractStorageTerminalBlock`; all blocks implement `IInventoryCable` |
 | Refined Storage | `RefinedStorageHelper.hasRSNetwork()` — checks for, and connects to, an RS network |
 | NeoForge ItemHandler | `Capabilities.ItemHandler.BLOCK` registered for the extractor (lets a Pipez pipe suck from it) |
 | Vanilla Hopper | `VeloceExtractorBlockEntity implements WorldlyContainer` |
@@ -715,7 +715,7 @@ node kinds) live in shared helpers instead of in both loops separately.
 **Node types — the single source of truth is `VeloceNodeBlocks.isNode()`.**
 Do not write that list out a second time (that is exactly how two stale
 copies in `/cv debug` came about):
-`VeloceTomTerminalBlock`, `VeloceControllerBlock`, `VeloceCraftingTableBlock`,
+`VeloceTerminalBlock`, `VeloceControllerBlock`, `VeloceCraftingTableBlock`,
 `VeloceExtractorBlock`, `VeloceVelocityFurnaceBlock`,
 `VeloceElectricFurnaceBlock`, `VeloceThresholdSensorBlock`.
 
