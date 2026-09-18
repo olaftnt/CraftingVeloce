@@ -1,14 +1,26 @@
 modLoader="javafml"
 loaderVersion="[1,)"
 license="MIT License"
-# The project page, shown in the mod list.
-displayURL="https://github.com/olaftnt/CraftingVeloce"
 
 [[mods]]
 modId="craftingveloce"
 version="1.0.0"
 displayName="CraftingVeloce"
 authors="olafek"
+# displayURL and logoFile MUST sit inside [[mods]], not at the top of the file.
+#
+# It looks like they belong next to `license` - the NeoForge docs list all three as
+# file-level properties - but the mod list reads both of them from the MOD's own config
+# table, not the file's: ModListScreen calls selectedMod.getConfig().getConfigElement(...),
+# and FML builds that table from the [[mods]] entry alone (ModFileInfo does
+# `new ModInfo(this, mi)` where `mi` comes from getConfigList("mods")).
+#
+# A top-level displayURL is therefore not rejected, not warned about, and not shown -
+# which is exactly the bug this comment exists to prevent someone re-introducing.
+displayURL="https://github.com/olaftnt/CraftingVeloce"
+# Path inside the jar, resolved from the jar root (ModListScreen reads it with
+# PackResources.getRootResource). 512x512, the size Modrinth and CurseForge want too.
+logoFile="logo.png"
 description='''
 Recursive auto-crafting and a storage terminal in one network. With one click, it lets you make complicated items when the resources are in the network.
 '''

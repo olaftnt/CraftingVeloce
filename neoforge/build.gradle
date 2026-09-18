@@ -152,6 +152,11 @@ processResources {
     }
     from(rootProject.file("src_meta")) {
         include "META-INF/**"
+        // The mod list logo, named by `logoFile` in neoforge.mods.toml. It has to land
+        // at the ROOT of the jar: ModListScreen resolves it with getRootResource, so a
+        // copy under META-INF would simply not be found and the list would fall back to
+        // the missing-texture placeholder.
+        include "logo.png"
     }
 }
 
