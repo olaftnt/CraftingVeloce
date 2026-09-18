@@ -130,6 +130,24 @@ public class VeloceKineticModuleBlockEntity extends KineticBlockEntity
         parts++;
         setChanged();
         if (level != null && !level.isClientSide) {
+            // CREATE ATTACHES A KINETIC BLOCK FROM tick(), NOT FROM onPlace.
+            //
+            // Read from Create's own bytecode: KineticBlockEntity.tick() calls
+            // attachKinetics() while needsSpeedUpdate() is true, and that is the ONLY
+            // caller of RotationPropagator.handleAdded in the whole kinetic base.
+            // KineticBlock.onPlace does not call either of them.
+            //
+            // A machine that appears by CONVERSION never went through a placement tick
+            // in the usual way - the frame is replaced under it - and the player reported
+            // exactly this: "I place an Integrale, insert a Create module, and the module
+            // does not see the power, something does not refresh". So the attach Create
+            // would have done for itself is done here, at the moment we know a machine
+            // has appeared or changed shape.
+            //
+            // addPart() is the right place and not convert(): it is called once right
+            // after the conversion AND on every later right-click that adds a wheel or a
+            // crafter, which is precisely when the rotation network has to be told again.
+            attachKinetics();
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(),
                     net.minecraft.world.level.block.Block.UPDATE_ALL);
         }
