@@ -5,7 +5,6 @@ import com.simibubi.create.content.kinetics.crafter.MechanicalCraftingRecipe;
 import com.simibubi.create.content.processing.recipe.HeatCondition;
 import com.simibubi.create.content.processing.recipe.ProcessingOutput;
 import com.simibubi.create.content.processing.recipe.ProcessingRecipe;
-import com.simibubi.create.content.processing.sequenced.IAssemblyRecipe;
 import com.simibubi.create.content.processing.sequenced.SequencedAssemblyRecipe;
 import com.simibubi.create.content.processing.sequenced.SequencedRecipe;
 import net.minecraft.core.HolderLookup;
@@ -19,7 +18,6 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
-import net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -171,18 +169,23 @@ public final class CreateRecipeHarvest {
         counts.add(1);
 
         for (SequencedRecipe<?> step : recipe.getSequence()) {
-            IAssemblyRecipe assembly = step.getAsAssemblyRecipe();
-            if (assembly == null || !assembly.supportsAssembly()) {
+            // THE STEP'S OWN ProcessingRecipe, not IAssemblyRecipe.
+            //
+            // The first version of this converter asked every step for IAssemblyRecipe and
+            // refused the whole sequence when it was absent - and it is OPTIONAL: pressing
+            // does not implement it, so `track` (deploying, deploying, PRESSING) produced
+            // nothing at all, silently, while the type showed three recipes in the audit.
+            // Every step IS a ProcessingRecipe, which is the same shape create:deploying
+            // already converts through, so that is what is read here.
+            ProcessingRecipe<?, ?> stepRecipe = step.getRecipe();
+            if (stepRecipe == null) {
                 return null;
             }
-            List<SizedFluidIngredient> fluids = new ArrayList<>();
-            assembly.addAssemblyFluidIngredients(fluids);
-            if (!fluids.isEmpty()) {
-                return null;
+            if (!stepRecipe.getFluidIngredients().isEmpty()
+                    || !stepRecipe.getFluidResults().isEmpty()) {
+                return null;   // a fluid step puts the whole sequence out of scope
             }
-            List<Ingredient> stepIngredients = new ArrayList<>();
-            assembly.addAssemblyIngredients(stepIngredients);
-            for (Ingredient stepIngredient : stepIngredients) {
+            for (Ingredient stepIngredient : stepRecipe.getIngredients()) {
                 if (stepIngredient == null || stepIngredient.isEmpty()) {
                     continue;
                 }
@@ -190,7 +193,7 @@ public final class CreateRecipeHarvest {
                 // The sequence repeats, so the step's items are consumed `loops` times.
                 counts.add(loops);
             }
-            steps.add(step.getRecipe().getType());
+            steps.add(stepRecipe.getType());
         }
 
         List<ProcessingOutput> pool = recipe.resultPool;
