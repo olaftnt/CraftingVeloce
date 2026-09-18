@@ -438,6 +438,18 @@ public final class CVModuleTestCommand {
         placeLikePlayer(level, pipePos);
         placeLikePlayer(level, terminalPos);
         placeLikePlayer(level, machinePos);
+        // THE MACHINE HAS TO BE BUILT. isPowered() is
+        // `hasEnoughRotationSpeed() && hasRequiredParts()`, so a machine that is only
+        // placed - a crusher with no millstones - spins and does nothing, and the rig
+        // never installed anything. /cv showcase does the same thing for the same reason.
+        if (level.getBlockEntity(machinePos)
+                instanceof com.craftingveloce.block.VeloceCaseBuildable buildable) {
+            for (int i = 0; i < 9; i++) {
+                if (!buildable.addPart()) {
+                    break;
+                }
+            }
+        }
 
         if (UNIMPLEMENTED.contains(moduleId)) {
             String notice = "testing for " + moduleId + " not implemented";
@@ -834,8 +846,18 @@ public final class CVModuleTestCommand {
         // Only the motor here; the machine goes down next and its own placement sets the
         // axis. A motor standing EAST of the module faces WEST, because Create answers
         // hasShaftTowards with side == FACING.
-        level.setBlock(machinePos.east(),
+        BlockPos motorPos = machinePos.east();
+        level.setBlock(motorPos,
                 setByName(motor.defaultBlockState(), "facing", Direction.WEST), Block.UPDATE_ALL);
+        // 256 RPM, NOT the motor's default of 16. REQUIRED_SPEED is 256, so a default
+        // motor leaves the module spinning AND unpowered at the same time - which is how
+        // three rounds were spent looking for a missing drive that was there all along.
+        if (level.getBlockEntity(motorPos)
+                instanceof com.simibubi.create.content.kinetics.motor.CreativeMotorBlockEntity motorBe) {
+            motorBe.generatedSpeed.setValue(256);
+            motorBe.setChanged();
+            motorBe.notifyUpdate();
+        }
         LOG.info("[testmodule] rotation source {} placed east of {}", motor, machinePos);
         return true;
     }

@@ -1,0 +1,9 @@
+# A = sequenced assembly: the network must accept `track` only when the WHOLE chain is
+# powered, and must never offer `precision_mechanism` (its result is a weighted pool of
+# eight outcomes, which is not a promise an exact-amount auto-crafter can keep).
+#
+# This rig holds a DEPLOYER only, and track's steps are deploying, deploying and PRESSING -
+# so the expected answer here is REFUSED: a network with one machine from the chain must not
+# promise the sequence. That is the per-recipe machine requirement doing its job.
+/cv testmodule create veloce_create_deployer_module "create:sequenced_assembly/track"
+expect: cannot do recipe
