@@ -91,7 +91,8 @@ public final class CreateKineticModules {
             () -> Set.of(CreateRecipeFamily.mixing()), STRESS_SU);
 
     /**
-     * Deployer: {@code create:deploying} AND {@code create:item_application}.
+     * Deployer: {@code create:deploying}, {@code create:item_application} AND
+     * {@code create:sandpaper_polishing}.
      *
      * <p>Two types on one machine, and that is Create's own shape rather than a
      * convenience: Create registers the Deployer as the catalyst for both of its deployer
@@ -102,7 +103,8 @@ public final class CreateKineticModules {
     public static final KineticModule DEPLOYING = new KineticModule(
             "create:deploying", "Veloce Deployer Module",
             () -> Set.of(CreateRecipeFamily.deploying(),
-                    CreateRecipeFamily.itemApplication()), STRESS_SU);
+                    CreateRecipeFamily.itemApplication(),
+                    CreateRecipeFamily.sandpaperPolishing()), STRESS_SU);
 
     /** All machines - for registration and the creative tab. */
     public static final List<KineticModule> ALL =

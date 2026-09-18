@@ -3622,7 +3622,8 @@ def validate_create_mechanics():
                   encoding="utf-8").read()
     for need, what in (("pressing()", "the press type"), ("mixing()", "the mixer type"),
                        ("itemApplication()", "the item-application type"),
-                       ("compacting()", "the compacting type")):
+                       ("compacting()", "the compacting type"),
+                       ("sandpaperPolishing()", "the sandpaper type")):
         if need not in family:
             problems.append("the Create family without " + what)
 
@@ -3639,7 +3640,8 @@ def validate_create_mechanics():
     else:
         entry = modules[deployer_at:deployer_at + 700]
         for need, what in (("CreateRecipeFamily.deploying()", "the deploying type"),
-                           ("CreateRecipeFamily.itemApplication()", "the item-application type")):
+                           ("CreateRecipeFamily.itemApplication()", "the item-application type"),
+                           ("CreateRecipeFamily.sandpaperPolishing()", "the sandpaper type")):
             if need not in entry:
                 problems.append("the Deployer module does not declare " + what)
 

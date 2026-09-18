@@ -102,6 +102,21 @@ public final class CreateRecipeFamily {
         return AllRecipeTypes.COMPACTING.getType();
     }
 
+    /**
+     * Deployer holding SANDPAPER: {@code create:sandpaper_polishing} recipes.
+     *
+     * <p>Create's JEI registers the sand paper ITEM as this category's catalyst, which
+     * reads as "no machine does this, a player does". That reading is wrong and I
+     * shipped it once: the DEPLOYER runs these recipes too - Create's own bytecode has
+     * DeployerBlockEntity, DeployerHandler, BeltDeployerCallbacks and
+     * DeployerApplicationRecipe all referencing SandPaper, and
+     * SandPaperPolishingRecipe extends StandardProcessingRecipe, so it converts here
+     * like any other processing recipe.
+     */
+    public static RecipeType<?> sandpaperPolishing() {
+        return AllRecipeTypes.SANDPAPER_POLISHING.getType();
+    }
+
     /** Deployer, on an item: {@code create:deploying} recipes (applying one item to another). */
     public static RecipeType<?> deploying() {
         return AllRecipeTypes.DEPLOYING.getType();
@@ -130,6 +145,7 @@ public final class CreateRecipeFamily {
             out.add(deploying());
             out.add(itemApplication());
             out.add(compacting());
+            out.add(sandpaperPolishing());
             resolved = Set.copyOf(out);
         }
         return resolved;
