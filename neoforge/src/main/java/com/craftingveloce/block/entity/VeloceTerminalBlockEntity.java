@@ -194,13 +194,13 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         // the server (see computeCraftableCounts). The yellow "+N" number
         // is added separately, on demand, only for the visible items.
         Map<Item, Long> counts = getAllStoredItemCounts();
-        // WITHOUT the craftability numbers from the cache.
-        //
-        // There used to be an append of a ready snapshot from the background.
-        // Now the background computes nothing: the "+N" numbers are produced
-        // EXCLUSIVELY on client request, for the items visible on screen.
-        // Appending the old snapshot only mixed fresh answers with outdated ones.
         Map<Item, Long> craftable = Map.of();
+        if (level instanceof ServerLevel sl) {
+            VelocePipeNetwork net = VelocePipeNetworkManager.get(sl).getNetworkForTerminal(sl, worldPosition);
+            if (net != null) {
+                craftable = net.getCraftableMemo();
+            }
+        }
         Iterator<WeakReference<ServerPlayer>> it = activeWatchingPlayers.iterator();
         while (it.hasNext()) {
             ServerPlayer sp = it.next().get();
@@ -216,8 +216,15 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
     public void syncCountsToPlayer(ServerPlayer player) {
         if (level == null || level.isClientSide) return;
         Map<Item, Long> counts = getAllStoredItemCounts();
+        Map<Item, Long> craftable = Map.of();
+        if (level instanceof ServerLevel sl) {
+            VelocePipeNetwork net = VelocePipeNetworkManager.get(sl).getNetworkForTerminal(sl, worldPosition);
+            if (net != null) {
+                craftable = net.getCraftableMemo();
+            }
+        }
         PacketDistributor.sendToPlayer(player,
-                new SyncTerminalCountsPKT(counts, Map.of()));
+                new SyncTerminalCountsPKT(counts, craftable));
     }
 
     /**
@@ -309,7 +316,7 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         // Periodically refresh active viewers
         if (level != null && !activeWatchingPlayers.isEmpty()) {
             long now = level.getGameTime();
-            if (com.craftingveloce.util.VeloceTick.every(now, lastSyncTick, 20)) {
+            if (com.craftingveloce.util.VeloceTick.every(now, lastSyncTick, 10)) {
                 lastSyncTick = now;
                 syncCountsToAllWatchers();
             }

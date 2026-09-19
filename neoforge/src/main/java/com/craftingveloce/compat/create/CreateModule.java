@@ -1,6 +1,7 @@
 package com.craftingveloce.compat.create;
 
 import com.craftingveloce.crafting.ProcessingEntry;
+import com.craftingveloce.util.VeloceLog;
 import com.craftingveloce.crafting.VeloceProcessingModule;
 import com.craftingveloce.crafting.VeloceProcessingRegistry;
 import com.craftingveloce.crafting.VeloceProcessingSources;
@@ -153,8 +154,16 @@ public final class CreateModule implements VeloceProcessingModule {
         // A SEQUENCE is not one machine. Every step's type must be powered here, or a
         // network holding a single Deployer would promise a create:track it cannot
         // finish - the whole point of the side table the harvest fills in.
+        //
+        // The per-step detail used to go out through System.out.println, for every recipe
+        // examined: hundreds of lines per page against Create's 434 recipes, bypassing both
+        // the mod's logger and its debug switch. It now uses the normal diagnostic channel,
+        // so it appears when - and only when - someone asks for that level of detail.
         for (RecipeType<?> step : CreateRecipeHarvest.stepTypesFor(entry.id())) {
             if (!VeloceProcessingSources.hasPowered(level, network, step)) {
+                VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                        "sequence %s refused: step %s has no powered machine in this network",
+                        entry.id(), step);
                 return false;
             }
         }

@@ -1,0 +1,5 @@
+# This is a test script to check if Andesite Casing is enabled
+/cv debug
+wait: 20
+/cv testmodule create veloce_create_deployer_module "create:item_application/andesite_casing_from_log"
+expect: cannot do recipe

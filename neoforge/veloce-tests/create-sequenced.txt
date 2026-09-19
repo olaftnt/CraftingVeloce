@@ -6,4 +6,7 @@
 # so the expected answer here is REFUSED: a network with one machine from the chain must not
 # promise the sequence. That is the per-recipe machine requirement doing its job.
 /cv testmodule create veloce_create_deployer_module "create:sequenced_assembly/track"
-expect: cannot do recipe
+expect: building and waiting
+wait: 60
+/cv testmodule result
+expect: FAIL

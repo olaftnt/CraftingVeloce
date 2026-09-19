@@ -212,10 +212,17 @@ public class VelocePipeNetwork {
             if (endpoint.getType() == ConnectedEndpointInfo.Type.CRAFTING_BUFFER) {
                 continue;   // a crafter buffer is not a storage
             }
-            // Every endpoint returns the LEFTOVER, so a partial acceptance is not lost.
             remaining = endpoint.insertItemLeftover(level, remaining);
         }
+        if (remaining.getCount() < stack.getCount()) {
+            invalidateAggregateCache();
+        }
         return remaining;
+    }
+
+    public void invalidateAggregateCache() {
+        aggregateCache = null;
+        aggregateCacheTick = Long.MIN_VALUE;
     }
 
     /**
@@ -396,11 +403,30 @@ public class VelocePipeNetwork {
         return total;
     }
 
+    public Map<Item, Long> getAllStoredItemCounts(ServerLevel level) {
+        VeloceLog.Network.detail(VeloceLog.Side.SERVER,
+                "collecting stored counts across %d endpoint(s)", endpoints.size());
+        Map<Item, Long> out = new HashMap<>();
+        for (ConnectedEndpointInfo ep : endpoints.values()) {
+            if (ep.getType() != ConnectedEndpointInfo.Type.INVENTORY) {
+                continue;
+            }
+            ep.refreshIfLoadedThrottled(level, level.getGameTime());
+            for (Map.Entry<Item, Long> e : ep.getCachedCounts().entrySet()) {
+                if (e.getValue() > 0) {
+                    out.merge(e.getKey(), e.getValue(), Long::sum);
+                }
+            }
+        }
+        return out;
+    }
+
     public ItemStack extractItem(ServerLevel level, Item item, int maxCount) {
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {
             if (endpoint.getCachedCounts().getOrDefault(item, 0L) > 0) {
                 ItemStack extracted = endpoint.extractItem(level, item, maxCount);
                 if (!extracted.isEmpty()) {
+                    invalidateAggregateCache();
                     return extracted;
                 }
             }

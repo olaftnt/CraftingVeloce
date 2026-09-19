@@ -551,8 +551,14 @@ return net;
             //
             // It is the same lesson as with the Pull mode: there are TWO ways of
             // building the network and both must know the side mode.
+            if (level.isLoaded(ep) && e.getValue().getType() == ConnectedEndpointInfo.Type.INVENTORY) {
+                BlockState state = level.getBlockState(ep);
+                if (!getCanonicalInventoryPos(ep, state).equals(ep)) {
+                    continue;
+                }
+            }
             if ((component.storages.contains(ep) || touchesAnyPipe(ep, pipes))
-                    && hasOpenPipeAdjacent(level, ep, pipes)) {
+                    && touchesAnyPart(level, ep, pipes)) {
                 // Chunk loaded -> refresh, so that the numbers are up to date.
                 // Unloaded -> the last known contents remain.
                 e.getValue().refreshIfLoaded(level);
@@ -1551,6 +1557,21 @@ return net;
             }
         }
         return pos;
+    }
+
+    private boolean touchesAnyPart(ServerLevel level, BlockPos canonical, Set<BlockPos> pipes) {
+        if (hasOpenPipeAdjacent(level, canonical, pipes)) return true;
+        if (level.isLoaded(canonical)) {
+            BlockState state = level.getBlockState(canonical);
+            if (state.getBlock() instanceof net.minecraft.world.level.block.ChestBlock && state.hasProperty(net.minecraft.world.level.block.ChestBlock.TYPE)) {
+                net.minecraft.world.level.block.state.properties.ChestType type = state.getValue(net.minecraft.world.level.block.ChestBlock.TYPE);
+                if (type == net.minecraft.world.level.block.state.properties.ChestType.LEFT || type == net.minecraft.world.level.block.state.properties.ChestType.RIGHT) {
+                    BlockPos otherHalf = canonical.relative(net.minecraft.world.level.block.ChestBlock.getConnectedDirection(state));
+                    return hasOpenPipeAdjacent(level, otherHalf, pipes);
+                }
+            }
+        }
+        return false;
     }
 
     public VelocePipeNetwork scanAndBuildNetwork(ServerLevel level, BlockPos originPos, @Nullable UUID preferredId) {

@@ -174,6 +174,7 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             serverPlayer.level().playSound(null, serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ(),
                     SoundEvents.ITEM_PICKUP, SoundSource.PLAYERS, 0.2F, 1.0F);
             resyncInventories(serverPlayer);
+            terminalBE.syncCountsToAllWatchers();
         });
     }
 }

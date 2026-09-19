@@ -423,22 +423,45 @@ public class ConnectedEndpointInfo {
                 newCounts.putAll(scan.counts());
                 freeSlots = scan.freeSlots();
                 partialSpace = scan.partialSpace();
-            } else if (be instanceof Container container) {
-                sawContainer = true;
-                SlotScan scan = scanSlots(container.getContainerSize(), container::getItem);
-                newCounts.putAll(scan.counts());
-                freeSlots = scan.freeSlots();
-                partialSpace = scan.partialSpace();
+            } else {
+                Container container = null;
+                if (state.getBlock() instanceof net.minecraft.world.level.block.ChestBlock chestBlock) {
+                    container = net.minecraft.world.level.block.ChestBlock.getContainer(chestBlock, state, level, pos, true);
+                }
+                if (container == null && be instanceof Container c) {
+                    container = c;
+                }
+                if (container != null) {
+                    sawContainer = true;
+                    SlotScan scan = scanSlots(container.getContainerSize(), container::getItem);
+                    newCounts.putAll(scan.counts());
+                    freeSlots = scan.freeSlots();
+                    partialSpace = scan.partialSpace();
+                }
             }
 
             if (!sawContainer) {
                 // There is nothing to read - the chunk is still loading or the
                 // block disappeared. We KEEP the last known numbers instead of
                 // clearing them: a stale number is better than a false zero.
+                VeloceLog.Network.detail(VeloceLog.Side.SERVER,
+                        "endpoint %s could not be read - keeping the last known counts", pos);
                 noteNotReadable();
                 return;
             }
 
+            // PER-CONTAINER SCAN DETAIL, on the diagnostic channel and NOT on stdout.
+            //
+            // This was a System.out.println, and it fires once per container per scan: the
+            // dev console collected 1213 of them in a single session. Two problems beyond the
+            // noise - it bypassed log4j, so it landed outside latest.log where the rest of
+            // the diagnostics are read, and it bypassed the mod's own debug switch, so it
+            // could not be turned off. The counts themselves are printed because a wrong
+            // number is otherwise invisible: "scanned 3 items -> {...}" is what shows a
+            // container being read as empty when it is not.
+            VeloceLog.Network.detail(VeloceLog.Side.SERVER,
+                    "endpoint %s scanned %d item type(s) -> %s",
+                    pos, newCounts.size(), newCounts);
             cachedCounts.clear();
             cachedCounts.putAll(newCounts);
             cachedFreeSlots = freeSlots;
@@ -447,6 +470,8 @@ public class ConnectedEndpointInfo {
             scanFailureLogged = false;
             notReadableLogged = false;
         } catch (Throwable t) {
+            VeloceLog.Network.error(VeloceLog.Side.SERVER, t,
+                    "endpoint %s threw while being read", pos);
             // We do NOT swallow this silently.
             //
             // There used to be `catch (Throwable ignored) {}` here. When the
