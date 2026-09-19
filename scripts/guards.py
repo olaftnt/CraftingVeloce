@@ -28,7 +28,30 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 
 import build  # noqa: E402  (path set up above)
 
-DEFAULT_JAR = "neoforge/build/libs/craftingveloce-1.0.0.jar"
+
+# DISCOVERED, not hardcoded.
+#
+# This was the literal "neoforge/build/libs/craftingveloce-1.0.0.jar", and it broke the
+# moment the release file name gained the loader and the game version
+# (craftingveloce-1.0.0-NeoForge-1.21.1.jar): every jar guard would have run against a path
+# that no longer exists, and a guard that cannot open its jar is a guard that cannot fail
+# loudly. A hardcoded artifact name is a second register of something Gradle already owns -
+# the same class of drift this file's own docstring describes for the guard list.
+#
+# The directory normally holds exactly one jar. If it holds more (a stale build, a
+# classifier), the newest wins, which is what a human would pick.
+def _default_jar():
+    fallback = os.path.join(ROOT, "neoforge", "build", "libs",
+                            "craftingveloce-1.0.0-NeoForge-1.21.1.jar")
+    libs = os.path.join(ROOT, "neoforge", "build", "libs")
+    try:
+        jars = [os.path.join(libs, f) for f in os.listdir(libs) if f.endswith(".jar")]
+    except OSError:
+        return fallback
+    return max(jars, key=os.path.getmtime) if jars else fallback
+
+
+DEFAULT_JAR = _default_jar()
 
 # build.py compiles into its own hardcoded /tmp directory. Under Gradle the
 # classes land in the module's build dir instead, and validate_compat_gates runs

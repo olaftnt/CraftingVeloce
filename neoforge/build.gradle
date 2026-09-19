@@ -4,7 +4,30 @@ plugins {
 }
 
 base {
+    // THE RELEASE FILE NAME, and every segment of it is there for a reason.
+    //
+    //   craftingveloce - 1.0.0 - NeoForge - 1.21.1
+    //   ^ the mod      ^ its    ^ the      ^ the game it loads into
+    //                    version  loader
+    //
+    // A bare `craftingveloce-1.0.0.jar` is ambiguous the moment a second loader exists (the
+    // repository is named "multiloader" for that reason even though only neoforge/ is built
+    // today): a player looking at a downloads folder cannot tell which jar goes with which
+    // loader, and neither can a Modrinth version list. The loader and the game version also
+    // make a wrong download obvious BEFORE it is dropped into a mods folder, which is where
+    // an incompatible jar normally announces itself - as a crash.
     archivesName = "craftingveloce"
+}
+
+// The file name is built HERE rather than from `archivesName` alone.
+//
+// Gradle composes `archivesName-version`, which puts the version last:
+// `craftingveloce-1.0.0-NeoForge-1.21.1` is not reachable that way - the loader and the game
+// version would have to sit between the mod name and the version, and `-<version>` is
+// appended after whatever archivesName says. Setting the whole name explicitly is the only
+// way to get the requested order, and it keeps the version in ONE place: mod_version.
+tasks.named("jar", Jar) {
+    archiveFileName = "craftingveloce-${project.mod_version}-NeoForge-1.21.1.jar"
 }
 
 java {
