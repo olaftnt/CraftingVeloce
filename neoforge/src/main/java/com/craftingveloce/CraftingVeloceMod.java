@@ -23,6 +23,16 @@ public class CraftingVeloceMod {
     public static final String MODID = "craftingveloce";
     public static final Logger LOGGER = LoggerFactory.getLogger(MODID);
 
+    /**
+     * How often the counting worker reports what it has been doing (5 s).
+     *
+     * <p>Counting now runs off the server thread with NO time budget, which is the whole
+     * point - but it also means nothing else would ever notice it getting slow. This is the
+     * line that turns "the numbers take a moment" into a measurement: requests, average and
+     * worst case per page, and how many are queued.
+     */
+    private static final long COUNT_WORKER_STATS_TICKS = 100L;
+
     public static final DeferredRegister<CreativeModeTab> CREATIVE_TABS =
             DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 
@@ -374,6 +384,14 @@ public class CraftingVeloceMod {
                         // VeloceCraftingCache.tickAll).
                         com.craftingveloce.util.VeloceGuard.run("force-load upkeep", now,
                                 () -> com.craftingveloce.crafting.VeloceCraftingCache.tickAll(sl));
+                        // The counting worker's periodic report. Counting now runs OFF the
+                        // server thread with no time budget, so the only way to notice that
+                        // it got slow (or that its queue is filling up) is for it to say so.
+                        // The call itself is a game-time comparison and costs nothing when
+                        // it is not its turn.
+                        com.craftingveloce.util.VeloceGuard.run("count worker stats", now,
+                                () -> com.craftingveloce.crafting.VeloceCountWorker
+                                        .logStats(sl.getServer(), COUNT_WORKER_STATS_TICKS));
                     }
                 });
 
@@ -385,6 +403,11 @@ public class CraftingVeloceMod {
                     // the rest of the session.
                     if (event.getLevel() instanceof net.minecraft.server.level.ServerLevel sl) {
                         com.craftingveloce.crafting.VeloceCraftingCache.onLevelLoaded();
+                        // The counting worker was stopped by ServerStoppingEvent on the way
+                        // out, and a shut-down executor cannot be restarted. Without this,
+                        // re-entering a world in the same session would silently lose every
+                        // "+N" number - see VeloceCountWorker.ensureRunning.
+                        com.craftingveloce.crafting.VeloceCountWorker.ensureRunning();
                         // Cleanup of orphaned force-loads left by an older
                         // version of the code. Minecraft saves setChunkForced
                         // PERSISTENTLY, so without this the chunks stayed loaded
@@ -421,6 +444,12 @@ public class CraftingVeloceMod {
                     for (var level : server.getAllLevels()) {
                         com.craftingveloce.crafting.VeloceCraftingCache.releaseAll(level);
                     }
+                    // The counting worker is a daemon and cannot hold the JVM open, but it
+                    // can still be running against a snapshot taken from levels that are
+                    // about to be torn down. We stop ACCEPTING work; the in-flight request
+                    // finishes on its own immutable snapshot, and its hand-back finds a
+                    // stopped server and is dropped (see VeloceCountWorker.run).
+                    com.craftingveloce.crafting.VeloceCountWorker.shutdown();
                 });
 
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.level.ChunkEvent.Load.class, event -> {
