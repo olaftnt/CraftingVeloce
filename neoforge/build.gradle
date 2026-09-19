@@ -180,6 +180,21 @@ dependencies {
 processResources {
     from(rootProject.projectDir) {
         include "assets/**"
+        // icon-dump/ IS SOURCE MATERIAL, NOT PART OF THE MOD.
+        //
+        // Those 44 PNGs are machine renders produced by `/cv icon all` (see
+        // VeloceIconDump), and `scripts/gen_case_icons.py` composes the casing textures
+        // FROM them together with case-source/. The game itself never reads them - what it
+        // draws is `textures/item/case/*.png`, already composed - so shipping them put
+        // 1 945 487 bytes (1.9 MB of a 5.05 MB jar) of build input into every player's
+        // downloads folder.
+        //
+        // They stay in the REPOSITORY on purpose, and that is not sentimentality: a guard
+        // in scripts/build.py requires gen_case_icons.py, both case-source plates and
+        // icon-dump/_map.txt to exist, so that the casing icons can be rebuilt from the
+        // repository alone rather than re-rendered in the game. Excluding them here keeps
+        // that property while taking the weight off the artifact.
+        exclude "assets/craftingveloce/icon-dump/**"
         // ONLY our own namespaces, listed one by one.
         //
         // This used to be `include "data/**"`, which swept up whatever happened to sit in
