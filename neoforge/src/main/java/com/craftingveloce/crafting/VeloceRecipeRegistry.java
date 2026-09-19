@@ -276,6 +276,18 @@ public final class VeloceRecipeRegistry {
         if (cached != null) {
             return cached;
         }
+        // BUILD UNDER A LOCK - see getIndex for the full reasoning.
+        synchronized (INDEX_BUILD_LOCK) {
+            cached = FURNACE_CACHE.get(manager);
+            if (cached != null) {
+                return cached;
+            }
+            return buildFurnaceIndex(level, manager);
+        }
+    }
+
+    private static Map<Item, List<ProcessingEntry>> buildFurnaceIndex(ServerLevel level,
+                                                                      RecipeManager manager) {
         long start = System.nanoTime();
         Map<Item, List<ProcessingEntry>> built = buildIndex(manager, level, FURNACE_TYPES);
         FURNACE_CACHE.put(manager, built);
@@ -314,6 +326,42 @@ public final class VeloceRecipeRegistry {
         if (cached != null) {
             return cached;
         }
+        // THE INDEX IS BUILT UNDER A LOCK, and this is not about performance.
+        //
+        // The counting path may now run on a WORKER thread (see VeloceCountWorker),
+        // while the server thread can be rebuilding the same index after a datapack
+        // reload. `synchronizedMap` alone does NOT make this safe:
+        //
+        //   * "get, then build, then put" is a check-then-act: two threads both see a
+        //     miss and both walk every recipe in the modpack, and the second `put`
+        //     replaces the first - wasted work, but worse, the map handed out to the
+        //     first caller is then untracked;
+        //   * a WeakHashMap entry can be collected between the get and the put in a
+        //     way that leaves the freshly built index attached to nothing.
+        //
+        // Inside this lock the build happens once per manager and every reader gets the
+        // SAME immutable-ish map. The cost of the lock is paid only on a MISS, i.e. once
+        // per world/data reload - never on the hot path, which reads through the
+        // unsynchronised `get` above.
+        synchronized (INDEX_BUILD_LOCK) {
+            cached = CACHE.get(manager);   // re-check: someone may have built it meanwhile
+            if (cached != null) {
+                return cached;
+            }
+            return buildRecipeIndex(level, manager);
+        }
+    }
+
+    /**
+     * Guards the one-off construction of the recipe indexes.
+     *
+     * <p>Deliberately a SEPARATE lock from the maps themselves: holding it must not
+     * block the readers, and a reader that finds its entry takes no lock at all.
+     */
+    private static final Object INDEX_BUILD_LOCK = new Object();
+
+    private static Map<Item, List<ProcessingEntry>> buildRecipeIndex(ServerLevel level,
+                                                                     RecipeManager manager) {
         // Building the index walks ALL recipes of the modpack together
         // with ingredient resolution - a one-off but real cost on the server
         // thread. We measure it so that it can be pointed at in the log if someone

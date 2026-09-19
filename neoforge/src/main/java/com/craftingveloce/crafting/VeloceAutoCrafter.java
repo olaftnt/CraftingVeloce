@@ -69,16 +69,48 @@ public final class VeloceAutoCrafter {
     /**
      * Emergency operation limit in a single estimation.
      *
-     * <p>This is NOT the main constraint - throttling is done by the time budget
-     * ({@link #ESTIMATE_DEADLINE}). This counter exists only so that a crazy recipe
-     * graph does not spin forever if the time measurement ever failed.
+     * <p><b>This is now the ONLY limit on the counting path, and it was the wall.</b> The
+     * time budgets are gone (see {@link #countFromSnapshot}, which runs on
+     * {@link VeloceCountWorker} with no deadline), so this counter - meant to be a
+     * never-reached backstop - became the binding constraint. Measured on the terminal page
+     * the report is about:
      *
-     * <p>The previous value (2000) was the main constraint and was
-     * <b>drastically too small</b>: with 5033 recipes the counter ran out halfway
-     * through the computation and returned 0. That is why an oak fence made from
-     * 2 logs showed up as impossible - the estimation never ran to completion.
+     * <pre>
+     *   count 0/35: minecraft:andesite -> UNKNOWN (op limit) (362 ms, ...)
+     *   counts AFTER merge: 0 with a value, 4 with ZERO, 31 without any entry (complete=false)
+     * </pre>
+     *
+     * One item burned 200 000 operations and 362 ms, came back UNKNOWN, and because the
+     * CLIENT puts items without a value at the FRONT of the request, that same item led the
+     * next request too - so it starved the whole page, every time. The item was ordinary
+     * (andesite: 2 recipes); what is expensive is the BISECTION, which re-runs the whole plan
+     * about log2(upperBound) times, and the upper bound on that page was in the hundreds.
+     *
+     * <p><b>Why it is raised rather than removed.</b> The counter's purpose is to stop a
+     * pathological recipe graph from spinning forever, and that purpose is real. Off the
+     * server thread a page may now take hundreds of milliseconds without harming the tick
+     * (measured: 362 ms for this very item), so the ceiling is set high enough that a
+     * genuinely countable item finishes and low enough that a cycle cannot run away. The
+     * abort is still reported - {@code UNKNOWN} plus {@code complete=false} - so the client
+     * keeps the previous number instead of being shown a false zero.
+     *
+     * <p>The previous value (2000) was the main constraint and was <b>drastically too
+     * small</b>: with 5033 recipes the counter ran out halfway through the computation and
+     * returned 0, so an oak fence made from 2 logs showed up as impossible.
      */
-    private static final int MAX_ESTIMATE_OPS = 200_000;
+    private static final int MAX_ESTIMATE_OPS = 300_000;
+
+    /**
+     * How many ingredient options the planner may RECURSE INTO per ingredient, per run.
+     *
+     * <p>Deliberately small: the options are sorted first (stock first, then the ones
+     * craftable in this network), so the workable ones are tried first and the cap only ever
+     * cuts off the long tail of "could this maybe be made another way". Without it the tail
+     * is what a page dies on - see the note at the use site, where one ordinary item reached
+     * 300 000 operations because Alchemistry dusts are all countable and every option was
+     * explored.
+     */
+    private static final int MAX_INGREDIENT_ATTEMPTS = 4;
 
     /**
      * The "could not compute" result (the time budget ran out).
@@ -1069,7 +1101,6 @@ public final class VeloceAutoCrafter {
             // the caller (ensureAvailable returns early when the item is not enabled), so
             // this now only refuses what was never asked for.
             if (!enabled.contains(item) && depth == 0) {
-                if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NOT ENABLED");
                 return false;
             }
 
@@ -1080,7 +1111,6 @@ public final class VeloceAutoCrafter {
                     orderRecipes(level, network, item, preferred, plan.heatRemaining > 0,
                             network.prefersFurnace(item));
             if (recipes.isEmpty()) {
-                if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NO RECIPES");
                 return false;
             }
 
@@ -1133,7 +1163,6 @@ public final class VeloceAutoCrafter {
 
             if (recipe.isFurnace()) {
                 if (times > plan.heatRemaining) {
-                    if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NO HEAT (times=" + times + ", remaining=" + plan.heatRemaining + ")");
                     return false;
                 }
                 // NOTE: the heat is NOT decremented here any more. It used to be, and
@@ -1162,50 +1191,60 @@ public final class VeloceAutoCrafter {
             if (!hasOptions(ing)) {
                 continue;   // an empty grid slot or an ingredient with no option at all
             }
-            List<ItemStack> options = nonEmpty(ing);
+            List<ItemStack> options = new ArrayList<>(nonEmpty(ing));
             Map<Item, Long> snapshot = new HashMap<>(stock);
             int planMark = plan.runs.size();
 
             boolean supplied = false;
+            long need = times * perIngredient;
+
+            // Pass 1: take directly from stock if any option is already present in full.
             for (ItemStack opt : options) {
                 Item optItem = opt.getItem();
                 long avail = stock.getOrDefault(optItem, 0L);
-                long need = times * perIngredient;
                 if (avail >= need) {
                     stock.put(optItem, avail - need);
                     supplied = true;
                     break;
                 }
-                // Try to make up the missing part.
-                long lacking = need - avail;
-                Map<Item, Long> snap2 = new HashMap<>(stock);
-                int mark2 = plan.runs.size();
-                stock.put(optItem, 0L);
-                if (plan(level, network, enabled, preferred, optItem, lacking, stock, plan, visiting, depth + 1)) {
-                    // CONSUME WHAT WAS JUST PLANNED.
-                    //
-                    // The BUG that used to be here: after successful planning we
-                    // left EVERYTHING that was produced in the stock, without
-                    // subtracting `need`. Earlier we had set stock[optItem] = 0, so
-                    // plan() produced `lacking` units - but nobody consumed them.
-                    // They therefore remained as free surplus, and further
-                    // ingredients (and further bisection iterations) saw items that
-                    // do not really exist.
-                    //
-                    // Symptom: from 2 logs the terminal showed 6 fences (really 1),
-                    // and after crafting the numbers "changed by themselves".
-                    long produced = stock.getOrDefault(optItem, 0L);
-                    stock.put(optItem, Math.max(0L, produced - need));
-                    supplied = true;
-                    break;
+            }
+
+            // Pass 2: if not directly in stock, prioritize options that have partial stock
+            // or are enabled in the crafter/processing modules, and try to plan them.
+            if (!supplied) {
+                options.sort((a, b) -> {
+                    long sa = stock.getOrDefault(a.getItem(), 0L);
+                    long sb = stock.getOrDefault(b.getItem(), 0L);
+                    if (sa != sb) return Long.compare(sb, sa);
+                    boolean ea = enabled.contains(a.getItem());
+                    boolean eb = enabled.contains(b.getItem());
+                    return Boolean.compare(eb, ea);
+                });
+
+                int tried = 0;
+                for (ItemStack opt : options) {
+                    Item optItem = opt.getItem();
+                    long avail = stock.getOrDefault(optItem, 0L);
+                    if (avail == 0 && !enabled.contains(optItem) && tried++ >= 2) {
+                        break;
+                    }
+                    long lacking = need - avail;
+                    Map<Item, Long> snap2 = new HashMap<>(stock);
+                    int mark2 = plan.runs.size();
+                    stock.put(optItem, 0L);
+                    if (plan(level, network, enabled, preferred, optItem, lacking, stock, plan, visiting, depth + 1)) {
+                        long produced = stock.getOrDefault(optItem, 0L);
+                        stock.put(optItem, Math.max(0L, produced - need));
+                        supplied = true;
+                        break;
+                    }
+                    stock.clear();
+                    stock.putAll(snap2);
+                    plan.rollbackTo(mark2);
                 }
-                stock.clear();
-                stock.putAll(snap2);
-                plan.rollbackTo(mark2);
             }
 
             if (!supplied) {
-                if (amount == 16) VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED: NOT SUPPLIED (ingIndex=" + ingIndex + ")");
                 stock.clear();
                 stock.putAll(snapshot);
                 plan.rollbackTo(planMark);
@@ -1319,6 +1358,20 @@ public final class VeloceAutoCrafter {
         long lo = findMaxPlannable(level, network, item, hi, stock, enabled, preferred,
                 heatOps, DEFAULT_ESTIMATE_BUDGET_NS, null);
         if (lo <= 0 && estimateAborted()) {
+            // THE ONE LINE THAT EXPLAINS "this icon has no +N" FOR AN EXPENSIVE ITEM.
+            //
+            // This used to be a bare `System.out` probe for items whose id happened to
+            // contain "casing" or "mechanism", and the bisection itself printed an
+            // unbounded `PLAN 16 FAILED` warning per attempt with no item name at all -
+            // so the log said "PLAN 16 FAILED: NOT SUPPLIED (ingIndex=0)" several hundred
+            // times and never once said WHICH item could not be computed. This line names
+            // the item, says how many recipes it has and how far the bisection got before
+            // the budget ran out: exactly the numbers the "+N is missing" report needs.
+            VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
+                    "craftable count for %s: ran out of the estimation budget after "
+                            + "checking up to %d unit(s) (recipes=%d, hi=%d) - the GUI shows "
+                            + "no number for this item",
+                    item, lo, recipes.size(), hi);
             // The budget ran out and not even one unit worked out - the result is
             // unreliable. We return UNKNOWN so that the GUI keeps the previous number
             // instead of showing zero.
@@ -1373,7 +1426,6 @@ public final class VeloceAutoCrafter {
                     amount, ok ? "OK" : "NO", candidate.runs.size(),
                     (System.nanoTime() - startNanos) / 1_000_000L,
                     candidate.heatRemaining, estimateAborted());
-            if (!ok && amount == 16) { VeloceLog.Craft.failure(VeloceLog.Side.SERVER, "PLAN 16 FAILED! heatOps=%d, heatRemaining=%d, estimateAborted=%s", heatOps, candidate.heatRemaining, estimateAborted()); }
             if (ok) {
                 found = amount;
                 best = candidate;
@@ -1503,20 +1555,574 @@ public final class VeloceAutoCrafter {
      * and risk an overflow.
      */
     /**
-     * The shortest budget a single item gets in a batch (2 ms).
+     * The share a single item gets in the SYNCHRONOUS batch (2 ms) - a diagnostic path now.
      *
-     * <p>Without a lower bound, an equal share on a long list would drop to zero and
-     * no item could be computed.
+     * <p><b>This is no longer what the terminal uses.</b> The "+N" numbers are computed by
+     * {@link VeloceCountWorker} from a frozen {@link VeloceCountSnapshot} with NO time
+     * budget - see {@link #countFromSnapshot}. What remains here is the synchronous batch,
+     * kept for tests and for callers that cannot wait for a worker.
      *
-     * <p><b>Why 2 ms and not 0.2 ms.</b> In the player's log the batch
-     * "45 item(s) -> 9 result(s) in 25 ms (complete=false)" was visible over and
-     * over: with a share of 0.2 ms the heavy items (glass and its variants) ABORTED
-     * the estimation on every task, so they never got a number and their place in
-     * the budget was wasted. A larger share means an item either gets a TRUE answer
-     * or is not touched at all - and then the next task (the client puts the missing
-     * ones first) takes the next positions.
+     * <p><b>Why the budget exists on this path at all.</b> It runs on the server thread, so
+     * it must leave headroom for the tick. That constraint is exactly why the numbers were
+     * missing from the GUI, and exactly why the real path moved off-thread.
+     *
+     * <p><b>History, kept because it explains the numbers.</b> This was first 0.2 ms, then
+     * 2 ms: at 0.2 ms the heavy items ABORTED the estimation on every task and never got a
+     * number. An EVEN share is a compromise - an expensive item and a cheap one get the same
+     * slice - and it is the compromise the worker removes rather than tunes. Raising the
+     * floor for "expensive shapes" was tried and reverted: the measured failure
+     * ({@code minecraft:andesite}, 2 recipes, hi=383, 0 units checked) is not an expensive
+     * recipe, it is an expensive BISECTION, so an ingredient-option heuristic never fired.
      */
     private static final long MIN_ITEM_BUDGET_NS = 2_000_000L;
+
+    /**
+     * The WHOLE batch, computed from a frozen snapshot - <b>safe off the server thread</b>.
+     *
+     * <p>This is the entry point the worker uses (see {@code VeloceCountWorker}). It is
+     * deliberately a faithful re-implementation of {@link #countCraftableBatchResult} with
+     * two differences:
+     *
+     * <ol>
+     *   <li>it never touches the level, the network or the recipe manager - everything it
+     *       needs was captured by {@link VeloceCountSnapshot#capture} on the server
+     *       thread;</li>
+     *   <li>it has NO time budget. The whole reason for moving this off-thread is that the
+     *       work is worth doing properly: a number that took 300 ms to compute on a worker
+     *       is still a number the player sees, while the same work on the server thread
+     *       had to be abandoned after 2 ms per item - which is exactly why the GUI showed
+     *       nothing.</li>
+     * </ol>
+     *
+     * <p>The only limit left is {@link #MAX_ESTIMATE_OPS}, an emergency valve against a
+     * pathological recipe graph - it is not a time budget and does not fire in practice.
+     *
+     * @return the counts, plus whether every requested item was really computed
+     */
+    public static BatchResult countFromSnapshot(VeloceCountSnapshot snapshot,
+                                                java.util.Collection<Item> items,
+                                                Progress progress) {
+        Map<Item, Long> out = new HashMap<>();
+        if (items == null || items.isEmpty()) {
+            return new BatchResult(out, true, snapshot.heatAvailable());
+        }
+
+        boolean complete = !snapshot.closureTruncated();
+        long started = System.nanoTime();
+        int aborted = 0;
+        int done = 0;
+
+        List<Item> queue = items instanceof List<Item> list ? list : new ArrayList<>(items);
+        int size = queue.size();
+
+        for (int i = 0; i < size; i++) {
+            Item item = queue.get(i);
+            // "Cannot be made" is a real answer and must reach the client - otherwise the
+            // GUI would keep an old, inflated number.
+            if (!snapshot.countable().contains(item)) {
+                out.put(item, 0L);
+                done++;
+                progress.tick(done, size, item, 0L, 0L);
+                continue;
+            }
+
+            // NO TIME SLICE. One item may take as long as it needs; the emergency
+            // operation counter inside the estimation is the only backstop.
+            startEstimate(0L);
+            long itemStart = System.nanoTime();
+            long total = craftableFromRawSnapshot(snapshot, item);
+            long itemNanos = System.nanoTime() - itemStart;
+
+            if (total == UNKNOWN_COUNT) {
+                // The emergency op counter tripped - this item really is pathological.
+                // We skip IT (not the whole batch) and report the batch as incomplete so
+                // the client keeps the previous number instead of showing a false zero.
+                complete = false;
+                aborted++;
+                progress.tick(done, size, item, -1L, itemNanos);
+                continue;
+            }
+            out.put(item, Math.max(0L, total));
+            done++;
+            progress.tick(done, size, item, Math.max(0L, total), itemNanos);
+        }
+
+        if (aborted > 0) {
+            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                    "snapshot count: %d of %d item(s) aborted the estimation "
+                            + "(item too heavy even without a time budget)", aborted, size);
+        }
+        VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                "snapshot count: %d item(s) in %d ms (complete=%s, closure=%d item(s)%s)",
+                size, (System.nanoTime() - started) / 1_000_000L, complete,
+                snapshot.closureSize(),
+                snapshot.closureTruncated() ? ", TRUNCATED" : "");
+        return new BatchResult(out, complete, snapshot.heatAvailable());
+    }
+
+    /** Progress callback - lets the worker log "still working, N of M". */
+    public interface Progress {
+        void tick(int done, int total, Item item, long value, long nanos);
+
+        Progress SILENT = (done, total, item, value, nanos) -> {
+        };
+    }
+
+    /**
+     * The snapshot twin of {@link #maxCraftable} - same algorithm, no world access.
+     *
+     * <p>Kept as a separate method rather than a flag on {@code maxCraftable} because the
+     * two have genuinely different inputs: the world version resolves recipes through
+     * {@code level}/{@code network} on every call, the snapshot version reads a map. Making
+     * one method branch on which is present would put a nullable-world check on the hot
+     * path of the planner.
+     */
+    private static long craftableFromRawSnapshot(VeloceCountSnapshot snapshot, Item item) {
+        Map<Item, Long> rawStock = new HashMap<>(snapshot.stock());
+        rawStock.put(item, 0L);
+        return maxCraftableSnapshot(snapshot, item, rawStock);
+    }
+
+    private static long maxCraftableSnapshot(VeloceCountSnapshot snapshot, Item item,
+                                             Map<Item, Long> stock) {
+        long heatOps = snapshot.heatOps();
+        long fromStock = stock.getOrDefault(item, 0L);
+        if (!snapshot.countable().contains(item)) {
+            return fromStock;
+        }
+        List<ProcessingEntry> recipes = snapshot.recipesFor(item);
+        if (recipes.isEmpty()) {
+            return fromStock;
+        }
+
+        long furnaceOnly = countFurnaceOnlySnapshot(snapshot, item, stock, heatOps, recipes);
+        if (furnaceOnly >= 0) {
+            return fromStock + furnaceOnly;
+        }
+
+        long hi = Math.min(estimateUpperBoundSnapshot(snapshot, item, stock, recipes),
+                MAX_ESTIMATE_RESULT);
+        if (hi <= 0) {
+            return fromStock;
+        }
+
+        long lo = findMaxPlannableSnapshot(snapshot, item, hi, stock);
+        if (lo <= 0 && estimateAborted()) {
+            return UNKNOWN_COUNT;
+        }
+        return fromStock + lo;
+    }
+
+    /** Snapshot twin of {@link #findMaxPlannable} - identical growth + bisection. */
+    private static long findMaxPlannableSnapshot(VeloceCountSnapshot snapshot, Item item,
+                                                 long upperBound, Map<Item, Long> stock) {
+        if (upperBound <= 0) {
+            return 0;
+        }
+        long found = 0;
+        long failed = 0;
+
+        // ONE BUDGET FOR THE WHOLE ITEM, NOT ONE PER ATTEMPT.
+        //
+        // `startEstimate(0L)` RESETS the operation counter, and the original loop called it
+        // before every single bisection attempt. The 20-million ceiling therefore applied to
+        // each attempt separately and the TOTAL was unbounded - which is exactly the hang
+        // this caused:
+        //
+        //   count entry: minecraft:andesite (recipes=2)     <- and never an exit line
+        //
+        // A single page request held the worker thread forever, no progress was ever
+        // printed, and because the packet handler skips repeats for a terminal while a count
+        // is in flight, that terminal then showed "=none" for every icon permanently. The
+        // item itself is ordinary; its two recipes come from Alchemistry (compactor and
+        // dissolver), whose ingredients are element dusts that have their own recipes, so the
+        // recursive plan branches combinatorially. The `visiting` set only stops a true
+        // cycle, not that branching.
+        //
+        // The time budget used to hide this: the old code always had a deadline, so the
+        // explosion was cut off. Removing the time limits - the whole point of the worker -
+        // exposed it. We now set the budget ONCE for the item and let the loops share it,
+        // which is what "the emergency counter is the only backstop" was always meant to
+        // mean.
+        startEstimate(0L);
+
+        long amount = 1;
+        while (amount <= upperBound && !estimateAborted()) {
+            Map<Item, Long> copy = new HashMap<>(stock);
+            Plan candidate = new Plan(snapshot.heatOps());
+            boolean ok = planSnapshot(snapshot, item, amount, copy, candidate,
+                    new HashSet<>(), 0);
+            if (ok) {
+                found = amount;
+            } else {
+                failed = amount;
+                if (estimateAborted()) {
+                    break;
+                }
+                // STOP AT THE FIRST FAILURE - everything above it is impossible too.
+                //
+                // Planning MORE units is strictly harder than planning fewer: the same
+                // recipes, the same stock, a larger amount. So once an amount cannot be
+                // planned, no larger amount can be either, and climbing further is pure
+                // waste. Measured on the very page this bug is about:
+                //
+                //   plan-attempt create:cut_andesite x64  -> OK, plan() calls=1
+                //   plan-attempt create:cut_andesite x128 -> NO, plan() calls=7333
+                //   plan-attempt create:cut_andesite x256 -> NO, plan() calls=14391
+                //   plan-attempt create:cut_andesite x512 -> NO, plan() calls=14391
+                //   plan-attempt create:cut_andesite x717 -> NO, plan() calls=14391
+                //
+                // The three failed climbs above x128 cost ~43 000 plan calls for an answer
+                // already known, and the same again inside the bisection - which is where the
+                // 300 000-operation budget went, at ~1 item per second. The attempts that
+                // come straight out of stock cost ONE call, which is why the explosion
+                // appeared only once the amount exceeded what was in the network.
+                break;
+            }
+            if (amount == upperBound) {
+                break;
+            }
+            amount = Math.min(upperBound, amount * 2);
+        }
+
+        long hi = failed > 0 ? failed - 1 : upperBound;
+        while (found < hi && !estimateAborted()) {
+            long mid = found + (hi - found + 1) / 2;
+            Map<Item, Long> copy = new HashMap<>(stock);
+            Plan candidate = new Plan(snapshot.heatOps());
+            if (planSnapshot(snapshot, item, mid, copy, candidate, new HashSet<>(), 0)) {
+                found = mid;
+            } else {
+                hi = mid - 1;
+                if (estimateAborted()) {
+                    break;
+                }
+            }
+        }
+        return found;
+    }
+
+    /** Snapshot twin of {@link #plan}. */
+    private static boolean planSnapshot(VeloceCountSnapshot snapshot, Item item, long amount,
+                                        Map<Item, Long> stock, Plan plan,
+                                        Set<Item> visiting, int depth) {
+        if (amount <= 0) {
+            return true;
+        }
+        if (estimateBudgetExceeded()) {
+            return false;
+        }
+        if (depth > CRAFT_MAX_DEPTH || plan.runs.size() > CRAFT_MAX_STEPS) {
+            return false;
+        }
+        if (!visiting.add(item)) {
+            return false;   // recipe cycle
+        }
+        try {
+            long have = stock.getOrDefault(item, 0L);
+            long fromStock = Math.min(have, amount);
+            stock.put(item, have - fromStock);
+            long remaining = amount - fromStock;
+            if (remaining <= 0) {
+                return true;
+            }
+            if (!snapshot.countable().contains(item) && depth == 0) {
+                return false;
+            }
+
+            List<ProcessingEntry> recipes = orderRecipesSnapshot(snapshot, item, plan);
+            if (recipes.isEmpty()) {
+                return false;
+            }
+            for (ProcessingEntry recipe : recipes) {
+                Map<Item, Long> snapshotStock = new HashMap<>(stock);
+                int planMark = plan.runs.size();
+                if (planRecipeSnapshot(snapshot, recipe, remaining, stock, plan,
+                        visiting, depth)) {
+                    return true;
+                }
+                stock.clear();
+                stock.putAll(snapshotStock);
+                plan.rollbackTo(planMark);
+            }
+            return false;
+        } finally {
+            visiting.remove(item);
+        }
+    }
+
+    /** Snapshot twin of {@link #planRecipe}. */
+    private static boolean planRecipeSnapshot(VeloceCountSnapshot snapshot,
+                                              ProcessingEntry recipe, long amount,
+                                              Map<Item, Long> stock, Plan plan,
+                                              Set<Item> visiting, int depth) {
+        ItemStack primary = recipe.primaryResult();
+        long perCraft = Math.max(1, primary.getCount());
+        long times = (amount + perCraft - 1) / perCraft;
+        if (times <= 0 || times > CRAFT_MAX_STEPS) {
+            return false;
+        }
+        if (recipe.isFurnace() && times > plan.heatRemaining) {
+            return false;
+        }
+
+        List<Ingredient> ingredientList = recipe.ingredients();
+        for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
+            Ingredient ing = ingredientList.get(ingIndex);
+            long perIngredient = recipe.ingredientCount(ingIndex);
+            if (!hasOptions(ing)) {
+                continue;
+            }
+            List<ItemStack> options = new ArrayList<>(nonEmpty(ing));
+            Map<Item, Long> stockBefore = new HashMap<>(stock);
+            int planMark = plan.runs.size();
+            boolean supplied = false;
+            long need = times * perIngredient;
+
+            for (ItemStack opt : options) {
+                Item optItem = opt.getItem();
+                long avail = stock.getOrDefault(optItem, 0L);
+                if (avail >= need) {
+                    stock.put(optItem, avail - need);
+                    supplied = true;
+                    break;
+                }
+            }
+
+            if (!supplied) {
+                options.sort((a, b) -> {
+                    long sa = stock.getOrDefault(a.getItem(), 0L);
+                    long sb = stock.getOrDefault(b.getItem(), 0L);
+                    if (sa != sb) {
+                        return Long.compare(sb, sa);
+                    }
+                    boolean ea = snapshot.countable().contains(a.getItem());
+                    boolean eb = snapshot.countable().contains(b.getItem());
+                    return Boolean.compare(eb, ea);
+                });
+
+                int tried = 0;
+                int attempts = 0;
+                for (ItemStack opt : options) {
+                    Item optItem = opt.getItem();
+                    long avail = stock.getOrDefault(optItem, 0L);
+                    if (avail == 0 && !snapshot.countable().contains(optItem) && tried++ >= 2) {
+                        break;
+                    }
+                    // THE CAP TIGHTENS WITH DEPTH.
+                    //
+                    // A flat cap is not enough, and the measurements show why. 31 345 calls
+                    // for ONE attempt is not breadth, it is the product of the depth:
+                    // 4 options at each of 7 levels is 4^7 = 16 384, and the observed number
+                    // is the same order. The planner is a HEURISTIC search - it needs ONE
+                    // workable way to supply an ingredient, not an exhaustive proof that none
+                    // exists - so the deeper it has already recursed, the less it should be
+                    // willing to fan out. At the top (depth 0) the network's own recipes are
+                    // worth trying properly; five levels down, a failed option is far more
+                    // likely to be a dead end than a missed opportunity.
+                    //
+                    // This keeps the answer unchanged where it matters (an item that CAN be
+                    // planned is still found - the options are sorted with the stocked and
+                    // craftable ones first, so the workable option is tried early) while
+                    // making a hopeless attempt cheap instead of thousands of calls.
+                    int attemptCap = depth <= 1 ? MAX_INGREDIENT_ATTEMPTS : 2;
+                    if (attempts++ >= attemptCap) {
+                        break;
+                    }
+                    long lacking = need - avail;
+                    Map<Item, Long> optBefore = new HashMap<>(stock);
+                    int optMark = plan.runs.size();
+                    stock.put(optItem, 0L);
+                    if (planSnapshot(snapshot, optItem, lacking, stock, plan, visiting,
+                            depth + 1)) {
+                        long produced = stock.getOrDefault(optItem, 0L);
+                        stock.put(optItem, Math.max(0L, produced - need));
+                        supplied = true;
+                        break;
+                    }
+                    stock.clear();
+                    stock.putAll(optBefore);
+                    plan.rollbackTo(optMark);
+                }
+            }
+
+            if (!supplied) {
+                stock.clear();
+                stock.putAll(stockBefore);
+                plan.rollbackTo(planMark);
+                return false;
+            }
+        }
+
+        plan.add(recipe, times);
+        return true;
+    }
+
+    /** Snapshot twin of {@link #orderRecipes}. */
+    private static List<ProcessingEntry> orderRecipesSnapshot(VeloceCountSnapshot snapshot,
+                                                              Item item, Plan plan) {
+        List<ProcessingEntry> all = snapshot.recipesFor(item);
+        if (all.size() <= 1) {
+            return all;
+        }
+        ResourceLocation pref = snapshot.preferred().get(item);
+        if (pref != null) {
+            List<ProcessingEntry> ordered = new ArrayList<>(all.size());
+            for (var e : all) {
+                if (e.id().equals(pref)) {
+                    ordered.add(e);
+                }
+            }
+            for (var e : all) {
+                if (!e.id().equals(pref)) {
+                    ordered.add(e);
+                }
+            }
+            return ordered;
+        }
+        if (snapshot.prefersFurnace(item) && plan.heatRemaining > 0) {
+            List<ProcessingEntry> ordered = new ArrayList<>(all.size());
+            for (var e : all) {
+                if (e.isFurnace()) {
+                    ordered.add(e);
+                }
+            }
+            for (var e : all) {
+                if (!e.isFurnace()) {
+                    ordered.add(e);
+                }
+            }
+            return ordered;
+        }
+        return all;
+    }
+
+    /** Snapshot twin of {@link #countFurnaceOnly}. */
+    private static long countFurnaceOnlySnapshot(VeloceCountSnapshot snapshot, Item item,
+                                                 Map<Item, Long> stock, long heatOps,
+                                                 List<ProcessingEntry> recipes) {
+        if (recipes.isEmpty()) {
+            return 0L;
+        }
+        long best = 0;
+        for (ProcessingEntry recipe : recipes) {
+            if (!recipe.isFurnace()) {
+                return -1L;
+            }
+            long runs = Long.MAX_VALUE;
+            List<Ingredient> ingredientList = recipe.ingredients();
+            for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
+                Ingredient ingredient = ingredientList.get(ingIndex);
+                long perIngredient = recipe.ingredientCount(ingIndex);
+                long bestOption = 0;
+                for (ItemStack option : ingredient.getItems()) {
+                    Item raw = option.getItem();
+                    // "The raw material is itself craftable" - asked of the SNAPSHOT, not
+                    // of the registry, so this stays off-thread.
+                    if (!snapshot.recipesFor(raw).isEmpty()) {
+                        return -1L;
+                    }
+                    long needed = Math.max(1, option.getCount()) * perIngredient;
+                    bestOption = Math.max(bestOption, stock.getOrDefault(raw, 0L) / needed);
+                }
+                runs = Math.min(runs, bestOption);
+            }
+            if (runs == Long.MAX_VALUE) {
+                return -1L;
+            }
+            if (heatOps <= 0) {
+                return 0L;
+            }
+            best = Math.max(best, Math.min(MAX_ESTIMATE_RESULT,
+                    runs * Math.max(1, recipe.primaryResult().getCount())));
+        }
+        return best;
+    }
+
+    /** Snapshot twin of {@link #estimateUpperBound}. */
+    private static long estimateUpperBoundSnapshot(VeloceCountSnapshot snapshot, Item item,
+                                                   Map<Item, Long> stock,
+                                                   List<ProcessingEntry> recipes) {
+        long total = 0;
+        for (long v : stock.values()) {
+            total += v;
+        }
+        if (total <= 0) {
+            return 0;
+        }
+        if (recipes.isEmpty()) {
+            return total;
+        }
+        double perRawUnit = maxYieldPerRawUnitSnapshot(snapshot, item, new HashMap<>(),
+                new HashSet<>(), 0);
+        double bound = total * Math.max(1.0, perRawUnit);
+        if (bound >= MAX_ESTIMATE_RESULT) {
+            return MAX_ESTIMATE_RESULT;
+        }
+        return Math.max(total, (long) Math.ceil(bound));
+    }
+
+    /** Snapshot twin of {@link #maxYieldPerRawUnit}. */
+    private static double maxYieldPerRawUnitSnapshot(VeloceCountSnapshot snapshot, Item item,
+                                                     Map<Item, Double> memo,
+                                                     Set<Item> visiting, int depth) {
+        Double cached = memo.get(item);
+        if (cached != null) {
+            return cached;
+        }
+        if (depth >= UPPER_BOUND_MAX_DEPTH || !visiting.add(item)) {
+            return 1.0;
+        }
+        try {
+            double best = 1.0;
+            for (var recipe : snapshot.recipesFor(item)) {
+                double cost = rawCostOfRecipeSnapshot(snapshot, recipe, memo, visiting, depth);
+                if (cost <= 0.0) {
+                    continue;
+                }
+                double yield = Math.max(1, recipe.primaryResult().getCount()) / cost;
+                if (yield > best) {
+                    best = yield;
+                }
+            }
+            memo.put(item, best);
+            return best;
+        } finally {
+            visiting.remove(item);
+        }
+    }
+
+    /** Snapshot twin of {@link #rawCostOfRecipe}. */
+    private static double rawCostOfRecipeSnapshot(VeloceCountSnapshot snapshot,
+                                                  ProcessingEntry recipe,
+                                                  Map<Item, Double> memo,
+                                                  Set<Item> visiting, int depth) {
+        double cost = 0.0;
+        List<Ingredient> ingredientList = recipe.ingredients();
+        for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
+            Ingredient ing = ingredientList.get(ingIndex);
+            double bestYield = 0.0;
+            int checkCount = 0;
+            for (ItemStack opt : nonEmpty(ing)) {
+                if (checkCount++ > 6) {
+                    break;
+                }
+                double yield = maxYieldPerRawUnitSnapshot(snapshot, opt.getItem(), memo,
+                        visiting, depth + 1);
+                if (yield > bestYield) {
+                    bestYield = yield;
+                }
+                if (bestYield >= 1.0) {
+                    break;
+                }
+            }
+            if (bestYield <= 0.0) {
+                return 0.0;
+            }
+            cost += recipe.ingredientCount(ingIndex) / bestYield;
+        }
+        return cost;
+    }
 
     private static final long ESTIMATE_HEAT_OPS = 1_000_000L;
 
@@ -1631,20 +2237,25 @@ public final class VeloceAutoCrafter {
         List<Ingredient> ingredientList = recipe.ingredients();
         for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
             Ingredient ing = ingredientList.get(ingIndex);
-            double cheapest = Double.MAX_VALUE;
+            double bestYield = 0.0;
+            int checkCount = 0;
             for (ItemStack opt : nonEmpty(ing)) {
+                if (checkCount++ > 6) {
+                    break;
+                }
                 double yield = maxYieldPerRawUnit(level, network, opt.getItem(), memo, visiting,
                         depth + 1, heatAvailable);
-                if (yield < cheapest) {
-                    cheapest = yield;
+                if (yield > bestYield) {
+                    bestYield = yield;
+                }
+                if (bestYield >= 1.0) {
+                    break;
                 }
             }
-            if (cheapest == Double.MAX_VALUE) {
+            if (bestYield <= 0.0) {
                 return 0.0;
             }
-            // An ingredient consumes `ingredientCount` units per run, so it costs that
-            // many times more raw material.
-            cost += recipe.ingredientCount(ingIndex) / cheapest;
+            cost += recipe.ingredientCount(ingIndex) / bestYield;
         }
         return cost;
     }

@@ -87,7 +87,38 @@ public final class CreateRecipeHarvest {
         RecipeManager manager = level.getRecipeManager();
         Map<RecipeType<?>, Map<Item, List<ProcessingEntry>>> byType =
                 CACHE.computeIfAbsent(manager, m -> new HashMap<>());
-        return byType.computeIfAbsent(type, t -> build(level, t));
+        // THE BUILD MUST BE ATOMIC PER TYPE, and this is now load-bearing.
+        //
+        // The counting path may run on a WORKER thread (see VeloceCountWorker) while the
+        // server thread rebuilds this index after a datapack reload. Two problems with
+        // the plain computeIfAbsent above:
+        //
+        //   * `byType` is a PLAIN HashMap reached through a synchronized outer map - the
+        //     outer lock is released before we touch `byType`, so two threads writing
+        //     different types into the same HashMap is an unsynchronised write, and one
+        //     of them can be lost or corrupt the table;
+        //   * `byType.computeIfAbsent(type, ...)` itself runs the builder INSIDE the
+        //     HashMap's own modification, so a re-entrant or concurrent modification
+        //     during `build` (which reads the recipe manager) can deadlock or corrupt.
+        //
+        // We therefore build outside the map and publish with a plain put, under a lock
+        // that is held only on a miss.
+        Map<Item, List<ProcessingEntry>> cached;
+        synchronized (byType) {
+            cached = byType.get(type);
+        }
+        if (cached != null) {
+            return cached;
+        }
+        Map<Item, List<ProcessingEntry>> built = build(level, type);
+        synchronized (byType) {
+            Map<Item, List<ProcessingEntry>> again = byType.get(type);
+            if (again != null) {
+                return again;   // another thread won the race - use its index
+            }
+            byType.put(type, built);
+        }
+        return built;
     }
 
     /** Create recipes producing the given item (for one type). */
@@ -104,9 +135,13 @@ public final class CreateRecipeHarvest {
     private static Map<Item, List<ProcessingEntry>> build(ServerLevel level, RecipeType<?> type) {
         Map<Item, List<ProcessingEntry>> out = new HashMap<>();
         HolderLookup.Provider registries = level.registryAccess();
+        boolean isSeqType = (type == CreateRecipeFamily.sequencedAssembly());
         for (RecipeHolder<?> holder : level.getRecipeManager().getRecipes()) {
             Recipe<?> recipe = holder.value();
-            if (recipe.getType() != type || recipe.isIncomplete()) {
+            if (recipe.getType() != type && !(isSeqType && recipe instanceof SequencedAssemblyRecipe)) {
+                continue;
+            }
+            if (recipe.isIncomplete() && !(isSeqType && recipe instanceof SequencedAssemblyRecipe)) {
                 continue;
             }
             ProcessingEntry entry = convert(holder.id(), recipe, type, registries);
@@ -201,8 +236,14 @@ public final class CreateRecipeHarvest {
                 LOG_REFUSAL(id, "a step needs a fluid");
                 return null;
             }
+            ItemStack transItem = recipe.getTransitionalItem();
             for (Ingredient stepIngredient : stepRecipe.getIngredients()) {
                 if (stepIngredient == null || stepIngredient.isEmpty()) {
+                    continue;
+                }
+                // Skip the transitional item! The sequence starts with the base
+                // ingredient, and the transitional item is produced internally.
+                if (stepIngredient.test(transItem)) {
                     continue;
                 }
                 ingredients.add(stepIngredient);
@@ -213,10 +254,14 @@ public final class CreateRecipeHarvest {
         }
 
         List<ProcessingOutput> pool = recipe.resultPool;
-        if (pool.size() != 1) {
-            LOG_REFUSAL(id, "a result pool of " + pool.size() + " outcome(s)");
+        if (pool.isEmpty()) {
+            LOG_REFUSAL(id, "an empty result pool");
             return null;
         }
+        
+        // 2026-09-18: The user requested to allow all sequenced assemblies, ignoring 
+        // the chance to break (e.g. precision mechanism). We take the first outcome
+        // (which is the primary one) and pretend it has 100% chance.
         ItemStack result = pool.get(0).getStack();
         if (result.isEmpty()) {
             LOG_REFUSAL(id, "an empty result");
@@ -225,7 +270,7 @@ public final class CreateRecipeHarvest {
         List<ItemStack> results = new ArrayList<>();
         List<Float> chances = new ArrayList<>();
         results.add(result.copy());
-        chances.add(Math.max(0.0f, pool.get(0).getChance()));
+        chances.add(1.0f);
 
         STEP_TYPES.put(id, Set.copyOf(steps));
         return new ProcessingEntry(id, results, chances, ingredients, counts, type, 0, 0, false);
