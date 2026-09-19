@@ -387,6 +387,20 @@ public final class CVGuiTestCommand {
         // only come from reading the player.
         player.getInventory().setItem(0, new ItemStack(Items.DIORITE, 64));
 
+        // FINISHED ITEMS IN THE POCKETS, WHICH MUST NOT BE REPORTED AS CRAFTABLE.
+        //
+        // The report: "with 10 doors in my inventory it shows I can craft +10 doors, even
+        // though I cannot". A plan that consumes the stock it finds will happily "satisfy" a
+        // request for 10 doors from those 10 doors without crafting anything, and the number
+        // then reads as though the network made them.
+        //
+        // Wooden doors are deliberately an item this rig CANNOT produce: the barrel has no
+        // planks-to-door path enabled here and no crafting table recipe for them, so the only
+        // way they could appear craftable is by reading the player's stack. Whatever number
+        // the counter reports for `oak_door` must therefore come from crafting, not from the
+        // pocket.
+        player.getInventory().setItem(1, new ItemStack(Items.OAK_DOOR, 10));
+
         terminalPos = base;
         com.craftingveloce.network.GuiCountsProbePKT.reset();
         source.sendSuccess(() -> Component.literal("§6[guitest] §7rig at §f" + base

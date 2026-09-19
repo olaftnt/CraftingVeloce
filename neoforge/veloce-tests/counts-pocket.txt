@@ -1,0 +1,35 @@
+# Two things the counter must get right about the player's own pockets.
+#
+# A) FINISHED ITEMS IN THE POCKET ARE NOT CRAFTING OUTPUT.
+#    Report: "with 10 doors in my inventory it shows I can craft +10 doors, even though I
+#    cannot." A plan that consumes the stock it finds will satisfy a request for 10 doors
+#    from those very doors without crafting anything, and the "+N" then reads as if the
+#    network produced them. The rig carries 10 oak doors and cannot make doors, so any
+#    non-zero answer for `oak_door` is that bug.
+#
+# B) RAW MATERIALS IN THE POCKET ARE A LEGITIMATE SOURCE.
+#    Report: "it forgot to count items from the player's inventory - you can craft from
+#    them too." The rig carries 64 diorite and NOTHING else anywhere, and diorite_slab /
+#    diorite_stairs are made FROM diorite, so they must come out non-zero.
+
+/cv guitest setup
+expect: rig at
+wait: 120
+
+/cv guitest open
+expect: terminal screen opened
+wait: 80
+
+# A) the doors: must NOT be counted as craftable
+/cv guitest search oak_door
+expect: search phrase
+wait: 120
+/cv guitest result
+expect: withoutCounts=
+
+# B) the diorite: must be counted, from the pocket alone
+/cv guitest search diorite
+expect: search phrase
+wait: 120
+/cv guitest result
+expect: withoutCounts=

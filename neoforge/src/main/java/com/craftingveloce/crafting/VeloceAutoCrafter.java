@@ -1722,24 +1722,51 @@ public final class VeloceAutoCrafter {
             return fromStock;
         }
 
-        long furnaceOnly = countFurnaceOnlySnapshot(snapshot, item, stock, heatOps, recipes);
+        // The furnace fast path counts what the RAW MATERIAL allows, so it is asked with the
+        // same "produce only" view as the planner below - it must not credit the units already
+        // held as if the furnace had made them.
+        Map<Item, Long> produceOnly = new HashMap<>(stock);
+        produceOnly.put(item, 0L);
+
+        long furnaceOnly = countFurnaceOnlySnapshot(snapshot, item, produceOnly, heatOps, recipes);
         if (furnaceOnly >= 0) {
-            return fromStock + furnaceOnly;
+            return furnaceOnly;
         }
 
-        // The upper bound is "stock + what the raw materials allow", because the plan may
-        // consume the stock first and then craft the remainder.
-        long hi = Math.min(fromStock + estimateUpperBoundSnapshot(snapshot, item, stock, recipes),
+        // THE PLAN MUST NOT COUNT THE STOCK AS SOMETHING IT PRODUCED.
+        //
+        // `findMaxPlannableSnapshot` answers "can I have this many", and `plan` answers it by
+        // CONSUMING the stock it already finds and only crafting the remainder - so a request
+        // for 10 doors with 10 doors in the player's pockets succeeds WITHOUT CRAFTING
+        // ANYTHING, and the number comes back as 10. The player sees "+10 doors" next to an
+        // item they cannot make at all, which is exactly the report: the counter is reading
+        // the inventory and presenting it as craftable output.
+        //
+        // The fix is not to hide the stock - it is a legitimate SOURCE for the things made
+        // FROM it (see craftableFromRawSnapshot). It is to ask the question that separates the
+        // two roles: how many can be produced on top of what is already held. Zeroing a COPY
+        // of the stock for the duration of the measurement does that, while the real stock is
+        // still there for every ingredient lookup inside the plan.
+        //
+        // Concretely for "10 doors in the backpack, none craftable": the plan starts from an
+        // empty door pile, cannot produce any, and the answer is 0. For "64 andesite in the
+        // backpack, polished andesite on screen": andesite is NOT the item being measured, so
+        // it keeps its 64, and the plan makes polished andesite from it - the carried stack is
+        // still a source.
+        // The upper bound is what the RAW MATERIALS allow; the stock already held is not part
+        // of it, because it is not produced.
+        long hi = Math.min(estimateUpperBoundSnapshot(snapshot, item, produceOnly, recipes),
                 MAX_ESTIMATE_RESULT);
         if (hi <= 0) {
-            return fromStock;
+            return 0;
         }
 
-        long lo = findMaxPlannableSnapshot(snapshot, item, hi, stock);
+        long lo = findMaxPlannableSnapshot(snapshot, item, hi, produceOnly);
         if (lo <= 0 && estimateAborted()) {
             return UNKNOWN_COUNT;
         }
-        // `lo` already includes the stock the plan consumed, so it IS the total.
+        // What the plan can ADDITIONALLY make; the stock held is reported separately by the
+        // caller as the green number, not as craftable output.
         return lo;
     }
 
@@ -1755,9 +1782,15 @@ public final class VeloceAutoCrafter {
             return fromStock;
         }
 
-        long furnaceOnly = countFurnaceOnlySnapshot(snapshot, item, stock, heatOps, recipes);
+        // The furnace fast path counts what the RAW MATERIAL allows, so it is asked with the
+        // same "produce only" view as the planner below - it must not credit the units already
+        // held as if the furnace had made them.
+        Map<Item, Long> produceOnly = new HashMap<>(stock);
+        produceOnly.put(item, 0L);
+
+        long furnaceOnly = countFurnaceOnlySnapshot(snapshot, item, produceOnly, heatOps, recipes);
         if (furnaceOnly >= 0) {
-            return fromStock + furnaceOnly;
+            return furnaceOnly;
         }
 
         long hi = Math.min(estimateUpperBoundSnapshot(snapshot, item, stock, recipes),
