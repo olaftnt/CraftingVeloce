@@ -152,7 +152,6 @@ src_meta/          META-INF/neoforge.mods.toml, injected the same way
 neoforge/          the mod itself - the module that is built
 neoforge-26.1.2/   an experimental second target, not part of the release
 scripts/           build guards, texture and model generators, isolation test
-texture_packs/     alternative texture sets, not deployed to the mod
 libs/              local compileOnly jars for mods with no public maven
 ```
 
