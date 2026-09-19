@@ -1,27 +1,27 @@
-# CraftingVeloce
 ![example](https://cdn.modrinth.com/data/cached_images/0f0bb04a0bfa7e368c184d1c4d1f8c2d96afd8e3.png)
 ## How to use
 
-1. **Craft a few Veloce Integrale blocks, a terminal and some pipes.**
-2. **Place the terminal** and connect it with pipes to the storage you want in the
+**Place the terminal** and connect it with pipes to the storage you want in the
    network — chests, barrels, another mod's storage.
-3. **Place a Veloce Integrale and right-click it with the block you want it to
+   
+**Place a Veloce Integrale and right-click it with the block you want it to
    become** — a crafting table, a furnace, a crusher from Mekanism. The frame turns
-   into that machine and joins the network. In survival the item is consumed.
-4. **Right-click the terminal.** Every item in the network is listed with its
-   quantity, and a `+` number shows how many of each you could craft from the
+   into that machine and joins the network.
+   
+**Right-click the terminal.** Every item in the network is listed with its
+   quantity, and a + number shows how many of each you could craft from the
    resources you have.
-5. **Add more machines** and the list grows — each one brings its own recipes.
-6. **Clicking an item the network can't make yet tells you what is missing** — the
-   ingredients, or the machine. You can also look things up in JEI.
-7. Some modules need energy to run, and they consume a lot of it — instant
+   
+**Add more machines** and the list grows — each one brings its own recipes.
+
+**Some modules need energy to run**, and they consume a lot of it — instant
    processing has to be paid for, and the price is set so that running this as a farm
    is not worthwhile.
 
 ---
 
 # Blocks
-
+![BLOCKS](https://cdn.modrinth.com/data/cached_images/673cbd352c9f692d1ed6154896d8ae509bff5987.png)
 ## The network
 
 **Veloce Terminal** — your gateway to accessing the Veloce network. Shows the quantity
@@ -31,13 +31,14 @@ of each item and how many of each can be crafted.
 `Pull` or `Disconnected`, cycled with the wrench. Push and Pull can only be set on
 ordinary containers — other network blocks simply connect.
 
+**Veloce Integrale** — the heart of the mod. The casing every machine sits in, and the
+block pipes connect to.
+
 **Veloce Wrench** — the tool for configuring pipe sides.
 
 **Veloce Controller** — shows which items in the network can be crafted and which
 cannot.
 
-**Veloce Integrale** — the heart of the mod. The casing every machine sits in, and the
-block pipes connect to.
 
 ## Moving items
 
