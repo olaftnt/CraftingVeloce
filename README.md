@@ -227,8 +227,9 @@ All packets use the NeoForge `CustomPacketPayload` / `StreamCodec`.
 | `OpenFilterPickerPKT` | S→C | `BlockPos pos, int filterIndex` |
 | `OpenTerminalScreenPKT` | S→C | `BlockPos terminalPos` |
 | `RequestCraftableCountsPKT` | C→S | `BlockPos pos, List<Item> items` |
-| `GuiCountsProbePKT` | C→S | `BlockPos pos, int slotsWithItems, int distinctItems, int withCounts, boolean potionCounted, String potionReport` |
+| `GuiCountsProbePKT` | C→S | `BlockPos pos, int slotsWithItems, int distinctItems, int withCounts, boolean potionCounted, String potionReport, String withoutCounts` |
 | `SensorConfigPKT` | C→S | `BlockPos pos, long threshold, boolean highMode` |
+| `SetTerminalSearchPKT` | S→C | `String phrase` |
 | `ControllerPreferKindPKT` | C→S | `BlockPos pos, Item item, boolean preferFurnace` |
 | `SetFilterPKT` | C→S | `BlockPos pos, int filterIndex, ItemStack filterItem` |
 | `SyncControllerFlowPKT` | S→C | `BlockPos pos, Map<Item, Long> changed, Set<Item> removed, Map<Item, Float> rates, boolean full` |

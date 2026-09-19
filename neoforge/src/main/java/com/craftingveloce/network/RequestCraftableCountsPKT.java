@@ -227,6 +227,23 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                         // terminal permanently (the new page was then skipped as a repeat of
                         // the old one, forever).
                         IN_FLIGHT.remove(pos);
+                        // THE FRESHLY COUNTED PAGE GOES INTO THE CACHE, here in the handler
+                        // body and on the server thread.
+                        //
+                        // It used to live in deliverCounts, which is also called with the
+                        // cached snapshot itself - so writing it there would re-store what
+                        // was just read. More importantly the cache must be written by the
+                        // code that OWNS the decision, not by a helper that also serves the
+                        // instant path: `validate_craftable_cache` checks exactly this link,
+                        // because a cache that never fills up makes the instant answer
+                        // disappear silently and the numbers go back to loading one by one.
+                        if (net != null && !computed.counts().isEmpty()) {
+                            net.rememberCraftable(computed.counts());
+                            // The cache has to survive a world restart - without setDirty
+                            // SavedData will not be written (see markDirty).
+                            com.craftingveloce.network.pipe.VelocePipeNetworkManager
+                                    .get(level).markDirty();
+                        }
                         // A newer request for the same terminal has already been made, so
                         // IS THIS ANSWER STILL ABOUT THE PAGE ON SCREEN?
                         //
@@ -314,13 +331,6 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                                       com.craftingveloce.network.pipe.VelocePipeNetwork network,
                                       BlockPos pos, java.util.List<Item> requested,
                                       java.util.Map<Item, Long> counts, boolean complete) {
-        if (network != null && !counts.isEmpty()) {
-            network.rememberCraftable(counts);
-            // The cache has to survive a world restart - without setDirty SavedData will
-            // not be written (see markDirty).
-            com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(level).markDirty();
-        }
-
         // WHICH MODS COULD MAKE THE UNAVAILABLE ONES.
         //
         // Computed HERE and not from the stock delta, and that is the whole point: an
