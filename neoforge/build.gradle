@@ -49,6 +49,23 @@ neoForge {
                     file("../neoforge/veloce-tests/${project.findProperty('veloceTest') ?: 'smoke'}.txt").absolutePath)
             programArguments.addAll("--quickPlaySingleplayer",
                     project.findProperty('veloceTestWorld') ?: 'New World')
+
+            // --- QUIET WINDOW -------------------------------------------------------
+            // The test still needs a real GL context (it drives the terminal SCREEN and
+            // reads back what that screen drew), so it cannot be truly headless. What it
+            // can be is inconspicuous: these keep the Java/Minecraft window out of the
+            // way and stop it stealing focus while a suite runs.
+            //
+            // apple.awt.UIElement removes the macOS Dock icon and the app's menu bar -
+            // the "extra Java window" that pops up on every run. It is macOS-only and
+            // harmless elsewhere.
+            systemProperty("apple.awt.UIElement", "true")
+            // A small window instead of a full-screen-sized one, parked at the top-left.
+            programArguments.addAll("--width", "640", "--height", "360")
+            // -PveloceTestVisible brings the window back for watching a run by hand.
+            if (!project.hasProperty('veloceTestVisible')) {
+                systemProperty("java.awt.headless", "false")
+            }
             // -PveloceDumpIcons renders every casing icon to a PNG and exits - see
             // VeloceIconDump. Dev-only, and driven by a script so it can run unattended.
             systemProperty("veloce.dumpIconsAll",

@@ -58,8 +58,21 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
 
     static {
         try {
+            // BY NAME AND RETURN TYPE, not "the first method with a CreativeModeTab".
+            //
+            // The previous version scanned getDeclaredMethods() for any single-argument
+            // method taking a CreativeModeTab - and vanilla has SIX of those:
+            // selectTab (void), getTabX/getTabY (int), checkTabClicked (boolean),
+            // checkTabHovering, renderTabButton. Method order is unspecified, so the loop
+            // could bind to getTabX and then every "select the tab" call would quietly
+            // compute a coordinate and change nothing. That is precisely the failure this
+            // hook hit: the search tab was "selected", the log said so, and the page never
+            // moved off oak logs.
             for (Method m : CreativeModeInventoryScreen.class.getDeclaredMethods()) {
-                if (m.getParameterCount() == 1 && m.getParameterTypes()[0] == net.minecraft.world.item.CreativeModeTab.class) {
+                if (m.getName().equals("selectTab")
+                        && m.getParameterCount() == 1
+                        && m.getParameterTypes()[0] == net.minecraft.world.item.CreativeModeTab.class
+                        && m.getReturnType() == void.class) {
                     m.setAccessible(true);
                     selectTabMethod = m;
                     break;
@@ -108,17 +121,9 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         // Now we compare the stock with the previous packet: if it has not
         // changed, there is no point in asking. After crafting/withdrawing it
         // differs, so the "+N" numbers refresh the way they should.
-        if (previous != null && previous.equals(this.networkCounts)) {
-            return;
-        }
-        requestVisibleCounts(true);
-        // We do NOT overwrite the whole craftability map.
-        //
-        // The background (cache) sends its own snapshot, which during a rescan
-        // is empty or incomplete. Overwriting used to erase the numbers supplied
-        // by the immediate response - and they never came back. So we only merge
-        // in what arrived; precise clearing is done by the immediate path.
+        this.networkCounts = new HashMap<>(counts);
         this.craftable.putAll(craftable);
+        requestVisibleCounts(true);
     }
 
     /**
@@ -194,6 +199,7 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         }
         java.util.Set<net.minecraft.world.item.Item> seen = new java.util.HashSet<>();
         java.util.List<String> potions = new java.util.ArrayList<>();
+        java.util.List<String> without = new java.util.ArrayList<>();
         int slotsWithItems = 0;
         int distinct = 0;
         int withCounts = 0;
@@ -216,6 +222,13 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             long count = this.craftable.get(key);
             if (count > 0) {
                 withCounts++;
+            } else {
+                // THE NAME, not another counter. "withCounts=2 of 44" cannot be compared
+                // against a report that names one item; this list can. Zero and "no entry
+                // at all" are the same to the PLAYER (neither draws anything) and BOTH are
+                // listed here on purpose - the map holds a 0 only when the server answered
+                // "cannot be made", and holds nothing when the batch ran out of time first.
+                without.add(name(key) + (this.craftable.hasEntry(key) ? "=0" : "=none"));
             }
             if (raw == net.minecraft.world.item.Items.POTION
                     || raw == net.minecraft.world.item.Items.SPLASH_POTION
@@ -228,15 +241,155 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             }
         }
         com.craftingveloce.CraftingVeloceMod.LOGGER.info(
-                "[Veloce] GUI probe sending: slots={} distinct={} withCounts={} potions=[{}]",
-                slotsWithItems, distinct, withCounts, String.join(" ", potions));
+                "[Veloce] GUI probe sending: slots={} distinct={} withCounts={} withoutCounts=[{}] potions=[{}]",
+                slotsWithItems, distinct, withCounts, String.join(" ", without),
+                String.join(" ", potions));
         net.neoforged.neoforge.network.PacketDistributor.sendToServer(
                 new com.craftingveloce.network.GuiCountsProbePKT(this.terminalPos,
-                        slotsWithItems, distinct, withCounts, potionCounted, String.join(" ", potions)));
+                        slotsWithItems, distinct, withCounts, potionCounted,
+                        String.join(" ", potions), String.join(" ", without)));
     }
 
     private static String name(net.minecraft.world.item.Item item) {
         return net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item).getPath();
+    }
+
+    /**
+     * Types a phrase into the vanilla search box - the test hook for "which page".
+     *
+     * <p><b>Why a test needs this and cannot fake it.</b> Every assertion about the "+N"
+     * numbers is an assertion about a PAGE, and an automated run does not otherwise control
+     * which page is shown: the terminal opens on the creative inventory's default tab, so a
+     * probe reports whatever that tab holds (oak logs, planks) and the item under test is
+     * not on screen at all. A probe against such a page passes or fails for reasons
+     * unrelated to the item, which is how an earlier round "verified" the counts while
+     * measuring nothing.
+     *
+     * <p>We set the text on the REAL search box and then run the same refresh the player's
+     * typing triggers, so the resulting page comes from the production filtering path. The
+     * box is reached through {@code VeloceTerminalViewState.searchBox}, the same accessor
+     * the "is the player typing" check uses.
+     */
+    public void applySearchPhrase(String phrase) {
+        String wanted = phrase == null ? "" : phrase;
+
+        // THE TAB HAS TO BE ABLE TO SEARCH, or nothing below does anything.
+        //
+        // Vanilla's refreshSearchResults() starts with
+        // `if (!selectedTab.hasSearchBar()) return;` - the BUILDING BLOCKS tab that the
+        // creative screen opens on has NO search bar, so setting the phrase and refreshing
+        // changed exactly nothing and the grid kept the default page. That is why an earlier
+        // attempt at this reported "grid now holds 45 item(s)" while still measuring oak
+        // logs: the search was applied to a tab that cannot search.
+        //
+        // The SEARCH tab is the one vanilla itself uses for this. We select it first, then
+        // set the phrase.
+        if (!selectSearchTab()) {
+            com.craftingveloce.util.VeloceLog.Gui.failure(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "cannot set the search phrase '%s' - no search-capable creative tab was "
+                            + "found, so the page cannot be changed", wanted);
+            return;
+        }
+
+        net.minecraft.client.gui.components.EditBox box =
+                VeloceTerminalViewState.searchBox(this);
+        if (box == null) {
+            com.craftingveloce.util.VeloceLog.Gui.error(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT, null,
+                    "cannot set the search phrase '%s' - the vanilla search box was not found",
+                    phrase);
+            return;
+        }
+        box.setValue(wanted);
+        box.setFocused(true);
+        // The same call vanilla makes when the text changes: it re-runs the search and
+        // refills the grid, which is what makes this page REAL rather than simulated.
+        //
+        // The report is logged at SUCCESS level, not detail: whether this call succeeded is
+        // the difference between a test that measures the page it asked for and one that
+        // silently measures the default tab, and that distinction must be visible without
+        // turning on debug logging.
+        String refreshReport;
+        try {
+            java.lang.reflect.Method refresh = CreativeModeInventoryScreen.class
+                    .getDeclaredMethod("refreshSearchResults");
+            refresh.setAccessible(true);
+            refresh.invoke(this);
+            refreshReport = "vanilla refreshSearchResults called";
+        } catch (Throwable t) {
+            // Vanilla's own name for it may differ between versions; our own filtering
+            // below always exists, so the page may still change.
+            refreshReport = "vanilla refreshSearchResults FAILED (" + t + ")";
+        }
+        applyItemFilter();
+        // The page just changed, so ask for numbers for the NEW items immediately instead
+        // of waiting for the next periodic refresh.
+        requestVisibleCounts(true);
+        // RE-ARM THE PROBE. It is one-shot and fires 40 ticks after the screen opens, so
+        // without this a test that sets the page AFTER opening would still be reporting the
+        // page from before the search - and would "pass" while measuring the wrong items.
+        probeCountdown = PROBE_DELAY_TICKS;
+        // How many grid slots the new page holds, counted HERE rather than through the
+        // parent's private helper: if the search did not change the grid, that number stays
+        // at the size of the old page, and this line is what says so.
+        int gridItems = 0;
+        if (this.menu != null) {
+            for (Slot slot : this.menu.slots) {
+                if (slot != null && slot.hasItem() && !isPlayerSlot(slot)) {
+                    gridItems++;
+                }
+            }
+        }
+        com.craftingveloce.util.VeloceLog.Gui.success(
+                com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                "terminal search phrase set to '%s': %s; grid now holds %d item(s), "
+                        + "probe re-armed in %d ticks",
+                wanted, refreshReport, gridItems, PROBE_DELAY_TICKS);
+    }
+
+    /**
+     * Selects a creative tab that HAS a search bar, and says whether it managed to.
+     *
+     * <p><b>Why this is required.</b> Vanilla's {@code refreshSearchResults()} begins with
+     * {@code if (!selectedTab.hasSearchBar()) return;} - searching is a property of the TAB,
+     * not of the box. The creative screen opens on BUILDING BLOCKS, which has no search bar,
+     * so a phrase set on that tab is stored and then ignored: the grid keeps its old
+     * contents and every downstream measurement describes the wrong page. This is what made
+     * an earlier attempt at this hook report success while still measuring oak logs.
+     *
+     * <p>We pick the vanilla SEARCH tab - the same one a player uses for "search all items" -
+     * through the reflection handles this class already keeps for tab selection. Tabs the
+     * terminal hides are skipped for the same reason the player cannot pick them.
+     */
+    private boolean selectSearchTab() {
+        if (selectedTabField == null || selectTabMethod == null) {
+            return false;
+        }
+        try {
+            for (net.minecraft.world.item.CreativeModeTab tab
+                    : net.minecraft.world.item.CreativeModeTabs.allTabs()) {
+                if (!tab.hasSearchBar()) {
+                    continue;
+                }
+                if (!acceptTab(tab)) {
+                    continue;   // a tab the terminal deliberately hides
+                }
+                selectTabMethod.invoke(this, tab);
+                // The tab is named on the log, not just "selection succeeded": the whole
+                // failure mode here is a selection that reports success and changes nothing,
+                // and only the name makes that visible.
+                com.craftingveloce.util.VeloceLog.Gui.detail(
+                        com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                        "selected search-capable tab %s", tab.getDisplayName().getString());
+                return true;
+            }
+        } catch (Throwable t) {
+            com.craftingveloce.util.VeloceLog.Gui.error(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT, t,
+                    "could not select a search-capable creative tab");
+        }
+        return false;
     }
 
     /**
@@ -599,6 +752,7 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                 "player clicked %s in terminal (count=%d, click=%s) - sending pull packet",
                 item.getItem(), count, clickType);
         PacketDistributor.sendToServer(new TerminalPullItemPKT(terminalPos, item, count));
+        requestVisibleCounts(true);
     }
 
     @Override

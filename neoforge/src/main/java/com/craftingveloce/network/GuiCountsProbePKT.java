@@ -31,10 +31,19 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  * @param distinctItems  how many distinct items those slots represent
  * @param withCounts     how many of them ended up with a number above zero
  * @param potionReport   one entry per potion-ish item: {@code raw=count(proxyKey)}
+ * @param withoutCounts  the names of the items that ended up with NO number - see below
+ *
+ * <p><b>Why {@code withoutCounts} exists.</b> The first version reported only the
+ * COUNTS ({@code withCounts=2} of 44 distinct items), which answers "is something
+ * missing" but never "which one" - and the report that prompted this packet was exactly
+ * "the andesite casing shows no +N while other items work". A count cannot be compared
+ * against an item name; the names can. This is the ONLY place that can produce them: the
+ * server knows a number was sent, not whether the screen found an item to draw it on.
  */
 public record GuiCountsProbePKT(BlockPos pos, int slotsWithItems, int distinctItems,
                                 int withCounts, boolean potionCounted,
-                                String potionReport) implements CustomPacketPayload {
+                                String potionReport, String withoutCounts)
+        implements CustomPacketPayload {
 
     public static final Type<GuiCountsProbePKT> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(
@@ -50,11 +59,12 @@ public record GuiCountsProbePKT(BlockPos pos, int slotsWithItems, int distinctIt
         buf.writeVarInt(pkt.withCounts);
         buf.writeBoolean(pkt.potionCounted);
         buf.writeUtf(pkt.potionReport, 4096);
+        buf.writeUtf(pkt.withoutCounts, 8192);
     }
 
     private static GuiCountsProbePKT decode(FriendlyByteBuf buf) {
         return new GuiCountsProbePKT(buf.readBlockPos(), buf.readVarInt(), buf.readVarInt(),
-                buf.readVarInt(), buf.readBoolean(), buf.readUtf(4096));
+                buf.readVarInt(), buf.readBoolean(), buf.readUtf(4096), buf.readUtf(8192));
     }
 
     /** Last report received - read by {@code /cv guitest result}. */
@@ -73,6 +83,7 @@ public record GuiCountsProbePKT(BlockPos pos, int slotsWithItems, int distinctIt
             last = "slots=" + pkt.slotsWithItems
                     + " distinct=" + pkt.distinctItems
                     + " withCounts=" + pkt.withCounts
+                    + " withoutCounts=[" + pkt.withoutCounts + "]"
                     + " potionCounted=" + pkt.potionCounted
                     + " potions=[" + pkt.potionReport + "]";
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(

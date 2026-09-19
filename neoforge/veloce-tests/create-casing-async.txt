@@ -1,0 +1,49 @@
+# THE "+N" ON A KNOWN PAGE - the end-to-end measurement the report needed.
+#
+# The report: "the andesite casing shows no +N in the terminal GUI, while other items work",
+# narrowed by the owner to "only the Deployer from the Create integration".
+#
+# What the original log said about it, and why it settled nothing:
+#
+#   instant craftable count for 38 item(s) -> 0 result(s) in 25 ms (complete=false)
+#   craftable count for minecraft:andesite: ran out of the estimation budget
+#       after checking up to 0 unit(s) (recipes=2, hi=383)
+#
+# Counting now runs on VeloceCountWorker against a frozen snapshot, off the server thread and
+# with no time budget. This script is the measurement, and it asserts the casing BY NAME.
+#
+# WHY IT MUST SET THE PAGE. Every "+N" assertion is an assertion about a PAGE, and the
+# terminal opens on the creative inventory's default tab - oak logs and planks - which cannot
+# contain a Create casing by construction. `guitest search` selects the Search Items tab (the
+# only kind of tab vanilla will filter) and types the phrase, so the casing is really on
+# screen. Without that, this script "passed" while measuring oak logs.
+#
+# THE RIG CARRIES A DEPLOYER, and that is the other half. Every casing is a
+# create:item_application recipe, which the Deployer module owns; without one in the network
+# the casing is not countable at all and the count answers 0 honestly. `guitest why` is what
+# proved it - module create available=false until the Deployer touched the pipe.
+
+/cv guitest setup
+expect: rig at
+wait: 120
+
+# The rig must really be able to make a casing, or the assertions below are vacuous.
+/cv guitest why create:andesite_casing
+expect: inCountable=true
+
+/cv guitest open
+expect: terminal screen opened
+wait: 80
+
+# Point the screen at a page that CONTAINS the item under test.
+/cv guitest search andesite
+expect: search phrase
+wait: 120
+
+# THE VERDICT. `withoutCounts` lists the icons with no number; an entry ending in `=none`
+# means the server never computed it (the reported bug) and `=0` means it answered
+# "cannot be made". The casing must be in NEITHER - it has to have a real number.
+/cv guitest result
+expect: withoutCounts=
+expectnot: andesite_casing=none
+expectnot: andesite_casing=0

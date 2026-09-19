@@ -123,6 +123,20 @@ public final class VeloceCraftableCounts {
         return counts.getOrDefault(item, 0L);
     }
 
+    /**
+     * Whether the map holds ANY answer for this item - including an explicit 0.
+     *
+     * <p>The distinction is the whole diagnosis of "this icon has no number":
+     * an entry with 0 means the server computed it and said "cannot be made",
+     * while a MISSING entry means the batch ran out of time before it got there
+     * (or the item was never in the request). Both draw nothing, so the screen
+     * cannot tell them apart by looking at the number - and a report that cannot
+     * tell them apart cannot be acted on.
+     */
+    public boolean hasEntry(Item item) {
+        return counts.containsKey(item);
+    }
+
     /** Puts in values computed elsewhere (e.g. a background snapshot from the server). */
     public void putAll(Map<Item, Long> craftable) {
         if (craftable != null && !craftable.isEmpty()) {
@@ -225,7 +239,15 @@ public final class VeloceCraftableCounts {
         }
         visible.sort(java.util.Comparator.comparingInt(it -> counts.containsKey(it) ? 1 : 0));
 
-        com.craftingveloce.util.VeloceLog.Gui.detail(
+        // This line is an OUTCOME (NORMAL), not an intermediate step (DETAIL).
+        //
+        // The whole class of "the icon has no +N" reports is unanswerable without it:
+        // the log shows the craft working and the number computed, and nothing that says
+        // which items the request actually covered. It used to be gated behind
+        // debugEnabled + debugLevel=DETAIL, which is off by default - so the one line
+        // that names the items on screen was invisible in exactly the session where the
+        // question was asked.
+        com.craftingveloce.util.VeloceLog.Gui.success(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
                 "asking for craftable counts: %d item(s), %d without a value "
                         + "(first=%s, retry=%s; slots=%d, player=%d, empty=%d) -> %s",
@@ -302,11 +324,40 @@ public final class VeloceCraftableCounts {
                 withValue++;
             }
         }
-        com.craftingveloce.util.VeloceLog.Gui.detail(
+        // SPLIT INTO TWO LINES ON PURPOSE.
+        //
+        // "0 with a value" has two completely different causes - the server really
+        // answered "cannot be made" (zero), or it never got to the item inside the batch
+        // budget (absent). Only the SECOND one is this mod failing to compute, and only
+        // the absent list answers "why does THIS icon have no number while the others
+        // do". The old single line printed both counts and a sample of the absent list
+        // at DETAIL level, i.e. it was off by default in precisely the sessions where the
+        // question was being asked.
+        com.craftingveloce.util.VeloceLog.Gui.success(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
                 "counts AFTER merge for %d requested item(s): %d with a value, "
-                        + "%d with ZERO, %d without any entry (complete=%s) -> %s",
-                lastRequested.size(), withValue, zero, absent.size(), complete,
-                sample(absent, 8));
+                        + "%d with ZERO, %d without any entry (complete=%s)",
+                lastRequested.size(), withValue, zero, absent.size(), complete);
+        if (!absent.isEmpty()) {
+            // The names, not a sample: this list IS the answer to "which icons have no
+            // +N". A sample of 8 hides the one item the player is looking at.
+            com.craftingveloce.util.VeloceLog.Gui.failure(
+                    com.craftingveloce.util.VeloceLog.Side.CLIENT,
+                    "no craftable number was computed for %d item(s) on screen -> %s",
+                    absent.size(), all(absent));
+        }
+    }
+
+    /** Every item name, not a sample - see {@link #reportState}. */
+    private static String all(List<Item> items) {
+        StringBuilder sb = new StringBuilder();
+        for (Item it : items) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(it).getPath());
+        }
+        return sb.toString();
     }
 }

@@ -41,6 +41,25 @@ public class ClientTerminalHelper {
         handleSyncCounts(itemCounts, Map.of());
     }
 
+    /**
+     * Puts a phrase into the open terminal's search box - the test hook for "which page".
+     *
+     * <p>Typed into the SAME vanilla search box a player uses, so that the page the probe
+     * reports is produced by the real filtering path. See
+     * {@link com.craftingveloce.network.SetTerminalSearchPKT} for why an automated run
+     * cannot do without it.
+     */
+    public static void setTerminalSearch(String phrase) {
+        Minecraft mc = Minecraft.getInstance();
+        if (!(mc.screen instanceof VeloceTerminalScreen screen)) {
+            com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                    "[Veloce] setTerminalSearch('{}') ignored: no terminal screen open (screen={})",
+                    phrase, mc.screen);
+            return;
+        }
+        screen.applySearchPhrase(phrase);
+    }
+
     public static void handleSyncCounts(Map<Item, Long> itemCounts,
                                         Map<Item, Long> craftableCounts) {
         Minecraft mc = Minecraft.getInstance();

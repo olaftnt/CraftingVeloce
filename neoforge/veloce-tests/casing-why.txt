@@ -1,0 +1,15 @@
+# WHY is andesite_casing not countable in the GUI rig?
+#
+# The count for it comes back as "0 (0 ms)" - an answer from the "not in the countable set"
+# branch, NOT from the planner (the planner always takes measurable time). So the question is
+# not about counting at all: it is which module/machine requirement the rig fails.
+#
+# create-casing.txt proves the Deployer path works (terminalShows=7) on the MODULE rig, so
+# the difference is the rig, not the counting.
+
+/cv guitest setup
+expect: rig at
+wait: 100
+
+/cv guitest why create:andesite_casing
+expect: inCountable=
