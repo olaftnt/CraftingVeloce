@@ -198,6 +198,20 @@ processResources {
         // the missing-texture placeholder.
         include "logo.png"
     }
+    // THE LICENCE TRAVELS WITH THE JAR, not only with the repository.
+    //
+    // `mods.toml` declares MIT and the repository has a LICENSE file, but the artifact that
+    // actually reaches players is the jar - and it carried neither the copyright notice nor
+    // the licence text. MIT's own terms are conditioned on both accompanying the copy, so a
+    // jar without them tells whoever unpacks it nothing about what they may do, even though
+    // the metadata one level up says "MIT License".
+    //
+    // Not a defect in the licence, and not something a user would ever notice - it is the
+    // difference between declaring a licence and shipping one. A project that is taken up by
+    // someone else later, or vendored into a modpack, is where the absence would matter.
+    from(rootProject.file("LICENSE")) {
+        rename { "LICENSE-craftingveloce" }
+    }
 }
 
 // The mod reads scripts from <game dir>/veloce-tests. They are versioned here and
