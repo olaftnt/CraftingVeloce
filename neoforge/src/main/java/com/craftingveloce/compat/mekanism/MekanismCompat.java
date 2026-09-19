@@ -63,6 +63,29 @@ public final class MekanismCompat {
 
     /** Casing table rows: our module -&gt; base block from the mod. */
     private static void registerCases() {
+        // ONLY THE ENABLED MACHINES.
+        //
+        // The switched-off ones live in MekanismBlocks.DISABLED_BLOCKS, a DeferredRegister
+        // that is deliberately never handed to the event bus - so their ResourceKeys stay
+        // UNBOUND and `.get()` throws. Registering them here anyway put a null-throwing
+        // lookup on the path that every crafting-table click walks:
+        //
+        //   NullPointerException: Trying to access unbound value:
+        //     ResourceKey[minecraft:block / craftingveloce:veloce_mekanism_purification_chamber_module]
+        //       at MekanismCompat.lambda$registerCases$12(MekanismCompat.java:73)
+        //       at VeloceCaseContents.contentFor(...)
+        //       at VeloceCaseDisassemblyRecipe.matches(...)
+        //       at RecipeManager.getRecipesFor(...)
+        //       at CraftingMenu.redirect$...$polymorph$getRecipe(...)
+        //
+        // Vanilla asks EVERY recipe whether it matches the grid, so one unbound block broke
+        // the vanilla crafting table outright: no output was shown, and crafting failed
+        // after a moment. It surfaced in a modpack rather than in dev because Polymorph
+        // calls getRecipesFor on every click - without it the same exception fires, only
+        // far less often, which is why "it works in the dev client" was true and useless.
+        //
+        // The Integrale conversions below already followed this rule (see the note there);
+        // this table did not, and the asymmetry was the bug.
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_COMBINER_MODULE.get(), () -> block("combiner"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_CRUSHER_MODULE.get(), () -> block("crusher"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_ENRICHMENT_MODULE.get(), () -> block("enrichment_chamber"));
@@ -70,22 +93,6 @@ public final class MekanismCompat {
 
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_COMPRESSING_MODULE.get(), () -> block("osmium_compressor"));
         VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_METALLURGIC_INFUSING_MODULE.get(), () -> block("metallurgic_infuser"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_PURIFYING_MODULE.get(), () -> block("purification_chamber"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_INJECTING_MODULE.get(), () -> block("chemical_injection_chamber"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_CRYSTALLIZING_MODULE.get(), () -> block("chemical_crystallizer"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_DISSOLUTION_MODULE.get(), () -> block("chemical_dissolution_chamber"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_WASHING_MODULE.get(), () -> block("chemical_washer"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_SEPARATING_MODULE.get(), () -> block("electrolytic_separator"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_REACTION_MODULE.get(), () -> block("pressurized_reaction_chamber"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_ROTARY_MODULE.get(), () -> block("rotary_condensentrator"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_ACTIVATING_MODULE.get(), () -> block("solar_neutron_activator"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_CENTRIFUGING_MODULE.get(), () -> block("isotopic_centrifuge"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_NUCLEOSYNTHESIZING_MODULE.get(), () -> block("antiprotonic_nucleosynthesizer"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_PIGMENT_EXTRACTING_MODULE.get(), () -> block("pigment_extractor"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_PIGMENT_MIXING_MODULE.get(), () -> block("pigment_mixer"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_PAINTING_MODULE.get(), () -> block("painting_machine"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_OXIDIZING_MODULE.get(), () -> block("chemical_oxidizer"));
-        VeloceCaseContents.register(() -> MekanismBlocks.VELOCE_CHEMICAL_INFUSING_MODULE.get(), () -> block("chemical_infuser"));
         // ---- Integrale conversions ----
         //
         // WHERE THE MACHINE COMES FROM NOW. These modules used to be crafted in a
