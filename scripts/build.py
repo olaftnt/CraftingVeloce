@@ -36,8 +36,24 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 
-MODS = ("/Users/olafalencynowicz/Library/Application Support/ModrinthApp/"
-        "profiles/testing/mods")
+
+def _testing_profile_mods():
+    """
+    The Modrinth App "testing" profile's mods folder, without a hardcoded user name.
+
+    This was an absolute path containing the maintainer's account name, which is wrong twice
+    over: it breaks for anyone else who runs the script, and it puts a personal identifier
+    into a tracked file for no benefit. It is now derived from the home directory, and can be
+    overridden with VELOCE_TESTING_MODS for a non-standard install.
+    """
+    override = os.environ.get("VELOCE_TESTING_MODS")
+    if override:
+        return override
+    return os.path.join(os.path.expanduser("~"), "Library", "Application Support",
+                        "ModrinthApp", "profiles", "testing", "mods")
+
+
+MODS = _testing_profile_mods()
 DEPLOYED = os.path.join(MODS, "craftingveloce-1.0.0-NeoForge-1.21.1.jar")
 JAR_NAME = "craftingveloce-1.0.0-NeoForge-1.21.1.jar"
 STAGING = "craftingveloce_jar_root"
