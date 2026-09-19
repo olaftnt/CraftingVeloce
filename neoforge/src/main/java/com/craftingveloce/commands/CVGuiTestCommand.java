@@ -378,6 +378,15 @@ public final class CVGuiTestCommand {
         // assertion is about the COUNTING reaching the icon, and a zero here would be honest.
         // The Create module is present in the dev run, so we give the alloy when we can.
 
+        // ONE INGREDIENT GOES INTO THE PLAYER'S POCKETS AND NOWHERE ELSE.
+        //
+        // The count must treat what the player carries as a source, and no test covered that:
+        // every rig put its materials in the network, so a count that ignored the inventory
+        // entirely would still have passed. Diortite is deliberately NOT in the barrel - the
+        // only place it exists is the backpack, so a non-zero count for diorite items can
+        // only come from reading the player.
+        player.getInventory().setItem(0, new ItemStack(Items.DIORITE, 64));
+
         terminalPos = base;
         com.craftingveloce.network.GuiCountsProbePKT.reset();
         source.sendSuccess(() -> Component.literal("§6[guitest] §7rig at §f" + base

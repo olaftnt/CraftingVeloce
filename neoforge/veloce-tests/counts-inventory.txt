@@ -1,0 +1,31 @@
+# Does an item the PLAYER CARRIES count as a source for what is made from it?
+#
+# The report: "the algorithm forgot to count items from the player's inventory - they should
+# count, because you can craft from them too".
+#
+# WHY THIS NEEDS ITS OWN RIG DETAIL. Every other rig puts its materials in the NETWORK, so a
+# count that ignored the player's inventory entirely would still have passed all of them.
+# `guitest setup` therefore puts 64 DIORITE in the player's backpack and nowhere else: the
+# barrel has none, so a non-zero count for a diorite item can only come from reading the
+# player.
+#
+# The page under test is "diorite", and diorite_slab / diorite_stairs are made FROM diorite -
+# so if the backpack is read, they must come out non-zero.
+
+/cv guitest setup
+expect: rig at
+wait: 120
+
+/cv guitest why minecraft:diorite
+expect: inCountable=true
+
+/cv guitest open
+expect: terminal screen opened
+wait: 80
+
+/cv guitest search diorite
+expect: search phrase
+wait: 140
+
+/cv guitest result
+expect: withoutCounts=

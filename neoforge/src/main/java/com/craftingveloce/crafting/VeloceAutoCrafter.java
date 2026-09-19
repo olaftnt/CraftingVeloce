@@ -1678,9 +1678,69 @@ public final class VeloceAutoCrafter {
      * path of the planner.
      */
     private static long craftableFromRawSnapshot(VeloceCountSnapshot snapshot, Item item) {
-        Map<Item, Long> rawStock = new HashMap<>(snapshot.stock());
-        rawStock.put(item, 0L);
-        return maxCraftableSnapshot(snapshot, item, rawStock);
+        // THE ITEM'S OWN STOCK STAYS IN THE PLAN - it is a legitimate SOURCE.
+        //
+        // This used to zero it (`rawStock.put(item, 0L)`), so the number answered "how many
+        // can I ADDITIONALLY produce". That fixed a real complaint - the counter moved when
+        // finished units were shuffled around a buffer - but it broke an equally real one: an
+        // item the player CARRIES is a source for the things made FROM it. With 64 andesite in
+        // the backpack and `polished_andesite` on screen, zeroing removed those 64 from the
+        // plan, so the polished andesite the player could obviously make from their own pocket
+        // was not counted - and every item further down that chain with it.
+        //
+        // THE COUNT IS RETURNED ON ITS OWN, WITH NO `fromStock` ADDED, and that is the subtle
+        // half. `maxCraftableSnapshot` answers `fromStock + lo`, on the assumption that the
+        // plan starts from a ZEROED stock and therefore only ever produces NEW units. Here the
+        // plan starts from the REAL stock, so it FIRST CONSUMES what is already held and then
+        // produces the rest - `lo` is already the total "how many I can have", stock included.
+        // Adding `fromStock` on top of that would count the same units twice: 5 finished in a
+        // chest plus 10 makeable would report 20 instead of 15.
+        //
+        // The distinction the old code reached for is between the item as an OUTPUT and the
+        // item as an INPUT, and one map cannot express both - but the arithmetic can, because
+        // the two roles differ only in whether the stock is consumed before or after counting.
+        Map<Item, Long> stock = new HashMap<>(snapshot.stock());
+        return maxCraftableWithStockIncluded(snapshot, item, stock);
+    }
+
+    /**
+     * How many units of {@code item} the player can HAVE, counting the stock already held.
+     *
+     * <p>The snapshot twin of "the plan consumes the stock first and then produces": the
+     * returned value is the total, so the caller must NOT add {@code fromStock} again. See
+     * {@link #craftableFromRawSnapshot} for why the two totals differ.
+     */
+    private static long maxCraftableWithStockIncluded(VeloceCountSnapshot snapshot, Item item,
+                                                      Map<Item, Long> stock) {
+        long heatOps = snapshot.heatOps();
+        long fromStock = stock.getOrDefault(item, 0L);
+        if (!snapshot.countable().contains(item)) {
+            return fromStock;
+        }
+        List<ProcessingEntry> recipes = snapshot.recipesFor(item);
+        if (recipes.isEmpty()) {
+            return fromStock;
+        }
+
+        long furnaceOnly = countFurnaceOnlySnapshot(snapshot, item, stock, heatOps, recipes);
+        if (furnaceOnly >= 0) {
+            return fromStock + furnaceOnly;
+        }
+
+        // The upper bound is "stock + what the raw materials allow", because the plan may
+        // consume the stock first and then craft the remainder.
+        long hi = Math.min(fromStock + estimateUpperBoundSnapshot(snapshot, item, stock, recipes),
+                MAX_ESTIMATE_RESULT);
+        if (hi <= 0) {
+            return fromStock;
+        }
+
+        long lo = findMaxPlannableSnapshot(snapshot, item, hi, stock);
+        if (lo <= 0 && estimateAborted()) {
+            return UNKNOWN_COUNT;
+        }
+        // `lo` already includes the stock the plan consumed, so it IS the total.
+        return lo;
     }
 
     private static long maxCraftableSnapshot(VeloceCountSnapshot snapshot, Item item,
