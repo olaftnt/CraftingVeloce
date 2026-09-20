@@ -284,21 +284,48 @@ public final class VeloceCraftableCounts {
      * those zeros.
      */
     public void update(Map<Item, Long> craftable, boolean complete) {
-        // An incomplete answer = we need to ask again (see the partial field).
-        this.partial = !complete;
+        // Measured because it is the CLIENT half of an answer arriving: merging the page and
+        // logging its state. It runs on the client thread, so a page-sized merge that is slow
+        // here would show up as a stutter every time the numbers come in.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.updateCounts")) {
+            // An incomplete answer = we need to ask again (see the partial field).
+            this.partial = !complete;
 
-        if (complete) {
-            for (Item it : lastRequested) {
-                counts.remove(it);
+            if (complete) {
+                for (Item it : lastRequested) {
+                    counts.remove(it);
+                }
+                counts.putAll(craftable);
+            } else {
+                // The server did not get through everything (the network is not ready yet
+                // or the budget ran out). We only add what came in - we do NOT delete
+                // previous values. Without this the numbers disappeared and never came back.
+                counts.putAll(craftable);
             }
-            counts.putAll(craftable);
-        } else {
-            // The server did not get through everything (the network is not ready yet
-            // or the budget ran out). We only add what came in - we do NOT delete
-            // previous values. Without this the numbers disappeared and never came back.
-            counts.putAll(craftable);
+            reportState(complete);
         }
-        reportState(complete);
+        // THE SESSION CLOSES HERE - on the client, because the client opened it (see
+        // VeloceTerminalScreen.init). This is the moment the player stops waiting: the screen is
+        // built and the numbers have arrived. In singleplayer the report therefore contains the
+        // client rows, the server's snapshot capture and the worker's arithmetic in ONE table,
+        // which is the entire point - the three were previously in three different logs, and
+        // which of them was responsible was guesswork.
+        //
+        // complete=false means only part of the answer came back; the report is still printed,
+        // because a page that is slow enough to be delivered in pieces is exactly a case worth
+        // seeing, and the context string says so.
+        // A PARTIAL answer prints a snapshot and keeps the session running; only the final
+        // answer closes it. The server sends the network's CACHED numbers immediately (partial,
+        // complete=false) and the freshly computed page a moment later - closing on the first
+        // would end the measurement before the work being investigated had begun.
+        if (complete) {
+            com.craftingveloce.util.VeloceProfiler.reportIfOwner(true,
+                    "terminal open: " + craftable.size() + " value(s) received, complete=true");
+        } else {
+            com.craftingveloce.util.VeloceProfiler.flushIfOwner(true,
+                    "terminal open, partial answer: " + craftable.size() + " value(s)");
+        }
     }
 
     /**

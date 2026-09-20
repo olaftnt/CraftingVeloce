@@ -124,57 +124,72 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             }
 
             ItemStack extracted = pulled.stack();
-            // The "how many more can I make" number decreases by what just left
-            // (-1 for a single unit, -64 for a stack), and the player gets a
-            // fresh snapshot right away - otherwise the number in the GUI stayed
-            // stale.
-            if (serverPlayer.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-                var net = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
-                        .getNetworkForTerminal(serverLevel, pkt.terminalPos());
-                if (net != null) {
-                    // ONLY when we really CRAFTED, and not when the item was in
-                    // stock. Player: "when I take something out of the inventory,
-                    // you still subtract -1 from how many I can craft". We count
-                    // the stock BEFORE the pull: if the network had enough units,
-                    // it was stock, and stock does not change the "how many more
-                    // can be made" number.
-                    long stock = net.getAllItemCounts(serverLevel)
-                            .getOrDefault(extracted.getItem(), 0L);
-                    if (stock < extracted.getCount()) {
-                        net.noteCrafted(extracted.getItem(), extracted.getCount());
+            // FROM HERE THE ITEMS ARE OUT OF THE NETWORK AND IN A LOCAL VARIABLE, so every step
+            // is guarded: if anything between this line and the insertion throws, the stack is
+            // put back instead of vanishing with the exception. Measured: a NoClassDefFoundError
+            // raised in this very window silently ate a stack the player had already paid for -
+            // it left the chest, nothing arrived, and the log showed only the exception.
+            try {
+                // The "how many more can I make" number decreases by what just left
+                // (-1 for a single unit, -64 for a stack), and the player gets a
+                // fresh snapshot right away - otherwise the number in the GUI stayed
+                // stale.
+                if (serverPlayer.level() instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+                    var net = com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
+                            .getNetworkForTerminal(serverLevel, pkt.terminalPos());
+                    if (net != null) {
+                        // ONLY when we really CRAFTED, and not when the item was in
+                        // stock. Player: "when I take something out of the inventory,
+                        // you still subtract -1 from how many I can craft". We count
+                        // the stock BEFORE the pull: if the network had enough units,
+                        // it was stock, and stock does not change the "how many more
+                        // can be made" number.
+                        long stock = net.getAllItemCounts(serverLevel)
+                                .getOrDefault(extracted.getItem(), 0L);
+                        if (stock < extracted.getCount()) {
+                            net.noteCrafted(extracted.getItem(), extracted.getCount());
+                        }
+                        com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
+                                .markDirty();
+                        PacketDistributor.sendToPlayer(serverPlayer,
+                                // An EMPTY maker map on purpose: it is the controller that shows
+                                // items it cannot make as a red icon with a tooltip to explain,
+                                // and the terminal does not draw that line at all.
+                                new SyncCraftableCountsPKT(pkt.terminalPos(),
+                                        net.getCraftableMemo(), java.util.Map.of(), false));
                     }
-                    com.craftingveloce.network.pipe.VelocePipeNetworkManager.get(serverLevel)
-                            .markDirty();
-                    PacketDistributor.sendToPlayer(serverPlayer,
-                            // An EMPTY maker map on purpose: it is the controller that shows
-                            // items it cannot make as a red icon with a tooltip to explain,
-                            // and the terminal does not draw that line at all.
-                            new SyncCraftableCountsPKT(pkt.terminalPos(),
-                                    net.getCraftableMemo(), java.util.Map.of(), false));
                 }
-            }
 
-            ItemStack leftover = ItemHandlerHelper.insertItemStacked(
-                    new PlayerMainInvWrapper(serverPlayer.getInventory()), extracted, false);
-            if (!leftover.isEmpty()) {
-                // Return the leftover to the terminal's OWN network when the
-                // player's inventory was partially full. This used to call Tom's
-                // pushStack; our network has its own insertion.
+                ItemStack leftover = ItemHandlerHelper.insertItemStacked(
+                        new PlayerMainInvWrapper(serverPlayer.getInventory()), extracted, false);
+                if (!leftover.isEmpty()) {
+                    // THE LEFTOVER MUST NOT BE DESTROYED, and it used to be: the old code called
+                    // insertIntoStorage on the terminal's own network and THREW AWAY what that
+                    // returned, so a full inventory plus a network that would not take the item back
+                    // meant the item simply stopped existing. Same defect as the stack that vanished
+                    // whole, one step further along the same path - and the helper below is the one
+                    // that tries the network, then the player, then the ground.
+                    if (serverPlayer.level() instanceof net.minecraft.server.level.ServerLevel sl) {
+                        VeloceTerminalBlockEntity.returnStackToNetworkOrPlayer(
+                                sl, pkt.terminalPos(), serverPlayer, leftover);
+                    }
+                    serverPlayer.displayClientMessage(Component.translatable("craftingveloce.message.inventoryFull")
+                            .withStyle(net.minecraft.ChatFormatting.GOLD), true);
+                }
+
+                serverPlayer.level().playSound(null, serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ(),
+                        SoundEvents.ITEM_PICKUP, SoundSource.PLAYERS, 0.2F, 1.0F);
+                resyncInventories(serverPlayer);
+                terminalBE.syncCountsToAllWatchers();
+            } catch (Throwable t) {
+                // The items are already out of the network - give them back before letting the
+                // failure continue, so "an error happened" can never mean "your items are gone".
                 if (serverPlayer.level() instanceof net.minecraft.server.level.ServerLevel sl) {
-                    var netForReturn = com.craftingveloce.network.pipe.VelocePipeNetworkManager
-                            .get(sl).getNetworkForTerminal(sl, pkt.terminalPos());
-                    if (netForReturn != null) {
-                        netForReturn.insertIntoStorage(sl, leftover);
-                    }
+                    VeloceTerminalBlockEntity.returnStackToNetworkOrPlayer(
+                            sl, pkt.terminalPos(), serverPlayer, extracted);
                 }
-                serverPlayer.displayClientMessage(Component.translatable("craftingveloce.message.inventoryFull")
-                        .withStyle(net.minecraft.ChatFormatting.GOLD), true);
+                throw t;
             }
-
-            serverPlayer.level().playSound(null, serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ(),
-                    SoundEvents.ITEM_PICKUP, SoundSource.PLAYERS, 0.2F, 1.0F);
-            resyncInventories(serverPlayer);
-            terminalBE.syncCountsToAllWatchers();
         });
     }
 }

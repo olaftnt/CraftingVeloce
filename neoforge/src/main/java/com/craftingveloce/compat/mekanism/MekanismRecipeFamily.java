@@ -41,11 +41,13 @@ public final class MekanismRecipeFamily {
     /** Registers the Mekanism recipe family (after block registration). */
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.compat.mekanism.family")) {
             Set<RecipeType<?>> types = types();
             VeloceRecipeFamilies.registerModFamily(ID, types);
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
                     "[Veloce][COMPAT] {}: registered {} recipe types",
                     ID, types.size());
+            }
         });
     }
 

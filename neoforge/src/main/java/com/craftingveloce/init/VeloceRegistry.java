@@ -364,14 +364,26 @@ public class VeloceRegistry {
         // already complete here. See VelocePotionProxies for why this cannot be a
         // single item carrying the potion id.
         // Both events: ITEM covers vanilla, POTION covers what another mod registered.
+        // Load-time, and ALWAYS measured: this fires during the game's registration phase, when
+        // the config (and therefore the profiler's switch) is not readable yet - see
+        // VeloceProfiler.beginStartupSession. One proxy item per potion state means this walks
+        // the potion registry, so it is worth a row of its own.
         modEventBus.addListener(net.neoforged.neoforge.registries.RegisterEvent.class,
-                VelocePotionProxies::register);
+                event -> {
+                    try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.registry.potionProxies")) {
+                        VelocePotionProxies.register(event);
+                    }
+                });
 
         BLOCKS.register(modEventBus);
         ITEMS.register(modEventBus);
         // After the items are bound: this only fills the mapper, it registers nothing.
         modEventBus.addListener(net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent.class,
-                event -> registerHandAuthoredProxies());
+                event -> {
+                    try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.registry.handAuthoredProxies")) {
+                        registerHandAuthoredProxies();
+                    }
+                });
 
         BLOCK_ENTITY_TYPES.register(modEventBus);
         MENU_TYPES.register(modEventBus);

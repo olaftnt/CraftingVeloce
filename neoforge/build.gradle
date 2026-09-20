@@ -46,6 +46,22 @@ neoForge {
     runs {
         client {
             client()
+            // OPEN A WORLD DIRECTLY, when one is named:
+            //
+            //   ./gradlew :neoforge:runClient -PveloceWorld="New World"
+            //
+            // Without this the dev client always stopped at the main menu, and a run that
+            // was meant to check something in the real base spent its first minute loading
+            // a world nobody asked for - or created a fresh one, which is what happened
+            // when this was first tried: `New World` sat there with the tester's networks in
+            // it (112 KB of them) while the game opened `New World (3)` and an empty base.
+            //
+            // No world named means the menu, which is the old behaviour and what you want
+            // when the point IS to create a world.
+            if (project.hasProperty('veloceWorld')) {
+                programArguments.addAll("--quickPlaySingleplayer",
+                        project.findProperty('veloceWorld'))
+            }
         }
         server {
             server()

@@ -123,11 +123,19 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
      */
     @Override
     protected boolean acceptItem(ItemStack stack) {
-        if (stack.isEmpty()) {
-            return false;
+        // The expensive override: a map lookup on a lazily built recipe index, PER ITEM, on
+        // every tick. `getCraftableItems()` is also where the index is built, so the first call
+        // after opening pays for the whole build - which is exactly the "the first opening is
+        // the slow one" shape, and the report shows it as a big worst-call next to a small
+        // average.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.acceptItem.craftingTable")) {
+            if (stack.isEmpty()) {
+                return false;
+            }
+            List<ClientRecipe> recipes = getCraftableItems().get(stack.getItem());
+            return recipes != null && !recipes.isEmpty();
         }
-        List<ClientRecipe> recipes = getCraftableItems().get(stack.getItem());
-        return recipes != null && !recipes.isEmpty();
     }
 
     /**

@@ -40,9 +40,15 @@ public final class CreateModule implements VeloceProcessingModule {
 
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
+            // LOAD-TIME SECTION, and on a WORKER thread - NeoForge runs these in parallel, so
+            // these rows can add up to more than the wall clock. That is not a bug in the
+            // measurement: it is the loader using several cores, and it is exactly why this is
+            // measured per module instead of as one "compat" total.
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.compat.create.module")) {
             VeloceProcessingRegistry.register(INSTANCE);
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
                     "[Veloce][COMPAT] {}: machine module registered", ID);
+            }
         });
     }
 
@@ -192,6 +198,15 @@ public final class CreateModule implements VeloceProcessingModule {
                 net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("create", path));
         return item != net.minecraft.world.item.Items.AIR
                 && network.getAllItemCounts(level).containsKey(item);
+    }
+
+    @Override
+    public void warmRecipeIndex(ServerLevel level) {
+        // One call per type is enough: the index is built for the WHOLE type at once, so the
+        // first item that asks for it would have paid this cost on the server thread.
+        for (RecipeType<?> type : recipeTypes()) {
+            CreateRecipeHarvest.index(level, type);
+        }
     }
 
     @Override

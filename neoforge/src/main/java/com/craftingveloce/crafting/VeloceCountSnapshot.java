@@ -121,21 +121,38 @@ public final class VeloceCountSnapshot {
                                               @javax.annotation.Nullable
                                               VeloceAutoCrafter.ItemInventory inventory) {
         // --- 1. the stock: network + the player's pockets, ONE read ---
-        Map<Item, Long> stock = new HashMap<>(network.getAllItemCounts(level));
-        if (inventory != null) {
-            for (Item carried : inventory.allItems()) {
-                stock.merge(carried, (long) inventory.count(carried), Long::sum);
+        //
+        // Profiled in two parts because they fail differently: reading the NETWORK walks every
+        // connected inventory (and is the part that grows with the base), while the player's
+        // pockets are a fixed 37 slots and can only ever be noise.
+        Map<Item, Long> stock;
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("snapshot.stock.network")) {
+            stock = new HashMap<>(network.getAllItemCounts(level));
+        }
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("snapshot.stock.inventory")) {
+            if (inventory != null) {
+                for (Item carried : inventory.allItems()) {
+                    stock.merge(carried, (long) inventory.count(carried), Long::sum);
+                }
             }
         }
 
         // --- 2. heat, as a yes/no for the estimation ---
-        boolean heatAnywhere = VeloceHeatSources.hasAnyHeatSource(level, network);
+        boolean heatAnywhere;
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("snapshot.heat")) {
+            heatAnywhere = VeloceHeatSources.hasAnyHeatSource(level, network);
+        }
         long heatOps = heatAnywhere ? HEAT_OPS : 0L;
 
         // --- 3. the countable set, with the furnace union already applied ---
+        //
+        // This is the one that reaches into every module's recipe index, so it is measured on
+        // its own: in a large pack the first call here builds those indexes.
         Set<Item> countable = new HashSet<>(enabled);
-        if (heatAnywhere) {
-            countable.addAll(VeloceRecipeRegistry.getAllFurnaceCraftableItems(level));
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("snapshot.countable")) {
+            if (heatAnywhere) {
+                countable.addAll(VeloceRecipeRegistry.getAllFurnaceCraftableItems(level));
+            }
         }
 
         // --- 4. the per-item "furnace first" flags, copied OUT of the network ---
@@ -154,30 +171,43 @@ public final class VeloceCountSnapshot {
         // means an item it wants has "no recipes" and the number silently comes out 0.
         List<Item> frontier = new ArrayList<>(new java.util.LinkedHashSet<>(items));
         Set<Item> seen = new HashSet<>(frontier);
-        while (!frontier.isEmpty()) {
-            if (seen.size() > MAX_CLOSURE_ITEMS) {
-                truncated = true;
-                break;
-            }
-            List<Item> next = new ArrayList<>();
-            for (Item item : frontier) {
-                List<ProcessingEntry> forItem = resolveRecipes(level, network, item, heatAnywhere);
-                recipes.put(item, forItem);
-                for (ProcessingEntry entry : forItem) {
-                    for (net.minecraft.world.item.crafting.Ingredient ing : entry.ingredients()) {
-                        for (var option : ing.getItems()) {
-                            if (option.isEmpty()) {
-                                continue;
-                            }
-                            Item optItem = option.getItem();
-                            if (seen.add(optItem)) {
-                                next.add(optItem);
+        // THE PRIME SUSPECT FOR A FREEZE, so it is measured at three levels: the whole
+        // closure, the per-item recipe lookup, and the ingredient walk that decides what to
+        // visit next. A pack with tens of thousands of recipes makes "how many items did we
+        // visit, and how long did each lookup take" the whole answer.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("snapshot.closure")) {
+            while (!frontier.isEmpty()) {
+                if (seen.size() > MAX_CLOSURE_ITEMS) {
+                    truncated = true;
+                    break;
+                }
+                List<Item> next = new ArrayList<>();
+                for (Item item : frontier) {
+                    List<ProcessingEntry> forItem;
+                    try (var ignored2 = com.craftingveloce.util.VeloceProfiler
+                            .section("snapshot.closure.resolveRecipes")) {
+                        forItem = resolveRecipes(level, network, item, heatAnywhere);
+                    }
+                    recipes.put(item, forItem);
+                    try (var ignored2 = com.craftingveloce.util.VeloceProfiler
+                            .section("snapshot.closure.walkIngredients")) {
+                        for (ProcessingEntry entry : forItem) {
+                            for (net.minecraft.world.item.crafting.Ingredient ing : entry.ingredients()) {
+                                for (var option : ing.getItems()) {
+                                    if (option.isEmpty()) {
+                                        continue;
+                                    }
+                                    Item optItem = option.getItem();
+                                    if (seen.add(optItem)) {
+                                        next.add(optItem);
+                                    }
+                                }
                             }
                         }
                     }
                 }
+                frontier = next;
             }
-            frontier = next;
         }
 
         VeloceCountSnapshot snap = new VeloceCountSnapshot(

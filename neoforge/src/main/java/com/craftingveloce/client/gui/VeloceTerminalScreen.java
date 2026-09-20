@@ -104,26 +104,29 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     }
 
     public void updateNetworkCounts(Map<Item, Long> counts, Map<Item, Long> craftable) {
-        Map<Item, Long> previous = this.networkCounts;
-        this.networkCounts = new HashMap<>(counts);
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.updateNetworkCounts")) {
+            Map<Item, Long> previous = this.networkCounts;
+            this.networkCounts = new HashMap<>(counts);
 
-        // We ask again ONLY when the stock has really changed.
-        //
-        // The BUG that used to be here: we called requestVisibleCounts(true)
-        // unconditionally. And the server sends this packet once per second
-        // (syncCountsToAllWatchers), so a LOOP formed:
-        //     updateNetworkCounts -> requestVisibleCounts -> server computes
-        //     -> SyncCraftableCounts -> (next second) updateNetworkCounts
-        // The client therefore sent a request once per second forever, and the
-        // player felt it as "lag before the numbers show up" - the GUI was
-        // waiting for a round-trip.
-        //
-        // Now we compare the stock with the previous packet: if it has not
-        // changed, there is no point in asking. After crafting/withdrawing it
-        // differs, so the "+N" numbers refresh the way they should.
-        this.networkCounts = new HashMap<>(counts);
-        this.craftable.putAll(craftable);
-        requestVisibleCounts(true);
+            // We ask again ONLY when the stock has really changed.
+            //
+            // The BUG that used to be here: we called requestVisibleCounts(true)
+            // unconditionally. And the server sends this packet once per second
+            // (syncCountsToAllWatchers), so a LOOP formed:
+            //     updateNetworkCounts -> requestVisibleCounts -> server computes
+            //     -> SyncCraftableCounts -> (next second) updateNetworkCounts
+            // The client therefore sent a request once per second forever, and the
+            // player felt it as "lag before the numbers show up" - the GUI was
+            // waiting for a round-trip.
+            //
+            // Now we compare the stock with the previous packet: if it has not
+            // changed, there is no point in asking. After crafting/withdrawing it
+            // differs, so the "+N" numbers refresh the way they should.
+            this.networkCounts = new HashMap<>(counts);
+            this.craftable.putAll(craftable);
+            requestVisibleCounts(true);
+        }
     }
 
     /**
@@ -162,10 +165,29 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
 
     @Override
     protected void init() {
-        super.init();
-        // Immediately after opening: request the numbers for whatever is visible.
-        craftable.resetRequestState();
-        requestVisibleCounts(true);
+        // THE SESSION OPENS HERE, and here rather than on the server on purpose.
+        //
+        // This is the moment the player feels the freeze begin: the click lands, the screen is
+        // built, and only afterwards does anything reach the server. A session opened by the
+        // count request would therefore start too late to contain the client-side half - and
+        // worse, it would CLEAR whatever the client had already measured. The client owns the
+        // session, and closes it when the numbers arrive (see VeloceCraftableCounts.update).
+        //
+        // The cost is that the per-tick rows only accumulate while the terminal is open, which
+        // is exactly what makes the totals in the report meaningful.
+        com.craftingveloce.util.VeloceProfiler.beginClientSession();
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.openTerminal")) {
+            try (var ignored2 = com.craftingveloce.util.VeloceProfiler
+                    .section("client.openTerminal.superInit")) {
+                super.init();
+            }
+            // Immediately after opening: request the numbers for whatever is visible.
+            try (var ignored2 = com.craftingveloce.util.VeloceProfiler
+                    .section("client.openTerminal.resetRequestState")) {
+                craftable.resetRequestState();
+            }
+            requestVisibleCounts(true);
+        }
         // And a couple of seconds later, say what the screen actually ended up holding.
         // The server cannot see this: it knows a number was sent, not whether the screen
         // found an item to draw it on.
@@ -176,12 +198,21 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
     public void containerTick() {
         // IMPORTANT: we call the base - otherwise tab detection and item
         // filtering from VeloceCreativeScreen do not work.
-        super.containerTick();
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.terminal.containerTick.super")) {
+            super.containerTick();
+        }
         // Live: when the screen contents change (tab, scroll), request the
         // numbers for the new page.
-        requestVisibleCounts(false);
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.terminal.containerTick.requestCounts")) {
+            requestVisibleCounts(false);
+        }
         if (probeCountdown > 0 && --probeCountdown == 0) {
-            sendCountsProbe();
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("client.terminal.containerTick.probe")) {
+                sendCountsProbe();
+            }
         }
     }
 
@@ -315,7 +346,13 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             java.lang.reflect.Method refresh = CreativeModeInventoryScreen.class
                     .getDeclaredMethod("refreshSearchResults");
             refresh.setAccessible(true);
-            refresh.invoke(this);
+            // Same call as in refreshContents, and the same reason to isolate it: a test or a
+            // player setting a search phrase pays for a full vanilla search, and this row tells
+            // apart "the search is slow" from "our filtering after it is slow".
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("client.applySearchPhrase.refreshSearchResults")) {
+                refresh.invoke(this);
+            }
             refreshReport = "vanilla refreshSearchResults called";
         } catch (Throwable t) {
             // Vanilla's own name for it may differ between versions; our own filtering
@@ -411,8 +448,16 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
         // The slots may be empty even though the items are displayed (see
         // ensureGridItems) - then there is nothing to request and the numbers do
         // not appear until a tab or a search phrase is switched.
-        ensureGridItems();
-        this.craftable.request(terminalPos, this.menu.slots, this::isPlayerSlot, force);
+        // Both halves are measured: filling the grid touches every slot, and the request
+        // builds and serialises the visible item list. Either can be the client-thread cost.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.ensureGridItems")) {
+            ensureGridItems();
+        }
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.requestVisibleCounts")) {
+            this.craftable.request(terminalPos, this.menu.slots, this::isPlayerSlot, force);
+        }
     }
 
     /**

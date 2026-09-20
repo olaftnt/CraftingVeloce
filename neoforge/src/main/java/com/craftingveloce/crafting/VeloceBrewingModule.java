@@ -79,26 +79,61 @@ public class VeloceBrewingModule implements VeloceProcessingModule {
 
     private final List<ProcessingEntry> recipes = new ArrayList<>();
 
-    /** Whether {@link #recipes} has been built for the current server state. */
-    private boolean discovered;
+    /**
+     * Whether {@link #recipes} has been built for the current server state.
+     *
+     * <p><b>Volatile, and written LAST.</b> The discovery is now also built from the counting
+     * worker - by the recipe-index warm-up (see {@code VeloceRecipeWarmup}) - while the server
+     * thread can ask for a brewing recipe in the same moment. Without the volatile flag the
+     * worker's "I am building it" was visible to the server thread BEFORE the list was filled,
+     * and a caller could read a half-built {@code recipes} (or an empty one) and conclude that a
+     * potion has no recipe. Writing the flag after the list is published gives every later
+     * reader a happens-before edge onto the finished list.
+     */
+    private volatile boolean discovered;
 
     public VeloceBrewingModule() {
     }
 
     @Override
-    public void invalidate() {
-        discovered = false;
-        recipes.clear();
+    public void warmRecipeIndex(ServerLevel level) {
+        // The brewing discovery is the most expensive single build of all of them: it probes
+        // every potion input against every ingredient (the log line "probed 246 input(s) x 28
+        // ingredient(s)"), and nothing about it needs the server thread.
+        ensureRecipes(level);
     }
 
+    @Override
+    public void invalidate() {
+        synchronized (this) {
+            discovered = false;
+            recipes.clear();
+        }
+    }
+
+    /**
+     * Builds the brewing recipes once, safely under two threads.
+     *
+     * <p>The fast path is the flag alone (this is called per item, so a lock on every call would
+     * be a real cost), and only the first call goes into the synchronized block. Keeping the
+     * build inside it means the server thread waits for the worker's build instead of reading a
+     * partially filled list.
+     */
     private void ensureRecipes(ServerLevel level) {
-        if (discovered) return;
-        discovered = true;
-        recipes.clear();
-        addBottleFilling();
-        discoverMixes(level);
-        LOG.info("brewing discovery: {} recipe(s) in total, built from the mix tree "
-                + "the game reports", recipes.size());
+        if (discovered) {
+            return;
+        }
+        synchronized (this) {
+            if (discovered) {
+                return;   // another thread built it while we waited
+            }
+            recipes.clear();
+            addBottleFilling();
+            discoverMixes(level);
+            LOG.info("brewing discovery: {} recipe(s) in total, built from the mix tree "
+                    + "the game reports", recipes.size());
+            discovered = true;   // LAST - see the field
+        }
     }
 
     /**

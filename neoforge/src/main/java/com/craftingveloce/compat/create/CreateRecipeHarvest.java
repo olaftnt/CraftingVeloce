@@ -110,7 +110,17 @@ public final class CreateRecipeHarvest {
         if (cached != null) {
             return cached;
         }
-        Map<Item, List<ProcessingEntry>> built = build(level, type);
+        // The Create index is built per recipe TYPE, and the first build of each walks every
+        // recipe of that type in the pack. Labelled "load" because that first build lands during
+        // a world join (the terminal asks for it) - and with a unit count, so the row says how
+        // many items came out rather than only how long it took.
+        Map<Item, List<ProcessingEntry>> built;
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("load.recipeIndex.create")) {
+            built = build(level, type);
+            com.craftingveloce.util.VeloceProfiler.count(
+                    "load.recipeIndex.create", built.size());
+        }
         synchronized (byType) {
             Map<Item, List<ProcessingEntry>> again = byType.get(type);
             if (again != null) {

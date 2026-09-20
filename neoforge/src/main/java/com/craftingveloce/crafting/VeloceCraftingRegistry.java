@@ -174,13 +174,18 @@ public final class VeloceCraftingRegistry {
      */
     public static Map<Item, ResourceLocation> getPreferredRecipes(ServerLevel level,
                                                                   VelocePipeNetwork network) {
-        Map<Item, ResourceLocation> out = new HashMap<>();
-        for (VeloceCraftingTableBlockEntity crafter : crafters(level, network)) {
-            for (Map.Entry<Item, ResourceLocation> e : crafter.getPreferredRecipes().entrySet()) {
-                out.putIfAbsent(e.getKey(), e.getValue());
+        // Measured: this walks every crafter in the network, and it runs on the server thread
+        // as one of the two arguments of the snapshot capture - so on a network with many
+        // crafters it is part of what the player waits for when the terminal opens.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("server.registry.getPreferredRecipes")) {
+            Map<Item, ResourceLocation> out = new HashMap<>();
+            for (VeloceCraftingTableBlockEntity crafter : crafters(level, network)) {
+                for (Map.Entry<Item, ResourceLocation> e : crafter.getPreferredRecipes().entrySet()) {
+                    out.putIfAbsent(e.getKey(), e.getValue());
+                }
             }
+            return out;
         }
-        return out;
     }
 
     /**
@@ -211,10 +216,16 @@ public final class VeloceCraftingRegistry {
      * attend to. Deduplicated, so a mod appears once however many of its machines match.
      */
     public static String modsThatCanMake(ServerLevel level, Item item) {
+        // ONE CALL PER UNAVAILABLE ITEM ON THE PAGE, and each call asks every installed module
+        // whether it has a recipe for that item - so its cost is "red items x modules x recipe
+        // lookups". That is the shape that made a fully red page much more expensive than a
+        // single query, and the unit count here is what makes it visible in the report.
         java.util.Set<String> mods = new java.util.LinkedHashSet<>();
-        for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
-            if (!module.recipesAnywhere(level, item).isEmpty()) {
-                mods.add(module.id());
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("server.registry.modsThatCanMake")) {
+            for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
+                if (!module.recipesAnywhere(level, item).isEmpty()) {
+                    mods.add(module.id());
+                }
             }
         }
         return String.join(", ", mods);
@@ -231,11 +242,20 @@ public final class VeloceCraftingRegistry {
         // enough on its own, and a crafter is needed only for its own (crafting)
         // recipes.
         java.util.Set<Item> out = new java.util.HashSet<>();
-        for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
-            if (!module.available(level, network) || !module.powered(level, network)) {
-                continue;   // no machine, or the machine is stopped
+        // Measured, and with a unit count: the loop is short (one entry per installed module)
+        // but `module.producible` is NOT - it asks a module for every item its machines can
+        // make, and on the first call it may build that module's recipe index. A big number in
+        // the unit column next to a big total is the answer to "why does the first opening cost
+        // more than the ones after it".
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("server.registry.getAllEnabledItems")) {
+            for (VeloceProcessingModule module : VeloceProcessingRegistry.all()) {
+                if (!module.available(level, network) || !module.powered(level, network)) {
+                    continue;   // no machine, or the machine is stopped
+                }
+                java.util.Set<Item> made = module.producible(level, network);
+                com.craftingveloce.util.VeloceProfiler.count("server.registry.getAllEnabledItems", made.size());
+                out.addAll(made);
             }
-            out.addAll(module.producible(level, network));
         }
         return java.util.Collections.unmodifiableSet(out);
     }

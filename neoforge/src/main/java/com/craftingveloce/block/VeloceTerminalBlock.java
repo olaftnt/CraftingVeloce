@@ -132,13 +132,26 @@ public class VeloceTerminalBlock extends BaseEntityBlock
                 "terminal right-clicked at %s by %s (client=%s)",
                 pos, player.getName().getString(), world.isClientSide);
         if (!world.isClientSide && player instanceof ServerPlayer serverPlayer) {
-            BlockEntity be = world.getBlockEntity(pos);
-            if (be instanceof VeloceTerminalBlockEntity terminalBE) {
-                terminalBE.onPlayerOpenTerminal(serverPlayer);
+            // THE PROFILER'S SESSION OPENS AT THE CLICK, and this is the only place where that
+            // is correct: the order of a terminal opening is server-first (this block scans the
+            // network and syncs the counts) and client-second (the packet below makes the client
+            // build the screen). A session opened by the screen build would start after the
+            // work that the click itself caused - and would have cleared it.
+            //
+            // It is opened here and not around the whole method so that the interaction logging
+            // at the top is not inside the measured window.
+            com.craftingveloce.util.VeloceProfiler.beginInteractionSession();
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.section("server.terminalOpen.rightClick")) {
+                BlockEntity be = world.getBlockEntity(pos);
+                if (be instanceof VeloceTerminalBlockEntity terminalBE) {
+                    terminalBE.onPlayerOpenTerminal(serverPlayer);
+                }
+                // Our terminal is a client-side screen fed by our own packets, not a
+                // container menu, so we open it ourselves instead of player.openMenu().
+                try (var ignored2 = com.craftingveloce.util.VeloceProfiler.section("server.terminalOpen.sendOpenPacket")) {
+                    PacketDistributor.sendToPlayer(serverPlayer, new OpenTerminalScreenPKT(pos));
+                }
             }
-            // Our terminal is a client-side screen fed by our own packets, not a
-            // container menu, so we open it ourselves instead of player.openMenu().
-            PacketDistributor.sendToPlayer(serverPlayer, new OpenTerminalScreenPKT(pos));
         }
         return InteractionResult.sidedSuccess(world.isClientSide);
     }

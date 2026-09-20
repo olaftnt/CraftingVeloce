@@ -44,6 +44,7 @@ public final class MekanismModule implements VeloceProcessingModule {
 
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.compat.mekanism.module")) {
             VeloceProcessingRegistry.register(INSTANCE);
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
                     "[Veloce][COMPAT] {}: machine module registered ({} machine(s) active, "
@@ -58,6 +59,7 @@ public final class MekanismModule implements VeloceProcessingModule {
                             "[Veloce][COMPAT] {}: DISABLED until the network carries gases "
                                     + "and fluids - {}", ID, module.id());
                 }
+            }
             }
         });
     }
@@ -140,6 +142,13 @@ public final class MekanismModule implements VeloceProcessingModule {
             out.addAll(MekanismRecipeHarvest.forItem(level, type, item));
         }
         return out;
+    }
+
+    @Override
+    public void warmRecipeIndex(ServerLevel level) {
+        for (RecipeType<?> type : recipeTypes()) {
+            MekanismRecipeHarvest.index(level, type);
+        }
     }
 
     @Override

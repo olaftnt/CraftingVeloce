@@ -209,6 +209,99 @@ Crafting failures carry a reason computed where the failure happened rather than
 "item not in network": the missing ingredient, and — when another machine could have made it
 — which mods have a recipe for it, shown on the red items in the Veloce Controller tooltip.
 
+### Profiler
+
+`profilerEnabled` in `craftingveloce-common.toml` (off by default, and independent of
+`debugEnabled` — the profiler is wanted exactly where the ordinary debug log is drowned out by
+other mods) measures **how long this mod's own operations take**, function by function, and
+writes the breakdown to `logs/latest.log` under `[Veloce][PROF]`. `/cv profile [on|off|report|reset]`
+is the same switch from inside the game, so a large pack does not have to be restarted to use it.
+
+A **session** covers one thing the player did. For the terminal it runs from the right-click to
+the numbers arriving: the server opens it (it scans the network and syncs the counts before the
+client has built anything), the client adopts it without clearing it, and the client closes it
+when the page arrives. That ordering matters — a session opened when the screen was built would
+cut off the server half that ran at the moment of the click. In singleplayer the client, the
+server and the counting worker share one JVM, so ONE report contains all three sides.
+
+Each row is: total ms, share of the sum of all rows, call count, worst single call, and — for
+the labels that count work — units and microseconds per unit:
+
+```
+[Veloce][PROF] ===== terminal open: 41 value(s) received, complete=true =====
+[Veloce][PROF] wall clock 812 ms (sum of sections 1204 ms)
+[Veloce][PROF]   client.refreshSearchResults            401 ms  33.3%     2 call(s) worst 399 ms
+[Veloce][PROF]   client.applyItemFilter.scan            240 ms  19.9%    21 call(s) worst  38 ms   1050000 unit(s)   0 us/unit
+[Veloce][PROF]   server.captureSnapshot                 180 ms  15.0%     1 call(s) worst 180 ms
+[Veloce][PROF]   server.network.getAllItemCounts         70 ms   5.8%     2 call(s) worst  68 ms
+[Veloce][PROF]   worker.OFF-THREAD.countPage             55 ms   4.6%     1 call(s) worst  55 ms
+[Veloce][PROF] =====================
+```
+
+How to read it:
+
+- **call count** separates the two kinds of problem. A one-off cost on opening a screen runs
+  once; a stall that eats the frame rate runs twenty times a second (`client.containerTick`,
+  `client.creativeScreen.containerTick.applyItemFilter`, `server.tick.*`). Neither the total nor
+  the average says which it is on its own.
+- **units / us per unit** is what travels between packs: "1 050 000 items scanned" is comparable
+  with a small pack, "240 ms" is not.
+- **worst** exposes an operation that is cheap on average and occasionally does a registry scan.
+- The **prefix** says which thread it ran on. `client.*` is the client thread, `server.*` and
+  `snapshot.*` the server thread, `net.*` the network thread, and `worker.OFF-THREAD.*` the
+  counting thread — which **cannot** be the cause of a freeze, because it does not run on the
+  game thread. Seeing it at the top of a report while a freeze was real means the answer is in
+  one of the other families.
+- **Nesting**: a measured block can contain others (`snapshot.closure` contains
+  `snapshot.closure.resolveRecipes`), so a child's time is also counted in its parent and the
+  shares can add up to more than 100%. The dotted labels show the nesting.
+- A **partial** answer (the server sends the network's cached numbers first) prints a
+  `[SNAPSHOT - session continues]` report and leaves the session open, so the work that follows
+  is still measured. Only the final answer closes it.
+- Any single operation over 50 ms is reported the moment it ends, so a session that never
+  completes still leaves a trace.
+
+#### Profiling the load
+
+Starting the game and joining a world are profiled too, under the `load.*` labels, and reported
+twice so the two waits are not mixed up:
+
+```
+[Veloce][PROF] ===== LOAD 1/2 mod loading: our registration + compat setup =====
+[Veloce][PROF] ===== LOAD 2/2 world ready: our recipe indexes + first ticks =====
+```
+
+The first covers mod construction (`load.register.*`), the `RegisterEvent` work
+(`load.registry.*`), the optional integrations (`load.compat.*.module` / `.family`) and the
+client registrations (`load.client.*`). The second covers what happens between mod loading and
+the world being ready — mainly the first build of our recipe indexes (`load.recipeIndex.*`),
+which walks every recipe the pack has and is paid during the join — plus our per-tick cost while
+the world comes up.
+
+Two things to know about these rows:
+
+- They are **measured even when `profilerEnabled` is off**, because the config is not readable
+  during mod construction and a switch-gated section would measure nothing at the one moment the
+  player is waiting. There are only a few dozen of them, so the cost is nothing; the *output* is
+  what the switch gates.
+- The compat setup runs on NeoForge's **parallel** mod-loading threads, so those rows can add up
+  to more than the wall clock. That is the loader using several cores, not a measurement error,
+  and it is why each integration has its own label instead of one "compat" total.
+
+What a load report **cannot** tell you is why a large pack takes minutes: most of that time
+belongs to other mods (in the reference pack, a single EMI recipe reload took 51–61 s), and this
+profiler only measures this mod's own functions. What it does tell you is whether *our* share of
+the wait is milliseconds or seconds — the only part this mod can do anything about.
+
+Measuring it that way found a real cost and it is fixed: every recipe index is built lazily on
+first use, so the first terminal page after a world loads paid ~650 ms of index building on the
+server thread (365 ms in a single "which mods can make this" query, 175 ms in the snapshot
+capture, 105 ms for the vanilla crafting index). The indexes are now built by
+`VeloceRecipeWarmup` on the counting worker as soon as the world starts — it shows up in the
+report as `worker.OFF-THREAD.warmIndexes` and logs one line saying how long it took. Nothing
+depends on it: the lazy build still exists, so a failure there costs the old, slower behaviour
+and nothing else.
+
 ## Network packets
 
 All packets use the NeoForge `CustomPacketPayload` / `StreamCodec`.

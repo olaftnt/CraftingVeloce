@@ -20,7 +20,23 @@ public class ClientTerminalHelper {
         com.craftingveloce.CraftingVeloceMod.LOGGER.info(
                 "[Veloce] openTerminalScreen at {}: player={}", pos, mc.player != null);
         if (mc.player != null) {
-            mc.setScreen(new VeloceTerminalScreen(mc.player, mc.player.connection.enabledFeatures(), true, pos));
+            // MEASURED, and this is where the FIRST terminal open of a session spends its time.
+            //
+            // The measured log made the shape obvious and the cause invisible: between this
+            // method's own "openTerminalScreen" line and the "terminal screen set" line there was
+            // 1641 ms, while our init() measured 22 ms. The remaining 1.6 s is in the CONSTRUCTOR
+            // of the vanilla creative screen - class loading, mixin transformation and JIT of that
+            // enormous hierarchy on first use - and nothing was measuring it, so it looked like
+            // "the client just hangs for no reason". The two halves are split because they have
+            // completely different fixes: the vanilla constructor cannot be changed, while ours
+            // can.
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.openTerminalScreen.construct")) {
+                VeloceTerminalScreen screen = new VeloceTerminalScreen(
+                        mc.player, mc.player.connection.enabledFeatures(), true, pos);
+                try (var ignored2 = com.craftingveloce.util.VeloceProfiler.section("client.openTerminalScreen.setScreen")) {
+                    mc.setScreen(screen);
+                }
+            }
             com.craftingveloce.CraftingVeloceMod.LOGGER.info(
                     "[Veloce] terminal screen set: {}", mc.screen);
         }
@@ -62,11 +78,19 @@ public class ClientTerminalHelper {
 
     public static void handleSyncCounts(Map<Item, Long> itemCounts,
                                         Map<Item, Long> craftableCounts) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.screen instanceof VeloceTerminalScreen screen) {
-            screen.updateNetworkCounts(itemCounts, craftableCounts);
-        } else if (mc.screen instanceof com.craftingveloce.client.gui.VeloceFilterPickerScreen screen) {
-            screen.updateNetworkCounts(itemCounts);
+        // THE CLIENT END OF THE TERMINAL-BUILD PATH. This runs on the client thread and carries
+        // the WHOLE network stock, so on a big network it is a page of map merging plus a
+        // re-request - measured, because it lands in the same second the player clicked and
+        // "the numbers took a moment to appear" is indistinguishable from "the client stalled"
+        // without this row.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.handleSyncCounts")) {
+            com.craftingveloce.util.VeloceProfiler.count("client.handleSyncCounts", itemCounts.size());
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof VeloceTerminalScreen screen) {
+                screen.updateNetworkCounts(itemCounts, craftableCounts);
+            } else if (mc.screen instanceof com.craftingveloce.client.gui.VeloceFilterPickerScreen screen) {
+                screen.updateNetworkCounts(itemCounts);
+            }
         }
     }
 
@@ -257,16 +281,25 @@ public class ClientTerminalHelper {
 
     /** The server's response with the "how many can still be crafted" numbers. */
     public static void handleCraftableCounts(BlockPos pos, Map<Item, Long> counts,
-                                             Map<Item, String> madeBy, boolean complete) {        Minecraft mc = Minecraft.getInstance();
-        if (mc.screen instanceof VeloceTerminalScreen screen) {
-            screen.updateCraftableCounts(counts, complete);
-        } else if (mc.screen instanceof com.craftingveloce.client.gui.VeloceControllerScreen screen) {
-            // The same response is handled by the controller - it asks for
-            // EXACTLY the same numbers, so it uses the same packet and the same
-            // path.
-            // The controller alone takes the maker list: it is the screen that shows items it
-            // cannot make as a red icon, and the tooltip there has room for the explanation.
-            screen.updateCraftableCounts(counts, madeBy, complete);
+                                             Map<Item, String> madeBy, boolean complete) {
+        // The page arriving on the client, and the point where the profiler's session is closed
+        // when the answer is complete - see VeloceCraftableCounts.update. Measured as well, so
+        // "the numbers appeared late" can be attributed to the merge rather than to the network.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.handleCraftableCounts")) {
+            com.craftingveloce.util.VeloceProfiler.count(
+                    "client.handleCraftableCounts", counts.size());
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.screen instanceof VeloceTerminalScreen screen) {
+                screen.updateCraftableCounts(counts, complete);
+            } else if (mc.screen instanceof com.craftingveloce.client.gui.VeloceControllerScreen screen) {
+                // The same response is handled by the controller - it asks for
+                // EXACTLY the same numbers, so it uses the same packet and the same
+                // path.
+                // The controller alone takes the maker list: it is the screen that shows items it
+                // cannot make as a red icon, and the tooltip there has room for the explanation.
+                screen.updateCraftableCounts(counts, madeBy, complete);
+            }
         }
     }
 

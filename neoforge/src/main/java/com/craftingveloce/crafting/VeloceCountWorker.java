@@ -137,7 +137,7 @@ public final class VeloceCountWorker {
 
     /** One request: everything the worker needs, plus where to send the answer. */
     private record Job(VeloceCountSnapshot snapshot, List<Item> items, long generation,
-                       Sink sink, String what) {
+                       Sink sink, String what, long submittedNanos) {
     }
 
     /**
@@ -154,7 +154,9 @@ public final class VeloceCountWorker {
                               List<Item> items, long generation, Sink sink, String what) {
         long gen = generation > 0 ? generation : GENERATION.incrementAndGet();
         try {
-            executor.execute(() -> run(server, new Job(snapshot, items, gen, sink, what)));
+            long submittedNanos = System.nanoTime();
+            executor.execute(() -> run(server,
+                    new Job(snapshot, items, gen, sink, what, submittedNanos)));
         } catch (RejectedExecutionException e) {
             // Queue full or shut down. The client refreshes the visible page on its own
             // clock, so dropping this one request costs a moment, not a number.
@@ -163,20 +165,64 @@ public final class VeloceCountWorker {
         }
     }
 
+    /**
+     * Runs a piece of work on the counting thread - used for the recipe-index WARM-UP.
+     *
+     * <p>It shares the one worker thread with the counts on purpose: warming is exactly the same
+     * kind of work (reading recipe indexes) and it must not compete with the server thread. One
+     * thread also means a warm-up can never run at the same time as a count, so the indexes are
+     * never being built twice.
+     *
+     * <p>Safe to call when the worker is shut down (a world that is closing): the task is simply
+     * dropped, because a warm-up is an optimisation and the lazy path still exists.
+     *
+     * @param what shown in any error line, so a failure says what was being warmed
+     */
+    public static void submitTask(String what, Runnable task) {
+        try {
+            executor.execute(() -> {
+                try {
+                    task.run();
+                } catch (Throwable t) {
+                    // Nothing joins this thread, so an uncaught failure would vanish and the
+                    // indexes would just stay cold with no explanation.
+                    VeloceLog.Craft.error(VeloceLog.Side.SERVER, t,
+                            "%s on the worker failed - the work will happen on the first "
+                                    + "request instead", what);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            VeloceLog.Craft.detail(VeloceLog.Side.SERVER,
+                    "count worker busy - skipped: %s", what);
+        }
+    }
+
     /** The worker body: compute, then hand the answer back to the server thread. */
     private static void run(MinecraftServer server, Job job) {
         long start = System.nanoTime();
+        // How long the request waited for a free thread. It is part of what the player waited
+        // for, and it is NOT the snapshot capture: a page that sat here while an earlier page
+        // was computing would otherwise look like a slow capture.
+        com.craftingveloce.util.VeloceProfiler.record("worker.queueWait",
+                start - job.submittedNanos());
         VeloceAutoCrafter.BatchResult result;
-        try {
-            result = VeloceAutoCrafter.countFromSnapshot(job.snapshot(), job.items(),
-                    progressFor(job));
-        } catch (Throwable t) {
+        // Labelled OFF-THREAD on purpose: this runs on the counting thread, so however long it
+        // takes it CANNOT be what freezes the game. Seeing it at the top of a report while the
+        // freeze was real is the profiler telling the reader to look at the server-thread rows
+        // instead (the snapshot capture), not a contradiction.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("worker.OFF-THREAD.countPage")) {
+            try {
+                result = VeloceAutoCrafter.countFromSnapshot(job.snapshot(), job.items(),
+                        progressFor(job));
+            } catch (Throwable t) {
             // A failure on a worker thread would otherwise be invisible: nothing joins it
             // and nothing catches it, and the client would simply never get an answer.
-            VeloceLog.Craft.error(VeloceLog.Side.SERVER, t,
-                    "counting %s on the worker failed - the page will show no new numbers",
-                    job.what());
-            return;
+                VeloceLog.Craft.error(VeloceLog.Side.SERVER, t,
+                        "counting %s on the worker failed - the page will show no new numbers",
+                        job.what());
+                return;
+            }
         }
         long nanos = System.nanoTime() - start;
 

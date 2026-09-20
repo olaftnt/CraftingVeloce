@@ -105,6 +105,13 @@ public class CraftingVeloceMod {
 
     public CraftingVeloceMod(IEventBus modEventBus, ModContainer modContainer) {
         LOGGER.info("CraftingVeloce initializing...");
+        // THE LOAD SESSION OPENS FIRST, before anything of ours runs.
+        //
+        // It has to be here and not later: the common config - which holds the profiler's
+        // switch - is not readable during mod construction, so this is the only place that can
+        // start measuring our share of the loading. The sections used below are the
+        // "always measured" kind; the REPORT is what the switch gates (see reportLoad).
+        com.craftingveloce.util.VeloceProfiler.beginStartupSession();
 
         // A SERVER config, and that is the whole point of it: NeoForge SYNCS server configs
         // to the client, so a player joining a server receives that server's FE values
@@ -128,18 +135,47 @@ public class CraftingVeloceMod {
                 event -> {
                     if (event.getConfig().getSpec()
                             == com.craftingveloce.config.VeloceConfig.SPEC) {
-                        LOGGER.info("[Veloce][INIT] debug logging: {} (level={})",
+                        // The profiler caches its switch for the hot paths it measures - a value
+                        // read before this event would otherwise stick for the whole session.
+                        com.craftingveloce.util.VeloceProfiler.refreshEnabled();
+                        LOGGER.info("[Veloce][INIT] debug logging: {} (level={}), profiler: {}",
                                 com.craftingveloce.config.VeloceConfig.DEBUG_ENABLED.get(),
-                                com.craftingveloce.config.VeloceConfig.DEBUG_LEVEL.get());
+                                com.craftingveloce.config.VeloceConfig.DEBUG_LEVEL.get(),
+                                com.craftingveloce.util.VeloceProfiler.enabled());
+                    }
+                });
+        // A reload (F3+T / the config screen) must also drop the cached switch.
+        modEventBus.addListener(net.neoforged.fml.event.config.ModConfigEvent.Reloading.class,
+                event -> {
+                    if (event.getConfig().getSpec()
+                            == com.craftingveloce.config.VeloceConfig.SPEC) {
+                        com.craftingveloce.util.VeloceProfiler.refreshEnabled();
+                        LOGGER.info("[Veloce][PROF] profiler is now {}", 
+                                com.craftingveloce.util.VeloceProfiler.enabled() ? "ON" : "OFF");
                     }
                 });
 
-        VeloceRegistry.register(modEventBus);
-        com.craftingveloce.crafting.VeloceRecipes.register(modEventBus);
+        // EACH REGISTRATION CALL IS MEASURED SEPARATELY. They are all cheap individually - the
+        // real registration happens later, on NeoForge's RegisterEvent - but "cheap" is a claim,
+        // and a claim about the loading phase is exactly what a player waits 40 seconds for and
+        // cannot check. If one of these ever starts doing real work (a loop over a registry),
+        // this is where it shows up.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.register.blocksItems")) {
+            VeloceRegistry.register(modEventBus);
+        }
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.register.recipes")) {
+            com.craftingveloce.crafting.VeloceRecipes.register(modEventBus);
+        }
         // JEI: our blocks next to the crafting table (details - VeloceJeiCatalysts).
-        com.craftingveloce.compat.VeloceJeiCatalysts.registerDefaults();
-        CREATIVE_TABS.register(modEventBus);
-        VelocePacketHandler.register(modEventBus);
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.register.jeiCatalysts")) {
+            com.craftingveloce.compat.VeloceJeiCatalysts.registerDefaults();
+        }
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.register.creativeTabs")) {
+            CREATIVE_TABS.register(modEventBus);
+        }
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.register.packets")) {
+            VelocePacketHandler.register(modEventBus);
+        }
 
         // --- Optional integrations with other mods ------------------------
         //
@@ -154,14 +190,24 @@ public class CraftingVeloceMod {
             LOGGER.info("[Veloce][COMPAT] {}: {}", mod.id(),
                     mod.isLoaded() ? "present" : "missing");
         }
+        // The compat gates themselves can be slow - `isPresent()` asks the mod list, and
+        // `register` runs module setup that walks foreign registries - so each is measured with
+        // its own label rather than as one "compat" blob. A single blob could only ever say
+        // "compat is slow", which is the answer that starts a guessing round.
         if (com.craftingveloce.compat.create.CreateCompat.isPresent()) {
-            com.craftingveloce.compat.create.CreateCompat.register(modEventBus);
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.compat.register.create")) {
+                com.craftingveloce.compat.create.CreateCompat.register(modEventBus);
+            }
         }
         if (com.craftingveloce.compat.alchemistry.AlchemistryCompat.isPresent()) {
-            com.craftingveloce.compat.alchemistry.AlchemistryCompat.register(modEventBus);
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.compat.register.alchemistry")) {
+                com.craftingveloce.compat.alchemistry.AlchemistryCompat.register(modEventBus);
+            }
         }
         if (com.craftingveloce.compat.mekanism.MekanismCompat.isPresent()) {
-            com.craftingveloce.compat.mekanism.MekanismCompat.register(modEventBus);
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.compat.register.mekanism")) {
+                com.craftingveloce.compat.mekanism.MekanismCompat.register(modEventBus);
+            }
         }
 
         // Renderer for the CONTENTS of the Veloce Integrale casing: each of our
@@ -172,6 +218,11 @@ public class CraftingVeloceMod {
         modEventBus.addListener(
                 net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers.class,
                 event -> {
+                    // Client-side load steps, measured because they run in the same window the
+                    // player is waiting in. The loader prints ONE line for the whole phase, so
+                    // without these rows "is any of that wait ours?" cannot be answered.
+                    try (var ignored = com.craftingveloce.util.VeloceProfiler
+                            .sectionAlways("load.client.renderers")) {
                     event.registerBlockEntityRenderer(VeloceRegistry.VELOCE_CRAFTING_TABLE_BE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(VeloceRegistry.VELOCE_CONTROLLER_BE.get(),
@@ -186,9 +237,12 @@ public class CraftingVeloceMod {
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(VeloceRegistry.BREWING_STAND_BE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    }
                 });
 
         modEventBus.addListener(net.neoforged.neoforge.client.event.RegisterMenuScreensEvent.class, event -> {
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .sectionAlways("load.client.menuScreens")) {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
             event.register(VeloceRegistry.VELOCE_KINETIC_MENU.get(),
                     com.craftingveloce.client.gui.VeloceKineticScreen::new);
@@ -202,12 +256,20 @@ public class CraftingVeloceMod {
                     com.craftingveloce.client.gui.VeloceElectricFurnaceScreen::new);
             event.register(VeloceRegistry.THRESHOLD_SENSOR_MENU.get(),
                     com.craftingveloce.client.gui.VeloceThresholdSensorScreen::new);
+            }
         });
 
         // The generated potion proxies have no model file - there is one file per item
         // and they are made at runtime - so they borrow the hand-authored proxy's baked
         // model, which is itself just `minecraft:item/potion`. One lookup, N entries.
+        //
+        // MEASURED, and this one matters for the load time: model baking happens on the client
+        // during the resource reload - the phase where the earlier log showed a 51-61 second
+        // reload. Our hook is only supposed to copy one model onto N potion items; this row is
+        // what makes "only" checkable instead of assumed.
         modEventBus.addListener(net.neoforged.neoforge.client.event.ModelEvent.ModifyBakingResult.class, event -> {
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .sectionAlways("load.client.bakeModels")) {
             java.util.List<net.minecraft.world.item.Item> generated =
                     com.craftingveloce.init.VelocePotionProxies.created();
             if (generated.isEmpty()) {
@@ -230,6 +292,7 @@ public class CraftingVeloceMod {
                         template);
             }
             LOGGER.info("[Veloce] baked {} generated potion proxy models", generated.size());
+            }
         });
 
         // Leaving the world clears the remembered terminal views.
@@ -321,7 +384,56 @@ public class CraftingVeloceMod {
             // The terminal GUI in combination with a brewing stand - see CVGuiTestCommand
             // for why the server cannot answer this on its own.
             com.craftingveloce.commands.CVGuiTestCommand.register(event.getDispatcher());
+            // /cv profile: the profiler's switch. It exists because the profiler is used in
+            // large packs, where restarting the game to change one config line costs minutes
+            // and the freeze is wanted measured now - see CVProfileCommand.
+            com.craftingveloce.commands.CVProfileCommand.register(event.getDispatcher());
         });
+
+        // ---- THE TWO LOAD REPORTS ------------------------------------------------
+        //
+        // "Loading takes very long" is two waits the player experiences as one: mod loading
+        // (our registration and the compat setup) and the world coming up (our recipe indexes
+        // being built for the first time). Each gets its own report, because the fixes are in
+        // completely different places.
+        //
+        // What these reports CANNOT say is why a 339-mod pack takes minutes: the great majority
+        // of that time is other mods, and our profiler only measures our own functions. What
+        // they do say is whether OUR share is milliseconds or seconds - which is the only part
+        // of the wait this mod can do anything about, and until now the only way to find out was
+        // to read every other mod's timing line and guess.
+        modEventBus.addListener(
+                net.neoforged.fml.event.lifecycle.FMLLoadCompleteEvent.class,
+                event -> {
+                    com.craftingveloce.util.VeloceProfiler.reportLoad(
+                            "LOAD 1/2 mod loading: our registration + compat setup");
+                    // Straight into the second session: the world-join phase is measured from
+                    // here, and a fresh session keeps the two numbers from being mixed.
+                    com.craftingveloce.util.VeloceProfiler.beginStartupSession();
+                });
+        NeoForge.EVENT_BUS.addListener(
+                net.neoforged.neoforge.event.server.ServerStartedEvent.class,
+                event -> {
+                    com.craftingveloce.util.VeloceProfiler.reportLoad(
+                            "LOAD 2/2 world ready: our recipe indexes + first ticks");
+                    // THE WARM-UP, and it goes here because this is the first moment the world's
+                    // recipe manager is complete AND the player can still not have opened a
+                    // terminal. Without it the first page after the world loads pays ~650 ms of
+                    // lazy index building on the tick thread (see VeloceRecipeWarmup for the
+                    // measured numbers); with it that work happens on the counting thread while
+                    // the player is still walking around.
+                    //
+                    // The overworld is enough: the indexes are keyed by the recipe manager, which
+                    // is shared by every dimension of a server.
+                    net.minecraft.server.level.ServerLevel overworld =
+                            event.getServer().overworld();
+                    if (overworld != null) {
+                        final net.minecraft.server.level.ServerLevel level = overworld;
+                        com.craftingveloce.crafting.VeloceCountWorker.submitTask(
+                                "warming the recipe indexes",
+                                () -> com.craftingveloce.crafting.VeloceRecipeWarmup.warm(level));
+                    }
+                });
 
         NeoForge.EVENT_BUS.addListener(net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock.class, event -> {
             ItemStack stack = event.getItemStack();
@@ -369,21 +481,35 @@ public class CraftingVeloceMod {
                         // (always, regardless of config) and only suppresses the
                         // repeating of the same error.
                         long now = sl.getGameTime();
-                        com.craftingveloce.util.VeloceGuard.run("pipe network step", now,
-                                () -> com.craftingveloce.network.pipe.VelocePipeNetworkManager
-                                        .get(sl).tick(sl));
+                        // EVERYTHING BELOW RUNS ON EVERY LEVEL TICK, with or without a
+                        // terminal open - so these rows are read differently from the rest of
+                        // the report: a label here that shows up with a big TOTAL over a
+                        // session is a stall that repeats 20 times a second, i.e. the frame
+                        // rate itself, not the one-off cost of opening a screen.
+                        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                                .section("server.tick.pipeNetworkStep")) {
+                            com.craftingveloce.util.VeloceGuard.run("pipe network step", now,
+                                    () -> com.craftingveloce.network.pipe.VelocePipeNetworkManager
+                                            .get(sl).tick(sl));
+                        }
                         // Crafter states are broadcast once per tick, not once
                         // per every item toggle.
-                        com.craftingveloce.util.VeloceGuard.run("crafter state broadcast", now,
-                                () -> com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity
-                                        .flushPendingSyncs(sl));
+                        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                                .section("server.tick.crafterSyncBroadcast")) {
+                            com.craftingveloce.util.VeloceGuard.run("crafter state broadcast", now,
+                                    () -> com.craftingveloce.block.entity.VeloceCraftingTableBlockEntity
+                                            .flushPendingSyncs(sl));
+                        }
                         // Network force-load upkeep. The driver is the LEVEL tick,
                         // not the terminal - otherwise a network without a
                         // terminal would not keep its chunks and automation would
                         // break when the player walks away (see
                         // VeloceCraftingCache.tickAll).
-                        com.craftingveloce.util.VeloceGuard.run("force-load upkeep", now,
-                                () -> com.craftingveloce.crafting.VeloceCraftingCache.tickAll(sl));
+                        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                                .section("server.tick.forceLoadUpkeep")) {
+                            com.craftingveloce.util.VeloceGuard.run("force-load upkeep", now,
+                                    () -> com.craftingveloce.crafting.VeloceCraftingCache.tickAll(sl));
+                        }
                         // The counting worker's periodic report. Counting now runs OFF the
                         // server thread with no time budget, so the only way to notice that
                         // it got slow (or that its queue is filling up) is for it to say so.

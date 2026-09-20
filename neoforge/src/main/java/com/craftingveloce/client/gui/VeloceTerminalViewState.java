@@ -308,7 +308,15 @@ public final class VeloceTerminalViewState {
             var refresh = CreativeModeInventoryScreen.class
                     .getDeclaredMethod("refreshSearchResults");
             refresh.setAccessible(true);
-            refresh.invoke(screen);
+            // VANILLA'S OWN REFRESH, measured on its own because it is a strong suspect for the
+            // client-side freeze: it re-fills the grid from the whole registered item list, and
+            // on the SEARCH tab it runs the search over that list and over recipes as well. In
+            // a pack with tens of thousands of recipes this is the call that turns "the screen
+            // appeared" into "the screen appeared half a second later", and only this row can
+            // say so - the caller only sees the total.
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.refreshSearchResults")) {
+                refresh.invoke(screen);
+            }
         } catch (Throwable t) {
             com.craftingveloce.util.VeloceLog.Gui.detail(
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,

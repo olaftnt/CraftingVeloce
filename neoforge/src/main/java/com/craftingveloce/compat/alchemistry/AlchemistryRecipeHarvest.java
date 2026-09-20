@@ -60,10 +60,33 @@ public final class AlchemistryRecipeHarvest {
 
     /** The "output -> recipes" index for a given Alchemistry recipe type. */
     public static Map<Item, List<ProcessingEntry>> index(ServerLevel level, RecipeType<?> type) {
+        // THE SAME FIX AS CreateRecipeHarvest, and it is now load-bearing for the same reason.
+        //
+        // `byType` is a PLAIN HashMap reached through a synchronized outer map, and the outer
+        // lock is released before it is touched. With the recipe-index WARM-UP running on the
+        // counting worker (VeloceRecipeWarmup), a worker building one type while the server
+        // thread builds another is an unsynchronised write into one HashMap - a lost entry, or a
+        // corrupted table. So: build OUTSIDE the map and publish with a plain put under a lock
+        // that is only ever taken on a miss.
         RecipeManager manager = level.getRecipeManager();
         Map<RecipeType<?>, Map<Item, List<ProcessingEntry>>> byType =
                 CACHE.computeIfAbsent(manager, m -> new HashMap<>());
-        return byType.computeIfAbsent(type, t -> build(level, t));
+        Map<Item, List<ProcessingEntry>> cached;
+        synchronized (byType) {
+            cached = byType.get(type);
+        }
+        if (cached != null) {
+            return cached;
+        }
+        Map<Item, List<ProcessingEntry>> built = build(level, type);
+        synchronized (byType) {
+            Map<Item, List<ProcessingEntry>> again = byType.get(type);
+            if (again != null) {
+                return again;   // another thread won the race - use its index
+            }
+            byType.put(type, built);
+        }
+        return built;
     }
 
     /** Alchemistry recipes producing the given item (for one type). */

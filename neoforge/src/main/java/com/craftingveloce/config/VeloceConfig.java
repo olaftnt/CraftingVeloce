@@ -26,6 +26,16 @@ public final class VeloceConfig {
     public static final ModConfigSpec.BooleanValue LOG_BLOCKS;
     public static final ModConfigSpec.BooleanValue LOG_GUI;
 
+    /**
+     * The profiler's own switch - deliberately NOT part of {@code debugEnabled}.
+     *
+     * <p>See {@link com.craftingveloce.util.VeloceProfiler}: a profiler is wanted exactly when
+     * the pack is large and something is slow, and turning on the ordinary debug logging in a
+     * 339-mod pack would bury its numbers under every other mod's output. It writes through the
+     * plain logger instead, so the breakdown lands in {@code latest.log} on its own.
+     */
+    public static final ModConfigSpec.BooleanValue PROFILER_ENABLED;
+
     /** Detail levels - the higher, the more lines. */
     public enum LogLevel {
         /** Only errors and operations that did not succeed. */
@@ -73,6 +83,24 @@ public final class VeloceConfig {
                 .define("logBlocks", false);
         LOG_GUI = b.comment("Log GUI open/close, clicks and filter changes.")
                 .define("logGui", false);
+
+        PROFILER_ENABLED = b
+                .comment("Measure how long this mod's own operations take, and write the",
+                         "breakdown to logs/latest.log (look for [Veloce][PROF]).",
+                         "",
+                         "A separate switch from debugEnabled on purpose: profiling is used",
+                         "exactly when the pack is big and something is slow, and there the",
+                         "ordinary debug log is drowned out by other mods. Nothing is written",
+                         "unless this is on, and when it is off the measurements cost nothing.",
+                         "",
+                         "A session covers one thing the player did - opening the terminal,",
+                         "requesting a page - and the report lists every measured operation",
+                         "with its total time, share of the whole, call count and worst single",
+                         "call. An operation that takes longer than 50 ms is also reported the",
+                         "moment it finishes, because that is the case the player felt as a",
+                         "freeze and a session that never completes would otherwise leave no",
+                         "trace at all.")
+                .define("profilerEnabled", false);
 
         b.pop();
 

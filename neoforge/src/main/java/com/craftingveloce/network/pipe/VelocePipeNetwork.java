@@ -292,6 +292,18 @@ public class VelocePipeNetwork {
      *              background loop.
      */
     public Map<Item, Long> getAllItemCounts(ServerLevel level, boolean force) {
+        // This is the full "how much of everything does the network hold" walk, and it is
+        // called at least twice for one terminal opening: once by the terminal's own sync on the
+        // right-click and once by the snapshot capture. It is measured as a whole and the SCAN
+        // is measured apart from the cheap cached answer, because those two are told apart by
+        // the call count and the totals: "20 call(s), 3 ms" is the cache working, "1 call, 40
+        // ms" is a real scan.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("server.network.getAllItemCounts")) {
+            return getAllItemCountsMeasured(level, force);
+        }
+    }
+
+    private Map<Item, Long> getAllItemCountsMeasured(ServerLevel level, boolean force) {
         long now = level.getGameTime();
 
         // The aggregate is cached at the network level. Without it each of the
@@ -323,6 +335,8 @@ public class VelocePipeNetwork {
         // infinite recursion and a StackOverflowError in the tick. Removed
         // together with the field.
 
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("server.network.getAllItemCounts.scan")) {
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {
             // SCAN BUDGET. This was the last unbudgeted heavy operation on the
             // server thread: scanning ONE slow inventory (e.g. a huge Refined
@@ -356,6 +370,9 @@ public class VelocePipeNetwork {
                 }
             }
         }
+        }
+        com.craftingveloce.util.VeloceProfiler.count(
+                "server.network.getAllItemCounts.scan", endpoints.size());
         aggregateCache = total;
         aggregateCacheTick = now;
 

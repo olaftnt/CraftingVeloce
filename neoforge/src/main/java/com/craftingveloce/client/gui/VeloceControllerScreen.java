@@ -224,7 +224,13 @@ public class VeloceControllerScreen extends VeloceCreativeScreen {
      */
     @Override
     protected boolean acceptItem(ItemStack stack) {
-        return !stack.isEmpty() && passesFilter(stack.getItem());
+        // Called once per item of the whole creative list, on EVERY tick (see
+        // VeloceCreativeScreen.applyItemFilter), so this is measured: the report's call count
+        // here is the item count and the total is what the filter really costs per tick.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.acceptItem.controller")) {
+            return !stack.isEmpty() && passesFilter(stack.getItem());
+        }
     }
 
     /**

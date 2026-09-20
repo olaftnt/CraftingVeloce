@@ -39,9 +39,11 @@ public final class AlchemistryModule implements VeloceProcessingModule {
 
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
-            VeloceProcessingRegistry.register(INSTANCE);
-            com.craftingveloce.CraftingVeloceMod.LOGGER.info(
-                    "[Veloce][COMPAT] {}: machine module registered", ID);
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.compat.alchemistry.module")) {
+                VeloceProcessingRegistry.register(INSTANCE);
+                com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                        "[Veloce][COMPAT] {}: machine module registered", ID);
+            }
         });
     }
 
@@ -119,6 +121,13 @@ public final class AlchemistryModule implements VeloceProcessingModule {
             out.addAll(AlchemistryRecipeHarvest.forItem(level, type, item));
         }
         return out;
+    }
+
+    @Override
+    public void warmRecipeIndex(ServerLevel level) {
+        for (RecipeType<?> type : recipeTypes()) {
+            AlchemistryRecipeHarvest.index(level, type);
+        }
     }
 
     @Override

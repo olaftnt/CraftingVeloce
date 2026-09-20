@@ -282,7 +282,14 @@ public final class VeloceRecipeRegistry {
             if (cached != null) {
                 return cached;
             }
-            return buildFurnaceIndex(level, manager);
+            // The FIRST build of this index is a load-phase cost: it walks every recipe the pack
+            // has, and it happens the first time anything asks - which for a player joining a
+            // world is during the join, not on a click. Measured as "load" so it is not confused
+            // with the terminal's own cost later.
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("load.recipeIndex.furnace")) {
+                return buildFurnaceIndex(level, manager);
+            }
         }
     }
 
@@ -348,7 +355,14 @@ public final class VeloceRecipeRegistry {
             if (cached != null) {
                 return cached;
             }
-            return buildRecipeIndex(level, manager);
+            // The crafting index is the BIG one - every crafting recipe in the pack, which in a
+            // 339-mod pack is tens of thousands - and its first build is a one-off cost paid
+            // during the world join. This row is what tells "our join is slow" apart from "the
+            // pack is slow".
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("load.recipeIndex.crafting")) {
+                return buildRecipeIndex(level, manager);
+            }
         }
     }
 

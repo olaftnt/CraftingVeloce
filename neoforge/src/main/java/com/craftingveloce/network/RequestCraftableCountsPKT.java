@@ -124,10 +124,17 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             //    the counting of the visible page started from scratch and the
             //    numbers "came in" one after another.
             if (network != null) {
-                var memo = network.getCraftableMemo();
-                if (!memo.isEmpty()) {
-                    PacketDistributor.sendToPlayer(player,
-                            new SyncCraftableCountsPKT(pkt.pos(), memo, java.util.Map.of(), false));
+                // The instant answer. Serialising and sending a page-sized map is real work on
+                // the server thread, so it is measured: if the freeze happens the moment the
+                // screen opens, this row is one of the candidates and it is the FIRST thing
+                // that runs.
+                try (var ignored = com.craftingveloce.util.VeloceProfiler.section("server.sendCachedMemo")) {
+                    var memo = network.getCraftableMemo();
+                    if (!memo.isEmpty()) {
+                        PacketDistributor.sendToPlayer(player,
+                                new SyncCraftableCountsPKT(pkt.pos(), memo, java.util.Map.of(),
+                                        false));
+                    }
                 }
             }
 
@@ -152,18 +159,30 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             if (unknown.isEmpty()) {
                 return;
             }
-            var snapshot = com.craftingveloce.crafting.VeloceCountSnapshot.capture(
-                    serverLevel, network, unknown,
-                    com.craftingveloce.crafting.VeloceCraftingRegistry
-                            .getAllEnabledItems(serverLevel, network),
-                    com.craftingveloce.crafting.VeloceCraftingRegistry
-                            .getPreferredRecipes(serverLevel, network),
-                    // The terminal gets the player as well: its numbers are "how many can I
-                    // have", and what the player is carrying is part of that answer. The
-                    // controller is unaffected - it has no player.
-                    source instanceof com.craftingveloce.block.entity.VeloceTerminalBlockEntity
-                            ? new com.craftingveloce.crafting.VelocePlayerInventory(player)
-                            : null);
+            // THE PROFILER'S SESSION OPENS HERE, on the server thread, before any of our work:
+            // everything below until the numbers go out is what the player feels as a freeze
+            // when the terminal is opened. The worker part of it is measured too, on its own
+            // thread, and says OFF-THREAD - a freeze is never the worker.
+            com.craftingveloce.util.VeloceProfiler.beginRequestSession();
+            com.craftingveloce.crafting.VeloceCountSnapshot snapshot;
+            try (var ignored2 = com.craftingveloce.util.VeloceProfiler
+                    .section("server.captureSnapshot")) {
+                snapshot = com.craftingveloce.crafting.VeloceCountSnapshot.capture(
+                        serverLevel, network, unknown,
+                        // These two walks are measured inside the registry itself (labels
+                        // server.registry.*), so they appear as their own rows instead of being
+                        // folded into the capture total.
+                        com.craftingveloce.crafting.VeloceCraftingRegistry
+                                .getAllEnabledItems(serverLevel, network),
+                        com.craftingveloce.crafting.VeloceCraftingRegistry
+                                .getPreferredRecipes(serverLevel, network),
+                        // The terminal gets the player as well: its numbers are "how many can I
+                        // have", and what the player is carrying is part of that answer. The
+                        // controller is unaffected - it has no player.
+                        source instanceof com.craftingveloce.block.entity.VeloceTerminalBlockEntity
+                                ? new com.craftingveloce.crafting.VelocePlayerInventory(player)
+                                : null);
+            }
 
             // EVERY requested item is recomputed, including the ones the cache already
             // knows.
@@ -237,12 +256,14 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                         // instant path: `validate_craftable_cache` checks exactly this link,
                         // because a cache that never fills up makes the instant answer
                         // disappear silently and the numbers go back to loading one by one.
-                        if (net != null && !computed.counts().isEmpty()) {
-                            net.rememberCraftable(computed.counts());
-                            // The cache has to survive a world restart - without setDirty
-                            // SavedData will not be written (see markDirty).
-                            com.craftingveloce.network.pipe.VelocePipeNetworkManager
-                                    .get(level).markDirty();
+                        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("server.cacheWrite")) {
+                            if (net != null && !computed.counts().isEmpty()) {
+                                net.rememberCraftable(computed.counts());
+                                // The cache has to survive a world restart - without setDirty
+                                // SavedData will not be written (see markDirty).
+                                com.craftingveloce.network.pipe.VelocePipeNetworkManager
+                                        .get(level).markDirty();
+                            }
                         }
                         // A newer request for the same terminal has already been made, so
                         // IS THIS ANSWER STILL ABOUT THE PAGE ON SCREEN?
@@ -342,20 +363,38 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
         // the work is then bounded by what is actually on screen rather than by the
         // request.
         java.util.Map<Item, String> madeBy = new java.util.HashMap<>();
-        for (Item shown : requested) {
-            // ONLY the count decides. There was a third clause here - "skip it if the
-            // crafter has it enabled" - and it was exactly backwards: an item is painted
-            // RED because it is NOT in that set, so the clause discarded precisely the
-            // items the tooltip asks about and every red icon came back with an empty
-            // list. It also called `getAllEnabledItems` once per item, which walks the
-            // whole module registry each time.
-            if (counts.getOrDefault(shown, 0L) > 0L || madeBy.containsKey(shown)) {
-                continue;   // available, or already asked about
+        // Measured separately from the counting because it is a SECOND walk - one module
+        // registry sweep per unavailable item - and on a page where nothing is craftable (the
+        // interesting case, the whole page is red) it runs for every icon.
+        try (var ignored3 = com.craftingveloce.util.VeloceProfiler
+                .section("server.collectMissingTooltips")) {
+            for (Item shown : requested) {
+                // ONLY the count decides. There was a third clause here - "skip it if the
+                // crafter has it enabled" - and it was exactly backwards: an item is painted
+                // RED because it is NOT in that set, so the clause discarded precisely the
+                // items the tooltip asks about and every red icon came back with an empty
+                // list. It also called `getAllEnabledItems` once per item, which walks the
+                // whole module registry each time.
+                if (counts.getOrDefault(shown, 0L) > 0L || madeBy.containsKey(shown)) {
+                    continue;   // available, or already asked about
+                }
+                madeBy.put(shown, com.craftingveloce.crafting.VeloceCraftingRegistry
+                        .modsThatCanMake(level, shown));
             }
-            madeBy.put(shown, com.craftingveloce.crafting.VeloceCraftingRegistry
-                    .modsThatCanMake(level, shown));
         }
         PacketDistributor.sendToPlayer(player,
                 new SyncCraftableCountsPKT(pos, counts, madeBy, complete));
+        // The page is on its way, so the player's wait is over: this is the moment the
+        // breakdown is worth printing. It covers the WHOLE request - the snapshot capture on
+        // the server thread and the arithmetic on the worker - which is exactly the span the
+        // "opening the terminal freezes the game" complaint is about.
+        // reportIfOwner and not report: in singleplayer the CLIENT owns this session (it
+        // opened it when the screen was built), and it prints one report containing both sides
+        // when the numbers arrive. Printing here as well would duplicate that report and, worse,
+        // would do it before the client had applied the numbers - the client's own half would be
+        // missing from it. Only when there is no client session (a dedicated server) does this
+        // side report.
+        com.craftingveloce.util.VeloceProfiler.reportIfOwner(false,
+                "terminal page: " + requested.size() + " item(s), complete=" + complete);
     }
 }

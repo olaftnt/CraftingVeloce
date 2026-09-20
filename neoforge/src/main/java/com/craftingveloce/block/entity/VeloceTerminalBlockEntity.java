@@ -75,8 +75,13 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
     }
 
     public void onPlayerOpenTerminal(ServerPlayer player) {
-        setPlayerWatching(player, true);
-        syncCountsToPlayer(player);
+        // Measured, because this runs on the server thread at the exact moment of the click and
+        // BEFORE the client has built anything: whatever it costs is felt as the click hanging.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("server.terminalOpen.onPlayerOpenTerminal")) {
+            setPlayerWatching(player, true);
+            syncCountsToPlayer(player);
+        }
     }
 
     /**
@@ -215,7 +220,15 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
 
     public void syncCountsToPlayer(ServerPlayer player) {
         if (level == null || level.isClientSide) return;
-        Map<Item, Long> counts = getAllStoredItemCounts();
+        // Split into "find the numbers" and "send them", because the two fail differently: the
+        // first is a full walk of the network's inventories, the second serialises the WHOLE
+        // network map and pushes it to the client. On a large network either can be the moment
+        // the click hangs, and a single total would not say which.
+        Map<Item, Long> counts;
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("server.terminalOpen.collectStoredCounts")) {
+            counts = getAllStoredItemCounts();
+        }
         Map<Item, Long> craftable = Map.of();
         if (level instanceof ServerLevel sl) {
             VelocePipeNetwork net = VelocePipeNetworkManager.get(sl).getNetworkForTerminal(sl, worldPosition);
@@ -223,8 +236,13 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
                 craftable = net.getCraftableMemo();
             }
         }
-        PacketDistributor.sendToPlayer(player,
-                new SyncTerminalCountsPKT(counts, craftable));
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("server.terminalOpen.sendSyncTerminalCounts")) {
+            com.craftingveloce.util.VeloceProfiler.count(
+                    "server.terminalOpen.sendSyncTerminalCounts", counts.size());
+            PacketDistributor.sendToPlayer(player,
+                    new SyncTerminalCountsPKT(counts, craftable));
+        }
     }
 
     /**
@@ -442,6 +460,119 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
     @javax.annotation.Nullable
     private ServerPlayer craftingPlayer;
 
+    /**
+     * Returns a stack to where it can still exist, after something failed ONCE IT WAS TAKEN OUT.
+     *
+     * <p><b>The bug this exists for, measured.</b> A player shift-clicked an item of which the
+     * network held a few, and got NOTHING - while the items were gone from the chest. The trace
+     * said why:
+     *
+     * <pre>
+     *   EXCEPTION in terminal pull 1 minecraft:purple_stained_glass:
+     *       java.lang.NoClassDefFoundError: VeloceTerminalBlockEntity$PullResult
+     * </pre>
+     *
+     * The stack had already been removed from the network by {@code net.extractItem}, and the
+     * failure happened while building the RESULT object. The exception then took the items with
+     * it, out of a frame whose local variable nobody else could reach - the one thing a failure
+     * must never do, because the player paid for those items.
+     *
+     * <p><b>Order of preference.</b> The network first (that is where they came from), then the
+     * player who asked, then the ground at the terminal. An item lying in the world is always
+     * better than an item that does not exist.
+     *
+     * <p><b>Deliberately free of anything that could have been the failure.</b> This method and
+     * {@link #returnStackToNetworkOrPlayer} must not touch {@code PullResult} or any other class
+     * of this mod that a broken class load could have poisoned - otherwise the recovery path
+     * fails for exactly the same reason the original call did.
+     */
+    private void putBack(ServerLevel sl, ItemStack stack) {
+        returnStackToNetworkOrPlayer(sl, worldPosition, craftingPlayer, stack);
+    }
+
+    /**
+     * Puts {@code stack} back into the network at {@code terminalPos}, into the player's
+     * inventory, or on the ground - in that order. Never throws, never returns the stack: this is
+     * the last line of defence and it is called while an exception is already on its way out.
+     */
+    public static void returnStackToNetworkOrPlayer(
+            ServerLevel level, BlockPos terminalPos, @javax.annotation.Nullable ServerPlayer player,
+            ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        ItemStack remaining = stack.copy();
+
+        // 1. The network it came from.
+        try {
+            VelocePipeNetwork net = com.craftingveloce.network.pipe.VelocePipeNetworkManager
+                    .get(level).getNetworkForTerminal(level, terminalPos);
+            if (net != null) {
+                remaining = net.insertIntoStorage(level, remaining);
+                if (remaining.isEmpty()) {
+                    VeloceLog.Craft.why(VeloceLog.Side.SERVER,
+                            "put %sx %s BACK into the network - the delivery failed after it "
+                                    + "had been taken out", stack.getCount(), stack.getItem());
+                    return;
+                }
+            }
+        } catch (Throwable t) {
+            VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
+                    "could not put %s back into the network", stack);
+        }
+
+        // 2. The player who asked.
+        try {
+            if (player != null) {
+                remaining = net.neoforged.neoforge.items.ItemHandlerHelper.insertItemStacked(
+                        new net.neoforged.neoforge.items.wrapper.PlayerMainInvWrapper(
+                                player.getInventory()),
+                        remaining, false);
+                if (remaining.isEmpty()) {
+                    VeloceLog.Craft.why(VeloceLog.Side.SERVER,
+                            "gave %sx %s to the player instead - the network would not take it "
+                                    + "back", stack.getCount(), stack.getItem());
+                    return;
+                }
+            }
+        } catch (Throwable t) {
+            VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
+                    "could not give %s to the player", stack);
+        }
+
+        // 3. The ground at the terminal. Never destroy it.
+        try {
+            net.minecraft.world.Containers.dropItemStack(level,
+                    terminalPos.getX() + 0.5, terminalPos.getY() + 1.0, terminalPos.getZ() + 0.5,
+                    remaining);
+            VeloceLog.Craft.why(VeloceLog.Side.SERVER,
+                    "dropped %sx %s at the terminal - neither the network nor the player could "
+                            + "hold it", remaining.getCount(), remaining.getItem());
+        } catch (Throwable t) {
+            VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
+                    "could not drop %s - it is lost", remaining);
+        }
+    }
+
+    /**
+     * {@code PullResult.ok} with the give-back attached: the ONE place where a stack that has
+     * just left a container is turned into a result.
+     *
+     * <p>Every extraction site goes through this, so a failure in the middle ("build the result",
+     * "log it", "sync the watchers") can no longer take the items with it.
+     */
+    private PullResult okAfterExtraction(ServerLevel sl, ItemStack extracted, String source) {
+        try {
+            VeloceLog.Craft.success(VeloceLog.Side.SERVER,
+                    "took %sx %s from %s", extracted.getCount(), extracted.getItem(), source);
+            syncCountsToAllWatchers();
+            return PullResult.ok(extracted);
+        } catch (Throwable t) {
+            putBack(sl, extracted);
+            throw t;
+        }
+    }
+
     public PullResult extractWithReason(ItemStack requested, int count, boolean allowCrafting) {
         return extractWithReason(requested, count, allowCrafting, null);
     }
@@ -484,11 +615,9 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
             ItemStack extracted = net.extractItem(sl, extractProxy, count);
             extracted = com.craftingveloce.util.VelocePotionMapper.toRealPotion(extracted);
             if (!extracted.isEmpty()) {
-                com.craftingveloce.util.VeloceLog.Craft.success(
-                        com.craftingveloce.util.VeloceLog.Side.SERVER,
-                        "took %sx %s from stock", extracted.getCount(), extracted.getItem());
-                syncCountsToAllWatchers();
-                return PullResult.ok(extracted);
+                // Through the guarded return: the stack has already LEFT the network and a
+                // failure in here used to take it with it - see okAfterExtraction.
+                return okAfterExtraction(sl, extracted, "stock");
             }
             com.craftingveloce.util.VeloceLog.Craft.why(
                     com.craftingveloce.util.VeloceLog.Side.SERVER,
@@ -527,8 +656,7 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
                 && RefinedStorageHelper.hasRSNetwork(level, targetPos, connDir.getOpposite())) {
             ItemStack rsExtracted = RefinedStorageHelper.extractItem(level, targetPos, connDir.getOpposite(), requested, count);
             if (!rsExtracted.isEmpty()) {
-                syncCountsToAllWatchers();
-                return PullResult.ok(rsExtracted);
+                return okAfterExtraction(sl, rsExtracted, "the Refined Storage network");
             }
         }
 
@@ -538,8 +666,7 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         try {
             ItemStack pulled = extractFromAdjacent(requested, count);
             if (!pulled.isEmpty()) {
-                syncCountsToAllWatchers();
-                return PullResult.ok(pulled);
+                return okAfterExtraction(sl, pulled, "the connected chest");
             }
         } catch (Throwable t) {
             VeloceLog.Block.error(VeloceLog.Side.SERVER, t,
@@ -882,7 +1009,9 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         // from the buffers, and only as a fallback from the network.
         ItemStack fromBuffer = extractFromBuffers(buffers, item, count);
         if (!fromBuffer.isEmpty()) {
-            return PullResult.ok(com.craftingveloce.util.VelocePotionMapper.toRealPotion(fromBuffer));
+            return okAfterExtraction(sl,
+                    com.craftingveloce.util.VelocePotionMapper.toRealPotion(fromBuffer),
+                    "the crafter's buffer");
         }
         ItemStack extracted = net.extractItem(sl, item, count);
         if (extracted.isEmpty()) {
@@ -907,7 +1036,9 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
             return new PullResult(ItemStack.EMPTY, "craftingveloce.craft.error.dropFull",
                     "no container accepted the crafted item; it is on the ground near " + where, "");
         }
-        return PullResult.ok(com.craftingveloce.util.VelocePotionMapper.toRealPotion(extracted));
+        return okAfterExtraction(sl,
+                com.craftingveloce.util.VelocePotionMapper.toRealPotion(extracted),
+                "the network, after crafting");
     }
 
     /**

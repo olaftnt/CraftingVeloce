@@ -86,6 +86,15 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     protected VeloceCreativeScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                    boolean displayOperatorCreativeTab) {
         super(player, enabledFeatures, displayOperatorCreativeTab);
+        // Everything AFTER the vanilla constructor. The pair to compare with
+        // client.openTerminalScreen.construct: if that row is ~1.6 s and this one is 0 ms, the
+        // time is vanilla's class loading and nothing of ours, which is exactly what the first
+        // run's numbers suggested and what nobody could prove before.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.creativeScreen.ctorOwn")) {
+            // (our constructor body is empty today - the label exists so the difference is
+            //  visible in the report instead of being assumed)
+        }
     }
 
     // ------------------------------------------------------------------
@@ -97,6 +106,10 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      * the list</b>, so the remaining ones shift up and there are no empty holes.
      */
     protected boolean acceptItem(ItemStack stack) {
+        // NOT measured here: the base accepts everything, so a section would only add a row
+        // saying "free". The cost lives in the overrides, and those measure themselves - see
+        // VeloceCraftingTableScreen and VeloceControllerScreen, where acceptItem does a recipe
+        // or filter lookup PER ITEM of the whole list.
         return true;
     }
 
@@ -152,14 +165,47 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         // and the player's inventory slots came back into the GUI.
         //
         // Now: first the tab, then the hiding.
-        restoreViewState();
-        disableVanillaTrashSlot();
-        suppressPlayerSlots();
-        applyItemFilter();
-        // Only now, when the tab and the phrase are set - otherwise the list
-        // is sometimes empty on the first opening (the INVENTORY tab).
-        VeloceTerminalViewState.refreshContents(this);
-        applyItemFilter();
+        // MEASURED STEP BY STEP, and this is the block the whole profiler was written for.
+        //
+        // "Opening the terminal freezes the game" is a statement about THIS method and the
+        // vanilla work inside it, and the steps fail for completely different reasons: the tab
+        // restore re-selects a tab (vanilla clears and rebuilds every slot), the filter walks
+        // the whole registered item list, and refreshContents calls vanilla's own search which
+        // re-scans that list again. Without splitting them the report says "init: 900 ms" and
+        // the next step is still a guess - which is exactly what happened before this existed.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.init.restoreViewState")) {
+            restoreViewState();
+        }
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.init.disableTrashSlot")) {
+            disableVanillaTrashSlot();
+        }
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.init.suppressPlayerSlots")) {
+            suppressPlayerSlots();
+        }
+        try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.init.applyItemFilter.1")) {
+            applyItemFilter();
+        }
+        // ONLY WHEN THE GRID IS ACTUALLY EMPTY, and that condition is the whole point.
+        //
+        // The original reason for this call was real: on some openings the list came up EMPTY
+        // (the INVENTORY tab) and only a full refresh fixed it. But it was paid on EVERY open,
+        // and it is a full vanilla `refreshSearchResults` - measured at 623 ms in a 339-mod pack
+        // whenever the restored tab is the SEARCH tab, i.e. 623 ms of the ~680 ms freeze the
+        // player felt on opening the terminal.
+        //
+        // Vanilla's own `selectTab` (reached through restoreViewState -> applyTab) has just
+        // refreshed the tab's contents, and applyItemFilter above has already copied them into
+        // the grid slots. So the refresh is needed exactly in the case it was written for - the
+        // grid came up empty - and it is skipped when the grid is already populated, which keeps
+        // the old fix and drops the cost.
+        if (!hasGridItems()) {
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.init.refreshContents")) {
+                VeloceTerminalViewState.refreshContents(this);
+            }
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.init.applyItemFilter.2")) {
+                applyItemFilter();
+            }
+        }
     }
 
     /**
@@ -631,13 +677,25 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         // BEFORE super.render(): that is exactly where vanilla checks destroyItemSlot
         // and draws "Destroy Item". The field is sometimes recreated by selectTab, so
         // we zero it right before drawing.
-        disableVanillaTrashSlot();
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.render.disableTrashSlot")) {
+            disableVanillaTrashSlot();
+        }
 
-        super.render(graphics, mouseX, mouseY, partialTick);
+        // Per FRAME, so the call count in the report is the frame count and total/calls is the
+        // average cost per frame. This is the row that says whether our drawing contributes to a
+        // low frame rate at all - the item filtering above can only be judged against it.
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.render.vanillaSuper")) {
+            super.render(graphics, mouseX, mouseY, partialTick);
+        }
 
         // After super, so on top of everything vanilla drew.
-        drawStoreSlotIcon(graphics);
-        drawStoreSlotTooltip(graphics, mouseX, mouseY);
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.render.overlays")) {
+            drawStoreSlotIcon(graphics);
+            drawStoreSlotTooltip(graphics, mouseX, mouseY);
+        }
     }
 
     /**
@@ -658,7 +716,14 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
      */
     @Override
     public void containerTick() {
-        super.containerTick();
+        // PER TICK, i.e. 20 times a second, which is the number that matters: a step that costs
+        // 3 ms here is 60 ms of every second stolen from the frame rate, while the same 3 ms
+        // inside init() would be invisible. The report shows both the total and the call count,
+        // so "20 call(s)" next to a big total reads immediately as "this repeats".
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.creativeScreen.containerTick.super")) {
+            super.containerTick();
+        }
 
         // THE PLAYER CHANGING THE TAB.
         //
@@ -670,11 +735,17 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         CreativeModeTab current = VeloceTerminalViewState.currentTab();
         if (current != lastSeenTab) {
             lastSeenTab = current;
-            suppressPlayerSlots();
-            disableVanillaTrashSlot();
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("client.creativeScreen.containerTick.tabChanged")) {
+                suppressPlayerSlots();
+                disableVanillaTrashSlot();
+            }
         }
 
-        applyItemFilter();
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.creativeScreen.containerTick.applyItemFilter")) {
+            applyItemFilter();
+        }
     }
 
     /** The tab seen in the previous tick - for detecting changes. */
@@ -699,10 +770,37 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
                 return;
             }
             int total = list.size();
-            List<ItemStack> kept = new ArrayList<>(total);
-            for (Object o : list) {
-                if (o instanceof ItemStack st && !st.isEmpty() && acceptItem(st)) {
-                    kept.add(st);
+            // `kept` is built ONLY when something is actually filtered out - see below. This is
+            // not a micro-optimisation, it was measured: the creative list in the reference pack
+            // holds 21 344 entries, this method runs on EVERY tick, and allocating a 21 344-entry
+            // ArrayList 20 times a second was ~100-170 KB of garbage per tick for nothing at all
+            // when the filter rejects nothing (which is the normal case for the terminal, whose
+            // acceptItem accepts everything).
+            List<ItemStack> kept = null;
+            // The unit column is what makes this row readable across packs: "21344 unit(s)"
+            // is this pack's registered item count, and a report from a small pack can be
+            // compared with it directly. It also separates "slow because it ran once over a
+            // huge list" from "cheap but ran twenty times a second".
+            com.craftingveloce.util.VeloceProfiler.count(
+                    "client.applyItemFilter.scan", total);
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("client.applyItemFilter.scan")) {
+                for (int i = 0; i < total; i++) {
+                    Object o = list.get(i);
+                    boolean accepted =
+                            o instanceof ItemStack st && !st.isEmpty() && acceptItem(st);
+                    if (accepted) {
+                        if (kept != null) {
+                            kept.add((ItemStack) o);
+                        }
+                    } else if (kept == null) {
+                        // FIRST rejection: now the compacted list is needed, and the accepted
+                        // prefix has to be copied over before continuing.
+                        kept = new ArrayList<>(total);
+                        for (int j = 0; j < i; j++) {
+                            kept.add((ItemStack) list.get(j));
+                        }
+                    }
                 }
             }
 
@@ -726,14 +824,31 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             // user: the GUI shows an unfiltered list until you
             // move the scrollbar (scrolling calls scrollTo itself).
             //
-            // So: we always rewrite the list and always refresh the slots.
-            // The cost is negligible (one pass over ~1.5 thousand entries), and it is
-            // the only way to make it work regardless of what vanilla
-            // did with the list between ticks.
-            for (int i = 0; i < total; i++) {
-                items.set(i, i < kept.size() ? kept.get(i) : ItemStack.EMPTY);
+            // So: the SLOTS ARE ALWAYS REFRESHED below, unconditionally - that part of the old
+            // fix is what mattered and it stays.
+            //
+            // What did NOT need to stay is rewriting (and re-allocating) the list itself when
+            // nothing was rejected. `kept == null` means every entry passed the filter, so the
+            // list already IS the compacted list, reference for reference and in the same order:
+            // the rewrite would write each element onto itself. Measured in the reference pack,
+            // that rewrite was 3 ms of client thread on EVERY tick - 60 ms of every second, for
+            // a loop that provably changed nothing.
+            if (kept != null) {
+                final List<ItemStack> compacted = kept;
+                try (var ignored = com.craftingveloce.util.VeloceProfiler
+                        .section("client.applyItemFilter.writeBack")) {
+                    for (int i = 0; i < total; i++) {
+                        items.set(i, i < compacted.size() ? compacted.get(i) : ItemStack.EMPTY);
+                    }
+                }
             }
-            refreshSlotsFromItems();
+            // UNCONDITIONAL, and this is the line the old fast-exit bug broke: without scrollTo
+            // the CONTAINER keeps the data from the previous filtering and the grid looks
+            // unfiltered until the player scrolls.
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("client.applyItemFilter.refreshSlots")) {
+                refreshSlotsFromItems();
+            }
         } catch (Throwable ignored) {
             // Reflection may fail on a version change - then we simply
             // do not filter, the GUI still works (with holes).
@@ -754,7 +869,14 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             if (scrollToMethod == null) {
                 return;
             }
-            scrollToMethod.invoke(this.menu, currentScrollOffset());
+            // scrollTo is vanilla's "copy the list into the container slots". Measured
+            // separately from the filter because it is REFLECTION: on a version change it can
+            // throw and, before this, that failure was silent and the grid simply looked
+            // unfiltered until the player scrolled.
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("client.applyItemFilter.refreshSlots.scrollTo")) {
+                scrollToMethod.invoke(this.menu, currentScrollOffset());
+            }
         } catch (Throwable t) {
             // NOT silently. A silent failure here has already cost us one long
             // diagnosis: the filter "came back" after scrolling, and there was not

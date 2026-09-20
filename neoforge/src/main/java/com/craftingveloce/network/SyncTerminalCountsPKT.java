@@ -34,15 +34,29 @@ public record SyncTerminalCountsPKT(Map<Item, Long> itemCounts,
     public static final StreamCodec<RegistryFriendlyByteBuf, SyncTerminalCountsPKT> STREAM_CODEC = new StreamCodec<>() {
         @Override
         public SyncTerminalCountsPKT decode(RegistryFriendlyByteBuf buf) {
-            Map<Item, Long> counts = readMap(buf);
-            Map<Item, Long> craftable = readMap(buf);
-            return new SyncTerminalCountsPKT(counts, craftable);
+            // On the network thread, not the game thread - so this cannot be what freezes the
+            // frame, but it IS on the path between the click and the numbers and it carries the
+            // whole network stock. Measured so the two can be told apart instead of blamed on
+            // each other; the unit count is the number of item types on the wire.
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("net.SyncTerminalCounts.decode")) {
+                Map<Item, Long> counts = readMap(buf);
+                Map<Item, Long> craftable = readMap(buf);
+                com.craftingveloce.util.VeloceProfiler.count(
+                        "net.SyncTerminalCounts.decode", counts.size() + craftable.size());
+                return new SyncTerminalCountsPKT(counts, craftable);
+            }
         }
 
         @Override
         public void encode(RegistryFriendlyByteBuf buf, SyncTerminalCountsPKT pkt) {
-            writeMap(buf, pkt.itemCounts());
-            writeMap(buf, pkt.craftableCounts());
+            // The ENCODE side runs on the SERVER thread (it is the terminal's own sync on the
+            // right-click) - so unlike decode, this one can be felt as the click hanging.
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("net.SyncTerminalCounts.encode")) {
+                writeMap(buf, pkt.itemCounts());
+                writeMap(buf, pkt.craftableCounts());
+            }
         }
 
         private Map<Item, Long> readMap(RegistryFriendlyByteBuf buf) {

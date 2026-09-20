@@ -37,11 +37,13 @@ public final class AlchemistryRecipeFamily {
     /** Registers the Alchemistry recipe family (after block registration). */
     public static void register(IEventBus modEventBus) {
         modEventBus.addListener(FMLCommonSetupEvent.class, event -> {
-            Set<RecipeType<?>> types = types();
-            VeloceRecipeFamilies.registerModFamily(ID, types);
-            com.craftingveloce.CraftingVeloceMod.LOGGER.info(
-                    "[Veloce][COMPAT] {}: registered {} recipe types",
-                    ID, types.size());
+            try (var ignored = com.craftingveloce.util.VeloceProfiler.sectionAlways("load.compat.alchemistry.family")) {
+                Set<RecipeType<?>> types = types();
+                VeloceRecipeFamilies.registerModFamily(ID, types);
+                com.craftingveloce.CraftingVeloceMod.LOGGER.info(
+                        "[Veloce][COMPAT] {}: registered {} recipe types",
+                        ID, types.size());
+            }
         });
     }
 

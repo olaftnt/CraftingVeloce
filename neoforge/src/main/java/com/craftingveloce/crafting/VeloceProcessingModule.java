@@ -93,6 +93,30 @@ public interface VeloceProcessingModule {
     }
 
     /**
+     * Builds this module's recipe indexes AHEAD of the first real query.
+     *
+     * <p><b>Why this exists.</b> A module's index is built lazily, on the first query for it -
+     * and the first query in a session is made by the terminal, on the SERVER thread, while the
+     * player waits for the page. The measured cost in a 339-mod pack was not small: 365 ms in one
+     * call of {@code modsThatCanMake} (which asks every module) plus 105 ms for the vanilla
+     * crafting index, all of it landing on the first page after the world loads.
+     *
+     * <p>The indexes depend only on the recipe manager, so they can be built from any thread -
+     * and the mod already has a thread for exactly this kind of work
+     * ({@code VeloceCountWorker}). {@code VeloceRecipeWarmup} runs this method on it when the
+     * world starts, so the first page finds the indexes warm and costs microseconds instead of
+     * hundreds of milliseconds.
+     *
+     * <p>Nothing by default: a module without an index has nothing to warm.
+     *
+     * <p><b>Threading.</b> Implementations MUST be safe to call from the counting worker while
+     * the server thread is reading the same index. That is not a formality - a plain HashMap
+     * touched by both was a real bug here, and was fixed in the harvest classes.
+     */
+    default void warmRecipeIndex(ServerLevel level) {
+    }
+
+    /**
      * Clears the module's memory (recipe indexes).
      *
      * <p>Called on world change / data reload. Nothing by default - a module
