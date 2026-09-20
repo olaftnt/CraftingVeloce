@@ -496,7 +496,7 @@ public final class VeloceAutoCrafter {
                 // item in the network" and does not know whether the material, the
                 // machine or the recipe is missing.
                 return partialOrFail(available, count,
-                        diagnosePlanFailure(level, ctx, item, stock));
+                        diagnosePlanFailure(level, ctx, item, stock, plan));
             }
         }
 
@@ -1011,6 +1011,52 @@ public final class VeloceAutoCrafter {
         final List<PlannedRun> runs = new ArrayList<>();
 
         /**
+         * WHAT the first recipe of the attempt lacked, per item name, with the amount one craft
+         * needs - the concrete answer for "which items are missing".
+         *
+         * <p><b>Why this is recorded by the planner itself.</b> The player-facing message used to
+         * come from {@code findMissing}, a SEPARATE walk over the recipe tree that only asked "is
+         * there any of this item in stock" (not "is there enough") and used the RAW recipe list,
+         * not the one the planner orders by preference. So a recipe that wanted six planks with
+         * two in the chest looked satisfied, the walk concluded "nothing is missing", and the
+         * tooltip fell back to the bare text "missing base ingredients" with no item named - the
+         * exact report that brought this back.
+         *
+         * <p>The planner cannot be wrong about what it lacked: it is the code that decided the
+         * item could not be crafted. Recording the gap where the decision is made - in
+         * {@code planRecipe}, on the FAILING ingredient, with the real amount - makes the message
+         * follow the recipe the planner actually tried (the preferred one first, exactly as
+         * {@code orderRecipes} arranges) instead of a second opinion that can disagree with it.
+         */
+        final java.util.Map<String, Long> gaps = new java.util.LinkedHashMap<>();
+
+        /**
+         * Records one material the tree ran out of - a dead end, not an intermediate.
+         *
+         * <p><b>Why every dead end and not just the first.</b> A recipe usually needs several
+         * things at once: a machine frame wants iron AND stone, and a player missing both was
+         * told about ONE of them, went to fetch it, came back, and was then told about the next
+         * one. That is one trip per ingredient for information the plan already had. Everything
+         * the tree ran out of is recorded, so the tooltip lists all of it in one go.
+         *
+         * <p>Amounts of the SAME material from different branches are added up, because that is
+         * the total the player has to bring.
+         */
+        void recordGap(String name, long amount) {
+            if (name == null || name.isEmpty()) {
+                return;
+            }
+            gaps.merge(name, Math.max(1L, amount), Long::sum);
+        }
+
+        /**
+         * Whether gaps are still being collected - true only while the FIRST recipe of the
+         * attempt is being tried, so the message describes the route the planner would have used
+         * rather than whichever route happened to fail last.
+         */
+        boolean collectGaps;
+
+        /**
          * How many smelting operations may still be planned.
          *
          * <p>A furnace recipe consumes one smelting operation per EVERY unit, so the
@@ -1111,11 +1157,25 @@ public final class VeloceAutoCrafter {
                     orderRecipes(level, network, item, preferred, plan.heatRemaining > 0,
                             network.prefersFurnace(item));
             if (recipes.isEmpty()) {
+                // NOTHING can make this item, and we still need `remaining` of it: this IS the
+                // base material the player has to bring. Without recording it here the answer
+                // stopped one level too early and named the intermediate ("planks") while the
+                // player was missing the thing planks are made of.
+                if (plan.collectGaps) {
+                    plan.recordGap(name(item), remaining);
+                }
                 return false;
             }
 
-
             // Try successive recipes - the first feasible one wins.
+            //
+            // The FIRST one is the one the player is told about when they all fail: it is the
+            // preferred recipe when the crafting table set one, and otherwise the first in the
+            // planner's own order. Collecting only its gaps keeps the message about the route
+            // that was tried first instead of a mixture of all of them.
+            if (depth == 0 && plan.gaps.isEmpty()) {
+                plan.collectGaps = true;
+            }
             for (ProcessingEntry recipe : recipes) {
                 Map<Item, Long> snapshot = new HashMap<>(stock);
                 int planMark = plan.runs.size();
@@ -1126,6 +1186,9 @@ public final class VeloceAutoCrafter {
                 stock.clear();
                 stock.putAll(snapshot);
                 plan.rollbackTo(planMark);
+                if (depth == 0) {
+                    plan.collectGaps = false;   // only the first recipe's gaps are reported
+                }
             }
             return false;
         } finally {
@@ -1185,6 +1248,7 @@ public final class VeloceAutoCrafter {
         // plan than it really needs - the numbers in the GUI would be inflated, and
         // execution would lose items.
         List<Ingredient> ingredientList = recipe.ingredients();
+        boolean missingIngredient = false;
         for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
             Ingredient ing = ingredientList.get(ingIndex);
             long perIngredient = recipe.ingredientCount(ingIndex);
@@ -1245,12 +1309,30 @@ public final class VeloceAutoCrafter {
             }
 
             if (!supplied) {
+                // THIS INGREDIENT FAILED, BUT THE RECIPE IS NOT DONE BEING READ.
+                //
+                // The bug this replaces: this branch returned false immediately, so the planner
+                // stopped at the FIRST ingredient it could not supply. The tooltip then named one
+                // item, the player brought it, and the next attempt named the next one - one trip
+                // per ingredient, because the information about the rest was never collected.
+                //
+                // Nothing is committed by carrying on: this ingredient's stock and plan changes
+                // are undone here, the loop recomputes its own snapshot for the next ingredient,
+                // and the caller restores everything anyway when this method answers false. The
+                // ingredients that can be supplied are still consumed in the simulation as usual,
+                // so the ones after them are judged against a correct stock.
+                missingIngredient = true;
                 stock.clear();
                 stock.putAll(snapshot);
                 plan.rollbackTo(planMark);
-                return false;
+                continue;
             }
 
+        }
+        if (missingIngredient) {
+            // At least one ingredient could not be supplied - the recipe cannot run, and every
+            // dead end it ran into has already been recorded for the player.
+            return false;
         }
 
         // A furnace recipe pays with ONE smelting operation per unit. The heat is
@@ -2446,7 +2528,7 @@ public final class VeloceAutoCrafter {
      * Reports of "the GUI says I can, but I cannot" were therefore unsolvable.
      */
     private static CraftResult diagnosePlanFailure(ServerLevel level, Context ctx, Item item,
-                                                   Map<Item, Long> stock) {
+                                                   Map<Item, Long> stock, Plan plan) {
         // 1) Furnace: a furnace recipe exists, but the machine is absent or idle.
         if (!VeloceRecipeRegistry.getFurnaceRecipesFor(level, item).isEmpty()) {
             // Both of these used to arrive with no detail at all, so "no furnace in the
@@ -2536,9 +2618,45 @@ public final class VeloceAutoCrafter {
         // and useful - it tells the player which integration to look at - and it is what
         // `module.id()` gives, deduplicated so one mod appears once however many of its
         // machines match.
+        // THE ITEMS THE PLANNER COULD NOT GET, taken from the planner itself.
+        //
+        // `plan.gaps` is filled by planRecipe at the moment it decides an ingredient cannot be
+        // supplied, for the FIRST recipe of the attempt - i.e. the preferred one when the
+        // crafting table set one, and otherwise the first in the planner's own order (plain
+        // crafting before the machine routes). That is what the player asked for: the missing
+        // items named along the route that would actually be used.
+        //
+        // The old walk remains as a fallback for the cases where the attempt died before it
+        // reached an ingredient (a cycle, the depth limit, a machine that cannot pay) - it can
+        // still name something, and an empty detail is what produced the bare "missing base
+        // ingredients" line this replaces.
+        String missingItems = describeGaps(plan.gaps);
+        if (missingItems.isEmpty()) {
+            missingItems = firstMissing(level, ctx, item, stock);
+        }
         return CraftResult.fail("craftingveloce.craft.error.noBase",
-                firstMissing(level, ctx, item, stock),
+                missingItems,
                 String.join(", ", hintFamilies));
+    }
+
+    /**
+     * The recorded gaps as the text the tooltip shows: {@code "6x item.minecraft.oak_planks"}.
+     *
+     * <p>The {@code "Nx key"} form is not invented here - {@code VeloceCraftErrors} already
+     * parses exactly it, so the count stays a number and the name behind it is translated on the
+     * client into the player's language.
+     *
+     * <p>Insertion order is kept (a LinkedHashMap), so the list reads in the order the recipe
+     * asks for its ingredients rather than in some hash order.
+     */
+    private static String describeGaps(java.util.Map<String, Long> gaps) {
+        if (gaps == null || gaps.isEmpty()) {
+            return "";
+        }
+        java.util.List<String> parts = new java.util.ArrayList<>(gaps.size());
+        gaps.forEach((name, amount) ->
+                parts.add(amount != null && amount > 1L ? amount + "x " + name : name));
+        return String.join(", ", parts);
     }
 
     /**
@@ -2568,7 +2686,12 @@ public final class VeloceAutoCrafter {
             return null;                       // too deep or a cycle - we do not guess
         }
         try {
-            List<ProcessingEntry> recipes = ctx.recipesFor(item);
+            // THE SAME ORDER THE PLANNER USES, so the fallback cannot name an item from a recipe
+            // the player is not on: the preferred one first when the crafting table set one,
+            // then the planner's own order. The raw list was what made this walk disagree with
+            // the planner and report something unhelpful.
+            List<ProcessingEntry> recipes = orderRecipes(level, ctx.network, item, ctx.preferred,
+                    ctx.heatOps() > 0, ctx.network.prefersFurnace(item));
             if (recipes.isEmpty()) {
                 return name(item);             // there is no recipe we can use
             }

@@ -563,6 +563,13 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
      */
     private PullResult okAfterExtraction(ServerLevel sl, ItemStack extracted, String source) {
         try {
+            // The FINGERPRINT goes into the trace, and it is the line that settles the
+            // "my backpack came out empty" reports: it says whether the stack that PHYSICALLY
+            // left the storage still carries its data components, which "1x diamond_backpack"
+            // could never say.
+            com.craftingveloce.crafting.VeloceCraftTrace.log(
+                    "took from %s: %s", source,
+                    com.craftingveloce.crafting.VeloceCraftTrace.fingerprint(extracted));
             VeloceLog.Craft.success(VeloceLog.Side.SERVER,
                     "took %sx %s from %s", extracted.getCount(), extracted.getItem(), source);
             syncCountsToAllWatchers();
@@ -777,7 +784,15 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
                 if (st.isEmpty()) {
                     continue;
                 }
+                com.craftingveloce.crafting.VeloceCraftTrace.log(
+                        "deposit (slot %d): %s", i,
+                        com.craftingveloce.crafting.VeloceCraftTrace.fingerprint(st));
                 ItemStack leftover = net.insertIntoStorage(sl, st.copy());
+                if (!leftover.isEmpty()) {
+                    com.craftingveloce.crafting.VeloceCraftTrace.log(
+                            "deposit (slot %d) leftover: %s", i,
+                            com.craftingveloce.crafting.VeloceCraftTrace.fingerprint(leftover));
+                }
                 int stored = st.getCount() - leftover.getCount();
                 if (stored > 0) {
                     st.shrink(stored);
@@ -903,7 +918,13 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         if (carried.isEmpty()) {
             return 0;
         }
+        com.craftingveloce.crafting.VeloceCraftTrace.log(
+                "deposit (cursor): %s",
+                com.craftingveloce.crafting.VeloceCraftTrace.fingerprint(carried));
         ItemStack leftover = net.insertIntoStorage(sl, carried.copy());
+        com.craftingveloce.crafting.VeloceCraftTrace.log(
+                "deposit (cursor) leftover: %s",
+                com.craftingveloce.crafting.VeloceCraftTrace.fingerprint(leftover));
         int stored = carried.getCount() - leftover.getCount();
         if (stored <= 0) {
             return 0;

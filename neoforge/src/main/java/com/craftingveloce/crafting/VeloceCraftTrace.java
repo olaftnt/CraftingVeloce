@@ -49,12 +49,39 @@ public final class VeloceCraftTrace {
         return CURRENT.get() != null;
     }
 
-    /** Opens a trace and returns its number. */
+    /**
+     * Opens a trace and returns its number - or does nothing when debugging is off.
+     *
+     * <p><b>Why this is gated.</b> A trace is not one line: one terminal click writes the whole
+     * plan - the network environment, every module, the recipe list, every planning step - which
+     * measured 400 to 800 lines PER CLICK. It was opened unconditionally and written through the
+     * plain logger, so a released build quietly filled {@code latest.log} with hundreds of lines
+     * for every item a player took, and built all those strings on the server thread while doing
+     * it.
+     *
+     * <p>The switch is {@code debugEnabled} - the same one that turns on the ordinary detailed
+     * logging - so a player reporting a problem can turn it on and get exactly the trace that was
+     * always there, while everyone else gets a log they can read.
+     *
+     * @return 0 when tracing is off; every other method of this class then does nothing
+     */
     public static long begin(String what) {
+        if (!debugEnabled()) {
+            return 0L;
+        }
         long id = IDS.incrementAndGet();
         CURRENT.set(id);
         out(id, "========== START #%d: %s ==========", id, what);
         return id;
+    }
+
+    /** The debug switch, and never a throw - the config may not be loaded during startup. */
+    private static boolean debugEnabled() {
+        try {
+            return com.craftingveloce.config.VeloceConfig.DEBUG_ENABLED.get();
+        } catch (Throwable notLoadedYet) {
+            return false;
+        }
     }
 
     /** Closes the trace (safe to call always - does nothing without an active trace). */
@@ -255,6 +282,47 @@ public final class VeloceCraftTrace {
             first = false;
         }
         return sb.append(']').toString();
+    }
+
+    /**
+     * What a stack IS, including its data components - for the "my backpack came out empty" class
+     * of report.
+     *
+     * <p><b>Why the count and the item name are not enough.</b> The trace has always printed
+     * "delivered 1x sophisticatedbackpacks:diamond_backpack", which is exactly the same line
+     * whether the backpack still holds three stacks of ore or nothing at all. Every attempt to
+     * answer "does the network eat the contents?" therefore ended in argument instead of a
+     * measurement. This prints the data component keys, so the log itself says whether the stack
+     * that left the chest and the stack that reached the player still carry anything.
+     *
+     * <p>The keys are printed rather than their values: a full inventory component would be
+     * unreadable, and the KEY is what distinguishes "no components at all" (the item was
+     * rebuilt from its item id somewhere) from "components present" (it is the real stack).
+     */
+    public static String fingerprint(ItemStack stack) {
+        if (stack == null) {
+            return "null";
+        }
+        if (stack.isEmpty()) {
+            return "empty";
+        }
+        var patch = stack.getComponentsPatch();
+        StringBuilder out = new StringBuilder();
+        out.append(id(stack.getItem())).append(" x").append(stack.getCount());
+        if (patch.isEmpty()) {
+            out.append(" components=NONE");
+        } else {
+            out.append(" components=");
+            boolean first = true;
+            for (var entry : patch.entrySet()) {
+                if (!first) {
+                    out.append(',');
+                }
+                first = false;
+                out.append(entry.getKey());
+            }
+        }
+        return out.toString();
     }
 
     public static String name(Item item) {

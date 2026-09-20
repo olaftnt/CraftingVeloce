@@ -129,6 +129,9 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             // put back instead of vanishing with the exception. Measured: a NoClassDefFoundError
             // raised in this very window silently ate a stack the player had already paid for -
             // it left the chest, nothing arrived, and the log showed only the exception.
+            com.craftingveloce.crafting.VeloceCraftTrace.log(
+                    "delivering to the player: %s",
+                    com.craftingveloce.crafting.VeloceCraftTrace.fingerprint(extracted));
             try {
                 // The "how many more can I make" number decreases by what just left
                 // (-1 for a single unit, -64 for a stack), and the player gets a
@@ -177,6 +180,21 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
                             .withStyle(net.minecraft.ChatFormatting.GOLD), true);
                 }
 
+                // WHAT PHYSICALLY LANDED IN THE INVENTORY, read back rather than assumed.
+                // Together with the two lines above this closes the question the trace could
+                // never answer: if the same components are named here as in "took from stock",
+                // nothing in this mod emptied the item - whatever the player is holding came out
+                // of the chest that way.
+                for (int slot = 0;
+                        slot < serverPlayer.getInventory().getContainerSize(); slot++) {
+                    ItemStack in = serverPlayer.getInventory().getItem(slot);
+                    if (!in.isEmpty() && ItemStack.isSameItemSameComponents(in, extracted)) {
+                        com.craftingveloce.crafting.VeloceCraftTrace.log(
+                                "player slot %d now holds: %s", slot,
+                                com.craftingveloce.crafting.VeloceCraftTrace.fingerprint(in));
+                        break;
+                    }
+                }
                 serverPlayer.level().playSound(null, serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ(),
                         SoundEvents.ITEM_PICKUP, SoundSource.PLAYERS, 0.2F, 1.0F);
                 resyncInventories(serverPlayer);

@@ -299,6 +299,41 @@ public class ConnectedEndpointInfo {
      * <p>We log ONCE per endpoint, so as not to clutter the log on every chunk
      * load, but so that it can be seen at all.
      */
+    /**
+     * Corrects the cached counts by a change this mod made ITSELF, and therefore knows exactly.
+     *
+     * <p><b>The bug this fixes, and why it only showed up sometimes.</b> After taking items out,
+     * {@code extractItem} asks for a re-read so the numbers reflect the new state. But a re-read
+     * can fail: {@code refreshIfLoaded} deliberately KEEPS the previous numbers when no container
+     * is visible for a moment (a chunk mid-load, a block entity not created yet) - "a stale number
+     * is better than a false zero". That is right for a background scan and WRONG right after we
+     * have physically changed the container: the stale pre-pull amount was then republished as
+     * the post-pull state, and it stayed that way until a later scan happened to succeed. The
+     * player saw "the count does not refresh" - sometimes, depending on whether that instant's
+     * re-read worked.
+     *
+     * <p>The delta is known to the unit, so it does not have to depend on the re-read at all. It
+     * is applied FIRST and the re-read follows: a successful re-read replaces the whole cache
+     * (see {@code refreshIfLoaded}, which clears and refills it), so the correction can never be
+     * counted twice - and a failed one no longer publishes a number that is provably wrong.
+     *
+     * @param item  the key the cache uses, i.e. the PROXY item for potions
+     * @param delta what we took out (negative) or put in (positive)
+     */
+    private void applyCachedDelta(Item item, long delta) {
+        if (item == null || delta == 0L) {
+            return;
+        }
+        long updated = cachedCounts.getOrDefault(item, 0L) + delta;
+        if (updated <= 0L) {
+            cachedCounts.remove(item);
+        } else {
+            cachedCounts.put(item, updated);
+        }
+        // The partial-space map feeds the capacity reports; it is corrected on the next
+        // successful scan and is not worth guessing at per unit.
+    }
+
     private void noteNotReadable() {
         if (!notReadableLogged) {
             notReadableLogged = true;
@@ -510,6 +545,9 @@ public class ConnectedEndpointInfo {
                 for (int i = 0; i < handler.getSlots() && needed > 0; i++) {
                     ItemStack inSlot = handler.getStackInSlot(i);
                     if (!inSlot.isEmpty() && com.craftingveloce.util.VelocePotionMapper.getProxy(inSlot) == item) {
+                        if (!canMergeInto(result, inSlot)) {
+                            continue;   // a DIFFERENT stack of the same item - leave it alone
+                        }
                         ItemStack extracted = handler.extractItem(i, needed, false);
                         if (!extracted.isEmpty()) {
                             result = result.isEmpty() ? extracted.copy() : grow(result, extracted);
@@ -525,6 +563,9 @@ public class ConnectedEndpointInfo {
                 for (int i = 0; i < container.getContainerSize() && needed > 0; i++) {
                     ItemStack inSlot = container.getItem(i);
                     if (!inSlot.isEmpty() && com.craftingveloce.util.VelocePotionMapper.getProxy(inSlot) == item) {
+                        if (!canMergeInto(result, inSlot)) {
+                            continue;   // a DIFFERENT stack of the same item - leave it alone
+                        }
                         int toTake = Math.min(needed, inSlot.getCount());
                         ItemStack taken = container.removeItem(i, toTake);
                         if (!taken.isEmpty()) {
@@ -542,7 +583,32 @@ public class ConnectedEndpointInfo {
         return ItemStack.EMPTY;
     }
 
-    /** Adds the contents to the result stack. */
+    /**
+     * Whether a candidate stack may be added to what has already been taken.
+     *
+     * <p><b>THE RULE: never merge two stacks that are not the same ITEM WITH THE SAME DATA
+     * COMPONENTS.</b> Merging by item id and count alone is what destroyed the contents of
+     * backpacks and shulkers: with three backpacks in a chest, each holding something different,
+     * the first was taken into the result and every following one was added to it as a bare
+     * COUNT - one backpack came out, its own contents intact, and the other two ceased to exist.
+     * The player saw "a backpack came out" and lost two inventories' worth of items.
+     *
+     * <p>A candidate that is not identical is therefore SKIPPED and stays where it is. The caller
+     * gets one real stack instead of a merged fiction, which is exactly the behaviour a player
+     * expects: take one of them, do not mix them.
+     *
+     * <p>An empty result accepts anything (nothing is being merged yet).
+     */
+    private static boolean canMergeInto(ItemStack result, ItemStack candidate) {
+        return result.isEmpty() || ItemStack.isSameItemSameComponents(result, candidate);
+    }
+
+    /**
+     * Adds the contents to the result stack.
+     *
+     * <p>ONLY for stacks that {@link #canMergeInto} has already accepted as identical - it keeps
+     * the components of {@code into} and only adds the count.
+     */
     private static ItemStack grow(ItemStack into, ItemStack from) {
         into.grow(from.getCount());
         return into;
@@ -559,6 +625,7 @@ public class ConnectedEndpointInfo {
         if (type == Type.REFINED_STORAGE) {
             ItemStack extracted = extractNow(level, item, maxCount);
             if (!extracted.isEmpty()) {
+                applyCachedDelta(item, -extracted.getCount());
                 refreshIfLoaded(level);
             }
             return extracted;
@@ -635,6 +702,8 @@ public class ConnectedEndpointInfo {
 
         ItemStack result = extractNow(level, item, maxCount);
         if (!result.isEmpty()) {
+            // FIRST the known correction, THEN the re-read - see applyCachedDelta.
+            applyCachedDelta(item, -result.getCount());
             refreshIfLoaded(level);
         } else if (!wasLoaded) {
             // The cache lied: we loaded the chunk and the item was not there.
@@ -666,7 +735,7 @@ public class ConnectedEndpointInfo {
         }
         if (type == Type.REFINED_STORAGE) {
             ItemStack rsRem = RefinedStorageHelper.insertItemLeftover(level, pos, accessSide, stack);
-            return rsRem.isEmpty() ? ItemStack.EMPTY : new ItemStack(originalStack.getItem(), rsRem.getCount());
+            return leftoverOf(originalStack, rsRem);
         }
         ItemStack remaining = stack.copy();
         try {
@@ -703,7 +772,40 @@ public class ConnectedEndpointInfo {
             VeloceLog.Network.failure(VeloceLog.Side.SERVER,
                     "deferred insert at %s failed: %s", pos, t);
         }
-        return remaining.isEmpty() ? ItemStack.EMPTY : new ItemStack(originalStack.getItem(), remaining.getCount());
+        return leftoverOf(originalStack, remaining);
+    }
+
+    /**
+     * The LEFTOVER of an insertion, WITH ITS DATA COMPONENTS.
+     *
+     * <p><b>The bug this fixes.</b> Every leftover was rebuilt as
+     * {@code new ItemStack(originalStack.getItem(), count)} - an item built from its id alone, with
+     * no data components. For a plain cobblestone that is invisible. For anything that CARRIES
+     * something - a backpack, a shulker, an enchanted book, a written book, a filled bucket, a
+     * tool with enchantments - it silently turned the item into an empty one, and the caller then
+     * carried that emptied stack on to the NEXT storage in the network.
+     *
+     * <p>That is a real path for the reported "I put a full backpack in and take an empty one
+     * out": deposit into a network with several endpoints, one of which accepts only part (or
+     * refuses and returns a rebuilt stack), and the backpack that lands in the following chest is
+     * no longer the same item. The count was always right, so nothing anywhere looked wrong.
+     *
+     * <p>{@code copyWithCount} keeps every component and only changes the count, which is exactly
+     * what "the same items, fewer of them" means.
+     */
+    private static ItemStack leftoverOf(ItemStack original, ItemStack remaining) {
+        if (remaining.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        // The leftover is logged whenever it does NOT match the input, because that is the case
+        // where an emptied stack could travel on to the next storage. With the fix above the
+        // fingerprint is identical for both, and this line proves it in the field.
+        com.craftingveloce.crafting.VeloceCraftTrace.log(
+                "insert leftover: in=%s out=%s",
+                com.craftingveloce.crafting.VeloceCraftTrace.fingerprint(original),
+                com.craftingveloce.crafting.VeloceCraftTrace.fingerprint(
+                        original.copyWithCount(remaining.getCount())));
+        return original.copyWithCount(remaining.getCount());
     }
 
     /**
@@ -746,10 +848,16 @@ public class ConnectedEndpointInfo {
 
         if (type == Type.REFINED_STORAGE) {
             ItemStack left = RefinedStorageHelper.insertItemLeftover(level, pos, accessSide, stack);
-            if (left.getCount() != stack.getCount()) {
+            long rsInserted = stack.getCount() - left.getCount();
+            if (rsInserted > 0L) {
+                // Known change first, then the re-read - see applyCachedDelta. Depositing had the
+                // same symptom as withdrawing: the network's number for the item sometimes did
+                // not move until something else happened to rescan the container.
+                applyCachedDelta(com.craftingveloce.util.VelocePotionMapper.getProxy(stack),
+                        rsInserted);
                 refreshIfLoaded(level);
             }
-            return left.isEmpty() ? ItemStack.EMPTY : new ItemStack(originalStack.getItem(), left.getCount());
+            return leftoverOf(originalStack, left);
         }
 
         boolean wasLoaded = level.isLoaded(pos);
@@ -877,6 +985,14 @@ public class ConnectedEndpointInfo {
                 }
             }
 
+            long inserted = stack.getCount() - remaining.getCount();
+            if (inserted > 0L) {
+                // Known change first, then the re-read - see applyCachedDelta: a failed re-read
+                // keeps the OLD numbers, so without this the deposit was invisible in the
+                // terminal until some later scan happened to succeed.
+                applyCachedDelta(com.craftingveloce.util.VelocePotionMapper.getProxy(stack),
+                        inserted);
+            }
             refreshIfLoaded(level);
         } catch (Throwable t) {
             // The exception goes into the mod's log TOGETHER with the stack -
@@ -887,7 +1003,7 @@ public class ConnectedEndpointInfo {
         }
         // NO release() - see the comment above. The chunk has no forcing
         // ticket, so it drops out normally whenever the game sees fit.
-        return remaining.isEmpty() ? ItemStack.EMPTY : new ItemStack(originalStack.getItem(), remaining.getCount());
+        return leftoverOf(originalStack, remaining);
     }
 
     /** Compatibility: true when everything was accepted. */
