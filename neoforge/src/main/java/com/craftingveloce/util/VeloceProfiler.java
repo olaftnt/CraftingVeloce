@@ -170,14 +170,30 @@ public final class VeloceProfiler {
     private static final long SLOW_CALL_NANOS = 50_000_000L;   // 50 ms
 
     /**
+     * A session shorter than this prints NOTHING automatically.
+     *
+     * <p><b>The bug this fixes, measured.</b> The breakdown used to be printed for every page the
+     * terminal asked for - on BOTH sides, so two reports per request, 36 lines each. With the
+     * terminal open that was <b>67-88 log lines per second</b> (about 5 MB per minute), written
+     * synchronously, and typing a letter in the search bar asks for a new page and therefore
+     * produced another burst. The player feels that as lag on every keypress - and it was
+     * entirely this diagnostic, which is supposed to be invisible until something is wrong.
+     *
+     * <p>A page that took 12-30 ms has nothing to explain, so it now says nothing. A page that
+     * took hundreds of milliseconds still prints its breakdown by itself, which is exactly when
+     * it is wanted. {@code /cv profile report} prints on demand regardless of the timing.
+     */
+    private static final long REPORT_MIN_NANOS = 150_000_000L;   // 150 ms
+
+    /**
      * How many labels a report prints, worst first.
      *
-     * <p>Set above the number of labels the mod actually has, so a report is never truncated:
-     * the interesting row is not always near the top - a stall that runs twenty times a second
-     * can sit below a one-off cost - and a report that hides rows would send the reader looking
-     * for a number that was never printed.
+     * <p>LEAVE ROOM for the reader: a report is read while looking for one or two rows, and the
+     * old limit of 96 printed the whole table on every page. 28 keeps the worst offenders -
+     * which is what a report is for - and a session that needs the rest can be read with
+     * {@code /cv profile report} after the fact.
      */
-    private static final int REPORT_LIMIT = 96;
+    private static final int REPORT_LIMIT = 28;
 
     /**
      * The switch, cached.
@@ -422,7 +438,8 @@ public final class VeloceProfiler {
     public static void reportLoad(String context) {
         startupRecording = false;
         if (enabled()) {
-            print(context, true);
+            // Forced: a load report happens once and somebody is waiting for it.
+            print(context, true, true);
         } else {
             // The switch may only be readable now, and it says off: drop the buffer rather than
             // let a load session's rows appear inside a later terminal report.
@@ -567,12 +584,30 @@ public final class VeloceProfiler {
     }
 
     /**
+     * Prints the breakdown NOW, whatever it costs - for {@code /cv profile report}, where the
+     * player explicitly asked for the numbers and silence would look like a broken command.
+     */
+    public static void reportNow(String context) {
+        print(context, true, true);
+    }
+
+    /**
      * The body of a report.
      *
      * @param clear true = the session ends here (counters and clock are reset); false = the
      *              breakdown is printed as a snapshot and the session keeps running
      */
     private static void print(String context, boolean clear) {
+        print(context, clear, false);
+    }
+
+    /**
+     * The body of a report.
+     *
+     * @param forced true for an explicit request ({@code /cv profile report}, the load reports):
+     *               those print even when the numbers are small, because somebody asked
+     */
+    private static void print(String context, boolean clear, boolean forced) {
         if (!enabled()) {
             // Still clear: a session that began while profiling was on and ended after it was
             // switched off must not leak its numbers into the next one.
@@ -609,6 +644,16 @@ public final class VeloceProfiler {
 
         long wallNanos = sessionStart > 0 ? System.nanoTime() - sessionStart : totalNanos;
         long rootNanos = ROOT_NANOS.get();
+        if (!forced && rootNanos < REPORT_MIN_NANOS) {
+            // Nothing worth explaining. This early return is what keeps the profiler from
+            // becoming the problem it was written to find - see REPORT_MIN_NANOS.
+            if (clear) {
+                ENTRIES.clear();
+                ROOT_NANOS.set(0L);
+                sessionOwner = Owner.NONE;
+            }
+            return;
+        }
         com.craftingveloce.CraftingVeloceMod.LOGGER.info(
                 "[Veloce][PROF] ===== {}{} =====", context,
                 clear ? "" : " [SNAPSHOT - session continues]");

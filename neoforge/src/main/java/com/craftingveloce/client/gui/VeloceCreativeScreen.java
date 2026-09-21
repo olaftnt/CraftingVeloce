@@ -86,20 +86,87 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     protected VeloceCreativeScreen(LocalPlayer player, FeatureFlagSet enabledFeatures,
                                    boolean displayOperatorCreativeTab) {
         super(player, enabledFeatures, displayOperatorCreativeTab);
+        this.operatorTabAllowed = displayOperatorCreativeTab;
         // Everything AFTER the vanilla constructor. The pair to compare with
         // client.openTerminalScreen.construct: if that row is ~1.6 s and this one is 0 ms, the
         // time is vanilla's class loading and nothing of ours, which is exactly what the first
         // run's numbers suggested and what nobody could prove before.
         try (var ignored = com.craftingveloce.util.VeloceProfiler
                 .section("client.creativeScreen.ctorOwn")) {
-            // (our constructor body is empty today - the label exists so the difference is
-            //  visible in the report instead of being assumed)
+            // The probe's BASELINE is taken here, not on the first tick.
+            //
+            // Why it matters: vanilla's constructor rebuilds the tabs with exactly these
+            // three parameters and caches them. The second, expensive rebuild happens on
+            // the first {@code containerTick} - so whatever differs, it differs between
+            // "just after the constructor" and "the first tick". Snapshotted on the first
+            // tick the probe would compare the tick against itself and report nothing.
+            probeTabParameters();
         }
     }
+
+    /**
+     * The {@code displayOperatorCreativeTab} this screen was built with.
+     *
+     * <p>Kept only so the tab-rebuild probe below can ask the SAME question vanilla asks
+     * ({@code player.canUseGameMasterBlocks() && displayOperatorCreativeTab}) - see
+     * {@link #probeTabParameters()}.
+     */
+    private final boolean operatorTabAllowed;
 
     // ------------------------------------------------------------------
     // Filtering the contents - to be overridden in subclasses
     // ------------------------------------------------------------------
+
+    /** What the last probe saw - see {@link #probeTabParameters()}. */
+    private static FeatureFlagSet probedFeatures;
+    private static boolean probedPermissions;
+    private static Object probedRegistries;
+
+    /**
+     * Reports WHICH parameter makes vanilla rebuild every creative tab.
+     *
+     * <p><b>Why this exists.</b> The tabs are being rebuilt again and again while the terminal is
+     * open - the log showed it as other mods' "creative tab ... will display N entries" lines
+     * appearing every few seconds, and each rebuild costs seconds in a pack this size. Vanilla
+     * rebuilds when its three parameters differ from the cached ones
+     * ({@code CreativeModeTabs.ItemDisplayParameters.needsUpdate}:
+     * {@code features.equals() || permissions != || registries !=}). Which of the three keeps
+     * changing was not answerable from the outside, and guessing it has already wasted rounds.
+     *
+     * <p>It only WRITES when something changed, so a healthy session logs nothing. If it reports
+     * nothing and the rebuilds continue, that is an answer too: the parameters are stable and the
+     * rebuild is being asked for directly by some other code, which narrows the search to
+     * "who calls tryRebuildTabContents".
+     */
+    private void probeTabParameters() {
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc == null || mc.player == null || mc.level == null) {
+            return;
+        }
+        FeatureFlagSet features = mc.player.connection.enabledFeatures();
+        boolean permissions = mc.player.canUseGameMasterBlocks() && operatorTabAllowed;
+        Object registries = mc.player.level().registryAccess();
+        if (probedFeatures == null) {
+            probedFeatures = features;
+            probedPermissions = permissions;
+            probedRegistries = registries;
+            return;
+        }
+        boolean featuresChanged = !probedFeatures.equals(features);
+        boolean permissionsChanged = probedPermissions != permissions;
+        boolean registriesChanged = probedRegistries != registries;
+        if (featuresChanged || permissionsChanged || registriesChanged) {
+            com.craftingveloce.CraftingVeloceMod.LOGGER.warn(
+                    "[Veloce][TABS] rebuild params changed -> vanilla will rebuild every tab: "
+                            + "features={} permissions={} ({}) registries={} ({})",
+                    featuresChanged, permissionsChanged, permissions,
+                    registriesChanged,
+                    Integer.toHexString(System.identityHashCode(registries)));
+            probedFeatures = features;
+            probedPermissions = permissions;
+            probedRegistries = registries;
+        }
+    }
 
     /**
      * Whether to show this item in the grid. Returning false <b>removes the item from
@@ -291,6 +358,8 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         }
 
         CreativeModeTab tab;
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.init.tabLookup")) {
         if (key != null && rememberTab()) {
             tab = VeloceTerminalViewState.findTab(VeloceTerminalViewState.savedTab(key));
             // No remembered tab (first opening) or the remembered one no longer
@@ -310,22 +379,35 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             // always open from the beginning of the list.
             tab = defaultTab() != null ? defaultTab() : firstAcceptedTab();
         }
+        }
         // Tabs that we do not have (e.g. hidden ones) are not restored.
         if (tab != null && acceptTab(tab)) {
-            VeloceTerminalViewState.applyTab(this, tab);
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("client.init.applyTab.selectTab")) {
+                VeloceTerminalViewState.applyTab(this, tab);
+            }
             // ...and scroll to the PAGE that tab is on - otherwise, with a large
             // number of tabs, the selected one is invisible.
-            restoreTabPage(tab);
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("client.init.restoreTabPage")) {
+                restoreTabPage(tab);
+            }
         }
 
         // The phrase and the scroll only for screens with a key of their own.
         if (key == null) {
             return;
         }
-        VeloceTerminalViewState.applySearch(this, VeloceTerminalViewState.savedSearch(key));
+        try (var ignored = com.craftingveloce.util.VeloceProfiler
+                .section("client.init.applySearch")) {
+            VeloceTerminalViewState.applySearch(this, VeloceTerminalViewState.savedSearch(key));
+        }
         Float scroll = VeloceTerminalViewState.savedScroll(key);
         if (scroll != null) {
-            VeloceTerminalViewState.applyScroll(this, scroll);
+            try (var ignored = com.craftingveloce.util.VeloceProfiler
+                    .section("client.init.applyScroll")) {
+                VeloceTerminalViewState.applyScroll(this, scroll);
+            }
         }
     }
 
@@ -720,6 +802,7 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         // 3 ms here is 60 ms of every second stolen from the frame rate, while the same 3 ms
         // inside init() would be invisible. The report shows both the total and the call count,
         // so "20 call(s)" next to a big total reads immediately as "this repeats".
+        probeTabParameters();
         try (var ignored = com.craftingveloce.util.VeloceProfiler
                 .section("client.creativeScreen.containerTick.super")) {
             super.containerTick();

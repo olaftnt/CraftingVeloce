@@ -90,7 +90,9 @@ public final class CVProfileCommand {
                     false);
             return 0;
         }
-        VeloceProfiler.report("on demand (/cv profile report)");
+        // reportNow and not report: an explicit request prints even when the numbers are
+        // small - silence here would look like a broken command.
+        VeloceProfiler.reportNow("on demand (/cv profile report)");
         context.getSource().sendSuccess(() -> Component.literal(
                 "§8[§6Veloce§8] profiler report written to §flogs/latest.log"), false);
         return 1;
