@@ -60,6 +60,7 @@
   "craftingveloce.craft.error.noBase": "missing base ingredients",
   "craftingveloce.craft.error.dropFull": "Made, but no container accepted it - the item is on the ground.",
   "craftingveloce.craft.error.noBaseItem": "Cannot craft: missing %s",
+  "craftingveloce.craft.error.notPlannable": "Cannot craft: every ingredient is in the network, but the recipe could not be planned",
   "craftingveloce.craft.error.noCrafter": "Cannot craft: no auto-crafter in the network",
   "craftingveloce.craft.error.noFurnace": "Cannot craft: no furnace in the network (needs %s)",
   "craftingveloce.craft.error.noModule": "Cannot craft: no machine for %s",

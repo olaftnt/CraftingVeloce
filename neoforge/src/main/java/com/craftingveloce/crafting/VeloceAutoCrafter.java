@@ -1263,6 +1263,16 @@ public final class VeloceAutoCrafter {
                 //
                 // The list of missing items comes from a separate, cheap walk that plans
                 // nothing (see `findMissing`), so stopping here loses no information.
+                //
+                // The line below is the OTHER half of that: if the message ever says "nothing
+                // is missing" while the plan failed, this names the slot the PLANNER could not
+                // supply, so the two answers can be compared instead of argued about.
+                VeloceCraftTrace.log("plan failed: recipe %s x%d cannot supply slot %d = %s x%d "
+                                + "(stock of the first option: %d, auto-crafting allowed: %s)",
+                        recipe.id(), times, ingIndex, describeOptions(ing), need,
+                        options.isEmpty() ? 0L
+                                : stock.getOrDefault(options.get(0).getItem(), 0L),
+                        !options.isEmpty() && enabled.contains(options.get(0).getItem()));
                 stock.clear();
                 stock.putAll(snapshot);
                 plan.rollbackTo(planMark);
@@ -2564,12 +2574,17 @@ public final class VeloceAutoCrafter {
         // against the stock and names what is short - no planning, no budget, no stock changes.
         String missingItems = firstMissing(level, ctx, item, stock, amount);
         if (missingItems.isEmpty()) {
-            // A LAST GUARANTEE, and it exists because an empty detail is the one outcome that is
-            // never acceptable: it renders as the bare "missing base ingredients", which looks
-            // like an explanation and explains nothing. Reaching here means the walk believed
-            // every ingredient was available even though the planner could not make the item -
-            // so we name what the recipe wants, without judging whether it is available.
-            missingItems = recipeRequirements(level, ctx, item, amount);
+            // NOTHING IS MISSING - say exactly that, and NEVER print the recipe in its place.
+            //
+            // The bug this replaces: an empty list fell back to naming EVERY ingredient of the
+            // first recipe ("4x iron ingot, 2x piston, 2x stone pressure plate, redstone" for a
+            // compactor), which reads as "you are missing all of this" while the player was
+            // holding stacks of iron and redstone. A list of ingredients is not a list of what
+            // is missing, and the one thing this tooltip must never do is send the player to
+            // fetch something they already have. Reaching here means the plan failed for a
+            // reason that is not an ingredient - the machine hints below are the useful part.
+            return CraftResult.fail("craftingveloce.craft.error.notPlannable",
+                    String.join(", ", hintFamilies));
         }
         return CraftResult.fail("craftingveloce.craft.error.noBase",
                 missingItems,
@@ -2592,164 +2607,163 @@ public final class VeloceAutoCrafter {
     }
 
     /**
-     * What the first recipe of this item needs, named - the safety net behind
-     * {@link #findMissing}. Empty only when the item has no usable recipe at all.
-     */
-    private static String recipeRequirements(ServerLevel level, Context ctx, Item item,
-                                             long amount) {
-        List<ProcessingEntry> recipes = orderRecipes(level, ctx.network, item, ctx.preferred,
-                ctx.heatOps() > 0, ctx.network.prefersFurnace(item));
-        if (recipes.isEmpty()) {
-            return "";
-        }
-        ProcessingEntry recipe = recipes.get(0);
-        long perCraft = Math.max(1L, recipe.primaryResult().getCount());
-        long times = Math.max(1L, (amount + perCraft - 1L) / perCraft);
-        java.util.Map<String, Long> wanted = new java.util.LinkedHashMap<>();
-        List<Ingredient> ingredients = recipe.ingredients();
-        for (int i = 0; i < ingredients.size(); i++) {
-            if (!hasOptions(ingredients.get(i))) {
-                continue;
-            }
-            wanted.merge(firstOptionName(ingredients.get(i)),
-                    times * Math.max(1L, recipe.ingredientCount(i)), Long::sum);
-        }
-        return describe(wanted);
-    }
-
-
-    /**
-     * The first ingredient that is missing and cannot be made.
+     * What the request cannot supply, in the form the tooltip shows.
      *
-     * <p>Used EXCLUSIVELY for the player-facing message (and the log) when the plan
-     * failed. Previously the player got a generic "no such item in the network"
-     * and there was no way to determine whether the material, the machine or the
-     * recipe was missing.
+     * <p><b>Why this is an ACCOUNTING walk and not a "does a recipe exist" walk.</b> The
+     * version before this one asked, for every slot of a recipe, "is there a way to obtain
+     * this?" against the SAME unchanged stock - so an ingredient used twice was approved
+     * twice even when the network only held enough for one. Measured in game (crafting one
+     * Alchemistry Compactor with 61 iron, 774 redstone, 5 cobblestone, 0 pistons and 0
+     * pressure plates): the compactor wants TWO pistons and TWO stone pressure plates, and
+     * each of those wants cobblestone. The walk checked every slot independently, found that
+     * one piston was craftable, said the same for the second one and for both plates, and
+     * concluded "nothing is missing" - so the caller fell through to naming the whole
+     * recipe, and the player was told that iron and redstone were missing while holding
+     * stacks of both.
      *
-     * <p>It descends through recipes (with a bounded depth and cycle protection) and
-     * returns the NAME of the first ingredient for which no option is available.
-     * An empty string = could not be determined.
+     * <p>Now the walk SPENDS what it uses, exactly like the planner: the pool starts as the
+     * network stock and every resolved item is taken out of it, so the second use of an
+     * ingredient sees what the first one left. What cannot be covered is reported with the
+     * amount the whole request is short - the amount the player has to bring.
+     *
+     * <p>Two lists, and the difference matters for the message:
+     * <ul>
+     *   <li>{@code shortfall} - items the request runs out of. These are reported;</li>
+     *   <li>{@code unresolved} - places the walk could not decide (a recipe cycle, the depth
+     *       limit, the walk budget). Reported only when nothing is short, so a cycle is never
+     *       silently called "available" (that is what silenced a redstone clock) and never
+     *       counted once per branch either (that is what inflated it to "72x gold ingot").</li>
+     * </ul>
+     *
+     * @param amount how many units of {@code item} the request wanted, so the amounts named are
+     *               what the player has to supply for the whole request
+     * @return the missing items as {@code "4x item.minecraft.gold_ingot, ..."}, or an empty
+     *         string when nothing is missing
      */
     private static String firstMissing(ServerLevel level, Context ctx, Item item,
                                        Map<Item, Long> stock, long amount) {
-        String missing = findMissing(level, ctx, item, stock, amount, new HashSet<>(), 0);
-        return missing == null ? "" : missing;
+        java.util.Map<Item, Long> absent = new java.util.LinkedHashMap<>();
+        java.util.Map<Item, Long> unresolved = new java.util.LinkedHashMap<>();
+        collectMissing(level, ctx, item, new HashMap<>(stock), amount, new HashSet<>(), 0,
+                absent, unresolved, new int[] {MISSING_WALK_BUDGET});
+        String out = describeDeficit(absent, stock);
+        return out.isEmpty() ? describeDeficit(unresolved, stock) : out;
     }
 
     /**
-     * The ingredients this recipe cannot supply, with the amounts the whole request needs.
+     * The GROSS requirement of the items we ran out of, minus what the network holds.
      *
-     * <p><b>What was wrong with the version before this one.</b> Two things, and both were
-     * visible in game:
-     *
-     * <ul>
-     *   <li>it asked "is there ANY of this in the network" instead of "is there ENOUGH". A
-     *       recipe wanting six planks with two in the chest looked satisfied, every recipe
-     *       looked feasible, and the caller got NOTHING to show - the player saw the bare
-     *       "missing base ingredients" with no item named;</li>
-     *   <li>a CYCLE was treated as "satisfiable". A clock needs gold ingots; ingots are made
-     *       from nuggets and nuggets from ingots, so the walk went round once, hit its own
-     *       visited-item guard, and concluded "fine" - which is why a clock, of all items,
-     *       produced an empty message. A cycle is not proof of availability: it means the walk
-     *       could not resolve it, and the honest answer is to name the ingredient that is short.
-     *   </li>
-     * </ul>
-     *
-     * <p><b>Why it is safe to call this.</b> It plans nothing, changes no stock and never looks
-     * at the operation budget - it only reads recipes and compares counts. That is what makes it
-     * a safe source for the player-facing message: an earlier attempt to collect the same list
-     * from inside the PLANNER cost so much work that a fence was reported as "recipe tree too
-     * complex".
-     *
-     * @param amount how many units of {@code item} the request wanted, so the amounts named are
-     *               what the player has to supply for the whole request (four gold ingots for
-     *               one clock, seventy-two for eighteen)
-     * @return the missing items as {@code "4x item.minecraft.gold_ingot, ..."}, or null when this
-     *         item can be supplied
+     * <p>Netting against the stock at the end - instead of writing down a shortfall at every
+     * dead end - is what keeps the amount honest when the same base item is needed by several
+     * branches: the requirement is added up once per occurrence, and what the player already
+     * has is subtracted exactly once. Reporting per dead end instead would count the same
+     * chest twice (the "72x gold ingot for a recipe that wants four" family of messages).
      */
-    private static String findMissing(ServerLevel level, Context ctx, Item item,
-                                      Map<Item, Long> stock, long amount,
-                                      Set<Item> visiting, int depth) {
-        if (stock.getOrDefault(item, 0L) >= amount) {
-            return null;                       // there is ENOUGH of it
+    private static String describeDeficit(java.util.Map<Item, Long> gross,
+                                          Map<Item, Long> stock) {
+        java.util.Map<String, Long> out = new java.util.LinkedHashMap<>();
+        gross.forEach((missingItem, totalNeeded) ->
+                out.put(name(missingItem),
+                        Math.max(1L, totalNeeded - stock.getOrDefault(missingItem, 0L))));
+        return describe(out);
+    }
+
+    /**
+     * Spends {@code amount} of {@code item} out of {@code pool}, or records what is short.
+     *
+     * <p>Iterative in spirit but written recursively like the planner, with the same recipe
+     * order - so the list cannot name an ingredient from a route the planner would never take.
+     * It builds no plan, takes no machine, and never touches the operation budget: that is what
+     * makes it safe to run for a message (an earlier attempt to collect the same list inside the
+     * PLANNER cost so much that a fence came back as "recipe tree too complex").
+     */
+    private static void collectMissing(ServerLevel level, Context ctx, Item item,
+                                       Map<Item, Long> pool, long amount,
+                                       Set<Item> visiting, int depth,
+                                       java.util.Map<Item, Long> absent,
+                                       java.util.Map<Item, Long> unresolved,
+                                       int[] budget) {
+        long have = pool.getOrDefault(item, 0L);
+        if (have >= amount) {
+            pool.put(item, have - amount);     // SPENT - the next slot sees less, like the planner
+            return;
         }
-        if (depth >= MISSING_MAX_DEPTH || !visiting.add(item)) {
-            // Too deep, or we are going round in circles. NOT "fine": the walk could not prove
-            // this item is available, and claiming it is was what silenced the clock's answer.
-            return name(item);
+        if (budget[0]-- <= 0 || depth >= MISSING_MAX_DEPTH || !visiting.add(item)) {
+            // Could not decide. Not "fine" (a cycle is not proof of availability), and not a
+            // shortfall either - the largest single requirement is the honest number here, not
+            // the sum over the branches, which is what inflated a clock to "72x gold ingot".
+            unresolved.merge(item, amount - have, Math::max);
+            return;
         }
         try {
-            // THE SAME ORDER THE PLANNER USES, so this cannot name an item from a recipe the
-            // player is not on: the preferred one first when the crafting table set one, then the
-            // planner's own order.
             List<ProcessingEntry> recipes = orderRecipes(level, ctx.network, item, ctx.preferred,
                     ctx.heatOps() > 0, ctx.network.prefersFurnace(item));
             if (recipes.isEmpty()) {
-                return name(item);             // nothing can make this, and we need it
+                absent.merge(item, amount, Long::sum);   // the gross need of every occurrence
+                pool.put(item, 0L);
+                return;
             }
-            for (ProcessingEntry recipe : recipes) {
-                // Every unsatisfied ingredient of THIS recipe, not just the first one: naming one
-                // per attempt is one trip to the chest per item, for information the recipe
-                // already had.
-                long perCraft = Math.max(1L, recipe.primaryResult().getCount());
-                long times = (amount + perCraft - 1L) / perCraft;
-                // Counted per item, added up across the slots that want it: a door asks for planks
-                // in six slots, and the player needs "6x" - not six lines, and not "1x".
-                java.util.Map<String, Long> gapCounts = new java.util.LinkedHashMap<>();
-                List<Ingredient> ingredients = recipe.ingredients();
-                // TWO LISTS, and the difference is the whole point of this method.
-                //
-                // `absent`    - the player has NONE of it: this is what "missing" means to a
-                //               player, and it is what gets reported.
-                // `tooLittle` - the player HAS some, just not enough for the whole request.
-                //
-                // The bug this fixes (player: "a redstone torch needs redstone and a stick, I have
-                // sticks, and it says both are missing"). One list could not tell the two apart:
-                // the shortage test is "is there ENOUGH", and an ingredient the player holds three
-                // of when sixty-four are wanted fails that test - so the stick was named next to
-                // the redstone, and the message read as if the player had nothing.
-                //
-                // The shortage list is still kept, because an item that is present but short must
-                // not lead to an EMPTY message either - that is the "missing base ingredients"
-                // with nothing named that this method was written to end. It is used only when
-                // nothing is completely absent.
-                java.util.Map<String, Long> absent = new java.util.LinkedHashMap<>();
-                java.util.Map<String, Long> tooLittle = new java.util.LinkedHashMap<>();
-                for (int i = 0; i < ingredients.size(); i++) {
-                    if (!hasOptions(ingredients.get(i))) {
-                        continue;
+            ProcessingEntry recipe = recipes.get(0);
+            long perCraft = Math.max(1L, recipe.primaryResult().getCount());
+            // Only what we do NOT already hold has to be crafted. Planning the full amount here
+            // would report requirements for units that are already sitting in the chest - the
+            // "72x gold ingot for a recipe wanting four" family of messages.
+            long lacking = amount - have;
+            long times = (lacking + perCraft - 1L) / perCraft;
+            // What we hold of the item itself is spent first, exactly as the planner does.
+            pool.put(item, 0L);
+            List<Ingredient> ingredients = recipe.ingredients();
+            for (int i = 0; i < ingredients.size(); i++) {
+                if (!hasOptions(ingredients.get(i))) {
+                    continue;
+                }
+                long need = times * Math.max(1L, recipe.ingredientCount(i));
+                // The planner's option order (most stock first, then what the auto-crafter is
+                // allowed to use), so the shortfall we name is the one it would have hit.
+                List<ItemStack> options = new ArrayList<>(nonEmpty(ingredients.get(i)));
+                options.sort((a, b) -> {
+                    long sa = pool.getOrDefault(a.getItem(), 0L);
+                    long sb = pool.getOrDefault(b.getItem(), 0L);
+                    if (sa != sb) {
+                        return Long.compare(sb, sa);
                     }
-                    long need = times * Math.max(1L, recipe.ingredientCount(i));
-                    boolean satisfied = false;
-                    boolean present = false;
-                    for (ItemStack option : nonEmpty(ingredients.get(i))) {
-                        Item optItem = option.getItem();
-                        if (stock.getOrDefault(optItem, 0L) > 0L) {
-                            present = true;
+                    return Boolean.compare(ctx.enabledItems.contains(b.getItem()),
+                            ctx.enabledItems.contains(a.getItem()));
+                });
+                boolean supplied = false;
+                for (int oi = 0; oi < options.size(); oi++) {
+                    Item optItem = options.get(oi).getItem();
+                    boolean lastOption = oi == options.size() - 1;
+                    if (lastOption) {
+                        // Committed to the real pool: if this cannot be supplied either, the
+                        // deficit is recorded here - the message then names the planner's own
+                        // first choice rather than an alternative it would not have used.
+                        int before = absent.size() + unresolved.size();
+                        collectMissing(level, ctx, optItem, pool, need, visiting, depth + 1,
+                                absent, unresolved, budget);
+                        if (absent.size() + unresolved.size() == before) {
+                            supplied = true;
                         }
-                        if (findMissing(level, ctx, optItem, stock, need, visiting, depth + 1)
-                                == null) {
-                            satisfied = true;
-                            break;
-                        }
+                        break;
                     }
-                    if (!satisfied) {
-                        String gapName = firstOptionName(ingredients.get(i));
-                        if (present) {
-                            tooLittle.merge(gapName, need, Long::sum);
-                        } else {
-                            absent.merge(gapName, need, Long::sum);
-                        }
+                    Map<Item, Long> trial = new HashMap<>(pool);
+                    java.util.Map<Item, Long> trialAbsent = new java.util.LinkedHashMap<>();
+                    java.util.Map<Item, Long> trialUnresolved = new java.util.LinkedHashMap<>();
+                    collectMissing(level, ctx, optItem, trial, need, visiting, depth + 1,
+                            trialAbsent, trialUnresolved, budget);
+                    if (trialAbsent.isEmpty() && trialUnresolved.isEmpty()) {
+                        pool.clear();
+                        pool.putAll(trial);
+                        supplied = true;
+                        break;
                     }
                 }
-                if (absent.isEmpty() && tooLittle.isEmpty()) {
-                    return null;               // this recipe can supply what was asked for
+                if (!supplied && options.isEmpty()) {
+                    // An ingredient with no option at all cannot be named - the recipe itself is
+                    // the problem, and the caller's "could not be planned" answer says so.
+                    unresolved.merge(item, 1L, Math::max);
                 }
-                // Nothing to fetch from the chest if the player holds some of everything - then
-                // the honest answer is "not enough", and it says so with the amounts.
-                return describe(java.util.Map.copyOf(absent.isEmpty() ? tooLittle : absent));
             }
-            return name(item);
         } finally {
             visiting.remove(item);
         }
@@ -2757,6 +2771,16 @@ public final class VeloceAutoCrafter {
 
     /** Depth of descent when looking for the missing ingredient. */
     private static final int MISSING_MAX_DEPTH = 6;
+
+    /**
+     * How many branches the missing walk may visit.
+     *
+     * <p>A ceiling and not a budget: the walk answers a message, so it must never be able to
+     * make the server thread work for seconds. Reaching it is treated as "could not decide",
+     * which is honest - and it is 20 000 because a real tree (depth 6, a handful of options
+     * per slot) stays far below it.
+     */
+    private static final int MISSING_WALK_BUDGET = 20_000;
 
     /**
      * The machine that stands in the network, could make this item, and cannot pay -
