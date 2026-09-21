@@ -127,7 +127,15 @@ public final class VeloceCountSnapshot {
         // pockets are a fixed 37 slots and can only ever be noise.
         Map<Item, Long> stock;
         try (var ignored = com.craftingveloce.util.VeloceProfiler.section("snapshot.stock.network")) {
-            stock = new HashMap<>(network.getAllItemCounts(level));
+            // NO NETWORK = NO NETWORK STOCK, and the player's pockets below are then the only
+            // source - which is the honest answer for a terminal standing next to a chest: what
+            // the network would have provided simply does not exist here. Guarded because the
+            // caller may legitimately pass null (a terminal with no pipes), and this method is
+            // the second half of the same crash the guard in VeloceCraftingRegistry.crafters
+            // fixes.
+            stock = network == null
+                    ? new HashMap<>()
+                    : new HashMap<>(network.getAllItemCounts(level));
         }
         try (var ignored = com.craftingveloce.util.VeloceProfiler.section("snapshot.stock.inventory")) {
             if (inventory != null) {
@@ -158,7 +166,7 @@ public final class VeloceCountSnapshot {
         // --- 4. the per-item "furnace first" flags, copied OUT of the network ---
         Set<Item> preferFurnace = new HashSet<>();
         for (Item it : countable) {
-            if (network.prefersFurnace(it)) {
+            if (network != null && network.prefersFurnace(it)) {
                 preferFurnace.add(it);
             }
         }

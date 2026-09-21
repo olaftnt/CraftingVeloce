@@ -37,6 +37,19 @@ public final class VeloceCraftingRegistry {
      */
     static java.util.List<VeloceCraftingTableBlockEntity> crafters(
             ServerLevel level, VelocePipeNetwork network) {
+        // A TERMINAL WITHOUT A PIPE NETWORK IS NOT AN ERROR - it is a terminal standing next to
+        // a chest or an RS interface, which this mod supports (see extractWithReason). Such a
+        // machine still asks for the "+N" counts, and the answer for it is "no crafters", i.e.
+        // an empty list.
+        //
+        // NULL HERE USED TO THROW: `network.getTerminals()` raised a NullPointerException inside
+        // the payload handler on the server thread - 250 stack traces in one session, every one
+        // of them killing the count request for that terminal, so the numbers never appeared for
+        // it at all and the client kept asking. The crash was 40 lines below the code that had a
+        // null check on the same value; one guard there is not enough if the callee assumes it.
+        if (network == null) {
+            return java.util.List.of();
+        }
         java.util.List<BlockPos> sorted = new java.util.ArrayList<>(network.getTerminals());
         sorted.sort(java.util.Comparator
                 .comparingInt((BlockPos p) -> p.getX())

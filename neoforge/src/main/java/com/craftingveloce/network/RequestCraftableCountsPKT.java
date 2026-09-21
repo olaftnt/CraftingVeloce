@@ -119,6 +119,26 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
                     .get(serverLevel)
                     .getNetworkForTerminal(serverLevel, pkt.pos());
 
+            // A TERMINAL WITH NO PIPE NETWORK: say it ONCE, then answer with zeros.
+            //
+            // This is a supported setup, not an error - such a terminal serves the chest or the
+            // Refined Storage interface it faces (see extractWithReason). What it cannot do is
+            // auto-craft, because the crafters live in a pipe network: for it, every "+N" is 0.
+            //
+            // Saying so is the whole point of this block. Before it, the request CRASHED here
+            // (a NullPointerException from the module registry, one full stack trace per request,
+            // 250 of them in one session) and the numbers simply never appeared, with nothing in
+            // the log to connect the two. Once per terminal, because a line per request would be
+            // the same flood in a different shape.
+            if (network == null && WARNED_NO_NETWORK.add(pkt.pos())) {
+                com.craftingveloce.util.VeloceLog.Craft.why(
+                        com.craftingveloce.util.VeloceLog.Side.SERVER,
+                        "terminal at %s is not connected to a pipe network - there is nothing to "
+                                + "auto-craft with here, so the \"+N\" numbers are 0 for it "
+                                + "(connect it to the pipe network to get them)",
+                        pkt.pos().toShortString());
+            }
+
             // 1) IMMEDIATELY the cache: the player opens the GUI and instantly
             //    sees the numbers the network has already computed. Without this
             //    the counting of the visible page started from scratch and the
@@ -309,6 +329,14 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
      * asked again for the same items" from "the screen moved on", and treating the first as
      * stale discarded every valid answer on a slow page.
      */
+    /**
+     * Terminals already told that they have no pipe network - so the explanation is said once
+     * and not once per request. Bounded by the number of terminals; never cleared, because the
+     * fact does not expire while the server runs.
+     */
+    private static final java.util.Set<BlockPos> WARNED_NO_NETWORK =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private static final java.util.concurrent.ConcurrentHashMap<BlockPos, Integer> PAGE_SIGNATURES =
             new java.util.concurrent.ConcurrentHashMap<>();
 
