@@ -31,6 +31,11 @@ public class ClientTerminalHelper {
             // completely different fixes: the vanilla constructor cannot be changed, while ours
             // can.
             try (var ignored = com.craftingveloce.util.VeloceProfiler.section("client.openTerminalScreen.construct")) {
+                // CREATIVE BEFORE THE CONSTRUCTOR - see VeloceCreativeScreen.prepareCreativeMode.
+                // The game mode is one of the inputs of vanilla's cached tab parameters, so
+                // switching it after construction made vanilla rebuild every creative tab of the
+                // pack a second time (0.9-4.3 s per open in a 339-mod pack).
+                com.craftingveloce.client.gui.VeloceCreativeScreen.prepareCreativeMode();
                 VeloceTerminalScreen screen = new VeloceTerminalScreen(
                         mc.player, mc.player.connection.enabledFeatures(), true, pos);
                 try (var ignored2 = com.craftingveloce.util.VeloceProfiler.section("client.openTerminalScreen.setScreen")) {
@@ -117,6 +122,7 @@ public class ClientTerminalHelper {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player != null) {
             filterPickerReturnScreen = mc.screen;   // remember where to go back
+            com.craftingveloce.client.gui.VeloceCreativeScreen.prepareCreativeMode();
             mc.setScreen(new com.craftingveloce.client.gui.VeloceFilterPickerScreen(
                     mc.player, mc.player.connection.enabledFeatures(), true, pos, filterIndex));
         }
@@ -244,6 +250,7 @@ public class ClientTerminalHelper {
                     com.craftingveloce.util.VeloceLog.Side.CLIENT,
                     "opening crafter screen at %s (disabled=%d, buffer=%d stacks)",
                     pos, disabledItems.size(), bufferContents.size());
+            com.craftingveloce.client.gui.VeloceCreativeScreen.prepareCreativeMode();
             mc.setScreen(new com.craftingveloce.client.gui.VeloceCraftingTableScreen(
                     mc.player, mc.player.connection.enabledFeatures(), true, pos,
                     disabledItems, preferredRecipes, bufferContents));
@@ -318,6 +325,7 @@ public class ClientTerminalHelper {
                 pos, stock.size(), craftingEnabled.size(),
                 furnaceCraftable.size(), furnacePowered, furnacePreferred.size());
         if (mc.player != null) {
+            com.craftingveloce.client.gui.VeloceCreativeScreen.prepareCreativeMode();
             mc.setScreen(new com.craftingveloce.client.gui.VeloceControllerScreen(
                     mc.player, mc.player.connection.enabledFeatures(), true,
                     pos, stock, craftingEnabled,

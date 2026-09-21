@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Builds craftingveloce-1.1.0-NeoForge-1.21.1.jar and deploys it to the testing profile.
+Builds craftingveloce-1.1.1-NeoForge-1.21.1.jar and deploys it to the testing profile.
 
 Usage:
     python3 scripts/build.py
@@ -54,8 +54,8 @@ def _testing_profile_mods():
 
 
 MODS = _testing_profile_mods()
-DEPLOYED = os.path.join(MODS, "craftingveloce-1.1.0-NeoForge-1.21.1.jar")
-JAR_NAME = "craftingveloce-1.1.0-NeoForge-1.21.1.jar"
+DEPLOYED = os.path.join(MODS, "craftingveloce-1.1.1-NeoForge-1.21.1.jar")
+JAR_NAME = "craftingveloce-1.1.1-NeoForge-1.21.1.jar"
 STAGING = "craftingveloce_jar_root"
 
 # The flat src/ tree became a Gradle module, so every guard that reads
@@ -1441,6 +1441,43 @@ def validate_jade_info():
     if problems:
         fail("Jade (working status only):\n  " + "\n  ".join(problems))
     print("    OK (Jade: one status line - working / not enough force / not enough energy)")
+
+
+def validate_gui_creative_mode_prepared():
+    """
+    Every Veloce GUI must be built AFTER the player was put into creative.
+
+    The game mode is one of the inputs of vanilla's CACHED creative-tab
+    parameters (`ItemDisplayParameters.needsUpdate` compares
+    `player.canUseGameMasterBlocks()`), and that cache is filled by vanilla's
+    constructor. A screen constructed while the player is still in survival
+    therefore caches "no permissions", the mode is switched to creative a moment
+    later, and vanilla's first `containerTick` sees that the parameters changed
+    and rebuilds EVERY creative tab of the pack a second time.
+
+    Measured in the reference 339-mod pack: 0.9-4.3 s per terminal open, two full
+    rebuilds of every tab, and `VeloceCreativeScreen.probeTabParameters()` named
+    it exactly (`permissions=true (false)` at the constructor, `(true)` on the
+    first tick).
+
+    This guard counts the screen constructions against the
+    `prepareCreativeMode()` calls, so a GUI added later cannot silently bring the
+    second rebuild back - a regression that is invisible in a dev client (a small
+    pack rebuilds in milliseconds) and painful in a big one.
+    """
+    path = os.path.join(SRC_ROOT, "com/craftingveloce/client/ClientTerminalHelper.java")
+    if not os.path.exists(path):
+        return
+    text = open(path, encoding="utf-8").read()
+    constructed = re.findall(r"new (?:com\.craftingveloce\.client\.gui\.)?Veloce\w*Screen\(", text)
+    prepared = text.count("prepareCreativeMode()")
+    if not constructed:
+        fail("no Veloce screen is constructed in ClientTerminalHelper - did the GUIs move?")
+    if prepared < len(constructed):
+        fail(f"{len(constructed)} screen construction(s) but only {prepared} "
+             f"prepareCreativeMode() call(s): the mode must be creative BEFORE the "
+             f"constructor, or vanilla rebuilds every creative tab twice")
+    print(f"    OK ({len(constructed)} screen(s), {prepared} prepareCreativeMode() call(s))")
 
 
 def validate_terminal_craft_error():

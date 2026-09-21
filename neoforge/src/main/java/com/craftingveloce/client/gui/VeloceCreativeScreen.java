@@ -73,6 +73,31 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     private GameType modeBeforeOpen;
 
     /**
+     * The mode that was in effect before our GUIs forced creative, captured BEFORE the
+     * screen is constructed - see {@link #prepareCreativeMode()}.
+     *
+     * <p><b>Why this is static and why it must exist.</b> The mode has to be creative
+     * BEFORE vanilla's constructor runs, because that constructor is what builds and
+     * CACHES the creative tab parameters, and one of them is
+     * {@code player.canUseGameMasterBlocks() && displayOperatorCreativeTab} - i.e. it
+     * depends on the game mode. A survival player who opened the terminal therefore
+     * cached "no permissions", our {@code init()} switched the mode to creative a
+     * moment later, and vanilla's first {@code containerTick} saw the parameters had
+     * changed and rebuilt EVERY creative tab of the pack a second time. Measured in a
+     * 339-mod pack: 0.9-4.3 s per terminal open, two full rebuilds of every tab, and
+     * the probe in {@code probeTabParameters()} named it precisely
+     * ({@code permissions=true (false)} at the constructor, {@code (true)} on the first
+     * tick). Switching before the constructor means the cache already matches what the
+     * tick will compute, so the second rebuild disappears.
+     *
+     * <p>Static, because the switch happens before there is an instance to record it
+     * on; the instance adopts it in {@link #init()} and clears it when the mode is
+     * given back in {@code removed()}.
+     */
+    @Nullable
+    private static GameType pendingModeBeforeGui;
+
+    /**
      * Reflection resolved ONCE, not on every refresh.
      *
      * <p>{@code getMethod}/{@code getDeclaredField}/{@code setAccessible} are
@@ -208,6 +233,35 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
     // Lifecycle
     // ------------------------------------------------------------------
 
+    /**
+     * Puts the player into creative BEFORE one of our screens is constructed.
+     *
+     * <p><b>Call this immediately before {@code new Veloce...Screen(...)}.</b> The mode
+     * must already be creative when vanilla's {@code CreativeModeInventoryScreen}
+     * constructor runs, because that constructor builds and caches the creative tab
+     * parameters - including permissions, which are
+     * {@code player.canUseGameMasterBlocks() && displayOperatorCreativeTab} and therefore
+     * depend on the game mode. Switching in {@code init()} instead (which is what the code
+     * used to do) left the constructor with "no permissions" and the first tick with
+     * "permissions", so vanilla rebuilt every creative tab of the pack a second time:
+     * measured 0.9-4.3 s per terminal open in a 339-mod pack, twice.
+     *
+     * <p>The mode is given back in {@code removed()}, exactly as before - this method only
+     * moves WHEN the switch happens and remembers what to restore.
+     */
+    public static void prepareCreativeMode() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.gameMode == null) {
+            return;
+        }
+        if (pendingModeBeforeGui == null && !mc.gameMode.hasInfiniteItems()) {
+            // Recorded once: a second screen opened on top of the first (the filter picker
+            // over the terminal) must not overwrite the mode the player really had.
+            pendingModeBeforeGui = mc.gameMode.getPlayerMode();
+            mc.gameMode.setLocalMode(GameType.CREATIVE);
+        }
+    }
+
     @Override
     protected void init() {
         if (this.minecraft == null || this.minecraft.gameMode == null) {
@@ -215,10 +269,17 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
             return;
         }
         if (!this.minecraft.gameMode.hasInfiniteItems()) {
-            if (this.modeBeforeOpen == null) {
-                this.modeBeforeOpen = this.minecraft.gameMode.getPlayerMode();
+            // The fallback path: a screen built WITHOUT prepareCreativeMode() - vanilla's
+            // constructor has already cached the tab parameters by now, so this costs one
+            // extra rebuild of every tab on the first tick (see pendingModeBeforeGui).
+            if (pendingModeBeforeGui == null) {
+                pendingModeBeforeGui = this.minecraft.gameMode.getPlayerMode();
             }
             this.minecraft.gameMode.setLocalMode(GameType.CREATIVE);
+        }
+        if (pendingModeBeforeGui != null) {
+            // Whatever prepared the switch recorded the mode we owe the player back.
+            this.modeBeforeOpen = pendingModeBeforeGui;
         }
         super.init();
 
@@ -1520,6 +1581,8 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         if (this.modeBeforeOpen != null && this.minecraft != null && this.minecraft.gameMode != null) {
             this.minecraft.gameMode.setLocalMode(this.modeBeforeOpen);
             this.modeBeforeOpen = null;
+            // The debt is paid, so a screen opened later has to capture the mode again.
+            pendingModeBeforeGui = null;
         }
     }
 }
