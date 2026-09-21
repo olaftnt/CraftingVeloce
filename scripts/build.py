@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Builds craftingveloce-1.0.1-NeoForge-1.21.1.jar and deploys it to the testing profile.
+Builds craftingveloce-1.1.0-NeoForge-1.21.1.jar and deploys it to the testing profile.
 
 Usage:
     python3 scripts/build.py
@@ -54,8 +54,8 @@ def _testing_profile_mods():
 
 
 MODS = _testing_profile_mods()
-DEPLOYED = os.path.join(MODS, "craftingveloce-1.0.1-NeoForge-1.21.1.jar")
-JAR_NAME = "craftingveloce-1.0.1-NeoForge-1.21.1.jar"
+DEPLOYED = os.path.join(MODS, "craftingveloce-1.1.0-NeoForge-1.21.1.jar")
+JAR_NAME = "craftingveloce-1.1.0-NeoForge-1.21.1.jar"
 STAGING = "craftingveloce_jar_root"
 
 # The flat src/ tree became a Gradle module, so every guard that reads

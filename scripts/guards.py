@@ -42,7 +42,7 @@ import build  # noqa: E402  (path set up above)
 # classifier), the newest wins, which is what a human would pick.
 def _default_jar():
     fallback = os.path.join(ROOT, "neoforge", "build", "libs",
-                            "craftingveloce-1.0.1-NeoForge-1.21.1.jar")
+                            "craftingveloce-1.1.0-NeoForge-1.21.1.jar")
     libs = os.path.join(ROOT, "neoforge", "build", "libs")
     try:
         jars = [os.path.join(libs, f) for f in os.listdir(libs) if f.endswith(".jar")]

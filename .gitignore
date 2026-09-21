@@ -36,3 +36,9 @@ run-tests/
 
 # Generated classpath dump (machine-specific absolute paths).
 scripts/cp.txt
+
+# Working notes for the Alchemistry integration: CSV/MD dumps and browser
+# generators made while planning the recipe data. Input to a decision, not a
+# part of the mod or of its build - the shipped recipes are the JSON files
+# under data/.
+alchemistry-plan/
