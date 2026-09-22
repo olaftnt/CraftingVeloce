@@ -907,7 +907,7 @@ return net;
                             net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
                             pos, ep.getAccessSide()) != null;
             case REFINED_STORAGE ->
-                    RefinedStorageHelper.hasRSNetwork(level, pos, ep.getAccessSide());
+                    com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded() && RefinedStorageHelper.hasRSNetwork(level, pos, ep.getAccessSide());
             // A crafter buffer is not a storage in the world - we ask about the
             // SAME rule as on registration (the block STATE decides about the
             // buffer). The block type alone is not enough: after swapping the
@@ -1013,7 +1013,11 @@ return net;
         return world;
     }
 
-    public VelocePipeNetwork getNetworkById(UUID id) {
+    public java.util.Collection<VelocePipeNetwork> getNetworks() {
+        return networks.values();
+    }
+
+    public VelocePipeNetwork getNetwork(UUID id) {
         return networks.get(id);
     }
 

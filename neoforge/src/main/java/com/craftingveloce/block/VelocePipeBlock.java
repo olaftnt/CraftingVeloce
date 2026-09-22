@@ -354,7 +354,7 @@ public class VelocePipeBlock extends BaseEntityBlock implements EntityBlock, Sim
                     || neighborState.getBlock() instanceof com.craftingveloce.block.VeloceCraftingTableBlock;
             boolean isInventory = !isExtractor && (canConnectToInventory(world, neighborPos, side.getOpposite())
                     || (com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded()
-                            && RefinedStorageHelper.hasRSNetwork(world, neighborPos, side.getOpposite())));
+                            && (com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded() && RefinedStorageHelper.hasRSNetwork(world, neighborPos, side.getOpposite()))));
 
             if (isInventory) {
                 boolean extracting = pipeBE.isExtracting(side);

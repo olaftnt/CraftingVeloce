@@ -383,7 +383,7 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         }
 
         // 2. Check Refined Storage
-        boolean hasRS = RefinedStorageHelper.hasRSNetwork(level, targetPos, connDir.getOpposite());
+        boolean hasRS = com.craftingveloce.compat.VeloceMods.REFINED_STORAGE.isLoaded() && RefinedStorageHelper.hasRSNetwork(level, targetPos, connDir.getOpposite());
         player.sendSystemMessage(Component.literal("§7Refined Storage Network Detected: " + (hasRS ? "§aYES" : "§cNO")));
         if (hasRS) {
             Map<String, Long> rsItems = RefinedStorageHelper.queryRSNetwork(level, targetPos, connDir.getOpposite());

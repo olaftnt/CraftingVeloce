@@ -373,8 +373,30 @@ public class VelocePipeNetwork {
         }
         com.craftingveloce.util.VeloceProfiler.count(
                 "server.network.getAllItemCounts.scan", endpoints.size());
+        Map<Item, Long> oldAggregate = aggregateCache;
         aggregateCache = total;
         aggregateCacheTick = now;
+        
+        if (oldAggregate != null) {
+            java.util.Set<Item> changedItems = new java.util.HashSet<>();
+            for (Map.Entry<Item, Long> entry : total.entrySet()) {
+                long oldCount = oldAggregate.getOrDefault(entry.getKey(), 0L);
+                if (oldCount != entry.getValue()) {
+                    changedItems.add(entry.getKey());
+                }
+            }
+            for (Map.Entry<Item, Long> entry : oldAggregate.entrySet()) {
+                if (!total.containsKey(entry.getKey())) {
+                    changedItems.add(entry.getKey());
+                }
+            }
+            
+            if (!changedItems.isEmpty()) {
+                // Invalidate affected items in the craftable memo
+                java.util.Set<Item> affected = com.craftingveloce.crafting.VeloceRecipeGraph.get(level).affectedBy(changedItems, 2000);
+                craftableMemo.keySet().removeAll(affected);
+            }
+        }
 
         long scanNanos = System.nanoTime() - scanStart;
         if (scanNanos > SLOW_ENDPOINT_NS || skipped > 0) {

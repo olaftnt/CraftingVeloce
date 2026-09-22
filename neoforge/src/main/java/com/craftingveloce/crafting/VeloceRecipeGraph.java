@@ -107,7 +107,7 @@ public final class VeloceRecipeGraph {
             var recipe = holder.value();
             // `isSpecial()` alone is NOT enough: mod recipes are marked that way
             // too (all of Mekanism) and were being cut out of the graph.
-            if (!FREE_TYPES.contains(recipe.getType())
+            if (!VeloceRecipeFamilies.all().contains(recipe.getType())
                     || VeloceRecipeRegistry.isVanillaSpecial(recipe)) {
                 continue;
             }

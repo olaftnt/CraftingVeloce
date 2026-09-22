@@ -61,7 +61,7 @@ public final class VeloceAutoCrafter {
      * <p>It used to be 0 here, i.e. no time limit - the only safety valve was an
      * operation counter, and that is far too late to save a tick.
      */
-    private static final long CRAFT_PLAN_BUDGET_NS = 50_000_000L;
+    private static final long CRAFT_PLAN_BUDGET_NS = 150_000_000L;
 
     /** Limit of planning steps for real crafting. */
     private static final int CRAFT_MAX_STEPS = 8192;
@@ -127,14 +127,14 @@ public final class VeloceAutoCrafter {
      * <p>This runs on the server thread, so it must leave headroom for the rest of
      * the tick.
      *
-     * <p><b>Why 25 ms and not 8.</b> At 8 ms the budget broke halfway through a page
-     * (in the log: "instant craftable count for 45 item(s) -> 17 result(s)
-     * in 8 ms (complete=false)"). And with an incomplete response the client
-     * DELIBERATELY keeps the old numbers for the unfinished items - so the user saw
-     * a stale "how many can be made" and that is exactly the reported bug. 25 ms
-     * happens only on opening/scrolling a page, not every tick, so it is safe.
+     * How much time the batch estimation in the terminal gets by default.
+     *
+     * <p>Higher than previously (50 ms instead of 25 ms) so that deep recipe trees
+     * (like Mekanism or Create) can be fully resolved without timing out. Now that
+     * caching is fixed and invalidates precisely, we rarely compute large batches
+     * from scratch.
      */
-    public static final long DEFAULT_ESTIMATE_BUDGET_NS = 25_000_000L;
+    public static final long DEFAULT_ESTIMATE_BUDGET_NS = 50_000_000L;
 
     private VeloceAutoCrafter() {
     }

@@ -34,6 +34,8 @@ public class CVDebugCommand {
             CVCommandRoot.root()
                 .then(Commands.literal("debug")
                     .executes(CVDebugCommand::executeDebug))
+                .then(Commands.literal("resetcache")
+                    .executes(CVDebugCommand::executeResetCache))
                 .then(Commands.literal("block")
                     .executes(BlockProbeCommand::describe))
                 .then(Commands.literal("perf")
@@ -650,5 +652,16 @@ public class CVDebugCommand {
             player.sendSystemMessage(Component.literal("§c[CraftingVeloce] Looked-at block is not a Veloce Terminal or Pipe! (Found: " + (be != null ? be.getClass().getSimpleName() : player.level().getBlockState(pos).getBlock().getName().getString()) + ")"));
             return 0;
         }
+    }
+
+    private static int executeResetCache(CommandContext<CommandSourceStack> context) {
+        CommandSourceStack source = context.getSource();
+        ServerLevel sl = source.getLevel();
+        VelocePipeNetworkManager manager = VelocePipeNetworkManager.get(sl);
+        for (VelocePipeNetwork net : manager.getNetworks()) {
+            net.getCraftableMemo().clear();
+        }
+        source.sendSuccess(() -> Component.literal("§a[CraftingVeloce] Cache reset for " + manager.getNetworks().size() + " networks."), true);
+        return 1;
     }
 }
