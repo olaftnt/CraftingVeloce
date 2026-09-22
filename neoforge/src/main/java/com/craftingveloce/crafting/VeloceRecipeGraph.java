@@ -108,7 +108,7 @@ public final class VeloceRecipeGraph {
             // `isSpecial()` alone is NOT enough: mod recipes are marked that way
             // too (all of Mekanism) and were being cut out of the graph.
             if (!VeloceRecipeFamilies.all().contains(recipe.getType())
-                    || VeloceRecipeRegistry.isVanillaSpecial(recipe)) {
+                    || VeloceRecipeRegistry.isVanillaSpecial(holder)) {
                 continue;
             }
             ItemStack result;

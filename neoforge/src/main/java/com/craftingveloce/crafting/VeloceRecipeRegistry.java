@@ -91,12 +91,11 @@ public final class VeloceRecipeRegistry {
      * use the same flag for ordinary recipes (Mekanism: all of them), so
      * rejecting on {@code isSpecial()} alone cut whole mods out of the index.
      */
-    public static boolean isVanillaSpecial(net.minecraft.world.item.crafting.Recipe<?> recipe) {
-        if (!recipe.isSpecial()) {
+    public static boolean isVanillaSpecial(net.minecraft.world.item.crafting.RecipeHolder<?> holder) {
+        if (!holder.value().isSpecial()) {
             return false;
         }
-        ResourceLocation typeId = BuiltInRegistries.RECIPE_TYPE.getKey(recipe.getType());
-        return typeId != null && "minecraft".equals(typeId.getNamespace());
+        return "minecraft".equals(holder.id().getNamespace());
     }
 
     /**
@@ -457,7 +456,7 @@ public final class VeloceRecipeRegistry {
         // (Mekanism does so with ALL of its own) also return true and were
         // therefore silently thrown out of the index - no module from another mod
         // would have anything to compute. So we check the namespace of the recipe type.
-        if (isVanillaSpecial(recipe)) {
+        if (isVanillaSpecial(holder)) {
             return;
         }
         ItemStack result;

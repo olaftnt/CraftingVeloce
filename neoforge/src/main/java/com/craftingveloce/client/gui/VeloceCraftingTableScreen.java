@@ -186,7 +186,7 @@ public class VeloceCraftingTableScreen extends VeloceCreativeScreen {
             // this flag for ordinary recipes (Mekanism: all of its own),
             // so rejecting on isSpecial() alone cut whole mods out of the GUI.
             // The same rule as in the server index (single source of truth).
-            if (com.craftingveloce.crafting.VeloceRecipeRegistry.isVanillaSpecial(recipe)) {
+            if (com.craftingveloce.crafting.VeloceRecipeRegistry.isVanillaSpecial(holder)) {
                 continue;
             }
             ItemStack result;
