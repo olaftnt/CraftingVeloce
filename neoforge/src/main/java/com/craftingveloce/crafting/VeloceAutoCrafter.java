@@ -1008,6 +1008,19 @@ public final class VeloceAutoCrafter {
 
     /** Plan: how many times to run which recipe, in execution order. */
     static final class Plan {
+        static final class FailedAttempt {
+            long amount;
+            long stockId;
+            FailedAttempt(long amount, long stockId) {
+                this.amount = amount;
+                this.stockId = stockId;
+            }
+        }
+        
+        long nextStockId = 1;
+        long currentStockId = 0;
+        final java.util.Map<net.minecraft.world.item.Item, FailedAttempt> failedAmounts = new java.util.HashMap<>();
+        
         final List<PlannedRun> runs = new ArrayList<>();
 
 
@@ -1063,6 +1076,11 @@ public final class VeloceAutoCrafter {
         if (amount <= 0) {
             return true;
         }
+        
+        Plan.FailedAttempt failure = plan.failedAmounts.get(item);
+        if (failure != null && failure.stockId == plan.currentStockId && failure.amount <= amount) {
+            return false;
+        }
         // We check the time budget ALWAYS, right on entry.
         //
         // The BUG that hung here before: this condition was pulled inside the
@@ -1083,7 +1101,10 @@ public final class VeloceAutoCrafter {
             // First consume what is already in stock.
             long have = stock.getOrDefault(item, 0L);
             long fromStock = Math.min(have, amount);
-            stock.put(item, have - fromStock);
+            if (fromStock > 0) {
+                stock.put(item, have - fromStock);
+                plan.currentStockId = plan.nextStockId++;
+            }
             long remaining = amount - fromStock;
             if (remaining <= 0) {
                 return true;
@@ -1126,6 +1147,7 @@ public final class VeloceAutoCrafter {
             for (ProcessingEntry recipe : recipes) {
                 Map<Item, Long> snapshot = new HashMap<>(stock);
                 int planMark = plan.runs.size();
+                long snapshotStockId = plan.currentStockId;
                 if (planRecipe(level, network, enabled, preferred, recipe, remaining, stock, plan, visiting, depth)) {
                     return true;
                 }
@@ -1133,7 +1155,9 @@ public final class VeloceAutoCrafter {
                 stock.clear();
                 stock.putAll(snapshot);
                 plan.rollbackTo(planMark);
+                plan.currentStockId = snapshotStockId;
             }
+            plan.failedAmounts.put(item, new Plan.FailedAttempt(amount, plan.currentStockId));
             return false;
         } finally {
             visiting.remove(item);
@@ -1210,6 +1234,7 @@ public final class VeloceAutoCrafter {
                 long avail = stock.getOrDefault(optItem, 0L);
                 if (avail >= need) {
                     stock.put(optItem, avail - need);
+                    plan.currentStockId = plan.nextStockId++;
                     supplied = true;
                     break;
                 }
@@ -1237,16 +1262,22 @@ public final class VeloceAutoCrafter {
                     long lacking = need - avail;
                     Map<Item, Long> snap2 = new HashMap<>(stock);
                     int mark2 = plan.runs.size();
-                    stock.put(optItem, 0L);
+                    long snap2StockId = plan.currentStockId;
+                    if (avail > 0) {
+                        stock.put(optItem, 0L);
+                        plan.currentStockId = plan.nextStockId++;
+                    }
                     if (plan(level, network, enabled, preferred, optItem, lacking, stock, plan, visiting, depth + 1)) {
                         long produced = stock.getOrDefault(optItem, 0L);
                         stock.put(optItem, Math.max(0L, produced - need));
+                        plan.currentStockId = plan.nextStockId++;
                         supplied = true;
                         break;
                     }
                     stock.clear();
                     stock.putAll(snap2);
                     plan.rollbackTo(mark2);
+                    plan.currentStockId = snap2StockId;
                 }
             }
 
@@ -1942,7 +1973,10 @@ public final class VeloceAutoCrafter {
         try {
             long have = stock.getOrDefault(item, 0L);
             long fromStock = Math.min(have, amount);
-            stock.put(item, have - fromStock);
+            if (fromStock > 0) {
+                stock.put(item, have - fromStock);
+                plan.currentStockId = plan.nextStockId++;
+            }
             long remaining = amount - fromStock;
             if (remaining <= 0) {
                 return true;
