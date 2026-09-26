@@ -52,6 +52,7 @@ public final class VeloceCaseContents {
         add(() -> VeloceRegistry.VELOCE_CRAFTING_TABLE.get(), () -> Blocks.CRAFTING_TABLE);
         add(() -> VeloceRegistry.VELOCE_CONTROLLER.get(), () -> Blocks.LECTERN);
         add(() -> VeloceRegistry.VELOCE_EXTRACTOR.get(), () -> Blocks.DISPENSER);
+        add(() -> VeloceRegistry.VELOCE_IMPORTER.get(), () -> Blocks.HOPPER);
         add(() -> VeloceRegistry.THRESHOLD_SENSOR.get(), () -> Blocks.OBSERVER);
         add(() -> VeloceRegistry.VELOCITY_FURNACE.get(), () -> Blocks.FURNACE);
         add(() -> VeloceRegistry.ELECTRIC_FURNACE.get(), () -> Blocks.BLAST_FURNACE);
