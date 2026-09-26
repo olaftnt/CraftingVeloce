@@ -1,21 +1,16 @@
 {
-  "type": "minecraft:crafting_shaped",
+  "type": "minecraft:crafting_shapeless",
   "category": "misc",
-  "key": {
-    "P": {
-      "item": "craftingveloce:veloce_pipe"
+  "ingredients": [
+    {
+      "item": "craftingveloce:veloce_integrale"
     },
-    "H": {
+    {
       "item": "minecraft:hopper"
     }
-  },
-  "pattern": [
-    " P ",
-    "PHP",
-    " P "
   ],
   "result": {
-    "count": 1,
-    "id": "craftingveloce:veloce_importer"
+    "id": "craftingveloce:veloce_importer",
+    "count": 1
   }
 }
