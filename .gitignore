@@ -42,3 +42,8 @@ scripts/cp.txt
 # part of the mod or of its build - the shipped recipes are the JSON files
 # under data/.
 alchemistry-plan/
+
+# Scratch and patch scripts
+patch_*.py
+revert_and_patch.py
+CheckMethods.*
