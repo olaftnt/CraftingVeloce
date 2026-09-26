@@ -24,6 +24,30 @@ import javax.annotation.Nullable;
 import com.craftingveloce.network.pipe.VeloceNetworkNode;
 
 public class VeloceImporterBlock extends BaseEntityBlock implements VeloceNetworkNode {
+    /** Casing cap properties: one per each side of the world. */
+    @Override
+    protected void createBlockStateDefinition(
+            net.minecraft.world.level.block.state.StateDefinition.Builder<
+                    net.minecraft.world.level.block.Block, BlockState> builder) {
+        super.createBlockStateDefinition(builder);
+        com.craftingveloce.block.VeloceIntegraleFrame.addProperties(builder);
+    }
+
+    /** On placement we immediately close the sides a cable comes in from. */
+    @Override
+    public BlockState getStateForPlacement(net.minecraft.world.item.context.BlockPlaceContext context) {
+        return com.craftingveloce.block.VeloceIntegraleFrame.withPlacementClosures(
+                context.getLevel(), context.getClickedPos(), defaultBlockState());
+    }
+
+    /** Closing the panel on the wall where a Veloce pipe stands. */
+    @Override
+    protected BlockState updateShape(BlockState state, net.minecraft.core.Direction facing,
+                                     BlockState facingState, net.minecraft.world.level.LevelAccessor world,
+                                     BlockPos pos, BlockPos facingPos) {
+        return com.craftingveloce.block.VeloceIntegraleFrame.withClosure(state, facing, facingState);
+    }
+
     @Override
     public boolean canConnectFrom(BlockState state, net.minecraft.core.Direction side) {
         return true;
@@ -36,10 +60,14 @@ public class VeloceImporterBlock extends BaseEntityBlock implements VeloceNetwor
 
     public VeloceImporterBlock() {
         super(BlockBehaviour.Properties.of()
-                .mapColor(MapColor.COLOR_GRAY)
+                .mapColor(MapColor.COLOR_PURPLE)
+                .sound(SoundType.METAL)
+                .strength(3.5F)
                 .requiresCorrectToolForDrops()
-                .strength(3.0F, 1200.0F)
-                .sound(SoundType.METAL));
+                .noOcclusion()
+                .isViewBlocking((state, world, pos) -> false)
+                .isSuffocating((state, world, pos) -> false)
+                .lightLevel(s -> 7));
     }
 
     @Override
