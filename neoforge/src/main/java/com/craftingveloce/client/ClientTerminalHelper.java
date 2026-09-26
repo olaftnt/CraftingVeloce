@@ -12,6 +12,9 @@ import java.util.Map;
 
 public class ClientTerminalHelper {
 
+    private static Map<Item, Long> lastReceivedItemCounts = null;
+    private static Map<Item, Long> lastReceivedCraftableCounts = null;
+
     public static void openTerminalScreen(BlockPos pos) {
         com.craftingveloce.util.VeloceLog.Gui.attempt(
                 com.craftingveloce.util.VeloceLog.Side.CLIENT,
@@ -38,6 +41,10 @@ public class ClientTerminalHelper {
                 com.craftingveloce.client.gui.VeloceCreativeScreen.prepareCreativeMode();
                 VeloceTerminalScreen screen = new VeloceTerminalScreen(
                         mc.player, mc.player.connection.enabledFeatures(), true, pos);
+                if (lastReceivedItemCounts != null) {
+                    screen.updateNetworkCounts(lastReceivedItemCounts,
+                            lastReceivedCraftableCounts != null ? lastReceivedCraftableCounts : Map.of());
+                }
                 try (var ignored2 = com.craftingveloce.util.VeloceProfiler.section("client.openTerminalScreen.setScreen")) {
                     mc.setScreen(screen);
                 }
@@ -55,6 +62,8 @@ public class ClientTerminalHelper {
      * world we start from a clean slate.
      */
     public static void clearSavedTerminalViews() {
+        lastReceivedItemCounts = null;
+        lastReceivedCraftableCounts = null;
         com.craftingveloce.client.gui.VeloceTerminalViewState.clearAll();
     }
 

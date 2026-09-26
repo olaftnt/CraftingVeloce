@@ -209,7 +209,11 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         Iterator<WeakReference<ServerPlayer>> it = activeWatchingPlayers.iterator();
         while (it.hasNext()) {
             ServerPlayer sp = it.next().get();
-            if (sp == null || sp.hasDisconnected() || sp.distanceToSqr(worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5) > 64.0) {
+            boolean distanceOk = sp != null && sp.distanceToSqr(worldPosition.getX() + 0.5, worldPosition.getY() + 0.5, worldPosition.getZ() + 0.5) <= 64.0;
+            if (sp != null && !distanceOk && com.craftingveloce.item.VeloceTabletItem.hasValidTabletFor(sp, worldPosition)) {
+                distanceOk = true;
+            }
+            if (sp == null || sp.hasDisconnected() || !distanceOk) {
                 it.remove();
             } else {
                 PacketDistributor.sendToPlayer(sp,

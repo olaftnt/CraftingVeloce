@@ -127,6 +127,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
             this.craftable.putAll(craftable);
             requestVisibleCounts(true);
         }
+        if (terminalPos != null) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                    new com.craftingveloce.network.TerminalWatcherPKT(terminalPos, true));
+        }
     }
 
     /**
@@ -187,6 +191,10 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
                 craftable.resetRequestState();
             }
             requestVisibleCounts(true);
+        }
+        if (terminalPos != null) {
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                    new com.craftingveloce.network.TerminalWatcherPKT(terminalPos, true));
         }
         // And a couple of seconds later, say what the screen actually ended up holding.
         // The server cannot see this: it knows a number was sent, not whether the screen

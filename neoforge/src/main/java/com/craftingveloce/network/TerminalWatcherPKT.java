@@ -63,6 +63,9 @@ public record TerminalWatcherPKT(BlockPos pos, boolean watching) implements Cust
             BlockEntity be = player.level().getBlockEntity(pkt.pos());
             if (be instanceof VeloceTerminalBlockEntity terminal) {
                 terminal.setPlayerWatching(player, pkt.watching());
+                if (pkt.watching()) {
+                    terminal.syncCountsToPlayer(player);
+                }
             }
         });
     }
