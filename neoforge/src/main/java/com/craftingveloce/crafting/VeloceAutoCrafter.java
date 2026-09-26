@@ -2155,7 +2155,7 @@ public final class VeloceAutoCrafter {
             }
             return ordered;
         }
-        return all;
+        return sortCompactingRecipesSnapshot(all, snapshot.stock());
     }
 
     /** Snapshot twin of {@link #countFurnaceOnly}. */
@@ -3470,8 +3470,95 @@ public final class VeloceAutoCrafter {
             return ordered;
         }
 
-        // 3. Without a preference: the default order (crafting before furnace).
-        return all;
+        // 3. Without a preference: prioritize non-compacting recipes when compacting inputs are not in stock
+        return sortCompactingRecipes(all, network, level);
+    }
+
+    private static boolean isNuggetToIngotRecipe(ProcessingEntry recipe) {
+        ItemStack primary = recipe.primaryResult();
+        if (primary.isEmpty() || !isIngot(primary.getItem())) {
+            return false;
+        }
+        if (recipe.ingredients().isEmpty()) {
+            return false;
+        }
+        long totalCount = 0;
+        Item firstItem = null;
+        for (int i = 0; i < recipe.ingredients().size(); i++) {
+            Ingredient ing = recipe.ingredients().get(i);
+            if (!hasOptions(ing)) continue;
+            totalCount += recipe.ingredientCount(i);
+            for (ItemStack opt : ing.getItems()) {
+                if (isNugget(opt.getItem())) {
+                    return true;
+                }
+                if (firstItem == null) {
+                    firstItem = opt.getItem();
+                } else if (firstItem != opt.getItem()) {
+                    return false;
+                }
+            }
+        }
+        return totalCount == 9;
+    }
+
+    private static List<ProcessingEntry> sortCompactingRecipes(
+            List<ProcessingEntry> recipes, VelocePipeNetwork network, ServerLevel level) {
+        if (recipes.size() <= 1) {
+            return recipes;
+        }
+        Map<Item, Long> counts = network != null ? network.getAllItemCounts(level) : Map.of();
+        List<ProcessingEntry> primary = new ArrayList<>(recipes.size());
+        List<ProcessingEntry> deprioritized = new ArrayList<>();
+        for (ProcessingEntry recipe : recipes) {
+            if (isNuggetToIngotRecipe(recipe) && !hasSufficientNuggetsInStockMap(counts, recipe)) {
+                deprioritized.add(recipe);
+            } else {
+                primary.add(recipe);
+            }
+        }
+        if (deprioritized.isEmpty()) {
+            return recipes;
+        }
+        primary.addAll(deprioritized);
+        return primary;
+    }
+
+    private static List<ProcessingEntry> sortCompactingRecipesSnapshot(
+            List<ProcessingEntry> recipes, Map<Item, Long> stock) {
+        if (recipes.size() <= 1) {
+            return recipes;
+        }
+        List<ProcessingEntry> primary = new ArrayList<>(recipes.size());
+        List<ProcessingEntry> deprioritized = new ArrayList<>();
+        for (ProcessingEntry recipe : recipes) {
+            if (isNuggetToIngotRecipe(recipe) && !hasSufficientNuggetsInStockMap(stock, recipe)) {
+                deprioritized.add(recipe);
+            } else {
+                primary.add(recipe);
+            }
+        }
+        if (deprioritized.isEmpty()) {
+            return recipes;
+        }
+        primary.addAll(deprioritized);
+        return primary;
+    }
+
+    private static boolean hasSufficientNuggetsInStockMap(
+            Map<Item, Long> stock, ProcessingEntry recipe) {
+        if (stock == null || stock.isEmpty()) {
+            return false;
+        }
+        long available = 0;
+        for (int i = 0; i < recipe.ingredients().size(); i++) {
+            Ingredient ing = recipe.ingredients().get(i);
+            if (!hasOptions(ing)) continue;
+            for (ItemStack opt : nonEmpty(ing)) {
+                available += stock.getOrDefault(opt.getItem(), 0L);
+            }
+        }
+        return available >= 9;
     }
 
         /**

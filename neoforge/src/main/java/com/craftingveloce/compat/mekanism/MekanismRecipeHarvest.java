@@ -181,6 +181,14 @@ public final class MekanismRecipeHarvest {
                 } else if (path.equals("bio")) {
                     chemIng = Ingredient.of(net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("mekanism:bio_fuel")));
                     chemCount = (int) Math.ceil(needed / 5.0); // usually 5mb
+                } else if (path.equals("osmium") || path.equals("liquid_osmium")) {
+                    Item osmiumIngot = net.minecraft.core.registries.BuiltInRegistries.ITEM.get(net.minecraft.resources.ResourceLocation.parse("mekanism:ingot_osmium"));
+                    if (osmiumIngot != null && osmiumIngot != net.minecraft.world.item.Items.AIR) {
+                        chemIng = Ingredient.of(osmiumIngot);
+                    } else {
+                        chemIng = Ingredient.of(net.minecraft.tags.ItemTags.create(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("c", "ingots/osmium")));
+                    }
+                    chemCount = (int) Math.max(1, Math.ceil(needed / 200.0));
                 }
             }
         }
