@@ -43,19 +43,8 @@ public class VeloceModuleMenu extends AbstractContainerMenu {
         // Battery slot - the same coordinates as in the furnace (130, 32). Only
         // energy machines: kinetic ones have nothing to charge.
         if (be instanceof com.craftingveloce.block.entity.VeloceFeModuleBlockEntity fe) {
-            this.addSlot(new Slot(fe.getBatterySlot(), 0,
-                    BATTERY_SLOT_X, BATTERY_SLOT_Y) {
-                @Override
-                public boolean mayPlace(ItemStack stack) {
-                    return com.craftingveloce.block.entity.VeloceFeModuleBlockEntity
-                            .isEnergyItem(stack);
-                }
-
-                @Override
-                public int getMaxStackSize() {
-                    return 1;
-                }
-            });
+            this.addSlot(new BatterySlot(fe.getBatterySlot(), 0,
+                    BATTERY_SLOT_X, BATTERY_SLOT_Y));
         }
 
         for (int row = 0; row < 3; row++) {
@@ -111,5 +100,21 @@ public class VeloceModuleMenu extends AbstractContainerMenu {
     @Override
     public boolean stillValid(Player player) {
         return player.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5) <= 64.0;
+    }
+
+    private static class BatterySlot extends Slot {
+        public BatterySlot(net.minecraft.world.Container container, int slot, int x, int y) {
+            super(container, slot, x, y);
+        }
+
+        @Override
+        public boolean mayPlace(ItemStack stack) {
+            return com.craftingveloce.block.entity.VeloceFeModuleBlockEntity.isEnergyItem(stack);
+        }
+
+        @Override
+        public int getMaxStackSize() {
+            return 1;
+        }
     }
 }
