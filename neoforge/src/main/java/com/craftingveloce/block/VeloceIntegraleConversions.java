@@ -63,6 +63,7 @@ public final class VeloceIntegraleConversions {
         add(Blocks.CRAFTING_TABLE, () -> VeloceRegistry.VELOCE_CRAFTING_TABLE.get());
         add(Blocks.LECTERN, () -> VeloceRegistry.VELOCE_CONTROLLER.get());
         add(Blocks.DISPENSER, () -> VeloceRegistry.VELOCE_EXTRACTOR.get());
+        add(Blocks.HOPPER, () -> VeloceRegistry.VELOCE_IMPORTER.get());
         add(Blocks.OBSERVER, () -> VeloceRegistry.THRESHOLD_SENSOR.get());
         add(Blocks.FURNACE, () -> VeloceRegistry.VELOCITY_FURNACE.get());
         // The second furnace takes the SECOND vanilla furnace, so the two do not
