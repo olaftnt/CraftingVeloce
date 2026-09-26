@@ -98,7 +98,7 @@ public final class VeloceAutoCrafter {
      * small</b>: with 5033 recipes the counter ran out halfway through the computation and
      * returned 0, so an oak fence made from 2 logs showed up as impossible.
      */
-    private static final int MAX_ESTIMATE_OPS = 5_000_000;
+    private static final int MAX_ESTIMATE_OPS = 15_000_000;
 
     /**
      * How many ingredient options the planner may RECURSE INTO per ingredient, per run.
