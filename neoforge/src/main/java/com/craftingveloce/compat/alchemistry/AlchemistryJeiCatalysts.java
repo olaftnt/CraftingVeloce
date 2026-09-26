@@ -31,8 +31,7 @@ public final class AlchemistryJeiCatalysts {
                 () -> AlchemistryBlocks.VELOCE_FUSION_MODULE_ITEM.get());
         VeloceJeiCatalysts.register("alchemistry:atomizer",
                 () -> AlchemistryBlocks.VELOCE_ATOMIZER_MODULE_ITEM.get());
-        VeloceJeiCatalysts.register("alchemistry:dissolver",
-                () -> AlchemistryBlocks.VELOCE_DISSOLVER_MODULE_ITEM.get());
+        // Removed because JEI does not support filtering catalysts per-recipe, so it would falsely advertise that the Veloce module can dissolve everything.
         VeloceJeiCatalysts.register("alchemistry:liquifier",
                 () -> AlchemistryBlocks.VELOCE_LIQUIFIER_MODULE_ITEM.get());
     }
