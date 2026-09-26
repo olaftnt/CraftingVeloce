@@ -24,6 +24,23 @@ import javax.annotation.Nullable;
 import com.craftingveloce.network.pipe.VeloceNetworkNode;
 
 public class VeloceImporterBlock extends BaseEntityBlock implements VeloceNetworkNode {
+    @Override
+    public java.util.List<net.minecraft.world.item.ItemStack> getDrops(
+            BlockState state, net.minecraft.world.level.storage.loot.LootParams.Builder params) {
+        java.util.List<net.minecraft.world.item.ItemStack> out = new java.util.ArrayList<>();
+        out.add(new net.minecraft.world.item.ItemStack(
+                com.craftingveloce.init.VeloceRegistry.VELOCE_INTEGRALE_ITEM.get()));
+        com.craftingveloce.block.VeloceIntegraleConversions.Conversion back = com.craftingveloce.block.VeloceIntegraleConversions.forResult(this);
+        if (back != null) {
+            net.minecraft.world.item.Item in =
+                    net.minecraft.core.registries.BuiltInRegistries.ITEM.get(back.inputId());
+            if (in != net.minecraft.world.item.Items.AIR) {
+                out.add(new net.minecraft.world.item.ItemStack(in));
+            }
+        }
+        return out;
+    }
+
     /** Casing cap properties: one per each side of the world. */
     @Override
     protected void createBlockStateDefinition(

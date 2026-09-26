@@ -61,7 +61,6 @@ public class CraftingVeloceMod {
 
                         // --- the machines made from vanilla blocks ---
                         output.accept(VeloceRegistry.VELOCE_EXTRACTOR_ITEM.get());
-                    output.accept(VeloceRegistry.VELOCE_IMPORTER_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CRAFTING_TABLE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CONTROLLER_ITEM.get());
                         // BUG this fixes: the furnaces were registered, but they

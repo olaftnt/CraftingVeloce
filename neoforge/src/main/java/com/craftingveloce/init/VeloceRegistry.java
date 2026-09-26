@@ -69,10 +69,6 @@ public class VeloceRegistry {
             () -> new com.craftingveloce.block.VeloceImporterBlock()
     );
 
-    public static final DeferredItem<net.minecraft.world.item.BlockItem> VELOCE_IMPORTER_ITEM = ITEMS.registerSimpleBlockItem(
-            "veloce_importer",
-            VELOCE_IMPORTER
-    );
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.craftingveloce.block.entity.VeloceImporterBlockEntity>> VELOCE_IMPORTER_BE =
             BLOCK_ENTITY_TYPES.register("veloce_importer", () -> createBEType(
