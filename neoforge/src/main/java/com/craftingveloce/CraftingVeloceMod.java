@@ -320,6 +320,13 @@ public class CraftingVeloceMod {
         modEventBus.addListener(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent.class, event -> {
             event.registerBlockEntity(
                     net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
+                    VeloceRegistry.VELOCE_IMPORTER_BE.get(),
+                    (be, side) -> side == null
+                            ? new net.neoforged.neoforge.items.wrapper.InvWrapper(be)
+                            : new net.neoforged.neoforge.items.wrapper.SidedInvWrapper(be, side)
+            );
+            event.registerBlockEntity(
+                    net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
                     VeloceRegistry.VELOCE_EXTRACTOR_BE.get(),
                     (be, side) -> new net.neoforged.neoforge.items.wrapper.InvWrapper(be.getOutputInventory())
             );
