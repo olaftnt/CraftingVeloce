@@ -152,5 +152,15 @@
   "item.craftingveloce.potion_turtle_master": "Potion of the Turtle Master",
   "config.jade.plugin_craftingveloce.module_info": "Veloce machine info",
   "config.jade.plugin_craftingveloce.module_info_desc": "Speed and SU draw, the energy accumulator, the pipe network state and the status (including \"not enough power\") for Veloce machines.",
-  "block.craftingveloce.veloce_importer": "Veloce Importer"
+  "block.craftingveloce.veloce_importer": "Veloce Importer",
+  "item.craftingveloce.veloce_tablet": "Veloce Wireless Tablet",
+  "key.categories.craftingveloce": "Crafting Veloce",
+  "key.craftingveloce.open_tablet": "Open Wireless Terminal",
+  "craftingveloce.message.tablet_linked": "Tablet linked to Veloce Terminal at %s, %s, %s",
+  "craftingveloce.message.tablet_not_linked": "Tablet is not linked to any Veloce Terminal.",
+  "craftingveloce.message.tablet_wrong_dimension": "Terminal is located in another dimension (%s).",
+  "craftingveloce.message.terminal_not_loaded": "Linked Terminal is not loaded or unreachable.",
+  "craftingveloce.message.no_linked_tablet": "No linked Veloce Tablet found in inventory.",
+  "tooltip.craftingveloce.tablet_linked": "Linked to: %s, %s, %s (%s)",
+  "tooltip.craftingveloce.tablet_unlinked": "Right-click on a Veloce Terminal to link"
 }

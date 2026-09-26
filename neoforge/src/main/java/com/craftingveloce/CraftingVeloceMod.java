@@ -55,6 +55,7 @@ public class CraftingVeloceMod {
                         // and the brewing stand had before it: registration and the tab are
                         // two separate places, and nothing in the build compares them.
                         output.accept(VeloceRegistry.VELOCE_WRENCH.get());
+                        output.accept(VeloceRegistry.VELOCE_TABLET.get());
                         // The frame EVERY machine is now made from. Without it in the
                         // tab there is no way to start a network and no way to test.
                         output.accept(VeloceRegistry.VELOCE_INTEGRALE_ITEM.get());
@@ -359,6 +360,21 @@ public class CraftingVeloceMod {
             // integrated server, and every `wait:` in a script would then measure a world
             // that is standing still. Installs nothing unless a script is configured.
             com.craftingveloce.client.VeloceTestPauseGuard.install();
+
+            modEventBus.addListener(
+                    net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent.class,
+                    event -> event.register(com.craftingveloce.client.VeloceKeyMappings.OPEN_TABLET_KEY));
+
+            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                    net.neoforged.neoforge.client.event.ClientTickEvent.Post.class,
+                    event -> {
+                        while (com.craftingveloce.client.VeloceKeyMappings.OPEN_TABLET_KEY.consumeClick()) {
+                            if (net.minecraft.client.Minecraft.getInstance().screen == null) {
+                                net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                                        new com.craftingveloce.network.OpenTabletFromKeyPKT());
+                            }
+                        }
+                    });
         }
 
         // Automatic test run: with -Dveloce.test.script=<path> the script runs on

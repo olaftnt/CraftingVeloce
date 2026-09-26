@@ -56,7 +56,9 @@ public record TerminalWatcherPKT(BlockPos pos, boolean watching) implements Cust
             // Safety check: we do not take the client's word on distance.
             if (player.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
                     pkt.pos().getZ() + 0.5) > 256.0) {
-                return;
+                if (!com.craftingveloce.item.VeloceTabletItem.hasValidTabletFor(player, pkt.pos())) {
+                    return;
+                }
             }
             BlockEntity be = player.level().getBlockEntity(pkt.pos());
             if (be instanceof VeloceTerminalBlockEntity terminal) {

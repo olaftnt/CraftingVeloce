@@ -71,7 +71,9 @@ public record TerminalPullItemPKT(BlockPos terminalPos, ItemStack itemStack, int
             if (pkt.itemStack().isEmpty() || pkt.count() <= 0) return;
 
             if (serverPlayer.distanceToSqr(pkt.terminalPos().getX() + 0.5, pkt.terminalPos().getY() + 0.5, pkt.terminalPos().getZ() + 0.5) > 64.0) {
-                return;
+                if (!com.craftingveloce.item.VeloceTabletItem.hasValidTabletFor(serverPlayer, pkt.terminalPos())) {
+                    return;
+                }
             }
 
             BlockEntity be = serverPlayer.level().getBlockEntity(pkt.terminalPos());

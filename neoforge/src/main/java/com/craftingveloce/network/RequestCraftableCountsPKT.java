@@ -103,7 +103,9 @@ public record RequestCraftableCountsPKT(BlockPos pos, List<Item> items)
             // the visible page).
             if (player.distanceToSqr(pkt.pos().getX() + 0.5, pkt.pos().getY() + 0.5,
                     pkt.pos().getZ() + 0.5) > 64.0) {
-                return;
+                if (player instanceof ServerPlayer sp && !com.craftingveloce.item.VeloceTabletItem.hasValidTabletFor(sp, pkt.pos())) {
+                    return;
+                }
             }
             // Branching by INTERFACE, not by a concrete block: thanks to that
             // the controller (and any future screen with numbers) works without

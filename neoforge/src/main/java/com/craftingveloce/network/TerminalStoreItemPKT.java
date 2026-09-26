@@ -65,7 +65,9 @@ public record TerminalStoreItemPKT(BlockPos terminalPos, int mode) implements Cu
             }
             if (player.distanceToSqr(pkt.terminalPos().getX() + 0.5, pkt.terminalPos().getY() + 0.5,
                     pkt.terminalPos().getZ() + 0.5) > 64.0) {
-                return;
+                if (!com.craftingveloce.item.VeloceTabletItem.hasValidTabletFor(player, pkt.terminalPos())) {
+                    return;
+                }
             }
             if (pkt.mode() < MODE_CURSOR || pkt.mode() > MODE_EVERYTHING) {
                 return;

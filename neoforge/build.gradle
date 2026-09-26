@@ -167,6 +167,7 @@ dependencies {
             "libs/chemlib-1.21.1-2.1.5.jar"
     )
     compileOnly alchemistryJars
+    compileOnly rootProject.files("libs/curios-neoforge-9.5.1+1.21.1.jar")
 
     // --- present in the dev run, so the module blocks exist and can be tested by hand ---
     //
@@ -220,6 +221,7 @@ processResources {
         include "data/craftingveloce/**"
         include "data/minecraft/**"
         include "data/c/**"
+        include "data/curios/**"
     }
     from(rootProject.file("src_meta")) {
         include "META-INF/**"

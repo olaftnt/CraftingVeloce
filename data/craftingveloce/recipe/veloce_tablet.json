@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "group": "craftingveloce",
+  "pattern": [
+    "IGI",
+    "RER",
+    "IPI"
+  ],
+  "key": {
+    "I": { "item": "minecraft:iron_ingot" },
+    "G": { "item": "minecraft:purple_stained_glass_pane" },
+    "R": { "item": "minecraft:redstone" },
+    "E": { "item": "minecraft:ender_pearl" },
+    "P": { "item": "craftingveloce:veloce_pipe" }
+  },
+  "result": { "id": "craftingveloce:veloce_tablet", "count": 1 }
+}

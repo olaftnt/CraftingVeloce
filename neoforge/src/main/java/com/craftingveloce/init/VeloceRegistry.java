@@ -182,6 +182,12 @@ public class VeloceRegistry {
             () -> new VeloceWrenchItem(new Item.Properties())
     );
 
+    // 4b. Veloce Wireless Tablet
+    public static final DeferredItem<com.craftingveloce.item.VeloceTabletItem> VELOCE_TABLET = ITEMS.register(
+            "veloce_tablet",
+            () -> new com.craftingveloce.item.VeloceTabletItem(new Item.Properties().stacksTo(1))
+    );
+
     // 5. Veloce Crafting Table (auto-crafter node)
     public static final DeferredBlock<com.craftingveloce.block.VeloceCraftingTableBlock> VELOCE_CRAFTING_TABLE = BLOCKS.register(
             "veloce_crafting_table",
