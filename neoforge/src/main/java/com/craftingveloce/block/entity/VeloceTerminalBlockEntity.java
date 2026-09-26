@@ -775,7 +775,7 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         } else {
             boolean includeHotbar = mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_EVERYTHING;
             var inv = player.getInventory();
-            for (int i = 0; i < inv.getContainerSize(); i++) {
+            for (int i = 0; i < 36; i++) {
                 // Slots 0..8 are the hotbar - a normal shift skips them.
                 if (!includeHotbar && i < 9) {
                     continue;
@@ -870,7 +870,7 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         boolean includeHotbar = mode == com.craftingveloce.network.TerminalStoreItemPKT.MODE_EVERYTHING;
         var inv = player.getInventory();
         // Slots 0..8 are the hotbar - a normal shift skips them.
-        for (int i = includeHotbar ? 0 : 9; i < inv.getContainerSize(); i++) {
+        for (int i = includeHotbar ? 0 : 9; i < 36; i++) {
             ItemStack st = inv.getItem(i);
             if (!st.isEmpty()) {
                 out.add(st);
