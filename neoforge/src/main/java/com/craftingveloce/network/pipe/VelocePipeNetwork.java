@@ -205,15 +205,24 @@ public class VelocePipeNetwork {
             return ItemStack.EMPTY;
         }
         ItemStack remaining = stack.copy();
+        
+        // Pass 1: Try to insert into endpoints that already contain this item (by proxy)
+        Item proxyItem = com.craftingveloce.util.VelocePotionMapper.getProxy(stack);
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {
-            if (remaining.isEmpty()) {
-                break;
+            if (remaining.isEmpty()) break;
+            if (endpoint.getType() == ConnectedEndpointInfo.Type.CRAFTING_BUFFER) continue;
+            if (endpoint.getCachedCounts().getOrDefault(proxyItem, 0L) > 0) {
+                remaining = endpoint.insertItemLeftover(level, remaining);
             }
-            if (endpoint.getType() == ConnectedEndpointInfo.Type.CRAFTING_BUFFER) {
-                continue;   // a crafter buffer is not a storage
-            }
+        }
+        
+        // Pass 2: Insert into any available endpoint
+        for (ConnectedEndpointInfo endpoint : endpoints.values()) {
+            if (remaining.isEmpty()) break;
+            if (endpoint.getType() == ConnectedEndpointInfo.Type.CRAFTING_BUFFER) continue;
             remaining = endpoint.insertItemLeftover(level, remaining);
         }
+        
         if (remaining.getCount() < stack.getCount()) {
             invalidateAggregateCache();
         }

@@ -61,6 +61,7 @@ public class CraftingVeloceMod {
 
                         // --- the machines made from vanilla blocks ---
                         output.accept(VeloceRegistry.VELOCE_EXTRACTOR_ITEM.get());
+                    output.accept(VeloceRegistry.VELOCE_IMPORTER_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CRAFTING_TABLE_ITEM.get());
                         output.accept(VeloceRegistry.VELOCE_CONTROLLER_ITEM.get());
                         // BUG this fixes: the furnaces were registered, but they
@@ -244,6 +245,7 @@ public class CraftingVeloceMod {
             try (var ignored = com.craftingveloce.util.VeloceProfiler
                     .sectionAlways("load.client.menuScreens")) {
             event.register(VeloceRegistry.VELOCE_EXTRACTOR_MENU.get(), com.craftingveloce.client.gui.VeloceExtractorScreen::new);
+            event.register(VeloceRegistry.VELOCE_IMPORTER_MENU.get(), com.craftingveloce.client.gui.VeloceImporterScreen::new);
             event.register(VeloceRegistry.VELOCE_KINETIC_MENU.get(),
                     com.craftingveloce.client.gui.VeloceKineticScreen::new);
             event.register(VeloceRegistry.VELOCE_MODULE_MENU.get(),
