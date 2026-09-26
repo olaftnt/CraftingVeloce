@@ -230,6 +230,8 @@ public class CraftingVeloceMod {
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(VeloceRegistry.VELOCE_EXTRACTOR_BE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
+                    event.registerBlockEntityRenderer(VeloceRegistry.VELOCE_IMPORTER_BE.get(),
+                            com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(VeloceRegistry.THRESHOLD_SENSOR_BE.get(),
                             com.craftingveloce.client.render.VeloceCaseRenderer::new);
                     event.registerBlockEntityRenderer(VeloceRegistry.VELOCITY_FURNACE_BE.get(),
