@@ -1020,7 +1020,7 @@ public final class VeloceAutoCrafter {
         
         long nextStockId = 1;
         long currentStockId = 0;
-        final java.util.Map<net.minecraft.world.item.Item, FailedAttempt> failedAmounts = new java.util.HashMap<>();
+        final java.util.Map<String, FailedAttempt> failedAmounts = new java.util.HashMap<>();
         
         final List<PlannedRun> runs = new ArrayList<>();
 
@@ -1073,13 +1073,13 @@ public final class VeloceAutoCrafter {
                                 Set<Item> enabled,
                                 Map<Item, ResourceLocation> preferred,
                                 net.minecraft.world.item.ItemStack targetStack, long amount,
-                                Map<Item, Long> stock, Plan plan, Set<Item> visiting, int depth) {
+                                Map<Item, Long> stock, Plan plan, Set<String> visiting, int depth) {
         Item item = targetStack.getItem();
         if (amount <= 0) {
             return true;
         }
-        
-        Plan.FailedAttempt failure = plan.failedAmounts.get(item);
+        String stackKey = item.toString() + targetStack.getComponents().hashCode();
+        Plan.FailedAttempt failure = plan.failedAmounts.get(stackKey);
         if (failure != null && failure.stockId == plan.currentStockId && failure.amount <= amount) {
             return false;
         }
@@ -1096,7 +1096,7 @@ public final class VeloceAutoCrafter {
         if (depth > CRAFT_MAX_DEPTH || plan.runs.size() > CRAFT_MAX_STEPS) {
             return false;
         }
-        if (!visiting.add(item)) {
+        if (!visiting.add(stackKey)) {
             return false;   // recipe cycle
         }
         try {
@@ -1159,10 +1159,10 @@ public final class VeloceAutoCrafter {
                 plan.rollbackTo(planMark);
                 plan.currentStockId = snapshotStockId;
             }
-            plan.failedAmounts.put(item, new Plan.FailedAttempt(amount, plan.currentStockId));
+            plan.failedAmounts.put(stackKey, new Plan.FailedAttempt(amount, plan.currentStockId));
             return false;
         } finally {
-            visiting.remove(item);
+            visiting.remove(stackKey);
         }
     }
 
@@ -1175,7 +1175,7 @@ public final class VeloceAutoCrafter {
                                       Map<Item, ResourceLocation> preferred,
                                       ProcessingEntry recipe, long amount,
                                       Map<Item, Long> stock, Plan plan,
-                                      Set<Item> visiting, int depth) {
+                                      Set<String> visiting, int depth) {
         // How many units ONE run yields: the primary result times its count.
         //
         // We compute from the PRIMARY result (the first guaranteed one), not from
@@ -1959,7 +1959,7 @@ public final class VeloceAutoCrafter {
     /** Snapshot twin of {@link #plan}. */
     private static boolean planSnapshot(VeloceCountSnapshot snapshot, Item item, long amount,
                                         Map<Item, Long> stock, Plan plan,
-                                        Set<Item> visiting, int depth) {
+                                        Set<String> visiting, int depth) {
         if (amount <= 0) {
             return true;
         }
@@ -1969,7 +1969,7 @@ public final class VeloceAutoCrafter {
         if (depth > CRAFT_MAX_DEPTH || plan.runs.size() > CRAFT_MAX_STEPS) {
             return false;
         }
-        if (!visiting.add(item)) {
+        if (!visiting.add(item.toString())) {
             return false;   // recipe cycle
         }
         try {
@@ -2004,7 +2004,7 @@ public final class VeloceAutoCrafter {
             }
             return false;
         } finally {
-            visiting.remove(item);
+            visiting.remove(item.toString());
         }
     }
 
@@ -2012,7 +2012,7 @@ public final class VeloceAutoCrafter {
     private static boolean planRecipeSnapshot(VeloceCountSnapshot snapshot,
                                               ProcessingEntry recipe, long amount,
                                               Map<Item, Long> stock, Plan plan,
-                                              Set<Item> visiting, int depth) {
+                                              Set<String> visiting, int depth) {
         ItemStack primary = recipe.primaryResult();
         long perCraft = Math.max(1, primary.getCount());
         long times = (amount + perCraft - 1) / perCraft;
@@ -2222,12 +2222,12 @@ public final class VeloceAutoCrafter {
     /** Snapshot twin of {@link #maxYieldPerRawUnit}. */
     private static double maxYieldPerRawUnitSnapshot(VeloceCountSnapshot snapshot, Item item,
                                                      Map<Item, Double> memo,
-                                                     Set<Item> visiting, int depth) {
+                                                     Set<String> visiting, int depth) {
         Double cached = memo.get(item);
         if (cached != null) {
             return cached;
         }
-        if (depth >= UPPER_BOUND_MAX_DEPTH || !visiting.add(item)) {
+        if (depth >= UPPER_BOUND_MAX_DEPTH || !visiting.add(item.toString())) {
             return 1.0;
         }
         try {
@@ -2245,7 +2245,7 @@ public final class VeloceAutoCrafter {
             memo.put(item, best);
             return best;
         } finally {
-            visiting.remove(item);
+            visiting.remove(item.toString());
         }
     }
 
@@ -2253,7 +2253,7 @@ public final class VeloceAutoCrafter {
     private static double rawCostOfRecipeSnapshot(VeloceCountSnapshot snapshot,
                                                   ProcessingEntry recipe,
                                                   Map<Item, Double> memo,
-                                                  Set<Item> visiting, int depth) {
+                                                  Set<String> visiting, int depth) {
         double cost = 0.0;
         List<Ingredient> ingredientList = recipe.ingredients();
         for (int ingIndex = 0; ingIndex < ingredientList.size(); ingIndex++) {
@@ -2351,13 +2351,13 @@ public final class VeloceAutoCrafter {
      */
     private static double maxYieldPerRawUnit(ServerLevel level, VelocePipeNetwork network,
                                              Item item,
-                                             Map<Item, Double> memo, Set<Item> visiting,
+                                             Map<Item, Double> memo, Set<String> visiting,
                                              int depth, boolean heatAvailable) {
         Double cached = memo.get(item);
         if (cached != null) {
             return cached;
         }
-        if (depth >= UPPER_BOUND_MAX_DEPTH || !visiting.add(item)) {
+        if (depth >= UPPER_BOUND_MAX_DEPTH || !visiting.add(item.toString())) {
             return 1.0;
         }
         try {
@@ -2376,7 +2376,7 @@ public final class VeloceAutoCrafter {
             memo.put(item, best);
             return best;
         } finally {
-            visiting.remove(item);
+            visiting.remove(item.toString());
         }
     }
 
@@ -2388,7 +2388,7 @@ public final class VeloceAutoCrafter {
      */
     private static double rawCostOfRecipe(ServerLevel level, VelocePipeNetwork network,
                                           ProcessingEntry recipe,
-                                          Map<Item, Double> memo, Set<Item> visiting,
+                                          Map<Item, Double> memo, Set<String> visiting,
                                           int depth, boolean heatAvailable) {
         double cost = 0.0;
         List<Ingredient> ingredientList = recipe.ingredients();
@@ -2715,7 +2715,7 @@ public final class VeloceAutoCrafter {
      */
     private static void collectMissing(ServerLevel level, Context ctx, Item item,
                                        Map<Item, Long> pool, long amount,
-                                       Set<Item> visiting, int depth,
+                                       Set<String> visiting, int depth,
                                        java.util.Map<Item, Long> absent,
                                        java.util.Map<Item, Long> unresolved,
                                        int[] budget) {
@@ -2724,7 +2724,7 @@ public final class VeloceAutoCrafter {
             pool.put(item, have - amount);     // SPENT - the next slot sees less, like the planner
             return;
         }
-        if (budget[0]-- <= 0 || depth >= MISSING_MAX_DEPTH || !visiting.add(item)) {
+        if (budget[0]-- <= 0 || depth >= MISSING_MAX_DEPTH || !visiting.add(item.toString())) {
             // Could not decide. Not "fine" (a cycle is not proof of availability), and not a
             // shortfall either - the largest single requirement is the honest number here, not
             // the sum over the branches, which is what inflated a clock to "72x gold ingot".
@@ -2801,7 +2801,7 @@ public final class VeloceAutoCrafter {
                 }
             }
         } finally {
-            visiting.remove(item);
+            visiting.remove(item.toString());
         }
     }
 
