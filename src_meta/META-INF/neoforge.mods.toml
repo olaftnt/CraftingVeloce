@@ -4,7 +4,7 @@ license="MIT License"
 
 [[mods]]
 modId="craftingveloce"
-version="1.1.7"
+version="1.1.8"
 displayName="CraftingVeloce"
 authors="olafek"
 # displayURL and logoFile MUST sit inside [[mods]], not at the top of the file.

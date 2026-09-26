@@ -353,8 +353,8 @@ public final class VeloceAutoCrafter {
      * enabled.
      */
     public static CraftResult ensureAvailable(ServerLevel level, VelocePipeNetwork network,
-                                              Item item, int count, Context ctx) {
-        return ensureAvailable(level, network, item, count, ctx, CRAFT_PLAN_BUDGET_NS);
+                                              net.minecraft.world.item.ItemStack requestedTarget, int count, Context ctx) {
+        return ensureAvailable(level, network, requestedTarget, count, ctx, CRAFT_PLAN_BUDGET_NS);
     }
 
     /**
@@ -364,8 +364,9 @@ public final class VeloceAutoCrafter {
      * player-task budget - otherwise one device eats the tick.
      */
     public static CraftResult ensureAvailable(ServerLevel level, VelocePipeNetwork network,
-                                              Item item, int count, Context ctx,
+                                              net.minecraft.world.item.ItemStack requestedTarget, int count, Context ctx,
                                               long planBudgetNanos) {
+        Item item = requestedTarget.getItem();
         if (count <= 0) {
             return CraftResult.fail("craftingveloce.craft.error.amount");
         }
@@ -463,7 +464,7 @@ public final class VeloceAutoCrafter {
         // How much we MANAGED to plan (may be less than missing).
         long planned = missing;
 
-        if (!plan(level, ctx.network, ctx.enabledItems, ctx.preferred, item, missing, stock, plan, new HashSet<>(), 0)) {
+        if (!plan(level, ctx.network, ctx.enabledItems, ctx.preferred, requestedTarget, missing, stock, plan, new HashSet<>(), 0)) {
             if (estimateAborted()) {
                 VeloceLog.Craft.failure(VeloceLog.Side.SERVER,
                         "planning for %s x%d exceeded the %d ms budget - recipe tree too complex",
@@ -1071,8 +1072,9 @@ public final class VeloceAutoCrafter {
     private static boolean plan(ServerLevel level, VelocePipeNetwork network,
                                 Set<Item> enabled,
                                 Map<Item, ResourceLocation> preferred,
-                                Item item, long amount,
+                                net.minecraft.world.item.ItemStack targetStack, long amount,
                                 Map<Item, Long> stock, Plan plan, Set<Item> visiting, int depth) {
+        Item item = targetStack.getItem();
         if (amount <= 0) {
             return true;
         }
@@ -1130,7 +1132,7 @@ public final class VeloceAutoCrafter {
             // the heat budget runs out, the furnace stops being an option - just as
             // it would stop being one if ingredients were missing.
             List<ProcessingEntry> recipes =
-                    orderRecipes(level, network, item, preferred, plan.heatRemaining > 0,
+                    orderRecipes(level, network, targetStack, preferred, plan.heatRemaining > 0,
                             network.prefersFurnace(item));
             if (recipes.isEmpty()) {
                 // NOTHING can make this item. Deeper recording used to name it here, and that was
@@ -1267,7 +1269,7 @@ public final class VeloceAutoCrafter {
                         stock.put(optItem, 0L);
                         plan.currentStockId = plan.nextStockId++;
                     }
-                    if (plan(level, network, enabled, preferred, optItem, lacking, stock, plan, visiting, depth + 1)) {
+                    if (plan(level, network, enabled, preferred, opt, lacking, stock, plan, visiting, depth + 1)) {
                         long produced = stock.getOrDefault(optItem, 0L);
                         stock.put(optItem, Math.max(0L, produced - need));
                         plan.currentStockId = plan.nextStockId++;
@@ -1479,7 +1481,7 @@ public final class VeloceAutoCrafter {
             Map<Item, Long> copy = new HashMap<>(stock);
             Plan candidate = new Plan(heatOps);
             long startNanos = System.nanoTime();
-            boolean ok = plan(level, network, enabled, preferred, item, amount, copy, candidate,
+            boolean ok = plan(level, network, enabled, preferred, new net.minecraft.world.item.ItemStack(item), amount, copy, candidate,
                     new HashSet<>(), 0);
             VeloceCraftTrace.log("plan: attempt %d units -> %s (runs=%d, %d ms, heat=%d, abort=%s)",
                     amount, ok ? "OK" : "NO", candidate.runs.size(),
@@ -1507,7 +1509,7 @@ public final class VeloceAutoCrafter {
             startEstimate(budgetNanos);
             Map<Item, Long> copy = new HashMap<>(stock);
             Plan candidate = new Plan(heatOps);
-            if (plan(level, network, enabled, preferred, item, mid, copy, candidate,
+            if (plan(level, network, enabled, preferred, new net.minecraft.world.item.ItemStack(item), mid, copy, candidate,
                     new HashSet<>(), 0)) {
                 found = mid;
                 best = candidate;
@@ -2730,7 +2732,7 @@ public final class VeloceAutoCrafter {
             return;
         }
         try {
-            List<ProcessingEntry> recipes = orderRecipes(level, ctx.network, item, ctx.preferred,
+            List<ProcessingEntry> recipes = orderRecipes(level, ctx.network, new net.minecraft.world.item.ItemStack(item), ctx.preferred,
                     ctx.heatOps() > 0, ctx.network.prefersFurnace(item));
             if (recipes.isEmpty()) {
                 absent.merge(item, amount, Long::sum);   // the gross need of every occurrence
@@ -3194,10 +3196,22 @@ public final class VeloceAutoCrafter {
 
     /** Recipes in the order of the player's preference. */
     private static List<ProcessingEntry> orderRecipes(
-            ServerLevel level, VelocePipeNetwork network, Item item,
+            ServerLevel level, VelocePipeNetwork network, net.minecraft.world.item.ItemStack targetStack,
             Map<Item, ResourceLocation> preferred,
             boolean heatAvailable, boolean furnaceFirst) {
-        List<ProcessingEntry> all = allRecipesFor(level, network, item, heatAvailable);
+        Item item = targetStack.getItem();
+        List<ProcessingEntry> allUnfiltered = allRecipesFor(level, network, item, heatAvailable);
+        List<ProcessingEntry> all = new ArrayList<>();
+        for (ProcessingEntry e : allUnfiltered) {
+            ItemStack primary = e.primaryResult();
+            if ((!targetStack.getComponents().isEmpty())) {
+                if (ItemStack.isSameItemSameComponents(primary, targetStack)) {
+                    all.add(e);
+                }
+            } else {
+                all.add(e);
+            }
+        }
         if (all.size() <= 1) {
             return all;
         }

@@ -351,7 +351,7 @@ public class VeloceExtractorBlockEntity extends BlockEntity
         // A small planning budget: this is background work, not a player request.
         // The rest will wait for the next cycle, instead of blocking the server thread.
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
-                .ensureAvailable(sl, net, item, count, ctx, CRAFT_PLAN_BUDGET_NS);
+                .ensureAvailable(sl, net, new net.minecraft.world.item.ItemStack(item), count, ctx, CRAFT_PLAN_BUDGET_NS);
         if (!result.success()) {
             return ItemStack.EMPTY;
         }

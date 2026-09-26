@@ -460,6 +460,20 @@ public class VelocePipeNetwork {
         return out;
     }
 
+    public ItemStack extractItem(ServerLevel level, net.minecraft.world.item.ItemStack requested, int maxCount) {
+        Item item = requested.getItem();
+        for (ConnectedEndpointInfo endpoint : endpoints.values()) {
+            if (endpoint.getCachedCounts().getOrDefault(item, 0L) > 0) {
+                ItemStack extracted = endpoint.extractItem(level, requested, maxCount);
+                if (!extracted.isEmpty()) {
+                    invalidateAggregateCache();
+                    return extracted;
+                }
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
     public ItemStack extractItem(ServerLevel level, Item item, int maxCount) {
         for (ConnectedEndpointInfo endpoint : endpoints.values()) {
             if (endpoint.getCachedCounts().getOrDefault(item, 0L) > 0) {

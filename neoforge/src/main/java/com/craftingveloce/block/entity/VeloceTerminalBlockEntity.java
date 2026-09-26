@@ -619,7 +619,7 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
             // The player just pulled something - speed up the refresh of numbers.
 
             Item extractProxy = com.craftingveloce.util.VelocePotionMapper.getProxy(requested);
-            ItemStack extracted = net.extractItem(sl, extractProxy, count);
+            ItemStack extracted = net.extractItem(sl, requested, count);
             extracted = com.craftingveloce.util.VelocePotionMapper.toRealPotion(extracted);
             if (!extracted.isEmpty()) {
                 // Through the guarded return: the stack has already LEFT the network and a
@@ -1016,7 +1016,7 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
                 buffers, this.getBlockPos());
 
         var result = com.craftingveloce.crafting.VeloceAutoCrafter
-                .ensureAvailable(sl, net, item, count, ctx);
+                .ensureAvailable(sl, net, requested, count, ctx);
         if (!result.success()) {
             // Reason from the planner: noBase + the name of the missing
             // ingredient, tooComplex or extract. Without this the player only
@@ -1028,13 +1028,13 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
         // and only then to the network endpoints. The buffer is NOT an endpoint,
         // so net.extractItem() does not see it - that is why we first try to pull
         // from the buffers, and only as a fallback from the network.
-        ItemStack fromBuffer = extractFromBuffers(buffers, item, count);
+        ItemStack fromBuffer = extractFromBuffers(buffers, requested, count);
         if (!fromBuffer.isEmpty()) {
             return okAfterExtraction(sl,
                     com.craftingveloce.util.VelocePotionMapper.toRealPotion(fromBuffer),
                     "the crafter's buffer");
         }
-        ItemStack extracted = net.extractItem(sl, item, count);
+        ItemStack extracted = net.extractItem(sl, requested, count);
         if (extracted.isEmpty()) {
             // REPORTING HOLE, and it cost a long hunt.
             //
@@ -1071,7 +1071,8 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
      */
     private static ItemStack extractFromBuffers(
             java.util.List<com.craftingveloce.inventory.VeloceCraftingBuffer> buffers,
-            Item item, int count) {
+            net.minecraft.world.item.ItemStack requested, int count) {
+        Item item = requested.getItem();
         ItemStack result = ItemStack.EMPTY;
         int remaining = count;
         for (var buf : buffers) {
@@ -1081,6 +1082,9 @@ public class VeloceTerminalBlockEntity extends VeloceBlockEntity
             for (int slot = 0; slot < buf.getContainerSize() && remaining > 0; slot++) {
                 ItemStack inSlot = buf.getItem(slot);
                 if (inSlot.isEmpty() || inSlot.getItem() != item) {
+                    continue;
+                }
+                if ((!requested.getComponents().isEmpty()) && !net.minecraft.world.item.ItemStack.isSameItemSameComponents(inSlot, requested)) {
                     continue;
                 }
                 int take = Math.min(remaining, inSlot.getCount());
