@@ -3,12 +3,16 @@ package com.craftingveloce.crafting;
 import com.craftingveloce.network.pipe.VelocePipeNetwork;
 import com.craftingveloce.util.VeloceLog;
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.RecipeType;
+import net.minecraft.world.level.Level;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -2682,8 +2686,8 @@ public final class VeloceAutoCrafter {
         java.util.Map<Item, Long> unresolved = new java.util.LinkedHashMap<>();
         collectMissing(level, ctx, item, new HashMap<>(stock), amount, new HashSet<>(), 0,
                 absent, unresolved, new int[] {MISSING_WALK_BUDGET});
-        String out = describeDeficit(absent, stock);
-        return out.isEmpty() ? describeDeficit(unresolved, stock) : out;
+        String out = describeDeficit(level, absent, stock);
+        return out.isEmpty() ? describeDeficit(level, unresolved, stock) : out;
     }
 
     /**
@@ -2695,13 +2699,202 @@ public final class VeloceAutoCrafter {
      * has is subtracted exactly once. Reporting per dead end instead would count the same
      * chest twice (the "72x gold ingot for a recipe that wants four" family of messages).
      */
-    private static String describeDeficit(java.util.Map<Item, Long> gross,
+    private static String describeDeficit(ServerLevel level, java.util.Map<Item, Long> gross,
                                           Map<Item, Long> stock) {
         java.util.Map<String, Long> out = new java.util.LinkedHashMap<>();
-        gross.forEach((missingItem, totalNeeded) ->
-                out.put(name(missingItem),
-                        Math.max(1L, totalNeeded - stock.getOrDefault(missingItem, 0L))));
+        gross.forEach((missingItem, totalNeeded) -> {
+            long netNeeded = Math.max(1L, totalNeeded - stock.getOrDefault(missingItem, 0L));
+            Item parentIngot = getParentIngot(level, missingItem);
+            if (parentIngot != null && isIngot(parentIngot) && netNeeded >= 9) {
+                long ingots = netNeeded / 9;
+                long rem = netNeeded % 9;
+                out.merge(name(parentIngot), ingots, Long::sum);
+                if (rem > 0) {
+                    out.merge(name(missingItem), rem, Long::sum);
+                }
+                return;
+            }
+            out.merge(name(missingItem), netNeeded, Long::sum);
+        });
         return describe(out);
+    }
+
+    private static boolean isIngot(Item item) {
+        if (item == Items.IRON_INGOT
+                || item == Items.GOLD_INGOT
+                || item == Items.COPPER_INGOT
+                || item == Items.NETHERITE_INGOT) {
+            return true;
+        }
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        if (id.getPath().endsWith("_ingot")) {
+            return true;
+        }
+        ItemStack stack = new ItemStack(item);
+        return stack.is(ItemTags.create(ResourceLocation.fromNamespaceAndPath("c", "ingots")))
+                || stack.is(ItemTags.create(ResourceLocation.fromNamespaceAndPath("forge", "ingots")));
+    }
+
+    private static boolean isNugget(Item item) {
+        if (item == Items.IRON_NUGGET
+                || item == Items.GOLD_NUGGET) {
+            return true;
+        }
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        if (id.getPath().endsWith("_nugget")) {
+            return true;
+        }
+        ItemStack stack = new ItemStack(item);
+        return stack.is(ItemTags.create(ResourceLocation.fromNamespaceAndPath("c", "nuggets")))
+                || stack.is(ItemTags.create(ResourceLocation.fromNamespaceAndPath("forge", "nuggets")));
+    }
+
+    private static boolean isRawMaterial(Item item) {
+        if (item == Items.RAW_IRON
+                || item == Items.RAW_GOLD
+                || item == Items.RAW_COPPER) {
+            return true;
+        }
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        String path = id.getPath();
+        if (path.startsWith("raw_") || path.endsWith("_raw_ore") || path.endsWith("_raw_material")) {
+            return true;
+        }
+        ItemStack stack = new ItemStack(item);
+        return stack.is(ItemTags.create(ResourceLocation.fromNamespaceAndPath("c", "raw_materials")))
+                || stack.is(ItemTags.create(ResourceLocation.fromNamespaceAndPath("forge", "raw_materials")));
+    }
+
+    private static boolean isGemOrMineral(Item item) {
+        if (item == Items.DIAMOND
+                || item == Items.EMERALD
+                || item == Items.REDSTONE
+                || item == Items.LAPIS_LAZULI
+                || item == Items.COAL
+                || item == Items.CHARCOAL
+                || item == Items.QUARTZ
+                || item == Items.AMETHYST_SHARD
+                || item == Items.NETHERITE_SCRAP) {
+            return true;
+        }
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        if (id.getPath().endsWith("_gem")) {
+            return true;
+        }
+        ItemStack stack = new ItemStack(item);
+        return stack.is(ItemTags.create(ResourceLocation.fromNamespaceAndPath("c", "gems")))
+                || stack.is(ItemTags.create(ResourceLocation.fromNamespaceAndPath("forge", "gems")));
+    }
+
+    private static boolean isBaseResource(Item item) {
+        return isIngot(item) || isNugget(item) || isRawMaterial(item) || isGemOrMineral(item);
+    }
+
+    private static final Map<Item, Item> NUGGET_TO_INGOT_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static Item getParentIngot(Level level, Item item) {
+        if (item == null) return null;
+        Item cached = NUGGET_TO_INGOT_CACHE.get(item);
+        if (cached != null) {
+            return cached == Items.AIR ? null : cached;
+        }
+        Item result = resolveParentIngot(level, item);
+        NUGGET_TO_INGOT_CACHE.put(item, result != null ? result : Items.AIR);
+        return result;
+    }
+
+    private static Item resolveParentIngot(Level level, Item item) {
+        if (item == Items.IRON_NUGGET) return Items.IRON_INGOT;
+        if (item == Items.GOLD_NUGGET) return Items.GOLD_INGOT;
+
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        String path = id.getPath();
+        if (path.endsWith("_nugget")) {
+            String base = path.substring(0, path.length() - "_nugget".length());
+            ResourceLocation ingotId = ResourceLocation.fromNamespaceAndPath(id.getNamespace(), base + "_ingot");
+            if (BuiltInRegistries.ITEM.containsKey(ingotId)) {
+                return BuiltInRegistries.ITEM.get(ingotId);
+            }
+            ResourceLocation mcIngotId = ResourceLocation.fromNamespaceAndPath("minecraft", base + "_ingot");
+            if (BuiltInRegistries.ITEM.containsKey(mcIngotId)) {
+                return BuiltInRegistries.ITEM.get(mcIngotId);
+            }
+        }
+
+        if (level instanceof ServerLevel serverLevel) {
+            for (Item candidate : VeloceRecipeRegistry.getAllCraftableItems(serverLevel)) {
+                if (!isIngot(candidate)) continue;
+                for (ProcessingEntry recipe : VeloceRecipeRegistry.getRecipesFor(serverLevel, candidate)) {
+                    if (recipe.primaryResult().getCount() == 1 && is9OfSameItem(recipe, item)) {
+                        return candidate;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean is9OfSameItem(ProcessingEntry recipe, Item target) {
+        long count = 0;
+        for (int i = 0; i < recipe.ingredients().size(); i++) {
+            Ingredient ing = recipe.ingredients().get(i);
+            if (ing.isEmpty()) continue;
+            boolean matches = false;
+            for (ItemStack opt : ing.getItems()) {
+                if (opt.getItem() == target) {
+                    matches = true;
+                    break;
+                }
+            }
+            if (!matches) return false;
+            count += recipe.ingredientCount(i);
+        }
+        return count == 9;
+    }
+
+    private static long craftFromPool(Context ctx, ProcessingEntry recipe, long wantedCrafts, Map<Item, Long> pool) {
+        if (wantedCrafts <= 0) return 0;
+        if (recipe.requiresHeat() && ctx.heatOps() <= 0) return 0;
+        Map<Item, Long> trial = new HashMap<>(pool);
+        long successful = 0;
+        for (long c = 0; c < wantedCrafts; c++) {
+            boolean canRunThisOne = true;
+            Map<Item, Long> singleCraftDeductions = new HashMap<>();
+            for (int i = 0; i < recipe.ingredients().size(); i++) {
+                Ingredient ing = recipe.ingredients().get(i);
+                if (!hasOptions(ing)) continue;
+                int need = Math.max(1, recipe.ingredientCount(i));
+                List<ItemStack> options = new ArrayList<>(nonEmpty(ing));
+                options.sort((a, b) -> Long.compare(
+                        trial.getOrDefault(b.getItem(), 0L) - singleCraftDeductions.getOrDefault(b.getItem(), 0L),
+                        trial.getOrDefault(a.getItem(), 0L) - singleCraftDeductions.getOrDefault(a.getItem(), 0L)));
+
+                int remainingNeed = need;
+                for (ItemStack opt : options) {
+                    Item optItem = opt.getItem();
+                    long haveInTrial = trial.getOrDefault(optItem, 0L) - singleCraftDeductions.getOrDefault(optItem, 0L);
+                    if (haveInTrial <= 0) continue;
+                    long take = Math.min(haveInTrial, remainingNeed);
+                    singleCraftDeductions.merge(optItem, take, Long::sum);
+                    remainingNeed -= take;
+                    if (remainingNeed <= 0) break;
+                }
+                if (remainingNeed > 0) {
+                    canRunThisOne = false;
+                    break;
+                }
+            }
+            if (!canRunThisOne) {
+                break;
+            }
+            singleCraftDeductions.forEach((it, count) -> trial.put(it, trial.get(it) - count));
+            successful++;
+        }
+        if (successful > 0) {
+            pool.clear();
+            pool.putAll(trial);
+        }
+        return successful;
     }
 
     /**
@@ -2739,15 +2932,35 @@ public final class VeloceAutoCrafter {
                 pool.put(item, 0L);
                 return;
             }
+
+            long lacking = amount - have;
+            pool.put(item, 0L);
+
+            // First: attempt to satisfy what we can from items ALREADY in pool across all candidate recipes
+            for (ProcessingEntry candidate : recipes) {
+                if (lacking <= 0) break;
+                long perCraft = Math.max(1L, candidate.primaryResult().getCount());
+                long craftsNeeded = (lacking + perCraft - 1L) / perCraft;
+                long executed = craftFromPool(ctx, candidate, craftsNeeded, pool);
+                if (executed > 0) {
+                    long produced = executed * perCraft;
+                    lacking = Math.max(0L, lacking - produced);
+                }
+            }
+
+            if (lacking <= 0) {
+                return;
+            }
+
+            // Base resources (ingots, nuggets, gems, raw materials) NEVER decompose further into modded fragments
+            if (isBaseResource(item)) {
+                absent.merge(item, have + lacking, Long::sum);
+                return;
+            }
+
             ProcessingEntry recipe = recipes.get(0);
             long perCraft = Math.max(1L, recipe.primaryResult().getCount());
-            // Only what we do NOT already hold has to be crafted. Planning the full amount here
-            // would report requirements for units that are already sitting in the chest - the
-            // "72x gold ingot for a recipe wanting four" family of messages.
-            long lacking = amount - have;
             long times = (lacking + perCraft - 1L) / perCraft;
-            // What we hold of the item itself is spent first, exactly as the planner does.
-            pool.put(item, 0L);
             List<Ingredient> ingredients = recipe.ingredients();
             for (int i = 0; i < ingredients.size(); i++) {
                 if (!hasOptions(ingredients.get(i))) {

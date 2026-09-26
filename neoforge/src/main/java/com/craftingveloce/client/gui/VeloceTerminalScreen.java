@@ -570,7 +570,7 @@ public class VeloceTerminalScreen extends VeloceCreativeScreen {
      */
     @Override
     protected Object viewStateKey() {
-        return terminalPos;
+        return terminalPos != null ? terminalPos : "veloce_terminal_fallback";
     }
 
     /** The terminal leaves the player's hotbar working - it can be used from it. */

@@ -47,8 +47,33 @@ public final class VeloceTerminalViewState {
                 TAB.put(key, id);
             }
         }
+        if (search != null && !search.isEmpty()) {
+            SEARCH.put(key, search);
+            SCROLL.put(key, scroll);
+        } else if (tab != null && tab.getType() == CreativeModeTab.Type.SEARCH) {
+            SEARCH.put(key, "");
+            SCROLL.put(key, scroll);
+        }
+    }
+
+    static void saveSearch(Object key, String search, float scroll) {
+        if (key == null) {
+            return;
+        }
         SEARCH.put(key, search == null ? "" : search);
         SCROLL.put(key, scroll);
+    }
+
+    static void saveTabOnly(Object key, CreativeModeTab tab) {
+        if (key == null) {
+            return;
+        }
+        if (tab != null) {
+            ResourceLocation id = BuiltInRegistries.CREATIVE_MODE_TAB.getKey(tab);
+            if (id != null) {
+                TAB.put(key, id);
+            }
+        }
     }
 
     static ResourceLocation savedTab(Object key) {

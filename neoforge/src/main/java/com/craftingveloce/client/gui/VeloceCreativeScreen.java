@@ -478,10 +478,15 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         if (key == null || !rememberTab()) {
             return;
         }
-        VeloceTerminalViewState.save(key,
-                VeloceTerminalViewState.currentTab(),
-                VeloceTerminalViewState.currentSearch(this),
-                VeloceTerminalViewState.currentScroll(this));
+        CreativeModeTab curTab = VeloceTerminalViewState.currentTab();
+        if (curTab != null && curTab.getType() == CreativeModeTab.Type.SEARCH) {
+            VeloceTerminalViewState.save(key,
+                    curTab,
+                    VeloceTerminalViewState.currentSearch(this),
+                    VeloceTerminalViewState.currentScroll(this));
+        } else {
+            VeloceTerminalViewState.saveTabOnly(key, curTab);
+        }
     }
 
     /**
@@ -877,12 +882,29 @@ public abstract class VeloceCreativeScreen extends CreativeModeInventoryScreen {
         // disabling of the trash can. So we detect the tab change and re-apply our
         // fixes from scratch.
         CreativeModeTab current = VeloceTerminalViewState.currentTab();
+        Object key = viewStateKey();
+        if (key != null && current != null && current.getType() == CreativeModeTab.Type.SEARCH) {
+            String curSearch = VeloceTerminalViewState.currentSearch(this);
+            float curScroll = VeloceTerminalViewState.currentScroll(this);
+            VeloceTerminalViewState.saveSearch(key, curSearch, curScroll);
+        }
+
         if (current != lastSeenTab) {
             lastSeenTab = current;
             try (var ignored = com.craftingveloce.util.VeloceProfiler
                     .section("client.creativeScreen.containerTick.tabChanged")) {
                 suppressPlayerSlots();
                 disableVanillaTrashSlot();
+                if (key != null && current != null && current.getType() == CreativeModeTab.Type.SEARCH) {
+                    String saved = VeloceTerminalViewState.savedSearch(key);
+                    if (saved != null && !saved.isEmpty()) {
+                        VeloceTerminalViewState.applySearch(this, saved);
+                    }
+                    Float savedScroll = VeloceTerminalViewState.savedScroll(key);
+                    if (savedScroll != null && savedScroll > 0f) {
+                        VeloceTerminalViewState.applyScroll(this, savedScroll);
+                    }
+                }
             }
         }
 
